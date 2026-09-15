@@ -79,5 +79,5 @@
 - **Версия:** `0.1.0`
 - **Ветка:** `arena/01a0a67d-cryptora`
 - **Предыдущий подтвержденный коммит в remote:** `3ab1f880720bbe093304d731e083bf2b83b6f055`
-- **Текущий коммит приемочного аудита:** `audit(stage1): verify acceptance gates, add playwright e2e suite and fix audit defects`
-- **Статус Git Remote:** Ветка отправляется в `origin/arena/01a0a67d-cryptora` (https://github.com/nub36/CRYPTORA.git).
+- **Текущий коммит приемочного аудита:** `f5860e3` (`audit(stage1): verify acceptance gates, add playwright e2e suite and fix audit defects`)
+- **Статус Git Remote:** Ветка успешно отправлена в `origin/arena/01a0a67d-cryptora` (https://github.com/nub36/CRYPTORA.git).
