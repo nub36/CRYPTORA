@@ -1,9 +1,9 @@
 # STATUS — Текущий статус проекта CRYPTORA
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
-> **Последнее обновление:** 2026-09-15  
-> **Текущая версия:** v0.5.0  
-> **Текущий этап:** Этап 5 — Derivatives & Aggregated Futures Завершен.  
+> **Последнее обновление:** 2026-09-16  
+> **Текущая версия:** v0.6.0  
+> **Текущий этап:** Этапы 6, 8, 10, 12, 14, 15, 16 успешно реализованы и верифицированы.  
 > ⚠️ **КЛЮЧЕВОЙ ИНВАРИАНТ:** **CRYPTORA DOES NOT EXECUTE TRADES.**  
 > Терминал спроектирован исключительно для сбора и анализа данных (Crypto Market Intelligence Terminal). Торговый функционал, исполнение ордеров, торговые боты, автотрейдинг, кастоди и торговые API-ключи полностью и бесповоротно исключены из архитектуры и дорожной карты платформы.
 
@@ -11,38 +11,48 @@
 
 ## 1. Что сделано
 
-### Этап 5: Деривативный конвейер (Завершен)
-- **Адаптер публичных фьючерсных данных (`src/services/data/adapters/BinanceFuturesAdapter.ts`):**
-  - Подключение к публичному REST API Binance USD-M Futures (`fapi.binance.com`) без API-ключей.
-  - Zod-схемы DTO: `BinanceFuturesPremiumIndexSchema`, `BinanceFuturesOpenInterestSchema`, `BinanceFuturesTicker24hrSchema`.
-  - Типизированная обработка ошибок сети, лимитов (429/418) и таймаутов (`AdapterError`).
-- **Расчетный движок деривативов (`src/services/derivatives/DerivativesEngine.ts`):**
-  - Расчет годовой ставки фандинга (Annualized Funding Rate / APR = $\text{FR}_{8h} \times 1095$).
-  - Расчет базиса и классификация рыночного режима (Contango vs Backwardation).
-  - Расчет открытого интереса в долларовом выражении (OI USD).
-  - Нормализация в `FuturesAsset` с `isDemo: false` и фиксацией происхождения данных.
-  - Агрегация макро-показателей рынка деривативов (`calculateAggregatedOverview`).
-- **Интеграция с `LiveMarketDataProvider` и UI:**
-  - Реализация `getFuturesList()` с кэшированием и автоматическим fallback.
-  - `FuturesPage.tsx`: переключение в режим `LIVE DERIVATIVES (BINANCE FUTURES)`, агрегированные карточки макро-метрик, фильтрация шорт-сквизов.
+### Этап 16: Коммерческая архитектура и тарифные планы (`src/services/subscription/PlanManager.ts`)
+- Разграничение прав доступа и лимитов для уровней `FREE`, `PRO` и `ENTERPRISE` (Institutional Terminal).
+- Управление лимитами алертов, доступом к бэктестингу, AI-аналитику, кластерам ликвидаций и экспорту данных.
 
-### Этап 4: Углубленные карточки активов, Time-Series и Indicator Engine (Завершен)
-- Индикаторный движок `IndicatorEngine`: SMA, EMA, Wilder's RSI, MACD, Bollinger Bands, ATR, VWAP, Volume Profile, CVD.
-- Хранилище временных рядов `MemoryTimeSeriesRepository` с дедупликацией свечей и детекцией пробелов (`detectGaps`).
-- Биржевой стакан Level 2 `OrderBookL2` со шкалой глубины и расчетом спреда в USD и bps.
+### Этап 15: AI-ассистент и объясняющий слой (`src/services/ai/AiExplanationEngine.ts`)
+- Генерация объяснений динамики рынка и аномалий strictly поверх детерминированных фактов (RSI, фандинг, открытый интерес, Z-Score всплесков объема).
+- Строгий запрет на финансовые советы или генерацию торговых ордеров. Обязательный дисклеймер аналитического терминала.
 
-### Этап 3: Realtime WebSockets & Anomaly Engine (Завершен)
-- Потоковый WebSocket-клиент `BinanceWebSocketClient`.
-- Внутренняя шина событий `EventBus` с регулируемым троттлингом (250 мс batch).
-- Математический движок `AnomalyEngine` (Z-Score всплесков объема, ценовой импульс, расширение волатильности).
+### Этап 14: Движок сетапов и неизменяемый аудит (`src/services/signals/SignalsAuditLedger.ts`)
+- Формализованные сетапы с обязательными подтверждающими и опровергающими факторами, зонами входа и жесткими уровнями инвалидации.
+- Неизменяемый хешированный аудит-лог (SHA-256 chain) с запретом редактирования задним числом.
+- Прозрачный расчет результативности и винрейта без ошибки выжившего (survivorship bias).
 
-### Этап 2: Публичные спотовые данные (Завершен)
-- Канонический Asset Registry на 25 активов (`src/services/data/registry/assetRegistry.ts`).
-- Zod-схемы DTO и адаптеры `BinanceSpotAdapter` и `KuCoinSpotAdapter`.
-- `LiveMarketDataProvider` с Data Provenance (`exchange, market, symbol, timestamp, isFallback`).
+### Этап 12: Движок бэктестинга (`src/services/backtest/BacktestEngine.ts`)
+- Побарная симуляция без заглядывания вперед (Zero Look-Ahead Bias).
+- Реалистичный учет комиссий тейкера и проскальзывания (slippage).
+- Автоматический расчет метрик: Win Rate %, Profit Factor, Max Drawdown %, Net PnL, Sharpe Ratio.
 
-### Генеральная ревизия концепции (Завершена)
-- Зафиксировано решение **ADR-006: CRYPTORA IS ANALYTICS-ONLY / NO TRADE EXECUTION** в `docs/DECISIONS.md`.
+### Этап 10: Движок алертов (`src/services/alerts/AlertService.ts`)
+- Оценка условий: ценовые пороги, суточное изменение, экстремальные значения фандинга.
+- Подавление дребезга (cooldown), поддержка каналов In-App, Telegram, Webhook.
+- Журналирование истории срабатываний.
+
+### Этап 8: Мультифакторный скринер (`src/services/screener/ScreenerEngine.ts`)
+- Композитная фильтрация активов: категория, изменение 24ч, спотовый объем, капитализация, RSI(14), ставка фандинга, дельта открытого интереса.
+- Предустановленные системные пресеты (`oversold_rsi`, `volume_leaders`, `short_squeeze`, `oi_breakout`, `ai_sector`) и сохранение пользовательских конфигураций.
+
+### Этап 6: Конвейер ликвидаций и расчет кластеров (`src/services/liquidations/LiquidationPipeline.ts`)
+- Парсинг WebSocket сообщений ликвидаций (`forceOrder`).
+- Расчет скользящих агрегатов за 24 часа с разбивкой по активам и сторонам (Long vs Short).
+- Модель оценки теоретических кластеров риска ликвидаций ($10\times, 25\times, 50\times, 100\times$) с обязательным дисклеймером `Actual != Estimated`.
+- Интеграция с `LiveMarketDataProvider` и страницей `LiquidationsPage.tsx`.
+
+### Этап 5: Деривативный конвейер (`src/services/data/adapters/BinanceFuturesAdapter.ts`)
+- Подключение к публичному REST API Binance USD-M Futures (`fapi.binance.com`).
+- Расчет годовой ставки фандинга (APR), базиса, Contango/Backwardation и долларового открытого интереса.
+- Страница `FuturesPage.tsx` с live-метками и фильтрами шорт-сквиза.
+
+### Этапы 2, 3, 4: Спот, WebSockets, TimeSeries, Индикаторы
+- Адаптеры Binance и KuCoin Spot с валидацией Zod DTO.
+- WebSocket-клиент и AnomalyEngine на Z-Score объема и волатильности.
+- Индикаторный движок `IndicatorEngine` (SMA, EMA, RSI, MACD, Bollinger, ATR, VWAP, Volume Profile, CVD).
 - Целевой конвейер строго заканчивается шагом «Решение пользователя»:
   `Рынок → Данные → Аналитика → Наблюдения → Решение пользователя`.
 - Торговое исполнение исключено навсегда.
@@ -60,8 +70,15 @@
 
 ## 3. Результаты тестов (Все гейты пройдены со 100% успехом)
 - **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (`tsc --noEmit`).
-- **Unit Tests (`npm test`):** PASSED — 13 тестовых люксов, **96 тестов успешно пройдено**:
-  - `tests/unit/derivatives.test.ts` (9 тестов: DTO валидация, расчет APR, базис Contango/Backwardation, OI USD, агрегаты)
+- **Unit Tests (`npm test`):** PASSED — 20 тестовых люксов, **121 тест успешно пройден**:
+  - `tests/unit/liquidations.test.ts` (5 тестов: forceOrder парсинг, 24h агрегаты, кластеры риска)
+  - `tests/unit/screener.test.ts` (6 тестов: мультифакторная фильтрация, пресеты)
+  - `tests/unit/alerts.test.ts` (4 теста: триггеры, кулдаун, каналы доставки)
+  - `tests/unit/backtest.test.ts` (3 теста: no look-ahead bias, учет комиссий и проскальзывания)
+  - `tests/unit/signals.test.ts` (3 теста: неизменяемый аудит сетапов, SHA-256 хеш)
+  - `tests/unit/aiExplanation.test.ts` (2 теста: контекстные объяснения на основе фактов)
+  - `tests/unit/monetization.test.ts` (2 теста: гейтинг тарифов Free / Pro / Enterprise)
+  - `tests/unit/derivatives.test.ts` (9 тестов: DTO валидация, расчет APR, базис, OI USD, агрегаты)
   - `tests/unit/indicators.test.ts` (9 тестов)
   - `tests/unit/timeSeries.test.ts` (4 теста)
   - `tests/unit/adapters.test.ts` (15 тестов)
@@ -76,21 +93,17 @@
   - `tests/unit/sorting.test.ts` (3 теста)
 - **Build (`npm run build`):** PASSED — чистая production-сборка (`tsc -b && vite build`):
   - `dist/index.html` (1.48 kB)
-  - `dist/assets/index-ChejmA-6.css` (32.88 kB)
-  - `dist/assets/index-CGsQDi2g.js` (620.85 kB)
+  - `dist/assets/index-BOMP-TL-.css` (32.91 kB)
+  - `dist/assets/index-SY8YQ3XJ.js` (627.32 kB)
 - **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **31 сквозной тест** (`@playwright/test`):
   - 14 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
-  - 11 тестов пользовательских сценариев (`e2e/flows.spec.tsx` включая Order Book L2, индикаторы и фьючерсы)
+  - 11 тестов пользовательских сценариев (`e2e/flows.spec.tsx`)
   - 6 адаптивных смоук-тестов (`e2e/responsive.spec.tsx` для 390, 768, 1024, 1440, 1920px)
 
 ---
 
-## 4. Следующий конкретный подэтап
-- **Этап 6 (06-LIQUIDATIONS.md):** Поток принудительных ликвидаций (WebSocket public stream), тепловая карта плотности ликвидаций и аналитический таймлайн с методологическим дисклеймером (`Actual != Estimated`).
-
----
-
-## 5. Версия и Git состояние
-- **Версия:** `0.5.0`
+## 4. Версия и Git состояние
+- **Версия:** `0.6.0`
 - **Ветка:** `arena/01a0a67d-cryptora`
 - **Инвариант концепции:** `CRYPTORA DOES NOT EXECUTE TRADES`
+

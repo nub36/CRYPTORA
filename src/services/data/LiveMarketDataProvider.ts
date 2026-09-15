@@ -26,6 +26,7 @@ import {
 import { DemoMarketDataProvider } from './DemoMarketDataProvider';
 import { AnomalyEngine } from '../realtime/AnomalyEngine';
 import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
+import { LiquidationPipeline } from '../liquidations/LiquidationPipeline';
 import { DerivativesEngine } from '../derivatives/DerivativesEngine';
 
 export interface LiveMarketDataProviderConfig {
@@ -333,8 +334,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   }
 
   public async getLiquidations(): Promise<LiquidationData> {
-    // Stage 2 scope is SPOT only. Liquidation WebSocket ingestion begins in Stage 6.
-    return this.demoFallback.getLiquidations();
+    return LiquidationPipeline.getInstance().getLiquidationSnapshot();
   }
 
   public async getRadarEvents(symbol?: string): Promise<RadarEvent[]> {

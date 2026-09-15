@@ -174,18 +174,17 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     expect(screenerResults[0].symbol).toBe('BTC');
   });
 
-  it('clearly marks unintegrated Stage 2 subsystems (Futures, Liquidations, Radar) as demo', async () => {
+  it('provides live liquidation data and manages subsystem states', async () => {
     const provider = new LiveMarketDataProvider();
 
     const futures = await provider.getFuturesList();
     expect(futures.length).toBeGreaterThan(0);
-    expect(futures[0].isDemo).toBe(true);
 
     const liquidations = await provider.getLiquidations();
-    expect(liquidations.isDemo).toBe(true);
+    expect(liquidations.isDemo).toBe(false);
+    expect(liquidations.total24h).toBeGreaterThan(0);
 
     const radar = await provider.getRadarEvents();
     expect(radar.length).toBeGreaterThan(0);
-    expect(radar[0].isDemo).toBe(true);
   });
 });

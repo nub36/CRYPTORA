@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
 import { LiquidationData } from '@/types/market';
 import { formatCurrency, formatTimestamp } from '@/utils/formatters';
-import { Flame, ShieldAlert, Clock } from 'lucide-react';
+import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline';
+import { Flame, ShieldAlert, Clock, Layers } from 'lucide-react';
 
 export const LiquidationsPage: React.FC = () => {
-  const { provider } = useMarketData();
+  const { provider, dataMode } = useMarketData();
   const [data, setData] = useState<LiquidationData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -15,6 +16,10 @@ export const LiquidationsPage: React.FC = () => {
       setLoading(false);
     });
   }, [provider]);
+
+  const estimatedClusters = useMemo(() => {
+    return LiquidationPipeline.calculateEstimatedClusters(65000, 15000000000);
+  }, []);
 
   if (loading || !data) {
     return (
@@ -37,12 +42,21 @@ export const LiquidationsPage: React.FC = () => {
             <h1 className="text-lg sm:text-xl font-bold text-white tracking-wide">
               КАРТА И ПОТОК ЛИКВИДАЦИЙ (LIQUIDATIONS)
             </h1>
-            <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              ДЕМОНСТРАЦИОННЫЙ СРЕЗ
-            </span>
+            {dataMode === 'live' ? (
+              <span className="text-[10px] font-semibold text-brand-cyan bg-brand-cyan/10 px-2 py-0.5 rounded border border-brand-cyan/30 flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse mr-1" />
+                LIVE STREAM (BINANCE FUTURES)
+              </span>
+            ) : (
+              <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                ДЕМОНСТРАЦИОННЫЙ СРЕЗ
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Демонстрационный мониторинг принудительно закрытых маржинальных позиций по биржам.
+            {dataMode === 'live'
+              ? 'Мониторинг принудительно закрытых маржинальных позиций по биржам в реальном времени.'
+              : 'Демонстрационный мониторинг принудительно закрытых маржинальных позиций по биржам.'}
           </p>
         </div>
 
@@ -214,18 +228,71 @@ export const LiquidationsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Estimated Liquidation Clusters (Model Simulation) */}
+      <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-surface-border">
+          <div className="flex items-center space-x-2">
+            <Layers className="w-4 h-4 text-brand-cyan" />
+            <span className="text-xs font-bold text-white uppercase tracking-wider">
+              Расчетная модель кластеров риска (Estimated Liquidation Heatmap Model)
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-brand-cyan bg-brand-cyan/10 px-1.5 py-0.5 rounded border border-brand-cyan/30">
+            ESTIMATED SIMULATION
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-400 font-sans leading-relaxed">
+          Теоретические ценовые уровни принудительного закрытия позиций с плечами 10x–100x относительно текущей базовой цены $65,000. Не является фактическими ордерами в биржевом стакане.
+        </p>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {estimatedClusters.map((c, idx) => (
+            <div
+              key={idx}
+              className={`p-2.5 rounded border text-xs space-y-1 ${
+                c.side === 'LONG'
+                  ? 'bg-emerald-950/20 border-emerald-500/30'
+                  : 'bg-rose-950/20 border-rose-500/30'
+              }`}
+            >
+              <div className="flex items-center justify-between text-[11px]">
+                <span className={c.side === 'LONG' ? 'text-brand-green font-bold' : 'text-brand-red font-bold'}>
+                  {c.leverageTier}x {c.side} Liq
+                </span>
+                <span className="text-slate-400">±{c.distancePct}%</span>
+              </div>
+              <div className="text-sm font-bold text-white">
+                {formatCurrency(c.priceLevel)}
+              </div>
+              <div className="text-[10px] text-slate-400">
+                Объем под риском: {formatCurrency(c.estimatedVolumeUsd, { compact: true })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Recent Actual Events Feed Table */}
       <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2">
             <Flame className="w-4 h-4 text-rose-500" />
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Демонстрационный журнал событий ликвидаций (Demo Event Log)
+              {dataMode === 'live'
+                ? 'Журнал фактических событий ликвидаций (Live Event Log)'
+                : 'Демонстрационный журнал событий ликвидаций (Demo Event Log)'}
             </span>
           </div>
-          <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-            DEMO DATASET
-          </span>
+          {dataMode === 'live' ? (
+            <span className="text-[10px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
+              BINANCE FUTURES LIVE
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+              DEMO DATASET
+            </span>
+          )}
         </div>
 
         <div className="overflow-x-auto">
