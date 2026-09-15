@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { MarketDataProvider } from '@/services/data/MarketDataProvider';
-import { defaultMarketDataProvider } from '@/services/data';
+import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
+import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
 
 export interface UserAlert {
   id: string;
@@ -10,9 +11,13 @@ export interface UserAlert {
   createdAt: string;
 }
 
+export type DataMode = 'demo' | 'live';
+
 interface MarketDataContextType {
   provider: MarketDataProvider;
   isDemo: boolean;
+  dataMode: DataMode;
+  setDataMode: (mode: DataMode) => void;
   watchlist: string[];
   toggleWatchlist: (symbol: string) => void;
   isWatchlisted: (symbol: string) => boolean;
@@ -32,10 +37,22 @@ interface MarketDataContextType {
 
 const MarketDataContext = createContext<MarketDataContextType | null>(null);
 
+const singletonDemoProvider = new DemoMarketDataProvider();
+const singletonLiveProvider = new LiveMarketDataProvider();
+
 export const MarketDataProviderComponent: React.FC<{
   children: React.ReactNode;
   customProvider?: MarketDataProvider;
-}> = ({ children, customProvider = defaultMarketDataProvider }) => {
+}> = ({ children, customProvider }) => {
+  const [dataMode, setDataMode] = useState<DataMode>(() => {
+    try {
+      const saved = localStorage.getItem('cryptora_data_mode');
+      return saved === 'live' ? 'live' : 'demo';
+    } catch {
+      return 'demo';
+    }
+  });
+
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('cryptora_watchlist');
@@ -70,6 +87,14 @@ export const MarketDataProviderComponent: React.FC<{
 
   useEffect(() => {
     try {
+      localStorage.setItem('cryptora_data_mode', dataMode);
+    } catch {
+      // ignore
+    }
+  }, [dataMode]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem('cryptora_watchlist', JSON.stringify(watchlist));
     } catch {
       // ignore
@@ -83,6 +108,11 @@ export const MarketDataProviderComponent: React.FC<{
       // ignore
     }
   }, [alerts]);
+
+  const activeProvider = useMemo<MarketDataProvider>(() => {
+    if (customProvider) return customProvider;
+    return dataMode === 'live' ? singletonLiveProvider : singletonDemoProvider;
+  }, [customProvider, dataMode]);
 
   const toggleWatchlist = (symbol: string) => {
     const s = symbol.toUpperCase();
@@ -109,8 +139,10 @@ export const MarketDataProviderComponent: React.FC<{
   return (
     <MarketDataContext.Provider
       value={{
-        provider: customProvider,
-        isDemo: customProvider.isDemo,
+        provider: activeProvider,
+        isDemo: activeProvider.isDemo,
+        dataMode,
+        setDataMode,
         watchlist,
         toggleWatchlist,
         isWatchlisted,

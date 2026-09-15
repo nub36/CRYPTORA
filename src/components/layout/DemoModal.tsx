@@ -1,10 +1,10 @@
 import React from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
-import { AlertTriangle, ShieldCheck, X, Layers, ExternalLink } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, X, Layers, ExternalLink, Radio } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const DemoModal: React.FC = () => {
-  const { isDemoModalOpen, closeDemoModal } = useMarketData();
+  const { isDemoModalOpen, closeDemoModal, dataMode, setDataMode } = useMarketData();
 
   if (!isDemoModalOpen) return null;
 
@@ -28,8 +28,41 @@ export const DemoModal: React.FC = () => {
               Статус данных: Демонстрационный режим
             </h3>
             <p className="text-xs text-amber-400/90 font-mono">
-              Этап 1: Visual Foundation & Typed Demo Data Layer
+              Этап 1-2: Visual Foundation & Spot Market Data (Binance & KuCoin)
             </p>
+          </div>
+        </div>
+
+        {/* Data Mode Switcher */}
+        <div className="bg-surface-elevated border border-surface-border rounded p-3 mb-4 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-semibold text-white block">Режим источника данных:</span>
+            <span className="text-[11px] text-slate-400 font-mono">
+              {dataMode === 'live' ? 'LIVE (Binance Primary / KuCoin Fallback)' : 'DEMO (Детерминированный датасет)'}
+            </span>
+          </div>
+          <div className="flex items-center space-x-1.5 bg-surface border border-surface-border rounded p-0.5">
+            <button
+              onClick={() => setDataMode('demo')}
+              className={`px-2.5 py-1 text-xs font-mono rounded transition-colors ${
+                dataMode === 'demo'
+                  ? 'bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              DEMO
+            </button>
+            <button
+              onClick={() => setDataMode('live')}
+              className={`px-2.5 py-1 text-xs font-mono rounded transition-colors flex items-center space-x-1 ${
+                dataMode === 'live'
+                  ? 'bg-brand-green/20 text-brand-green font-bold border border-brand-green/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Radio className="w-3 h-3" />
+              <span>LIVE</span>
+            </button>
           </div>
         </div>
 
@@ -45,14 +78,14 @@ export const DemoModal: React.FC = () => {
           <div className="flex items-start space-x-2">
             <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
             <p>
-              <strong className="text-white">Не является финансовым советом:</strong> Цифры предназначены для визуальной оценки плотности терминала, UX, навигации, фильтрации и калькуляторов. Не используйте их для реальных торговых сделок.
+              <strong className="text-white">CRYPTORA — только аналитика (No Trade Execution):</strong> Терминал не является биржей или брокером, не исполняет сделки, не выставляет ордера и не принимает торговые API-ключи.
             </p>
           </div>
 
           <div className="flex items-start space-x-2">
             <Layers className="w-4 h-4 text-brand-cyan mt-0.5 flex-shrink-0" />
             <p>
-              <strong className="text-white">Архитектурная готовность к Этапу 2+:</strong> Все страницы построены поверх интерфейса <code className="bg-slate-800 px-1 py-0.5 rounded text-brand-cyan font-mono text-xs">MarketDataProvider</code>. На следующем этапе локальный провайдер будет заменен на живые биржевые сокеты (Binance, Bybit) без переписывания интерфейса.
+              <strong className="text-white">Публичные спотовые данные (Этап 2):</strong> Подключены публичные REST API Binance (основной) и KuCoin (резервный) для 25 канонических криптоактивов с отслеживанием источника (provenance).
             </p>
           </div>
         </div>

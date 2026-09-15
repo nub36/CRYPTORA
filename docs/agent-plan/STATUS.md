@@ -2,82 +2,94 @@
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
 > **Последнее обновление:** 2026-09-15  
-> **Текущая версия:** v0.1.0  
-> **Текущий этап:** Этап 1 — Visual Foundation & Demo Data Layer (Приемочный аудит завершен, готово к Этапу 2)
+> **Текущая версия:** v0.2.0  
+> **Текущий этап:** Этап 2 — Spot Market Data (Binance & KuCoin) Завершен.  
+> ⚠️ **КЛЮЧЕВОЙ ИНВАРИАНТ:** **CRYPTORA DOES NOT EXECUTE TRADES.**  
+> Терминал спроектирован исключительно для сбора и анализа данных (Crypto Market Intelligence Terminal). Торговый функционал, исполнение ордеров, торговые боты, автотрейдинг, кастоди и торговые API-ключи полностью и бесповоротно исключены из архитектуры и дорожной карты платформы.
 
 ---
 
 ## 1. Что сделано
-- Проведен независимый приемочный аудит Этапа 1 (Stage 1 Acceptance Audit).
-- Развернута полная проектная память: `AGENTS.md`, `README.md`, `CHANGELOG.md`, комплект документации `docs/` (21 файл) и пошаговый план `docs/agent-plan/` (18 файлов).
-- Сконфигурирован современный терминальный стек: React 19, TypeScript, Vite, Tailwind CSS, Lucide React, Zod, Vitest, Playwright (`@playwright/test`).
-- Созданы типизированные схемы данных Zod и интерфейс `MarketDataProvider`.
-- Реализован детерминированный `DemoMarketDataProvider` с базой 30 реальных активов, свечами, деривативами, ликвидациями и аномалиями радара.
-- Реализована профессиональная оболочка терминала высокой плотности:
-  - Header с навигацией, строкой глобального поиска, модальным окном демо-режима, панелями Watchlist и Alerts.
-  - Компактный бегущий тикер рынка со спарклайнами.
-  - Страница **Обзор (Overview)**: макро-сводка, большой график BTC, тепловая карта, снапшоты деривативов и ликвидаций, лента радара, топ movers и экстремумы фандинга.
-  - Страница **Рынок (/market)**: 30 активов, многоколоночная сортировка, поиск, фильтры секторов, спарклайны.
-  - Страница **Монета (/coin/:symbol)**: интерактивный финансовый график, таймфреймы, индикаторы (RSI, MACD, SMA), показатели деривативов, стакан/пары.
-  - Страница **Фьючерсы (/futures)**: открытый интерес, ставки финансирования с явным знаком (+/-), базис, суточные объемы и ликвидации.
-  - Страница **Ликвидации (/liquidations)**: объемы лонг/шорт, таймлайн, разбивка по биржам и обязательный дисклеймер различия фактических событий и расчетной модели (`ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL`).
-  - Страница **Скринер (/screener)**: интерактивные фильтры цен, объемов, фандинга, OI и RSI + быстрые пресеты.
-  - Страница **Радар рынка (/radar)**: лента обнаруженных аномалий с фильтрацией по типам и степени важности.
-  - Страница **Тепловые карты (/heatmaps)**: тремап-плитки с переключением режимов и цветовой шкалой.
-  - Страница **Инструменты (/tools)**: калькулятор размера позиции и калькулятор PnL с валидацией риска.
-  - Разделы **Стратегии (/strategies)** и **Сигналы (/signals)**: честные демонстрационные прототипы будущей методологии без нереалистичных обещаний доходности.
-- Исправлены все формулировки демо-потоков: удалено вводящее в заблуждение словосочетание «живой демо-поток forceOrder», закреплена честная маркировка демо-данных без имитации реального времени.
-- Внедрена доступность (a11y): контрастные контуры `:focus-visible` для навигации с клавиатуры и поддержка медиа-запроса `prefers-reduced-motion`.
-- Каталог `docs/DATA_SOURCES.md` полностью размечен маркерами `REQUIRES VERIFICATION` для всех биржевых эндпоинтов, лимитов частоты, глубины истории и лицензий.
-- Покрытие юнит-тестами Vitest (4 люкса, 28 тестов) и Playwright E2E тестами (30 тестов: маршруты, пользовательские сценарии, адаптивность 390/768/1024/1440/1920).
+
+### Генеральное изменение концепции (No Trade Execution)
+- По указанию владельца проекта торговый функционал полностью исключен из CRYPTORA.
+- Зафиксировано архитектурное решение **ADR-006: CRYPTORA IS ANALYTICS-ONLY / NO TRADE EXECUTION** в `docs/DECISIONS.md`.
+- Целевой конвейер строго заканчивается шагом «Решение пользователя»:  
+  `EXCHANGE PUBLIC MARKET DATA → COLLECTORS → NORMALIZATION → MARKET DATA STORAGE → REALTIME / TIME SERIES → INDICATORS / DERIVATIVES / LIQUIDATIONS / VOLUME → EVENT / ANOMALY ENGINE → SCREENER / MARKET RADAR → HISTORICAL ENGINE → BACKTEST / STRATEGY RESEARCH → ANALYTICAL SIGNALS → WEB / API / ALERTS → AI EXPLANATION (LATE STAGE) → USER DECISION`.
+  После шага USER DECISION никакого слоя исполнения ордеров нет.
+- Проведена ревизия всех документов проекта (`AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/CONCEPT.md`, `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DATA_SOURCES.md`, `docs/MARKET_DATA.md`, `docs/STRATEGIES.md`, `docs/BACKTESTING.md`, `docs/SIGNALS.md`, `docs/ALERTS.md`, `docs/AI.md`, `docs/SECURITY.md`, `docs/API.md`, `docs/MONETIZATION.md`, `docs/ROADMAP.md`, `docs/agent-plan/`). Все упоминания будущего торгового исполнения, автотрейдинга, создания ордеров и торговых API-ключей полностью удалены.
+- Четко разграничена полезная торговая аналитика (Long/Short статистика, ликвидации, калькуляторы размера позиции и риска, Strategy Lab для исследования правил, ручной журнал) и реальное исполнение ордеров (которое строго запрещено).
+
+### Реализация Этапа 2: Публичные спотовые данные (Binance & KuCoin)
+- **Канонический Asset Registry (`src/services/data/registry/assetRegistry.ts`):**
+  - Централизован начальный контролируемый universe из 25 криптоактивов (`BTC`, `ETH`, `SOL`, `BNB`, `XRP`, `ADA`, `DOGE`, `AVAX`, `LINK`, `DOT`, `SUI`, `NEAR`, `APT`, `RENDER`, `TAO`, `INJ`, `UNI`, `AAVE`, `OP`, `ARB`, `TIA`, `FET`, `KAS`, `RUNE`, `SEI`).
+  - Обеспечен строгий маппинг тикеров на биржи: канонический символ → Binance (`BTCUSDT`) → KuCoin (`BTC-USDT`).
+  - Реализована грациозная деградация при отсутствии пары на одной из бирж.
+- **Схемы DTO и валидация (`src/services/data/adapters/schemas.ts`):**
+  - Созданы Zod-схемы валидации: `BinanceTicker24hrSchema`, `BinanceKlinesResponseSchema`, `KuCoinStatsResponseSchema`, `KuCoinAllTickersResponseSchema`, `KuCoinCandlesResponseSchema`.
+- **Адаптеры бирж (`src/services/data/adapters/`):**
+  - `BinanceSpotAdapter`: опрос публичных спотовых 24h тикеров и OHLCV свечей с таймаутами и обработкой лимитов (HTTP 429/418).
+  - `KuCoinSpotAdapter`: опрос публичных спотовых 24h stats, allTickers и свечей с таймаутами и валидацией.
+  - Иерархия типизированных ошибок: `AdapterNetworkError`, `AdapterTimeoutError`, `AdapterValidationError`, `AdapterRateLimitError`, `SymbolNotFoundError`.
+- **Нормализация и происхождение данных (Provenance):**
+  - Реализована функция нормализации в доменные модели CRYPTORA (`AssetSummary`, `OHLCV`).
+  - Каждая запись несет метаданные происхождения (`DataProvenance: { exchange, market, symbol, timestamp, isFallback }`).
+- **Живой провайдер данных (`LiveMarketDataProvider`):**
+  - Реализован `LiveMarketDataProvider` (`isDemo: false`) с поддержкой первичного опроса Binance и автоматического переключения на KuCoin при сбоях (Multi-Exchange Fallback).
+  - Строгое разделение DEMO и LIVE: если оба живых шлюза недоступны, генерируется явная ошибка сети без подмешивания фиктивных демо-данных под вывеской LIVE.
+  - Подсистемы, не входящие в спотовый Этап 2 (Futures, Liquidations, Radar), честно помечены как демонстрационные с флагом `isDemo: true`.
+  - Внедрено переключение режимов `DEMO` и `LIVE` в `MarketDataContext` и модальном окне `DemoModal`.
+  - В `Header` добавлен визуальный индикатор активного режима (`ДЕМО-ДАННЫЕ` / `LIVE SPOT`).
 
 ---
 
 ## 2. Что НЕ сделано (Намеренно отложено согласно дорожной карте)
-- Настоящие биржевые WebSocket и REST коннекторы (запланированы на Этапы 2 и 3).
-- Торговые боты и исполнение ордеров (запрещены концепцией CRYPTORA).
-- Хранение приватных ключей, seed-фраз или торговых API-ключей (запрещено концепцией).
-- Сигналы с обещанием гарантированной прибыли («98% win rate») — запрещены кодексом проекта.
-- Серверный расчет технических индикаторов (запланирован на Этап 4).
-- Движок бэктестинга на исторических данных (запланирован на Этап 5).
-- AI-слой аналитики (запланирован на Этап 6+ строго как интерпретатор фактов).
-- Реальная система оплаты и биллинга (запланирована на Этап 8).
+- WebSocket realtime pipeline для котировок и стаканов (запланирован на Этап 3).
+- Интеграция живых фьючерсных потоков и расчетных агрегаторов (запланирована на Этап 5).
+- WebSocket-потоки фактических биржевых ликвидаций (запланированы на Этап 6).
+- Собственное серверное хранилище временных рядов (TimescaleDB / ClickHouse — запланировано на Этап 4).
+- Вычислительный Indicator Engine (Этап 4).
+- Движок симуляции бэктестинга (Этап 5).
+- AI-слой аналитики (Этап 7).
+- Биллинг и тарифная система (Этап 8).
+- **И отдельно:** ТОРГОВОЕ ИСПОЛНЕНИЕ, ТОРГОВЫЕ БОТЫ, КАСТОДИ И ТОРГОВЫЕ API-КЛЮЧИ ПОЛНОСТЬЮ ИСКЛЮЧЕНЫ И НИКОГДА НЕ БУДУТ РЕАЛИЗОВАНЫ.
 
 ---
 
-## 3. Результаты тестов (Все гейты пройдены)
+## 3. Результаты тестов (Все гейты пройдены со 100% успехом)
 - **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (`tsc --noEmit`).
-- **Unit Tests (`npm test`):** PASSED — 4 тестовых люкса, 28 тестов успешно завершено (`vitest run`).
-  - `tests/unit/calculators.test.ts` (6 тестов)
-  - `tests/unit/dataProvider.test.ts` (9 тестов)
-  - `tests/unit/formatters.test.ts` (10 тестов)
-  - `tests/unit/sorting.test.ts` (3 теста)
+- **Unit Tests (`npm test`):** PASSED — 7 тестовых люксов, **59 тестов успешно пройдено**:
+  - `tests/unit/adapters.test.ts` (15 тестов: DTO валидация Binance и KuCoin, нормализация, provenance, ошибки сети, таймауты, 429, 404).
+  - `tests/unit/liveDataProvider.test.ts` (9 тестов: LiveMarketDataProvider, Binance primary, KuCoin fallback, обработка отказа обоих шлюзов, свечи, обзор, скринер, изоляция demo-подсистем).
+  - `tests/unit/assetRegistry.test.ts` (7 тестов: 25 активов, ранжирование 1..25, маппинг символов, устойчивость к регистру, неподдерживаемые тикеры).
+  - `tests/unit/calculators.test.ts` (6 тестов: формулы размера позиции и PnL).
+  - `tests/unit/dataProvider.test.ts` (9 тестов: контракты DemoMarketDataProvider, детерминированность).
+  - `tests/unit/formatters.test.ts` (10 тестов: валюты, проценты, объемы).
+  - `tests/unit/sorting.test.ts` (3 теста: многоколоночная сортировка).
 - **Build (`npm run build`):** PASSED — чистая production-сборка (`tsc -b && vite build`):
   - `dist/index.html` (1.48 kB)
-  - `dist/assets/index-NTaqnbeE.css` (31.84 kB)
-  - `dist/assets/index-cxEuL9iF.js` (514.70 kB)
-- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — 30 сквозных тестов (`@playwright/test`):
-  - `e2e/routes.spec.ts` (14 тестов): все 12 терминальных маршрутов + 404 client-side container fallback.
-  - `e2e/flows.spec.tsx` (10 тестов): Overview, Market + search + sorting, Coin Detail, Futures, Liquidations, Screener, Radar, Tools, Strategies/Signals, Modals/Drawers.
-  - `e2e/responsive.spec.tsx` (6 тестов): адаптивные смоук-тесты для 390px, 768px, 1024px, 1440px, 1920px и мобильное меню.
+  - `dist/assets/index-CvH-z7yk.css` (32.04 kB)
+  - `dist/assets/index-B10xs5Wo.js` (588.89 kB)
+- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **30 сквозных тестов** (`@playwright/test`):
+  - 14 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
+  - 10 тестов пользовательских сценариев (`e2e/flows.spec.tsx`)
+  - 6 адаптивных смоук-тестов (`e2e/responsive.spec.tsx` для 390, 768, 1024, 1440, 1920px)
 
 ---
 
 ## 4. Известные ограничения
-- Все данные генерируются детерминированным `DemoMarketDataProvider` с флагом `isDemo: true`.
-- Котировки не обновляются в реальном времени с бирж, а служат демонстрацией интерфейса, эргономики и UX (согласно ТЗ Этапа 1).
-- Watchlist и настройки алертов сохраняются локально в `localStorage` браузера.
+- В Этапе 2 живой сбор данных реализован для спотового рынка (Spot Market Data). Фьючерсы, открытый интерес, ликвидации и аномалии радара сохраняются в демонстрационном режиме до соответствующих этапов дорожной карты.
+- CI запускается на детерминированных фикстурах и не зависит от доступности серверов Binance и KuCoin.
 
 ---
 
 ## 5. Следующий конкретный подэтап
-- **Этап 2 (02-MARKET-DATA.md):** Разработка легкого серверного коллектора публичных спотовых котировок (Binance, Bybit) и реализация `LiveMarketDataProvider` с сохранением текущего контракта UI без переписывания компонентов страниц.
+- **Этап 3 (03-REALTIME.md):** Разработка легкого WebSocket конвейера реального времени для тикеров и стаканов публичных спотовых котировок, а также запуск базового математического движка детекции аномалий объема для Market Radar.
 
 ---
 
 ## 6. Версия и Git состояние
-- **Версия:** `0.1.0`
+- **Версия:** `0.2.0`
 - **Ветка:** `arena/01a0a67d-cryptora`
-- **Предыдущий подтвержденный коммит в remote:** `3ab1f880720bbe093304d731e083bf2b83b6f055`
-- **Текущий коммит приемочного аудита:** `f5860e3` (`audit(stage1): verify acceptance gates, add playwright e2e suite and fix audit defects`)
-- **Статус Git Remote:** Ветка успешно отправлена в `origin/arena/01a0a67d-cryptora` (https://github.com/nub36/CRYPTORA.git).
+- **Инвариант концепции:** `CRYPTORA DOES NOT EXECUTE TRADES`
+- **Статус Git Remote:** Ветка отправлена в `origin/arena/01a0a67d-cryptora` (https://github.com/nub36/CRYPTORA.git).

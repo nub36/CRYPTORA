@@ -4,6 +4,16 @@ export type Timeframe = '15m' | '1h' | '4h' | '1D' | '1W';
 
 export type AssetCategory = 'all' | 'l1' | 'defi' | 'l2' | 'ai' | 'meme';
 
+export const DataProvenanceSchema = z.object({
+  exchange: z.enum(['binance', 'kucoin', 'synthetic-demo']),
+  market: z.enum(['spot', 'futures']),
+  symbol: z.string(),
+  timestamp: z.number(),
+  isFallback: z.boolean().optional(),
+});
+
+export type DataProvenance = z.infer<typeof DataProvenanceSchema>;
+
 export const OHLCVSchema = z.object({
   time: z.number(), // Unix timestamp in seconds
   open: z.number(),
@@ -11,6 +21,7 @@ export const OHLCVSchema = z.object({
   low: z.number(),
   close: z.number(),
   volume: z.number(),
+  provenance: DataProvenanceSchema.optional(),
 });
 
 export type OHLCV = z.infer<typeof OHLCVSchema>;
@@ -30,6 +41,7 @@ export const AssetSummarySchema = z.object({
   circulatingSupply: z.number(),
   sparkline: z.array(z.number()),
   isDemo: z.boolean().default(true),
+  provenance: DataProvenanceSchema.optional(),
 });
 
 export type AssetSummary = z.infer<typeof AssetSummarySchema>;

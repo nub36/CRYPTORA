@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { watchlist, alerts, openDemoModal, openWatchlist, openAlertsModal } = useMarketData();
+  const { watchlist, alerts, openDemoModal, openWatchlist, openAlertsModal, dataMode } = useMarketData();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -83,15 +83,26 @@ export const Header: React.FC = () => {
             </div>
           </Link>
 
-          {/* Demo Badge Trigger */}
-          <button
-            onClick={openDemoModal}
-            className="hidden sm:flex items-center space-x-1 text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-all cursor-pointer"
-            title="Нажмите для просмотра информации о демо-режиме"
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span className="font-semibold">ДЕМО-ДАННЫЕ</span>
-          </button>
+          {/* Demo/Live Badge Trigger */}
+          {dataMode === 'live' ? (
+            <button
+              onClick={openDemoModal}
+              className="hidden sm:flex items-center space-x-1 text-[11px] font-mono px-2 py-0.5 rounded bg-brand-green/10 text-brand-green border border-brand-green/30 hover:bg-brand-green/20 transition-all cursor-pointer"
+              title="Нажмите для просмотра информации о режиме данных (LIVE Spot: Binance/KuCoin)"
+            >
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              <span className="font-semibold">LIVE SPOT</span>
+            </button>
+          ) : (
+            <button
+              onClick={openDemoModal}
+              className="hidden sm:flex items-center space-x-1 text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-all cursor-pointer"
+              title="Нажмите для просмотра информации о демо-режиме"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="font-semibold">ДЕМО-ДАННЫЕ</span>
+            </button>
+          )}
         </div>
 
         {/* Desktop Navigation */}

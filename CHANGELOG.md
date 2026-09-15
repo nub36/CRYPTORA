@@ -4,6 +4,40 @@
 
 ---
 
+## [0.2.0] — 2026-09-15
+
+### Изменение генеральной концепции (General Concept Decision)
+- **Исключение торгового исполнения (No Trade Execution):**
+  - По решению владельца проекта торговый функционал полностью и окончательно исключен из концепции CRYPTORA — не просто отложен, а аннулирован в архитектуре, дорожной карте и документации.
+  - Терминал окончательно проектируется исключительно как **Crypto Market Intelligence Terminal** с целевой цепочкой:  
+    `Рынок → Данные → Аналитика → Наблюдения → Решение пользователя`.
+  - После шага «Решение пользователя» никакого слоя исполнения заявок (`CRYPTORA ORDER EXECUTION`) нет.
+  - Навсегда исключены: торговые боты, автотрейдинг (automated trading), создание/изменение/отмена ордеров, подключение торговых API-ключей/секретов, управление биржевыми балансами, копитрейдинг, кошельки, сид-фразы, приватные ключи, кастоди, автоисполнение сигналов или рекомендаций AI.
+  - Зафиксировано архитектурное решение `ADR-006: CRYPTORA IS ANALYTICS-ONLY / NO TRADE EXECUTION` в `docs/DECISIONS.md`.
+  - Обновлены и приведены к строгому соответствию документы `AGENTS.md`, `README.md`, `docs/CONCEPT.md`, `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DATA_SOURCES.md`, `docs/MARKET_DATA.md`, `docs/STRATEGIES.md`, `docs/BACKTESTING.md`, `docs/SIGNALS.md`, `docs/ALERTS.md`, `docs/AI.md`, `docs/SECURITY.md`, `docs/API.md`, `docs/MONETIZATION.md`, `docs/ROADMAP.md` и весь каталог `docs/agent-plan/`.
+
+### Этап 2: Публичные спотовые данные (Spot Market Data: Binance & KuCoin)
+- **Канонический реестр активов (`AssetRegistry`):**
+  - Централизован начальный контролируемый universe из 25 криптоактивов: `BTC`, `ETH`, `SOL`, `BNB`, `XRP`, `ADA`, `DOGE`, `AVAX`, `LINK`, `DOT`, `SUI`, `NEAR`, `APT`, `RENDER`, `TAO`, `INJ`, `UNI`, `AAVE`, `OP`, `ARB`, `TIA`, `FET`, `KAS`, `RUNE`, `SEI`.
+  - Строгий маппинг канонического символа на тикеры Binance (`BTCUSDT`) и KuCoin (`BTC-USDT`) с защитой от отсутствия пары на одной из площадок.
+- **Адаптеры бирж и валидация схем DTO:**
+  - Реализован `BinanceSpotAdapter` (основной источник): опрос публичных спотовых 24h тикеров и OHLCV свечей через `https://api.binance.com` (резервный шлюз `data-api.binance.vision`) без API-ключей.
+  - Реализован `KuCoinSpotAdapter` (вторичный источник / fallback): опрос 24h stats, allTickers и свечей через `https://api.kucoin.com` без API-ключей.
+  - Строгая runtime-валидация через Zod-схемы DTO (`BinanceTicker24hrSchema`, `KuCoinStatsResponseSchema`, `KuCoinAllTickersResponseSchema`, klines/candles).
+  - Обработка ошибок сетевого уровня, лимитов частоты (HTTP 429/418) и таймаутов через типизированную иерархию `AdapterError`.
+- **Происхождение данных (Data Provenance) и нормализация:**
+  - Каждая запись помечается структурой `DataProvenance: { exchange, market, symbol, timestamp, isFallback }`.
+  - Преобразование данных бирж в канонические сущности `AssetSummary` и `OHLCV`.
+- **Живой провайдер данных (`LiveMarketDataProvider`):**
+  - Реализована полноценная альтернатива `DemoMarketDataProvider` с флагом `isDemo: false`.
+  - Изоляция режимов DEMO и LIVE: при сбое обоих биржевых шлюзов возвращается явное состояние ошибки / недоступности, без тайной подстановки фиктивных демо-котировок.
+  - Подсистемы, не входящие в спотовый Этап 2 (Futures, Liquidations, Radar), сохраняют честную демо-маркировку.
+  - Добавлена возможность переключения режима данных в контексте `MarketDataContext` и модальном окне `DemoModal`.
+- **Тестирование:**
+  - Добавлено 31 новый юнит-тест Vitest (всего 59 тестов в 7 тестовых люксах): валидация схем, нормализация, реестр, fallback, таймауты, ошибки сети.
+  - Все тесты используют детерминированные фикстуры без зависимости CI от доступности внешних бирж.
+  - Все 30 Playwright E2E тестов успешно пройдены.
+
 ## [0.1.0] — 2026-09-15
 
 ### Аудит и приемочный контроль (Acceptance Audit & Fixes)

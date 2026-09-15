@@ -5,95 +5,44 @@
 
 ---
 
-## 1. Целевая архитектурная цепочка данных
+## 1. Целевая архитектурная цепочка данных (Analytics Pipeline)
 
-В долгосрочной перспективе CRYPTORA строится вокруг однонаправленного потока обработки рыночной информации:
+В соответствии с генеральной концепцией CRYPTORA (**Crypto Market Intelligence Terminal**), архитектурный конвейер строго заканчивается аналитическими продуктами и принятием решения пользователем:
 
 ```
-+---------------------------------------------------------+
-|                EXCHANGE WEBSOCKETS & REST               |
-|            (Binance, Bybit, OKX, Coinbase)              |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|                  COLLECTORS & WORKERS                   |
-|        (Resilient Ingestion, Connection Pooling)        |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|               NORMALIZATION & VALIDATION                |
-|      (Zod Schemas, Canonical Asset & Symbol Map)        |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|                  MARKET DATA STORAGE                    |
-|      (TimescaleDB / ClickHouse for High-Frequency       |
-|            PostgreSQL for Core State & Relational)      |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|            CALCULATION ENGINES (DETERMINISTIC)          |
-|  ┌───────────────────┬────────────────────────────────┐ |
-|  | Indicators (RSI,  | Derivatives (Aggregated OI,    | |
-|  | MACD, EMA, CVD)   | Funding Weighting, Basis)      | |
-|  ├───────────────────┼────────────────────────────────┤ |
-|  | Liquidations Track| Volume & Market Structure      | |
-|  └───────────────────┴────────────────────────────────┘ |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|                 EVENT & ANOMALY ENGINE                  |
-|    (Statistical Outliers: Z-Score Volume, OI Bursts)    |
-+---------------------------------------------------------+
-                            │
-            ┌───────────────┴───────────────┐
-            ▼                               ▼
-+───────────────────────+       +───────────────────────+
-| SCREENER & RADAR STREAM       |   HISTORICAL ENGINE   |
-| (Low-latency cache/SSE)       | (Candle Rollup, OHLCV)|
-+───────────────────────+       +───────────────────────+
-            │                               │
-            │                               ▼
-            │                   +───────────────────────+
-            │                   |    BACKTEST ENGINE    |
-            │                   | (No Look-Ahead, Fees) |
-            │                   +───────────────────────+
-            │                               │
-            │                               ▼
-            │                   +───────────────────────+
-            │                   |   STRATEGIES ENGINE   |
-            │                   +───────────────────────+
-            │                               │
-            └───────────────┬───────────────┘
-                            ▼
-+---------------------------------------------------------+
-|              SIGNALS & AUDITABLE HISTORY                |
-|          (Immutable Records, Replay Support)            |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|                 WEB API & ALERTS SYSTEM                 |
-|             (FastAPI / Go / Node REST + WS)             |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|                 FRONTEND CLIENT TERMINAL                |
-|           (React, TypeScript, Lightweight Charts)       |
-+---------------------------------------------------------+
-                            │
-                            ▼
-+---------------------------------------------------------+
-|               AI EXPLANATION LAYER (LATE)               |
-|      (Grounding LLM on Deterministic Engine Facts)      |
-+---------------------------------------------------------+
+EXCHANGE PUBLIC MARKET DATA
+          ↓
+COLLECTORS
+          ↓
+NORMALIZATION
+          ↓
+MARKET DATA STORAGE
+          ↓
+REALTIME / TIME SERIES
+          ↓
+INDICATORS / DERIVATIVES / LIQUIDATIONS / VOLUME
+          ↓
+EVENT / ANOMALY ENGINE
+          ↓
+SCREENER / MARKET RADAR
+          ↓
+HISTORICAL ENGINE
+          ↓
+BACKTEST / STRATEGY RESEARCH
+          ↓
+ANALYTICAL SIGNALS
+          ↓
+WEB / API / ALERTS
+          ↓
+AI EXPLANATION (LATE STAGE)
+          ↓
+USER DECISION
 ```
+
+> ⚠️ **КРИТИЧЕСКИЙ АРХИТЕКТУРНЫЙ ИНВАРИАНТ:**  
+> После шага **USER DECISION** никакого слоя исполнения сделок (`CRYPTORA ORDER EXECUTION`) **НЕТ И НЕ БУДЕТ**.  
+> CRYPTORA НЕ является биржей, брокером или шлюзом исполнения ордеров.  
+> Системы Strategy Lab, Backtest, Signals, Alerts и AI служат исключительно для исследования правил, исторического моделирования и объяснения объективных фактов. Пользователь принимает решение и совершает действия на внешних независимых площадках самостоятельно.
 
 ---
 
