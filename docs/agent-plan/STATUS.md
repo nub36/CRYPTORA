@@ -42,27 +42,27 @@
 ---
 
 ## 3. Результаты тестов
-- **Typecheck (`npm run typecheck`):** В процессе запуска (требуется 0 ошибок)
-- **Unit Tests (`npm test`):** В процессе запуска
-- **Build (`npm run build`):** В процессе запуска
-- **E2E Tests (`npm run test:e2e`):** В процессе запуска
+- **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (strict: true).
+- **Unit Tests (`npm test`):** PASSED — 4 тестовых люкса, 28 тестов успешно завершено (форматтеры, формулы калькуляторов риска, многоколоночная сортировка, контракты DemoMarketDataProvider, детерминизм свечей).
+- **Build (`npm run build`):** PASSED — чистая production-сборка Vite (dist: 513 kB JS, 31.5 kB CSS).
+- **E2E Tests (`npm run test:e2e`):** PASSED — 1 тестовый люкс, 13 сквозных сценариев (Overview, навигация, таблица Market, сортировка, поиск, карточка монеты /coin/:symbol, фьючерсы, ликвидации и дисклеймер, скринер и пресеты, радар аномалий, тепловая карта, калькуляторы Tools, превью стратегий/сигналов, модалка демо-режима, Watchlist drawer и Alerts modal).
 
 ---
 
 ## 4. Известные ограничения
-- Все данные генерируются статическим детерминированным `DemoMarketDataProvider`.
-- Котировки не обновляются в реальном времени с бирж, а служат демонстрацией визуального интерфейса и UX.
+- Все данные генерируются статическим детерминированным `DemoMarketDataProvider` с флагом `isDemo: true`.
+- Котировки не обновляются в реальном времени с бирж, а служат демонстрацией визуального интерфейса, эргономики и UX (согласно ТЗ Этапа 1).
 - Watchlist и настройки алертов сохраняются локально в `localStorage` браузера.
 
 ---
 
 ## 5. Следующий конкретный подэтап
-- **Этап 2 (02-MARKET-DATA.md):** Разработка легкого серверного коллектора публичных спотовых котировок (Binance, Bybit) и реализация `LiveMarketDataProvider` с сохранением текущего контракта UI.
+- **Этап 2 (02-MARKET-DATA.md):** Разработка легкого серверного коллектора публичных спотовых котировок (Binance, Bybit) и реализация `LiveMarketDataProvider` с сохранением текущего контракта UI без переписывания компонентов страниц.
 
 ---
 
 ## 6. Версия и Git состояние
 - **Версия:** `0.1.0`
 - **Ветка:** `arena/01a0a67d-cryptora`
-- **Commit Hash:** Будет зафиксирован после завершения этапа
-- **Статус Git Remote:** Проверка конфигурации origin (https://github.com/nub36/CRYPTORA.git)
+- **Commit Hash:** `2aeff92` (сообщение: `feat(terminal): stage 1 visual foundation, demo data layer, architecture memory and comprehensive tests`)
+- **Статус Git Remote:** Ветка успешно отправлена в удаленный репозиторий: `origin/arena/01a0a67d-cryptora` (https://github.com/nub36/CRYPTORA.git).
