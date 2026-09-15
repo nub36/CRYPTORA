@@ -24,11 +24,13 @@ import {
   normalizeKuCoinCandles,
 } from './adapters/normalization';
 import { DemoMarketDataProvider } from './DemoMarketDataProvider';
+import { AnomalyEngine } from '../realtime/AnomalyEngine';
 
 export interface LiveMarketDataProviderConfig {
   binanceAdapter?: BinanceSpotAdapter;
   kucoinAdapter?: KuCoinSpotAdapter;
   cacheTtlMs?: number;
+  anomalyEngine?: AnomalyEngine;
 }
 
 export class LiveMarketDataProvider implements MarketDataProvider {
@@ -38,6 +40,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   private readonly kucoin: KuCoinSpotAdapter;
   private readonly cacheTtlMs: number;
   private readonly demoFallback: DemoMarketDataProvider;
+  private readonly anomalyEngine?: AnomalyEngine;
 
   // In-memory cache for rate-limiting protection
   private assetCache: { data: AssetSummary[]; timestamp: number } | null = null;
@@ -48,6 +51,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     this.kucoin = config.kucoinAdapter ?? new KuCoinSpotAdapter();
     this.cacheTtlMs = config.cacheTtlMs ?? 10000; // 10s default TTL
     this.demoFallback = new DemoMarketDataProvider();
+    this.anomalyEngine = config.anomalyEngine;
   }
 
   public async getAssets(category?: AssetCategory): Promise<AssetSummary[]> {
@@ -94,6 +98,27 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     // If all live network attempts failed, throw an explicit error rather than silently faking demo data
     if (results.length === 0) {
       throw new Error('Live market data unavailable from both Binance and KuCoin gateways');
+    }
+
+    if (this.anomalyEngine) {
+      for (const item of results) {
+        this.anomalyEngine.processTick({
+          symbol: item.symbol,
+          price: item.price,
+          priceChangePercent24h: item.change24h,
+          high24h: item.price * 1.05,
+          low24h: item.price * 0.95,
+          volume24h: item.volume24h,
+          quoteVolume24h: item.volume24h * item.price,
+          timestamp: Date.now(),
+          provenance: item.provenance ?? {
+            exchange: 'binance',
+            market: 'spot',
+            symbol: item.symbol,
+            timestamp: Date.now(),
+          },
+        });
+      }
     }
 
     this.assetCache = { data: results, timestamp: now };
@@ -275,7 +300,13 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   }
 
   public async getRadarEvents(symbol?: string): Promise<RadarEvent[]> {
-    // Stage 2 scope is SPOT only. Realtime anomaly engine begins in Stage 3.
+    if (this.anomalyEngine) {
+      const liveEvents = this.anomalyEngine.getEvents(symbol);
+      if (liveEvents.length > 0) {
+        return liveEvents;
+      }
+    }
+    // Return baseline events if no realtime ticks triggered an anomaly yet
     return this.demoFallback.getRadarEvents(symbol);
   }
 

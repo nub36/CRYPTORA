@@ -177,6 +177,8 @@ export const RadarEventSchema = z.object({
   metricValue: z.string(),
   observation: z.string(),
   isDemo: z.boolean().default(true),
+  provenance: DataProvenanceSchema.optional(),
+  metadata: z.record(z.any()).optional(),
 });
 
 export type RadarEvent = z.infer<typeof RadarEventSchema>;

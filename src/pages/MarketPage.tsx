@@ -8,7 +8,7 @@ import { Star, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const MarketPage: React.FC = () => {
-  const { provider, watchlist, toggleWatchlist } = useMarketData();
+  const { provider, watchlist, toggleWatchlist, livePrices } = useMarketData();
   const [assets, setAssets] = useState<AssetSummary[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('all');
@@ -268,7 +268,9 @@ export const MarketPage: React.FC = () => {
                       </td>
 
                       <td className="py-2.5 px-3 text-right text-slate-100 font-semibold">
-                        {formatCurrency(asset.price, { decimals: asset.price > 10 ? 2 : 4 })}
+                        {formatCurrency(livePrices[asset.symbol] ?? asset.price, {
+                          decimals: (livePrices[asset.symbol] ?? asset.price) > 10 ? 2 : 4,
+                        })}
                       </td>
 
                       <td

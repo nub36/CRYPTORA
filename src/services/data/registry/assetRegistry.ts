@@ -292,3 +292,6 @@ export function getCanonicalByKuCoinSymbol(kucoinSymbol: string): CanonicalAsset
   const norm = kucoinSymbol.toUpperCase().trim();
   return CANONICAL_ASSETS.find((a) => a.kucoinSymbol === norm);
 }
+
+export const getAssetByBinanceSymbol = getCanonicalByBinanceSymbol;
+export const getAssetByKuCoinSymbol = getCanonicalByKuCoinSymbol;

@@ -182,4 +182,27 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     fireEvent.click(alertsBtn);
     expect(screen.getByText(/Система алертов \(Alerts Preview\)/i)).toBeInTheDocument();
   });
+
+  test('Stage 3 Realtime & Mode Switch: toggles Live Spot mode and displays WebSocket status badge', async () => {
+    renderApp('/radar');
+
+    // Default is demo stream
+    expect(screen.getByText(/ДЕМОНСТРАЦИОННЫЙ СТРИМ/i)).toBeInTheDocument();
+
+    // Open demo modal to switch mode
+    const demoBadge = screen.getByTitle(/Нажмите для просмотра информации о демо-режиме/i);
+    fireEvent.click(demoBadge);
+
+    // Click Switch to Live Spot
+    const switchLiveBtn = screen.getByRole('button', { name: /^LIVE$/i });
+    fireEvent.click(switchLiveBtn);
+
+    // Close modal
+    const closeDemoBtn = screen.getByRole('button', { name: /Понятно, продолжить/i });
+    fireEvent.click(closeDemoBtn);
+
+    // Header now reflects LIVE SPOT with WS indicator
+    expect(screen.getByText(/LIVE SPOT/i)).toBeInTheDocument();
+    expect(screen.getByText(/LIVE ANOMALY ENGINE/i)).toBeInTheDocument();
+  });
 });

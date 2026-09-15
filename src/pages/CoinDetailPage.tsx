@@ -16,7 +16,7 @@ import {
 
 export const CoinDetailPage: React.FC = () => {
   const { symbol } = useParams<{ symbol: string }>();
-  const { provider, watchlist, toggleWatchlist } = useMarketData();
+  const { provider, watchlist, toggleWatchlist, livePrices, subscribeSymbol } = useMarketData();
 
   const [asset, setAsset] = useState<AssetDetail | null>(null);
   const [candles, setCandles] = useState<OHLCV[]>([]);
@@ -24,6 +24,12 @@ export const CoinDetailPage: React.FC = () => {
   const [futuresData, setFuturesData] = useState<FuturesAsset | null>(null);
   const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (symbol) {
+      subscribeSymbol(symbol);
+    }
+  }, [symbol, subscribeSymbol]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -87,6 +93,8 @@ export const CoinDetailPage: React.FC = () => {
   }
 
   const isStarred = watchlist.includes(asset.symbol);
+  const livePrice = symbol ? livePrices[symbol.toUpperCase()] : undefined;
+  const currentPrice = livePrice !== undefined ? livePrice : asset.price;
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
@@ -102,9 +110,15 @@ export const CoinDetailPage: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
-          <Badge variant="demo" size="xs">
-            ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
-          </Badge>
+          {!asset.isDemo ? (
+            <Badge variant="green" size="xs">
+              LIVE SPOT: {asset.provenance?.exchange.toUpperCase() || 'BINANCE'}{asset.provenance?.isFallback ? ' (FALLBACK)' : ''}
+            </Badge>
+          ) : (
+            <Badge variant="demo" size="xs">
+              ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -139,8 +153,11 @@ export const CoinDetailPage: React.FC = () => {
 
         <div className="flex items-center space-x-6 self-start md:self-auto">
           <div className="text-right font-mono">
-            <div className="text-2xl font-black text-white">
-              {formatCurrency(asset.price, { decimals: asset.price > 10 ? 2 : 4 })}
+            <div className="text-2xl font-black text-white flex items-center justify-end space-x-1.5">
+              {livePrice !== undefined && (
+                <span className="w-2 h-2 rounded-full bg-brand-green animate-pulse inline-block" title="Realtime WebSocket Tick" />
+              )}
+              <span>{formatCurrency(currentPrice, { decimals: currentPrice > 10 ? 2 : 4 })}</span>
             </div>
             <div className="flex items-center justify-end space-x-2 mt-0.5">
               <span

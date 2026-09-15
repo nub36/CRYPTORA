@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { MarketDataProvider } from '@/services/data/MarketDataProvider';
 import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
+import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
 
 export interface UserAlert {
   id: string;
@@ -18,6 +20,9 @@ interface MarketDataContextType {
   isDemo: boolean;
   dataMode: DataMode;
   setDataMode: (mode: DataMode) => void;
+  realtimeStatus: RealtimeConnectionState;
+  livePrices: Record<string, number>;
+  subscribeSymbol: (symbol: string) => void;
   watchlist: string[];
   toggleWatchlist: (symbol: string) => void;
   isWatchlisted: (symbol: string) => boolean;
@@ -38,7 +43,9 @@ interface MarketDataContextType {
 const MarketDataContext = createContext<MarketDataContextType | null>(null);
 
 const singletonDemoProvider = new DemoMarketDataProvider();
-const singletonLiveProvider = new LiveMarketDataProvider();
+const singletonLiveProvider = new LiveMarketDataProvider({
+  anomalyEngine: RealtimeFeedManager.getInstance().anomalyEngine,
+});
 
 export const MarketDataProviderComponent: React.FC<{
   children: React.ReactNode;
@@ -52,6 +59,9 @@ export const MarketDataProviderComponent: React.FC<{
       return 'demo';
     }
   });
+
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionState>('idle');
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
 
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     try {
@@ -84,6 +94,50 @@ export const MarketDataProviderComponent: React.FC<{
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
+
+  // Manage Realtime WebSocket Lifecycle
+  useEffect(() => {
+    const feedManager = RealtimeFeedManager.getInstance();
+
+    const unsubscribeConnection = feedManager.eventBus.subscribe<RealtimeConnectionState>(
+      'connection',
+      (state) => {
+        setRealtimeStatus(state);
+      }
+    );
+
+    const unsubscribeTickers = feedManager.eventBus.subscribe<TickerTick>(
+      'ticker:*',
+      (tick) => {
+        setLivePrices((prev) => ({
+          ...prev,
+          [tick.symbol]: tick.price,
+        }));
+      }
+    );
+
+    if (dataMode === 'live') {
+      feedManager.connect();
+      // Subscribe watchlisted symbols
+      for (const sym of watchlist) {
+        feedManager.subscribeSymbol(sym);
+      }
+    } else {
+      feedManager.disconnect();
+      setRealtimeStatus('idle');
+    }
+
+    return () => {
+      unsubscribeConnection();
+      unsubscribeTickers();
+    };
+  }, [dataMode]);
+
+  const subscribeSymbol = useCallback((symbol: string) => {
+    if (dataMode === 'live') {
+      RealtimeFeedManager.getInstance().subscribeSymbol(symbol);
+    }
+  }, [dataMode]);
 
   useEffect(() => {
     try {
@@ -143,6 +197,9 @@ export const MarketDataProviderComponent: React.FC<{
         isDemo: activeProvider.isDemo,
         dataMode,
         setDataMode,
+        realtimeStatus,
+        livePrices,
+        subscribeSymbol,
         watchlist,
         toggleWatchlist,
         isWatchlisted,

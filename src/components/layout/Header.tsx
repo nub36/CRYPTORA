@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { watchlist, alerts, openDemoModal, openWatchlist, openAlertsModal, dataMode } = useMarketData();
+  const { watchlist, alerts, openDemoModal, openWatchlist, openAlertsModal, dataMode, realtimeStatus } = useMarketData();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -88,10 +88,25 @@ export const Header: React.FC = () => {
             <button
               onClick={openDemoModal}
               className="hidden sm:flex items-center space-x-1 text-[11px] font-mono px-2 py-0.5 rounded bg-brand-green/10 text-brand-green border border-brand-green/30 hover:bg-brand-green/20 transition-all cursor-pointer"
-              title="Нажмите для просмотра информации о режиме данных (LIVE Spot: Binance/KuCoin)"
+              title={`Режим LIVE Spot: Binance/KuCoin. Статус WebSocket: ${realtimeStatus}`}
             >
               <Radio className="w-3.5 h-3.5 animate-pulse" />
               <span className="font-semibold">LIVE SPOT</span>
+              <span
+                className={`text-[9px] px-1 py-0.2 rounded font-sans ml-1 ${
+                  realtimeStatus === 'connected'
+                    ? 'bg-brand-green/20 text-brand-green'
+                    : realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting'
+                    ? 'bg-amber-500/20 text-amber-300'
+                    : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {realtimeStatus === 'connected'
+                  ? 'WS ●'
+                  : realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting'
+                  ? 'WS ⟳'
+                  : 'WS ○'}
+              </span>
             </button>
           ) : (
             <button

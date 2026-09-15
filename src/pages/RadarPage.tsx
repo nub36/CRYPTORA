@@ -5,9 +5,10 @@ import { formatTimestamp } from '@/utils/formatters';
 import { Badge } from '@/components/common/Badge';
 import { Link } from 'react-router-dom';
 import { Radio, ArrowUpRight } from 'lucide-react';
+import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 
 export const RadarPage: React.FC = () => {
-  const { provider } = useMarketData();
+  const { provider, dataMode } = useMarketData();
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
@@ -16,7 +17,15 @@ export const RadarPage: React.FC = () => {
     provider.getRadarEvents().then((data) => {
       setEvents(data);
     });
-  }, [provider]);
+
+    if (dataMode === 'live') {
+      const feed = RealtimeFeedManager.getInstance();
+      const unsub = feed.eventBus.subscribe<RadarEvent>('radar', (newEvent) => {
+        setEvents((prev) => [newEvent, ...prev.filter((e) => e.id !== newEvent.id)]);
+      });
+      return () => unsub();
+    }
+  }, [provider, dataMode]);
 
   const filteredEvents = events.filter((e) => {
     if (selectedType !== 'all' && e.type !== selectedType) return false;
@@ -34,12 +43,21 @@ export const RadarPage: React.FC = () => {
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               MARKET RADAR (ДЕТЕКТОР АНОМАЛИЙ)
             </h1>
-            <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              ДЕМОНСТРАЦИОННЫЙ СТРИМ
-            </span>
+            {dataMode === 'live' ? (
+              <span className="text-[10px] font-mono font-semibold text-brand-cyan bg-brand-cyan/10 px-2 py-0.5 rounded border border-brand-cyan/30 flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse mr-1" />
+                LIVE ANOMALY ENGINE
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                ДЕМОНСТРАЦИОННЫЙ СТРИМ
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Демонстрационный поток зафиксированных аномалий объема, открытого интереса, фандинга и ликвидаций.
+            {dataMode === 'live'
+              ? 'Математический движок детекции аномалий (Z-Score объемов, ценовой импульс, расширение волатильности) в реальном времени.'
+              : 'Демонстрационный поток зафиксированных аномалий объема, открытого интереса, фандинга и ликвидаций.'}
           </p>
         </div>
 
@@ -115,6 +133,12 @@ export const RadarPage: React.FC = () => {
                   <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono border border-slate-700">
                     {event.type}
                   </span>
+
+                  {!event.isDemo && (
+                    <span className="text-[10px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
+                      LIVE DETECTED
+                    </span>
+                  )}
                 </div>
 
                 <div className="text-sm font-bold text-brand-cyan">
