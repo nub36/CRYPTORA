@@ -4,6 +4,25 @@
 
 ---
 
+## [0.5.0] — 2026-09-15
+
+### Этап 5: Деривативный конвейер (Futures Open Interest, Funding Rate & Basis)
+- **Адаптер деривативов Binance Futures (`BinanceFuturesAdapter`):**
+  - Подключение к публичному шлюзу `https://fapi.binance.com` без ключей и авторизации.
+  - Опрос `premiumIndex`, `openInterest`, `ticker/24hr` с runtime-валидацией через Zod (`derivativesSchemas.ts`).
+  - Обработка таймаутов, сетевых отказов и лимитов частоты (HTTP 429/418) с типизированными исключениями `AdapterError`.
+- **Расчетный движок деривативов (`DerivativesEngine`):**
+  - Расчет годовой ставки финансирования (Annualized Funding Rate APR = $FR_{8h} \times 3 \times 365$).
+  - Расчет базиса перп/спот и классификация рыночного режима (Contango vs Backwardation).
+  - Конвертация открытого интереса в долларовый эквивалент (OI USD = $Contracts \times MarkPrice$).
+  - Формирование агрегированного макро-обзора рынка деривативов (`AggregatedDerivativesOverview`).
+- **Интеграция с `LiveMarketDataProvider` и UI:**
+  - Реализован опрос и нормализация бессрочных фьючерсов в `getFuturesList()` с фиксацией происхождения данных (`isDemo: false`, `provenance: { exchange: 'binance', market: 'futures' }`).
+  - `FuturesPage`: режим `LIVE DERIVATIVES (BINANCE FUTURES)`, отображение макро-показателей (Суммарный OI, объем, средний фандинг, режим рынка), фильтрация шорт-сквизов.
+- **Тестирование:**
+  - Добавлено 9 новых юнит-тестов (всего 96 тестов в 13 файлах) для парсинга DTO, расчета APR, базиса, открытого интереса и агрегатов.
+  - Все 31 Playwright E2E тестов успешно пройдены.
+
 ## [0.4.0] — 2026-09-15
 
 ### Этап 4: Углубленные карточки активов, Time-Series и Индикаторный движок

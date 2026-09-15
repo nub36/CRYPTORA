@@ -25,10 +25,13 @@ import {
 } from './adapters/normalization';
 import { DemoMarketDataProvider } from './DemoMarketDataProvider';
 import { AnomalyEngine } from '../realtime/AnomalyEngine';
+import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
+import { DerivativesEngine } from '../derivatives/DerivativesEngine';
 
 export interface LiveMarketDataProviderConfig {
   binanceAdapter?: BinanceSpotAdapter;
   kucoinAdapter?: KuCoinSpotAdapter;
+  futuresAdapter?: BinanceFuturesAdapter;
   cacheTtlMs?: number;
   anomalyEngine?: AnomalyEngine;
 }
@@ -38,6 +41,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
 
   private readonly binance: BinanceSpotAdapter;
   private readonly kucoin: KuCoinSpotAdapter;
+  private readonly futuresAdapter: BinanceFuturesAdapter;
   private readonly cacheTtlMs: number;
   private readonly demoFallback: DemoMarketDataProvider;
   private readonly anomalyEngine?: AnomalyEngine;
@@ -45,10 +49,12 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   // In-memory cache for rate-limiting protection
   private assetCache: { data: AssetSummary[]; timestamp: number } | null = null;
   private candleCache = new Map<string, { data: OHLCV[]; timestamp: number }>();
+  private futuresCache: { data: FuturesAsset[]; timestamp: number } | null = null;
 
   constructor(config: LiveMarketDataProviderConfig = {}) {
     this.binance = config.binanceAdapter ?? new BinanceSpotAdapter();
     this.kucoin = config.kucoinAdapter ?? new KuCoinSpotAdapter();
+    this.futuresAdapter = config.futuresAdapter ?? new BinanceFuturesAdapter();
     this.cacheTtlMs = config.cacheTtlMs ?? 10000; // 10s default TTL
     this.demoFallback = new DemoMarketDataProvider();
     this.anomalyEngine = config.anomalyEngine;
@@ -290,7 +296,39 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   // =========================================================================
 
   public async getFuturesList(): Promise<FuturesAsset[]> {
-    // Stage 2 scope is SPOT only. Derivatives live ingestion begins in Stage 5.
+    const now = Date.now();
+    if (this.futuresCache && now - this.futuresCache.timestamp < this.cacheTtlMs) {
+      return this.futuresCache.data;
+    }
+
+    try {
+      const [premiums, tickers] = await Promise.all([
+        this.futuresAdapter.fetchPremiumIndexes(),
+        this.futuresAdapter.fetch24hrTickers(),
+      ]);
+
+      const tickerMap = new Map(tickers.map((t) => [t.symbol.toUpperCase(), t]));
+      const canonicalList = getCanonicalAssets();
+      const results: FuturesAsset[] = [];
+
+      for (const asset of canonicalList) {
+        if (!asset.binanceSymbol) continue;
+        const premium = premiums.find((p) => p.symbol.toUpperCase() === asset.binanceSymbol);
+        if (premium) {
+          const ticker = tickerMap.get(asset.binanceSymbol);
+          const futuresAsset = DerivativesEngine.normalizeFuturesAsset(asset, premium, ticker);
+          results.push(futuresAsset);
+        }
+      }
+
+      if (results.length > 0) {
+        this.futuresCache = { data: results, timestamp: now };
+        return results;
+      }
+    } catch {
+      // In case futures network endpoint fails, safely return demo fallback with demo marking
+    }
+
     return this.demoFallback.getFuturesList();
   }
 

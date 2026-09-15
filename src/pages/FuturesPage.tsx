@@ -3,11 +3,12 @@ import { useMarketData } from '@/context/MarketDataContext';
 import { FuturesAsset } from '@/types/market';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { sortData, SortConfig } from '@/utils/sorting';
+import { DerivativesEngine } from '@/services/derivatives/DerivativesEngine';
 import { useNavigate } from 'react-router-dom';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 
 export const FuturesPage: React.FC = () => {
-  const { provider } = useMarketData();
+  const { provider, dataMode } = useMarketData();
   const [futures, setFutures] = useState<FuturesAsset[]>([]);
   const [filterFunding, setFilterFunding] = useState<'all' | 'positive' | 'negative'>('all');
   const [sortConfig, setSortConfig] = useState<SortConfig<FuturesAsset>>({
@@ -46,11 +47,11 @@ export const FuturesPage: React.FC = () => {
     return sortData(result, sortConfig);
   }, [futures, filterFunding, sortConfig]);
 
-  // Aggregate derivatives statistics
-  const aggregateOI = futures.reduce((acc, f) => acc + f.openInterest, 0);
-  const aggregateVolume = futures.reduce((acc, f) => acc + f.futuresVolume24h, 0);
-  const totalLongLiqs = futures.reduce((acc, f) => acc + f.longLiquidations24h, 0);
-  const totalShortLiqs = futures.reduce((acc, f) => acc + f.shortLiquidations24h, 0);
+  // Aggregate derivatives statistics via DerivativesEngine
+  const overview = useMemo(
+    () => DerivativesEngine.calculateAggregatedOverview(futures),
+    [futures]
+  );
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
@@ -61,12 +62,21 @@ export const FuturesPage: React.FC = () => {
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               ФЬЮЧЕРСЫ И ДЕРИВАТИВЫ (PERPETUAL MARKETS)
             </h1>
-            <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
-            </span>
+            {dataMode === 'live' ? (
+              <span className="text-[10px] font-mono font-semibold text-brand-cyan bg-brand-cyan/10 px-2 py-0.5 rounded border border-brand-cyan/30 flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse mr-1" />
+                LIVE DERIVATIVES (BINANCE FUTURES)
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Демо-срез бессрочных фьючерсов: открытый интерес (OI), ставки финансирования, базис и ликвидации.
+            {dataMode === 'live'
+              ? 'Прямой поток метрик бессрочных деривативов: открытый интерес (OI), ставки финансирования 8h / APR, базис и аналитика ликвидаций.'
+              : 'Демо-срез бессрочных фьючерсов: открытый интерес (OI), ставки финансирования, базис и ликвидации.'}
           </p>
         </div>
 
@@ -111,33 +121,50 @@ export const FuturesPage: React.FC = () => {
         <div className="bg-surface border border-surface-border rounded-lg p-3">
           <div className="text-[11px] text-slate-400">Суммарный Открытый Интерес (OI)</div>
           <div className="text-lg font-bold text-white mt-0.5">
-            {formatCurrency(aggregateOI, { compact: true })}
+            {formatCurrency(overview.totalOpenInterestUsd, { compact: true })}
           </div>
-          <div className="text-[10px] text-brand-green mt-0.5">+6.8% за 24 часа</div>
+          <div className="text-[10px] text-brand-green mt-0.5">25 ключевых перп-контрактов</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] text-slate-400">Суточный объем фьючерсов</div>
+          <div className="text-[11px] text-slate-400">Суточный объем деривативов</div>
           <div className="text-lg font-bold text-white mt-0.5">
-            {formatCurrency(aggregateVolume, { compact: true })}
+            {formatCurrency(overview.totalVolume24hUsd, { compact: true })}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Соотношение спот/перп: 1:1.6</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Публичные данные Binance Futures</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] text-slate-400">Ликвидации Long (24h)</div>
-          <div className="text-lg font-bold text-brand-green mt-0.5">
-            {formatCurrency(totalLongLiqs, { compact: true })}
+          <div className="text-[11px] text-slate-400">Средний фандинг (8h / APR)</div>
+          <div
+            className={`text-lg font-bold mt-0.5 ${
+              overview.averageFundingRate8h >= 0 ? 'text-brand-green' : 'text-brand-red'
+            }`}
+          >
+            {overview.averageFundingRate8h >= 0 ? '+' : ''}
+            {overview.averageFundingRate8h.toFixed(4)}%
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Закрытие длинных позиций</div>
+          <div className="text-[10px] text-slate-300 mt-0.5">
+            Годовая ставка: {formatPercent(overview.averageAnnualizedFundingApr)}
+          </div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] text-slate-400">Ликвидации Short (24h)</div>
-          <div className="text-lg font-bold text-brand-red mt-0.5">
-            {formatCurrency(totalShortLiqs, { compact: true })}
+          <div className="text-[11px] text-slate-400">Рыночный режим (Базис)</div>
+          <div
+            className={`text-lg font-bold mt-0.5 ${
+              overview.marketRegime === 'CONTANGO'
+                ? 'text-brand-cyan'
+                : overview.marketRegime === 'BACKWARDATION'
+                ? 'text-amber-400'
+                : 'text-slate-200'
+            }`}
+          >
+            {overview.marketRegime}
           </div>
-          <div className="text-[10px] text-rose-400 mt-0.5">Каскадный шорт-сквиз</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">
+            Базис перп/спот: {formatPercent(overview.averageBasisPct)}
+          </div>
         </div>
       </div>
 
@@ -239,9 +266,16 @@ export const FuturesPage: React.FC = () => {
                     className="hover:bg-surface-hover/80 transition-colors cursor-pointer group"
                   >
                     <td className="py-2.5 px-3">
-                      <span className="font-bold text-white group-hover:text-brand-cyan transition-colors">
-                        {f.symbol}
-                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-bold text-white group-hover:text-brand-cyan transition-colors">
+                          {f.symbol}
+                        </span>
+                        {!f.isDemo && (
+                          <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-brand-green/20 text-brand-green border border-brand-green/30">
+                            LIVE
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="py-2.5 px-3 text-right text-slate-100 font-semibold">

@@ -104,6 +104,7 @@ export const FuturesAssetSchema = z.object({
   shortLiquidations24h: z.number(), // USD
   basisPct: z.number(), // %
   isDemo: z.boolean().default(true),
+  provenance: DataProvenanceSchema.optional(),
 });
 
 export type FuturesAsset = z.infer<typeof FuturesAssetSchema>;

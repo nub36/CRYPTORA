@@ -44,11 +44,14 @@
 - [x] Высокоточный индикаторный движок (SMA, EMA, Wilder's RSI, MACD, Bollinger Bands, ATR, VWAP, Volume Profile, CVD).
 - [x] Углубленные карточки активов со стаканом Level 2 и динамической глубиной.
 
-## Этап 5: Derivatives & Aggregated Futures (ТЕКУЩИЙ ЭТАП)
-- [ ] Сбор и агрегация метрик фьючерсов (Open Interest, Funding rate, Basis, Liquidation estimates).
+## Этап 5: Derivatives & Aggregated Futures (ЗАВЕРШЕН)
+- [x] Сбор и агрегация метрик фьючерсов (Open Interest, Funding rate, Basis, Liquidation estimates).
+- [x] Адаптер Binance Futures (`BinanceFuturesAdapter`) без ключей с валидацией Zod.
+- [x] Расчетный движок деривативов (`DerivativesEngine`: APR, Basis, Contango/Backwardation, OI USD).
+- [x] Страница фьючерсов (/futures) с живыми агрегатами и фильтрацией Short Squeeze Watch.
 
-## Этап 6: Immutable Signals Engine & Community
-- [ ] Алгоритмическая генерация прозрачных аналитических наблюдений с неизменяемым журналом аудита (No Execution).
+## Этап 6: Liquidation Pipeline & Risk Heatmaps (ТЕКУЩИЙ ЭТАП)
+- [ ] WebSocket-потоки фактических биржевых ликвидаций и аналитическая тепловая карта.
 - [ ] Расширенная система алертов (Telegram, Webhook).
 
 ## Этап 7: AI Analyst Explanation Layer
