@@ -79,6 +79,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Рыночная статистика/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Деривативы и фьючерсы/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Технические индикаторы/i)).toBeInTheDocument();
+    expect(screen.getByText(/ORDER BOOK \(L2\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Демо-пары на ведущих биржах/i)).toBeInTheDocument();
   });
 

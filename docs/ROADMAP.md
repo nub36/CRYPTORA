@@ -25,27 +25,27 @@
 
 ---
 
-## Этап 2: Spot Market Data (Binance & KuCoin) (ТЕКУЩИЙ ЭТАП)
-- [ ] Публичные спотовые данные без API-ключей с Binance и KuCoin.
-- [ ] Контролируемый начальный universe из 25 криптоактивов.
-- [ ] Централизованный канонический Asset Registry (канонический актив → символ Binance → символ KuCoin).
-- [ ] Zod-схемы валидации DTO и слой нормализации в каноническую модель CRYPTORA.
-- [ ] Адаптеры `BinanceSpotAdapter` (primary) и `KuCoinSpotAdapter` (secondary/fallback).
-- [ ] Фиксация источника и времени каждого значения (Provenance: exchange, market, symbol, timestamp).
-- [ ] `LiveMarketDataProvider` с изолированными режимами DEMO и LIVE (без подмешивания фиктивных данных при сбоях сети).
-- [ ] Тесты с детерминированными фикстурами реальных ответов API (без сетевой зависимости в CI).
+## Этап 2: Spot Market Data (Binance & KuCoin) (ЗАВЕРШЕН)
+- [x] Публичные спотовые данные без API-ключей с Binance и KuCoin.
+- [x] Контролируемый начальный universe из 25 криптоактивов.
+- [x] Централизованный канонический Asset Registry (канонический актив → символ Binance → символ KuCoin).
+- [x] Zod-схемы валидации DTO и слой нормализации в каноническую модель CRYPTORA.
+- [x] Адаптеры `BinanceSpotAdapter` (primary) и `KuCoinSpotAdapter` (secondary/fallback).
+- [x] Фиксация источника и времени каждого значения (Provenance: exchange, market, symbol, timestamp).
+- [x] `LiveMarketDataProvider` с изолированными режимами DEMO и LIVE (без подмешивания фиктивных данных при сбоях сети).
+- [x] Тесты с детерминированными фикстурами реальных ответов API (без сетевой зависимости в CI).
 
-## Этап 3: Realtime WebSockets & Anomaly Engine
+## Этап 3: Realtime WebSockets & Anomaly Engine (ЗАВЕРШЕН)
 - [x] WebSocket шлюз для котировок, публичных сделок и стаканов L2.
 - [x] Математический движок детекции аномалий (Z-Score объемов, всплески активности) для Market Radar.
 
-## Этап 4: Historical Time-Series & Deep Indicators
-- [ ] Развертывание хранилища временных рядов (TimescaleDB / ClickHouse).
-- [ ] Расчет расширенного каталога индикаторов (CVD, Volume Profile, Breadth).
+## Этап 4: Historical Time-Series & Deep Indicators (ЗАВЕРШЕН)
+- [x] Развертывание хранилища временных рядов (интерфейс TimeSeriesRepository, кэш и детекция пробелов).
+- [x] Высокоточный индикаторный движок (SMA, EMA, Wilder's RSI, MACD, Bollinger Bands, ATR, VWAP, Volume Profile, CVD).
+- [x] Углубленные карточки активов со стаканом Level 2 и динамической глубиной.
 
-## Этап 5: Strategy Lab & No-Look-Ahead Backtesting
-- [ ] Декларативный конструктор правил аналитических стратегий (Research Only).
-- [ ] Движок математического бэктестинга с учетом комиссий, фандинга и смоделированного проскальзывания.
+## Этап 5: Derivatives & Aggregated Futures (ТЕКУЩИЙ ЭТАП)
+- [ ] Сбор и агрегация метрик фьючерсов (Open Interest, Funding rate, Basis, Liquidation estimates).
 
 ## Этап 6: Immutable Signals Engine & Community
 - [ ] Алгоритмическая генерация прозрачных аналитических наблюдений с неизменяемым журналом аудита (No Execution).

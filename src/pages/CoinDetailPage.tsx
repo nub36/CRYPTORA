@@ -1,10 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
 import { AssetDetail, OHLCV, Timeframe, FuturesAsset, RadarEvent } from '@/types/market';
-import { formatCurrency, formatPercent, formatNumber, formatTimestamp } from '@/utils/formatters';
+import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters';
 import { CandleChart } from '@/components/common/CandleChart';
 import { Badge } from '@/components/common/Badge';
+import { OrderBookL2 } from '@/components/market/OrderBookL2';
+import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
+import { MemoryTimeSeriesRepository } from '@/services/storage/TimeSeriesRepository';
+import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { OrderBookSnapshot } from '@/types/realtime';
 import {
   Star,
   Layers,
@@ -12,6 +17,7 @@ import {
   Radio,
   ChevronLeft,
   SlidersHorizontal,
+  ArrowUpRight,
 } from 'lucide-react';
 
 export const CoinDetailPage: React.FC = () => {
@@ -23,11 +29,23 @@ export const CoinDetailPage: React.FC = () => {
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
   const [futuresData, setFuturesData] = useState<FuturesAsset | null>(null);
   const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
+  const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (symbol) {
       subscribeSymbol(symbol);
+      const feed = RealtimeFeedManager.getInstance();
+      feed.subscribeDepth(symbol);
+
+      const unsubDepth = feed.eventBus.subscribe<OrderBookSnapshot>(
+        `depth:${symbol.toUpperCase()}`,
+        (snapshot) => {
+          setOrderBook(snapshot);
+        }
+      );
+
+      return () => unsubDepth();
     }
   }, [symbol, subscribeSymbol]);
 
@@ -46,6 +64,10 @@ export const CoinDetailPage: React.FC = () => {
 
         setAsset(detail);
         setCandles(candleList);
+        if (candleList.length > 0) {
+          MemoryTimeSeriesRepository.getInstance().saveCandles(symbol || 'BTC', timeframe, candleList);
+        }
+
         const matchFutures = ftrs.find(
           (f) => f.symbol.split('/')[0].toUpperCase() === (symbol || '').toUpperCase()
         );
@@ -61,9 +83,21 @@ export const CoinDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (symbol) {
-      provider.getCandles(symbol, timeframe).then(setCandles);
+      provider.getCandles(symbol, timeframe).then((cl) => {
+        setCandles(cl);
+        if (cl.length > 0) {
+          MemoryTimeSeriesRepository.getInstance().saveCandles(symbol, timeframe, cl);
+        }
+      });
     }
   }, [symbol, timeframe, provider]);
+
+  const dynamicIndicators = useMemo(() => {
+    if (candles.length > 0) {
+      return IndicatorEngine.computeCompleteIndicators(candles);
+    }
+    return asset?.indicators;
+  }, [candles, asset]);
 
   if (loading) {
     return (
@@ -356,130 +390,162 @@ export const CoinDetailPage: React.FC = () => {
               <span className="text-slate-400">RSI (14)</span>
               <span
                 className={`font-bold ${
-                  asset.indicators.rsi14 >= 70
+                  (dynamicIndicators?.rsi14 ?? 50) >= 70
                     ? 'text-rose-400'
-                    : asset.indicators.rsi14 <= 30
+                    : (dynamicIndicators?.rsi14 ?? 50) <= 30
                     ? 'text-emerald-400'
                     : 'text-brand-cyan'
                 }`}
               >
-                {asset.indicators.rsi14.toFixed(1)}
+                {(dynamicIndicators?.rsi14 ?? 50).toFixed(1)}{' '}
+                <span className="text-[10px] font-normal text-slate-400">
+                  {(dynamicIndicators?.rsi14 ?? 50) >= 70
+                    ? '(Перекуплен)'
+                    : (dynamicIndicators?.rsi14 ?? 50) <= 30
+                    ? '(Перепродан)'
+                    : '(Нейтрально)'}
+                </span>
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">MACD Histogram</span>
               <span
                 className={`font-bold ${
-                  asset.indicators.macd.hist >= 0 ? 'text-brand-green' : 'text-brand-red'
+                  (dynamicIndicators?.macd?.hist ?? 0) >= 0 ? 'text-brand-green' : 'text-brand-red'
                 }`}
               >
-                {asset.indicators.macd.hist.toFixed(2)}
+                {(dynamicIndicators?.macd?.hist ?? 0).toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">SMA (20)</span>
-              <span className="text-slate-200">{formatCurrency(asset.indicators.sma20)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">SMA (50)</span>
-              <span className="text-slate-200">{formatCurrency(asset.indicators.sma50)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">SMA (200)</span>
-              <span className="text-slate-200">{formatCurrency(asset.indicators.sma200)}</span>
+              <span className="text-slate-400">SMA (20 / 50 / 200)</span>
+              <span className="text-slate-200">
+                {formatCurrency(dynamicIndicators?.sma20 ?? 0, { compact: true })} /{' '}
+                {formatCurrency(dynamicIndicators?.sma50 ?? 0, { compact: true })} /{' '}
+                {formatCurrency(dynamicIndicators?.sma200 ?? 0, { compact: true })}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Bollinger Upper/Lower</span>
               <span className="text-slate-400 text-[11px]">
-                {formatCurrency(asset.indicators.bollinger.upper, { compact: true })} /{' '}
-                {formatCurrency(asset.indicators.bollinger.lower, { compact: true })}
+                {formatCurrency(dynamicIndicators?.bollinger?.upper ?? 0, { compact: true })} /{' '}
+                {formatCurrency(dynamicIndicators?.bollinger?.lower ?? 0, { compact: true })}
               </span>
             </div>
+            {dynamicIndicators && 'atr14' in dynamicIndicators && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">ATR (14) / VWAP</span>
+                <span className="text-brand-cyan text-[11px]">
+                  ±{formatCurrency((dynamicIndicators as any).atr14, { compact: true })} /{' '}
+                  {formatCurrency((dynamicIndicators as any).vwap, { compact: true })}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Demo Trading Pairs & Radar Stream */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Trading Pairs Table */}
-        <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-            <span className="font-mono font-bold text-xs uppercase tracking-wider text-white">
-              Демо-пары на ведущих биржах
-            </span>
-            <span className="text-[10px] font-mono text-slate-500">Spot Market</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs font-mono">
-              <thead className="text-slate-400 text-[11px] border-b border-surface-border">
-                <tr>
-                  <th className="py-2 text-left">Биржа</th>
-                  <th className="py-2 text-left">Пара</th>
-                  <th className="py-2 text-right">Цена</th>
-                  <th className="py-2 text-right">24h Объем</th>
-                  <th className="py-2 text-right">Спред %</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-border">
-                {asset.pairs.map((p, idx) => (
-                  <tr key={idx} className="hover:bg-surface-hover">
-                    <td className="py-2 text-white font-semibold">{p.exchange}</td>
-                    <td className="py-2 text-brand-cyan">{p.pair}</td>
-                    <td className="py-2 text-right">{formatCurrency(p.price)}</td>
-                    <td className="py-2 text-right text-slate-400">
-                      {formatCurrency(p.volume24h, { compact: true })}
-                    </td>
-                    <td className="py-2 text-right text-slate-400">{p.spreadPct}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* Order Book L2, Demo Trading Pairs & Radar Stream */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Order Book L2 Column */}
+        <div className="lg:col-span-1 min-h-[380px]">
+          <OrderBookL2
+            orderBook={orderBook}
+            currentPrice={currentPrice}
+            symbol={asset.symbol}
+          />
         </div>
 
-        {/* Radar events for this coin */}
-        <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-            <div className="flex items-center space-x-2">
-              <Radio className="w-4 h-4 text-brand-cyan" />
+        {/* Pairs and Radar in 2-column layout */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Trading Pairs Table */}
+          <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-surface-border">
               <span className="font-mono font-bold text-xs uppercase tracking-wider text-white">
-                События Market Radar по {asset.symbol}
+                {asset.isDemo ? 'Демо-пары на ведущих биржах' : 'Пары на ведущих биржах (Spot Market)'}
               </span>
+              <span className="text-[10px] font-mono text-slate-500">Биржевая глубина</span>
             </div>
-            <Link
-              to="/radar"
-              className="text-[11px] font-mono text-brand-sky hover:underline"
-            >
-              Все события →
-            </Link>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono">
+                <thead className="text-slate-400 text-[11px] border-b border-surface-border">
+                  <tr>
+                    <th className="py-2 text-left">Биржа</th>
+                    <th className="py-2 text-left">Пара</th>
+                    <th className="py-2 text-right">Цена</th>
+                    <th className="py-2 text-right">24h Объем</th>
+                    <th className="py-2 text-right">Спред %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-border">
+                  {asset.pairs.map((p, idx) => (
+                    <tr key={idx} className="hover:bg-surface-hover">
+                      <td className="py-2 text-white font-semibold">{p.exchange}</td>
+                      <td className="py-2 text-brand-cyan">{p.pair}</td>
+                      <td className="py-2 text-right">{formatCurrency(p.price)}</td>
+                      <td className="py-2 text-right text-slate-400">
+                        {formatCurrency(p.volume24h, { compact: true })}
+                      </td>
+                      <td className="py-2 text-right text-slate-400">{p.spreadPct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {radarEvents.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 font-mono text-xs">
-              Для актива {asset.symbol} в текущем окне аномалий не зафиксировано.
+          {/* Radar events for this coin */}
+          <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-surface-border">
+              <div className="flex items-center space-x-2">
+                <Radio className="w-4 h-4 text-brand-cyan" />
+                <span className="font-mono font-bold text-xs uppercase tracking-wider text-white">
+                  События Market Radar по {asset.symbol}
+                </span>
+              </div>
+              <Link
+                to="/radar"
+                className="text-[11px] font-mono text-brand-cyan hover:underline flex items-center space-x-1"
+              >
+                <span>Все аномалии</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {radarEvents.map((e) => (
-                <div
-                  key={e.id}
-                  className="p-2.5 rounded bg-surface-elevated border border-surface-border text-xs space-y-1"
-                >
-                  <div className="flex items-center justify-between font-mono">
-                    <Badge variant={e.severity === 'HIGH' ? 'red' : 'amber'} size="xs">
-                      {e.type}
-                    </Badge>
-                    <span className="text-[10px] text-slate-400">
-                      {formatTimestamp(e.timestamp)}
+
+            {radarEvents.length === 0 ? (
+              <div className="py-6 text-center text-slate-500 font-mono text-xs">
+                По инструменту {asset.symbol} активных аномалий не зафиксировано.
+              </div>
+            ) : (
+              <div className="space-y-2 font-mono">
+                {radarEvents.map((re) => (
+                  <div
+                    key={re.id}
+                    className="p-2.5 rounded bg-surface-elevated border border-surface-border text-xs flex items-center justify-between gap-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <Badge
+                        variant={
+                          re.severity === 'HIGH' ? 'red' : re.severity === 'MEDIUM' ? 'amber' : 'cyan'
+                        }
+                        size="xs"
+                      >
+                        {re.severity}
+                      </Badge>
+                      <span className="text-white font-semibold">{re.type}</span>
+                      <span className="text-slate-400 text-[11px] hidden sm:inline">
+                        {re.observation}
+                      </span>
+                    </div>
+                    <span className="text-brand-cyan font-bold whitespace-nowrap">
+                      {re.metricValue}
                     </span>
                   </div>
-                  <div className="font-mono text-brand-cyan font-bold">{e.metricValue}</div>
-                  <p className="text-[11px] text-slate-300 font-sans">{e.observation}</p>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
