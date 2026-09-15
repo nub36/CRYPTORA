@@ -79,11 +79,11 @@ export const ScreenerPage: React.FC = () => {
               КРИПТО-СКРИНЕР (SCREENER TERMINAL)
             </h1>
             <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              ИНТЕРАКТИВНЫЕ ФИЛЬТРЫ
+              ДЕМО-ДАТАСЕТ
             </span>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу.
+            Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу на демонстрационном датасете.
           </p>
         </div>
 

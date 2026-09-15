@@ -23,11 +23,11 @@ export const HeatmapsPage: React.FC = () => {
               ТЕПЛОВАЯ КАРТА РЫНКА (MARKET HEATMAP)
             </h1>
             <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              FULL GRID DEMO
+              ДЕМОНСТРАЦИОННАЯ СЕТКА
             </span>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Визуальная оценка распределения доходностей, концентрации ликвидности и перегретости фандинга.
+            Демонстрационная визуальная оценка доходностей, концентрации объемов и ставок фандинга.
           </p>
         </div>
       </div>

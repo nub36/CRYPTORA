@@ -35,11 +35,11 @@ export const RadarPage: React.FC = () => {
               MARKET RADAR (ДЕТЕКТОР АНОМАЛИЙ)
             </h1>
             <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              DEMO RADAR STREAM
+              ДЕМОНСТРАЦИОННЫЙ СТРИМ
             </span>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Автоматическое обнаружение статистических выбросов объема, открытого интереса, экстремумов фандинга и ликвидаций.
+            Демонстрационный поток зафиксированных аномалий объема, открытого интереса, фандинга и ликвидаций.
           </p>
         </div>
 

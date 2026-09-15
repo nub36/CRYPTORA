@@ -38,11 +38,11 @@ export const LiquidationsPage: React.FC = () => {
               КАРТА И ПОТОК ЛИКВИДАЦИЙ (LIQUIDATIONS)
             </h1>
             <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              DEMO FEED
+              ДЕМОНСТРАЦИОННЫЙ СРЕЗ
             </span>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Мониторинг принудительно закрытых маржинальных позиций по ведущим деривативным биржам.
+            Демонстрационный мониторинг принудительно закрытых маржинальных позиций по биржам.
           </p>
         </div>
 
@@ -56,11 +56,11 @@ export const LiquidationsPage: React.FC = () => {
       <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs font-sans text-slate-300 space-y-1.5">
         <div className="flex items-center space-x-2 text-amber-400 font-mono font-bold">
           <ShieldAlert className="w-4 h-4 flex-shrink-0" />
-          <span>КРИТИЧЕСКИЙ ПРИНЦИП: ФАКТИЧЕСКИЕ СОБЫТИЯ ≠ РАСЧЕТНЫЕ УРОВНИ</span>
+          <span>КРИТИЧЕСКИЙ ПРИНЦИП: ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-300">
-          <strong>Actual liquidation event:</strong> Публичный биржевой ордер принудительного закрытия (forceOrder). Это подтвержденный факт.<br />
-          <strong>Estimated liquidation level:</strong> Расчетная модель гипотетических уровней ликвидаций на основе открытого интереса и популярных кредитных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить маржу или хеджироваться, поэтому расчетная тепловая карта всегда маркируется как <code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300 font-mono">MODEL / ESTIMATED</code>.
+          <strong>Фактическое событие ликвидации (Actual Event):</strong> Публичный биржевой ордер принудительного закрытия позиции при наступлении маржин-колла. Это подтвержденный свершившийся факт.<br />
+          <strong>Расчетный ликвидационный уровень (Estimated / Model Level):</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300 font-mono">ESTIMATED / MODEL</code>.
         </p>
       </div>
 
@@ -220,10 +220,12 @@ export const LiquidationsPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Flame className="w-4 h-4 text-rose-500" />
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Поток подтвержденных ликвидаций (Actual Live Feed Demo)
+              Демонстрационный журнал событий ликвидаций (Demo Event Log)
             </span>
           </div>
-          <span className="text-[10px] text-slate-500">Биржевой поток forceOrder</span>
+          <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+            DEMO DATASET
+          </span>
         </div>
 
         <div className="overflow-x-auto">

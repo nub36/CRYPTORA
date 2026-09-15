@@ -94,6 +94,23 @@ export const OverviewPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+      {/* Top Demo Notification Strip */}
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-amber-300 gap-2">
+        <div className="flex items-center space-x-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span>
+            <strong>КОМАНДНЫЙ ЦЕНТР: ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ.</strong> Все цены, объемы, открытый интерес, ликвидации и события зафиксированы для оценки интерфейса (Этап 1).
+          </span>
+        </div>
+        <button
+          onClick={openDemoModal}
+          className="text-amber-400 hover:underline flex items-center space-x-1 flex-shrink-0 text-[11px]"
+        >
+          <span>Ограничения этапа</span>
+          <ArrowUpRight className="w-3 h-3" />
+        </button>
+      </div>
+
       {/* SECTION A: Market Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         {/* Total Market Cap */}

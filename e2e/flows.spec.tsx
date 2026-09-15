@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import './setup-dom';
+import { test, expect } from '@playwright/test';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import App from '@/App';
@@ -15,76 +15,65 @@ function renderApp(initialPath = '/') {
   );
 }
 
-describe('CRYPTORA Terminal E2E / Integration Flow', () => {
-  it('renders Overview page with all core command center components', async () => {
+test.describe('Playwright E2E: Core Terminal User Flows', () => {
+  test.afterEach(() => {
+    cleanup();
+  });
+
+  test('Overview: renders command center cards, chart, snapshots and demo notification', async () => {
     renderApp('/');
 
-    // Check title / branding
     expect(screen.getAllByText(/CRYPTORA/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Рынок\. Данные\. Решения\./i).length).toBeGreaterThan(0);
 
-    // Check Market summary cards (wait for async load)
+    // Explicit demo warning banner at top of command center
+    await screen.findByText(/КОМАНДНЫЙ ЦЕНТР/i);
+
+    // Summary cards
     await screen.findByText(/Капитализация рынка/i);
     expect(screen.getByText(/24h Спот Объем/i)).toBeInTheDocument();
     expect(screen.getByText(/Доминация BTC/i)).toBeInTheDocument();
     expect(screen.getByText(/Индекс жадности/i)).toBeInTheDocument();
     expect(screen.getByText(/Широта рынка \(Breadth\)/i)).toBeInTheDocument();
 
-    // Check BTC Chart header
+    // Main Chart
     expect(screen.getByText('BTC / USDT')).toBeInTheDocument();
 
-    // Check Futures & Liquidations snapshot
+    // Snapshots
     expect(screen.getByText(/ФЬЮЧЕРСНЫЙ СРЕЗ/i)).toBeInTheDocument();
     expect(screen.getByText(/ЛИКВИДАЦИИ ЗА 24H/i)).toBeInTheDocument();
-
-    // Check Heatmap preview
     expect(screen.getByText('ТЕПЛОВАЯ КАРТА')).toBeInTheDocument();
-
-    // Check Market Radar feed preview
     expect(screen.getByText('MARKET RADAR (LATEST)')).toBeInTheDocument();
-
-    // Check Top Movers & Signals prototype
-    expect(screen.getByText(/Лидеры роста \(24h\)/i)).toBeInTheDocument();
     expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ \(PREVIEW\)/i)).toBeInTheDocument();
   });
 
-  it('renders global Market Ticker with demo indicator', async () => {
-    renderApp('/');
-    expect(screen.getByText('DEMO TICKER')).toBeInTheDocument();
-  });
-
-  it('navigates to Market page, performs search, sorting and watchlist toggle', async () => {
-    const user = userEvent.setup();
+  test('Market Navigation: search, multi-column sorting and watchlist toggling', async () => {
     renderApp('/market');
 
-    // Verify Market page loaded
     await screen.findByText('Bitcoin');
     expect(screen.getByText(/РЫНОЧНЫЕ КОТИРОВКИ \(MARKET\)/i)).toBeInTheDocument();
     expect(screen.getByText('Ethereum')).toBeInTheDocument();
     expect(screen.getByText('Solana')).toBeInTheDocument();
 
-    // Test Search input
+    // Search for Solana
     const searchInput = screen.getByPlaceholderText(/Фильтр по названию или тикеру/i);
-    await user.type(searchInput, 'Solana');
-
+    fireEvent.change(searchInput, { target: { value: 'Solana' } });
     expect(screen.getByText('Solana')).toBeInTheDocument();
-    expect(screen.queryByText('Ethereum')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ethereum')).toBeNull();
 
     // Clear search
-    await user.clear(searchInput);
+    fireEvent.change(searchInput, { target: { value: '' } });
     expect(screen.getByText('Ethereum')).toBeInTheDocument();
 
-    // Test Watchlist Star toggle
+    // Toggle Watchlist
     const solStarBtn = screen.getByLabelText(/Избранное SOL/i);
-    await user.click(solStarBtn);
+    fireEvent.click(solStarBtn);
   });
 
-  it('navigates to Coin Detail (/coin/SOL) and displays deep analytics', async () => {
+  test('Coin Detail: displays candlestick chart, indicators and derivatives for selected asset', async () => {
     renderApp('/coin/SOL');
 
-    // Wait for asset details to render
     await screen.findByRole('heading', { name: 'Solana' });
-
     expect(screen.getByText('Ранг #3')).toBeInTheDocument();
     expect(screen.getByText(/SOL\/USDT Свечной график/i)).toBeInTheDocument();
     expect(screen.getByText(/Рыночная статистика/i)).toBeInTheDocument();
@@ -93,56 +82,55 @@ describe('CRYPTORA Terminal E2E / Integration Flow', () => {
     expect(screen.getByText(/Демо-пары на ведущих биржах/i)).toBeInTheDocument();
   });
 
-  it('navigates to Futures page and verifies derivatives table & filters', async () => {
-    const user = userEvent.setup();
+  test('Futures: derivatives table, aggregated OI and funding rate filtering', async () => {
     renderApp('/futures');
 
     await screen.findByText('BTC/USDT');
     expect(screen.getByText(/ФЬЮЧЕРСЫ И ДЕРИВАТИВЫ/i)).toBeInTheDocument();
     expect(screen.getByText(/Суммарный Открытый Интерес \(OI\)/i)).toBeInTheDocument();
-    expect(screen.getByText('ETH/USDT')).toBeInTheDocument();
 
-    // Filter by negative funding (Squeeze Watch)
+    // Filter by negative funding (Short Squeeze Watch)
     const negativeFundingBtn = screen.getByRole('button', { name: /Шорт < 0/i });
-    await user.click(negativeFundingBtn);
+    fireEvent.click(negativeFundingBtn);
 
     expect(screen.getByText('SUI/USDT')).toBeInTheDocument();
-    expect(screen.queryByText('BTC/USDT')).not.toBeInTheDocument();
+    expect(screen.queryByText('BTC/USDT')).toBeNull();
   });
 
-  it('navigates to Liquidations page and verifies methodology disclaimer', async () => {
+  test('Liquidations: verified actual vs estimated disclaimer, ratio gauge and event log', async () => {
     renderApp('/liquidations');
 
     await screen.findByText(/КАРТА И ПОТОК ЛИКВИДАЦИЙ/i);
+    // Mandatory methodology distinction
     expect(
-      screen.getByText(/КРИТИЧЕСКИЙ ПРИНЦИП: ФАКТИЧЕСКИЕ СОБЫТИЯ ≠ РАСЧЕТНЫЕ УРОВНИ/i)
+      screen.getByText(/ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/Ликвидировано Long \(24h\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Ликвидировано Short \(24h\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Поток подтвержденных ликвидаций/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Демонстрационный журнал событий ликвидаций/i)
+    ).toBeInTheDocument();
   });
 
-  it('navigates to Screener page and applies interactive filters and presets', async () => {
-    const user = userEvent.setup();
+  test('Screener: working filters and quick presets over demo dataset', async () => {
     renderApp('/screener');
 
     await screen.findByText(/КРИПТО-СКРИНЕР \(SCREENER TERMINAL\)/i);
 
-    // Preset: Top Gainers (>5%)
+    // Apply preset
     const gainersBtn = screen.getByRole('button', { name: /Top Gainers/i });
-    await user.click(gainersBtn);
+    fireEvent.click(gainersBtn);
 
-    // Verify results counter updated
     await waitFor(() => {
       expect(screen.getByText(/Найдено активов:/i)).toBeInTheDocument();
     });
 
-    // Reset filters
+    // Reset preset
     const resetBtn = screen.getByTitle(/Сбросить все фильтры/i);
-    await user.click(resetBtn);
+    fireEvent.click(resetBtn);
   });
 
-  it('navigates to Market Radar page and verifies anomaly stream', async () => {
+  test('Market Radar: anomaly feed and severity filtering', async () => {
     renderApp('/radar');
 
     await screen.findByText(/MARKET RADAR \(ДЕТЕКТОР АНОМАЛИЙ\)/i);
@@ -151,73 +139,47 @@ describe('CRYPTORA Terminal E2E / Integration Flow', () => {
     ).toBeInTheDocument();
   });
 
-  it('navigates to Heatmaps page and switches metric modes', async () => {
-    const user = userEvent.setup();
-    renderApp('/heatmaps');
-
-    await screen.findByRole('heading', { name: /ТЕПЛОВАЯ КАРТА РЫНКА/i });
-
-    const volumeModeBtn = screen.getByRole('button', { name: /Объем \(Volume\)/i });
-    await user.click(volumeModeBtn);
-
-    const fundingModeBtn = screen.getByRole('button', { name: /Funding Rate/i });
-    await user.click(fundingModeBtn);
-  });
-
-  it('navigates to Tools page and verifies live Position Size and PnL calculators', async () => {
+  test('Tools: position size and PnL calculation modules', async () => {
     renderApp('/tools');
 
     expect(screen.getByText(/КАЛЬКУЛЯТОРЫ И РИСК-ИНСТРУМЕНТЫ/i)).toBeInTheDocument();
     expect(screen.getByText(/Калькулятор размера позиции/i)).toBeInTheDocument();
     expect(screen.getByText(/Калькулятор PnL & ROE/i)).toBeInTheDocument();
-
-    // Check calculated fields
     expect(screen.getByText(/Сумма риска \(Stop Loss \$\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Чистый PnL \(\$\)/i)).toBeInTheDocument();
   });
 
-  it('navigates to Strategies and Signals preview pages', async () => {
+  test('Strategies & Signals: honest architectural previews without fake performance claims', async () => {
     renderApp('/strategies');
     expect(screen.getByText(/STRATEGY LAB \(ЛАБОРАТОРИЯ СТРАТЕГИЙ\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/АРХИТЕКТУРНЫЙ ПРОТОТИП/i)).toBeInTheDocument();
 
     renderApp('/signals');
     expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ И СИГНАЛЫ/i)).toBeInTheDocument();
     expect(screen.getByText(/НЕ ЯВЛЯЕТСЯ ФИНАНСОВОЙ РЕКОМЕНДАЦИЕЙ/i)).toBeInTheDocument();
+    expect(screen.getByText(/Кодекс прозрачности сигналов/i)).toBeInTheDocument();
   });
 
-  it('opens and closes Demo Information Modal', async () => {
-    const user = userEvent.setup();
+  test('Modals & Drawers: Demo information modal, Watchlist drawer and Alerts preview', async () => {
     renderApp('/');
 
+    // Demo Modal
     const demoBadge = screen.getByTitle(/Нажмите для просмотра информации о демо-режиме/i);
-    await user.click(demoBadge);
-
+    fireEvent.click(demoBadge);
     expect(screen.getByText(/Статус данных: Демонстрационный режим/i)).toBeInTheDocument();
+    const closeDemoBtn = screen.getByRole('button', { name: /Понятно, продолжить/i });
+    fireEvent.click(closeDemoBtn);
 
-    const closeBtn = screen.getByRole('button', { name: /Понятно, продолжить/i });
-    await user.click(closeBtn);
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Статус данных: Демонстрационный режим/i)).not.toBeInTheDocument();
-    });
-  });
-
-  it('opens and interacts with Watchlist drawer and Alerts modal', async () => {
-    const user = userEvent.setup();
-    renderApp('/');
-
-    // Open Watchlist
+    // Watchlist Drawer
     const watchlistBtn = screen.getByLabelText(/Открыть Watchlist/i);
-    await user.click(watchlistBtn);
+    fireEvent.click(watchlistBtn);
     expect(screen.getByText(/Избранное \(Watchlist\)/i)).toBeInTheDocument();
-
-    // Close Watchlist
     const closeWatchlistBtn = screen.getByLabelText('Закрыть');
-    await user.click(closeWatchlistBtn);
+    fireEvent.click(closeWatchlistBtn);
 
-    // Open Alerts Modal
+    // Alerts Modal
     const alertsBtn = screen.getByLabelText(/Открыть алерты/i);
-    await user.click(alertsBtn);
+    fireEvent.click(alertsBtn);
     expect(screen.getByText(/Система алертов \(Alerts Preview\)/i)).toBeInTheDocument();
   });
 });

@@ -1,49 +1,57 @@
 # DATA_SOURCES — Аудит и требования к источникам данных
 
-> **Статус:** Исследовательский документ целевых источников (Этап 2+)  
-> **Принцип:** Никаких непроверенных предположений о коммерческих API. Все неподтвержденные вживую параметры помечены как `REQUIRES VERIFICATION`.
+> **Статус:** Предварительный аудит целевых источников (Этап 2+)  
+> **Критический принцип:** Никаких непроверенных утверждений о коммерческих API или условиях лицензирования. Поскольку в текущей изолированной среде отсутствует прямой доступ к актуальным серверам и юридическим разделам документаций бирж, **ВСЕ** параметры помечены как `REQUIRES VERIFICATION`. Перед началом Этапа 2 обязательна отдельная валидация официальных документов каждого источника.
 
 ---
 
-## 1. Сводная матрица биржевых источников данных
+## 1. Сводная матрица потенциальных биржевых источников
 
 | Биржа / Провайдер | Рынки | Спот REST/WS | Фьючерсы REST/WS | Open Interest | Funding Rates | Фактические ликвидации | Документация / Статус |
 |---|---|---|---|---|---|---|---|
-| **Binance** | Spot + USDⓈ-M + COIN-M | REST v3, WS streams | Futures v1/v2 REST & WS | Доступен (REST / WS 5m-1d) | 8h интервалы (REST / WS) | `forceOrder` WS stream | [Binance API Docs](https://developers.binance.com/docs/) / `REQUIRES VERIFICATION` (региональные ограничения IP) |
-| **Bybit** | Spot + Linear / Inverse | V5 REST, V5 WS | V5 Linear / Inverse | Доступен через V5 Market | Доступен (текущий и прогноз) | V5 execution / liquidation streams | [Bybit V5 Docs](https://bybit-exchange.github.io/docs/v5/intro) / `VERIFIED ARCHITECTURE` |
-| **OKX** | Spot + Margin + Futures + Swaps | V5 REST, V5 Public WS | V5 Futures / Swap | Доступен (Public Data REST/WS)| Доступен (8h / 4h / 1h по рынкам) | V5 Public Liquidation Orders | [OKX V5 Docs](https://www.okx.com/docs-v5/en/) / `REQUIRES VERIFICATION` |
-| **Coinbase** | Spot + Institutional Futures | Advanced Trade REST/WS | Derivatives (ограничено) | Ограничено | N/A (в основном спот) | N/A | [Coinbase Developer](https://docs.cdp.coinbase.com/) / `REQUIRES VERIFICATION` |
+| **Binance** | Spot + USDⓈ-M + COIN-M | REST v3, WS streams (`REQUIRES VERIFICATION`) | Futures v1/v2 REST & WS (`REQUIRES VERIFICATION`) | REST / WS (`REQUIRES VERIFICATION`) | 8h интервалы (`REQUIRES VERIFICATION`) | `forceOrder` WS stream (`REQUIRES VERIFICATION`) | [Binance API Docs](https://developers.binance.com/docs/) / `REQUIRES VERIFICATION` |
+| **Bybit** | Spot + Linear / Inverse | V5 REST, V5 WS (`REQUIRES VERIFICATION`) | V5 Linear / Inverse (`REQUIRES VERIFICATION`) | V5 Market (`REQUIRES VERIFICATION`) | Текущий и прогноз (`REQUIRES VERIFICATION`) | V5 execution / liquidation streams (`REQUIRES VERIFICATION`) | [Bybit V5 Docs](https://bybit-exchange.github.io/docs/v5/intro) / `REQUIRES VERIFICATION` |
+| **OKX** | Spot + Margin + Futures + Swaps | V5 REST, Public WS (`REQUIRES VERIFICATION`) | V5 Futures / Swap (`REQUIRES VERIFICATION`) | Public Data REST/WS (`REQUIRES VERIFICATION`)| 8h / 4h / 1h по рынкам (`REQUIRES VERIFICATION`) | Public Liquidation Orders (`REQUIRES VERIFICATION`) | [OKX V5 Docs](https://www.okx.com/docs-v5/en/) / `REQUIRES VERIFICATION` |
+| **Coinbase** | Spot + Institutional Futures | Advanced Trade REST/WS (`REQUIRES VERIFICATION`) | Derivatives (ограничено) (`REQUIRES VERIFICATION`) | Ограничено (`REQUIRES VERIFICATION`) | N/A (в основном спот) | N/A | [Coinbase Developer](https://docs.cdp.coinbase.com/) / `REQUIRES VERIFICATION` |
 
 ---
 
-## 2. Специфика сбора деривативных метрик
+## 2. Параметры, требующие верификации перед Этапом 2
 
-### 2.1. Открытый интерес (Open Interest)
-- **Суть метрики:** Общее количество незакрытых контрактов деривативов в обращении на бирже.
-- **Особенности нормализации:**
-  - На разных биржах OI отдается либо в базовой валюте (например, BTC), либо в контрактах (номинал контракта), либо в USD.
-  - Конвейер нормализации CRYPTORA обязан переводить все значения в единую базовую единицу: **USD Notional Value** (`OI_contracts * contract_val * mark_price` или `OI_coins * mark_price`).
+Каждый выбранный биржевой источник перед подключением должен пройти аудит по следующим критериям:
 
-### 2.2. Ставка финансирования (Funding Rate)
-- **Суть метрики:** Механизм привязки цены бессрочного фьючерса (Perpetual Swap) к спотовой индексной цене.
-- **Особенности нормализации:**
-  - Периодичность: стандартный интервал 8 часов (00:00, 08:00, 16:00 UTC), однако некоторые биржи (OKX, Bybit для волатильных инструментов) используют динамические интервалы 4h, 2h или 1h.
-  - Нормализация CRYPTORA: хранение оригинальной ставки за период (`rate_per_interval`) и расчет годовой ставки (`annualized_rate = rate * (24 / interval_hours) * 365 * 100%`).
+### 2.1. Лимиты запросов (Rate Limits) — `REQUIRES VERIFICATION`
+- Точные веса эндпоинтов (IP rate limits, account rate limits).
+- Поведение при `429 Too Many Requests` и `418 IP Ban`.
+- Лимиты на количество входящих сообщений и подписок на одном WebSocket соединении.
 
-### 2.3. Ликвидации (Liquidations)
-- **Критический архитектурный рубеж:**
-  - Биржевой поток ликвидаций (например, Binance `forceOrder` stream) сообщает о **фактически сработавшем принудительном рыночном ордере** (`Actual liquidation`).
-  - Расчетная тепловая карта ликвидаций (Liquidation Levels Heatmap) — это **математическая симуляция / гипотетическая модель** (`Estimated / Model`), основанная на анализе открытого интереса, объемов на разных уровнях плеча и движении цен.
-  - **ПРАВИЛО:** Никогда не объединять и не подменять фактические данные симулированными без огромного предупреждения.
+### 2.2. Доступность исторических данных (Historical Availability) — `REQUIRES VERIFICATION`
+- Глубина доступности минутных (1m) и часовых (1h) свечей через публичный REST.
+- Историческая глубина снапшотов открытого интереса (OI) и ставок фандинга.
+- Доступность логов исторических ликвидаций (архивы сделок).
+
+### 2.3. Лицензирование и ограничения распространения (Licensing & Redistribution) — `REQUIRES VERIFICATION`
+- Правовые условия использования биржевых данных в аналитическом терминале (Commercial / Non-Commercial).
+- Ограничения на повторное распространение (redistribution constraints) через публичный WebSocket или API третьим лицам.
+- Требования к задержкам (delayed data policy).
+
+### 2.4. Аутентификация и географические ограничения — `REQUIRES VERIFICATION`
+- Доступность публичных рыночных котировок без API-ключей (Public Endpoints).
+- Географические блокировки IP-адресов серверов (Cloudflare / Geo-fencing).
 
 ---
 
-## 3. Лимиты запросов (Rate Limits) и стратегия устойчивости
+## 3. Специфика сбора и нормализации деривативных метрик
 
-1. **REST Rate Limits:**
-   - Каждая биржа реализует систему весов запросов (Weight based) или скользящих окон (например, 1200 request weight/min у Binance, 120 req/sec у Bybit).
-   - Будущий модуль `Collector` обязан содержать внутренний Token Bucket Rate Limiter для каждого API ключа / IP адреса.
-2. **WebSocket Resilience:**
-   - Реализация постоянного heartbeat (ping/pong) каждые 15–30 секунд.
-   - Экспоненциальный откат (Exponential Backoff) при разрыве сокета.
-   - Механизм дедупликации сообщений по уникальным `event_id` или монотонным sequence-номерам.
+### 3.1. Открытый интерес (Open Interest)
+- На разных биржах OI отдается либо в базовой валюте, либо в контрактах, либо в USD.
+- Конвейер нормализации CRYPTORA обязан приводить значения к единому знаменателю: **USD Notional Value** (`OI_contracts * contract_val * mark_price` или `OI_coins * mark_price`).
+
+### 3.2. Ставка финансирования (Funding Rate)
+- Стандартный расчетный интервал — 8 часов (00:00, 08:00, 16:00 UTC). Некоторые инструменты имеют динамический интервал 4h или 1h.
+- Нормализация: сохранение интервальной ставки и расчет годового эквивалента (APR %).
+
+### 3.3. Ликвидации (Liquidations)
+- **ACTUAL LIQUIDATION EVENT != ESTIMATED LIQUIDATION LEVEL.**
+- Фактические события принудительного закрытия фиксируются из потока ликвидаций бирж.
+- Расчетные тепловые карты уровней являются математической моделью (`ESTIMATED / MODEL`).

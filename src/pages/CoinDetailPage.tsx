@@ -285,6 +285,7 @@ export const CoinDetailPage: React.FC = () => {
                     futuresData.fundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'
                   }`}
                 >
+                  {futuresData.fundingRate >= 0 ? '+' : ''}
                   {(futuresData.fundingRate).toFixed(4)}%
                 </span>
               </div>

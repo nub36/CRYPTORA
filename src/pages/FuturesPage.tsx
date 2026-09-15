@@ -62,11 +62,11 @@ export const FuturesPage: React.FC = () => {
               ФЬЮЧЕРСЫ И ДЕРИВАТИВЫ (PERPETUAL MARKETS)
             </h1>
             <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              DEMO DERIVATIVES
+              ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
             </span>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Мониторинг открытого интереса (OI), ставок финансирования, базиса и ликвидаций.
+            Демо-срез бессрочных фьючерсов: открытый интерес (OI), ставки финансирования, базис и ликвидации.
           </p>
         </div>
 
@@ -253,6 +253,7 @@ export const FuturesPage: React.FC = () => {
                         f.fundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'
                       }`}
                     >
+                      {f.fundingRate >= 0 ? '+' : ''}
                       {(f.fundingRate).toFixed(4)}%
                     </td>
 
