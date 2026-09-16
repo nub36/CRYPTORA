@@ -249,3 +249,158 @@ export function detectStructureBreak(
   }
   return null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Frozen SMC primitives used by V3.3 (structure.ts, same hash)        */
+/* ------------------------------------------------------------------ */
+
+export interface ArchiveDisplacement {
+  direction: 'LONG' | 'SHORT';
+  index: number;
+  time: number;
+  bodyAtr: number;
+  bodyRatio: number;
+  closeLocation: number;
+  consecutive: number;
+  rvol: number;
+  strength: number;
+}
+
+/** Ported verbatim from structure.ts `detectDisplacement`. */
+export function detectDisplacement(
+  candles: readonly ArchiveCandle[], index: number, atr: number | null, rvol: number | null, minBodyAtr: number,
+): ArchiveDisplacement | null {
+  const c = candles[index];
+  if (!c || atr === null || atr <= 0) return null;
+  const body = Math.abs(c.close - c.open);
+  const range = c.high - c.low;
+  if (range <= 0) return null;
+  const bodyAtr = body / atr;
+  if (bodyAtr < minBodyAtr) return null;
+
+  const direction: 'LONG' | 'SHORT' = c.close >= c.open ? 'LONG' : 'SHORT';
+  const bodyRatio = body / range;
+  const closeLocation = (c.close - c.low) / range;
+
+  let consecutive = 1;
+  for (let i = index - 1; i >= 0; i--) {
+    const p = candles[i];
+    if (!p) break;
+    const d: 'LONG' | 'SHORT' = p.close >= p.open ? 'LONG' : 'SHORT';
+    if (d !== direction) break;
+    consecutive++;
+    if (consecutive >= 5) break;
+  }
+
+  const locScore = direction === 'LONG' ? closeLocation : 1 - closeLocation;
+  const rvolScore = rvol === null ? 0.5 : Math.max(0, Math.min(1, (rvol - 0.8) / 1.2));
+  const strength = Math.max(0, Math.min(1,
+    Math.min(1, bodyAtr / 2) * 0.4 + bodyRatio * 0.25 + locScore * 0.2 + rvolScore * 0.15));
+
+  return { direction, index, time: c.openTime, bodyAtr, bodyRatio, closeLocation, consecutive, rvol: rvol ?? 0, strength };
+}
+
+export type ArchiveObState = 'FRESH' | 'TOUCHED' | 'MITIGATED' | 'INVALIDATED';
+export interface ArchiveOrderBlock {
+  direction: 'LONG' | 'SHORT';
+  high: number;
+  low: number;
+  index: number;
+  time: number;
+  knownAtIndex: number;
+  state: ArchiveObState;
+  stateIndex: number;
+  displacementStrength: number;
+  origin: 'BOS' | 'CHOCH' | 'SWEEP_REACTION';
+  timeframe: ArchiveTimeframe;
+}
+
+/** Ported verbatim from structure.ts `buildOrderBlock` (last opposite candle within 5 bars before the displacement). */
+export function buildOrderBlock(
+  candles: readonly ArchiveCandle[], displacement: ArchiveDisplacement, origin: ArchiveOrderBlock['origin'],
+  evalIndex: number, timeframe: ArchiveTimeframe,
+): ArchiveOrderBlock | null {
+  const want: 'LONG' | 'SHORT' = displacement.direction === 'LONG' ? 'SHORT' : 'LONG';
+  let originIdx = -1;
+  for (let i = displacement.index - 1; i >= Math.max(0, displacement.index - 5); i--) {
+    const c = candles[i];
+    if (!c) break;
+    const d: 'LONG' | 'SHORT' = c.close >= c.open ? 'LONG' : 'SHORT';
+    if (d === want) { originIdx = i; break; }
+  }
+  if (originIdx < 0) return null;
+  const oc = candles[originIdx]!;
+  const ob: ArchiveOrderBlock = {
+    direction: displacement.direction, high: oc.high, low: oc.low, index: originIdx, time: oc.openTime,
+    knownAtIndex: displacement.index, state: 'FRESH', stateIndex: displacement.index,
+    displacementStrength: displacement.strength, origin, timeframe,
+  };
+  const mid = (ob.high + ob.low) / 2;
+  for (let i = displacement.index + 1; i <= evalIndex; i++) {
+    const c = candles[i];
+    if (!c) break;
+    const touched = c.low <= ob.high && c.high >= ob.low;
+    if (touched && ob.state === 'FRESH') { ob.state = 'TOUCHED'; ob.stateIndex = i; }
+    const throughMid = ob.direction === 'LONG' ? c.low <= mid : c.high >= mid;
+    if (touched && throughMid && ob.state !== 'INVALIDATED') { ob.state = 'MITIGATED'; ob.stateIndex = i; }
+    const invalid = ob.direction === 'LONG' ? c.close < ob.low : c.close > ob.high;
+    if (invalid) { ob.state = 'INVALIDATED'; ob.stateIndex = i; break; }
+  }
+  return ob;
+}
+
+export interface ArchiveFvg {
+  direction: 'LONG' | 'SHORT';
+  top: number;
+  bottom: number;
+  size: number;
+  sizeAtr: number;
+  index: number;
+  time: number;
+  knownAtIndex: number;
+  state: 'FRESH' | 'PARTIAL' | 'FILLED';
+  filledFraction: number;
+  timeframe: ArchiveTimeframe;
+}
+
+/** Ported verbatim from structure.ts `findFvg` (3-bar imbalance, known once bar i+1 closed). */
+export function findFvg(
+  candles: readonly ArchiveCandle[], index: number, atr: number | null, evalIndex: number,
+  timeframe: ArchiveTimeframe, minSizeAtr: number,
+): ArchiveFvg | null {
+  const a = candles[index - 1];
+  const b = candles[index];
+  const c = candles[index + 1];
+  if (!a || !b || !c || atr === null || atr <= 0) return null;
+  if (index + 1 > evalIndex) return null;
+
+  let direction: 'LONG' | 'SHORT';
+  let top: number;
+  let bottom: number;
+  if (c.low > a.high) { direction = 'LONG'; bottom = a.high; top = c.low; }
+  else if (c.high < a.low) { direction = 'SHORT'; bottom = c.high; top = a.low; }
+  else return null;
+
+  const size = top - bottom;
+  const sizeAtr = size / atr;
+  if (sizeAtr < minSizeAtr) return null;
+
+  const fvg: ArchiveFvg = {
+    direction, top, bottom, size, sizeAtr, index, time: b.openTime, knownAtIndex: index + 1,
+    state: 'FRESH', filledFraction: 0, timeframe,
+  };
+  for (let i = index + 2; i <= evalIndex; i++) {
+    const k = candles[i];
+    if (!k) break;
+    const overlapLow = Math.max(bottom, k.low);
+    const overlapHigh = Math.min(top, k.high);
+    if (overlapHigh > overlapLow) {
+      const frac = (overlapHigh - overlapLow) / size;
+      fvg.filledFraction = Math.max(fvg.filledFraction, Math.min(1, frac));
+    }
+    const fullyThrough = direction === 'LONG' ? k.low <= bottom : k.high >= top;
+    if (fullyThrough) { fvg.filledFraction = 1; fvg.state = 'FILLED'; break; }
+  }
+  if (fvg.state !== 'FILLED') fvg.state = fvg.filledFraction > 0.05 ? 'PARTIAL' : 'FRESH';
+  return fvg;
+}

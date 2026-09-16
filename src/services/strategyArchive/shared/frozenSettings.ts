@@ -43,6 +43,10 @@ export const FROZEN_ENGINE = Object.freeze({
   atrPeriod: Math.floor(num('risk.atr_period')),
   /** `v2.volume_period` — RVOL averaging window (excludes current bar). */
   volumePeriod: Math.floor(num('v2.volume_period')),
+  /** `v2.displacement_min_body_atr` — V3.3 zone creation (frozen registry default). */
+  displacementMinBodyAtr: num('v2.displacement_min_body_atr'),
+  /** `v2.fvg_min_size_atr` — V3.3 FVG minimum size. */
+  fvgMinSizeAtr: num('v2.fvg_min_size_atr'),
   /** `outcome.timeout_bars` — V2 baseline timeout (V3.0 overrides with its own 50). */
   outcomeTimeoutBars: Math.floor(num('outcome.timeout_bars')),
   /** `v2.stop_buffer_atr` — V2 baseline stop buffer (V3.0 overrides with 0.15). */

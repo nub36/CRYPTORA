@@ -16,3 +16,8 @@ export {
   V32_DEFINITION, V32_SOURCE_RESULTS, V32_REPRODUCTION_EVIDENCE, V32_REPRODUCED_RESULTS, V32_CAVEATS_RU, V32_RULES_RU, V32_DISCREPANCIES, V32_COMMITS, V32_SOURCE_PINS, V32_VARIANTS,
 } from './definitions/v3_2-volume-climax/definition';
 export { V32_CONSTANTS } from './definitions/v3_2-volume-climax/v32Core';
+export {
+  V33_DEFINITION, V33_SOURCE_RESULTS, V33_REPRODUCTION_EVIDENCE, V33_REPRODUCED_RESULTS, V33_CAVEATS_RU, V33_RULES_RU, V33_DISCREPANCIES, V33_COMMITS, V33_SOURCE_PINS, V33_VARIANTS,
+} from './definitions/v3_3-htf-zone-mitigation/definition';
+export { V33_CONSTANTS } from './definitions/v3_3-htf-zone-mitigation/v33Core';
+export { V33_VARIANT_IDS } from './definitions/v3_3-htf-zone-mitigation/v33Runner';

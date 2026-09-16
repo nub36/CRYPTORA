@@ -4,6 +4,19 @@
 
 ---
 
+## [0.8.13] — 2026-09-16
+
+### Added — Архив стратегий C4: V3.3 HTF Zone Mitigation & LTF Squeeze (ТОЛЬКО TRAIN, 8 прогонов воспроизведены)
+- `definitions/v3_3-htf-zone-mitigation/` — дословный порт `research/v33_zone_mitigation.ts` (sha `3f5b1478…`, pin `a7ecd79`);
+  в `shared/primitives.ts` добавлены замороженные `detectDisplacement` / `buildOrderBlock` / `findFvg` из `structure.ts` (`e04806a3…`).
+- Все 8 архивных прогонов (window while/first × stop protective/climax × leg displacement/swing) реально прогнаны на `c3c1dce`
+  и совпали с источником по всем полям. Headline (предзаявленный `isPrimary`) while-protective-displacement: n=6957 gross +0.0778
+  net +0.0267 fee 0.0511 TP1 65.24 %. Research verdict новый тип `TRAIN_ONLY_NOT_VALIDATED`: критерии F1/F2/F3 пройдены на TRAIN,
+  VALIDATION не проводилась (окно израсходовано V3.0), результат хрупок по хвосту. Остальные 7 — чувствительность
+  (first/protective проваливают F1; stop=climax до +0.1058 — постфактум, не «результат V3.3»).
+- Расхождения D-V33-001…005 (в т.ч. переименование Zone Continuation → Mitigation, отсутствие валидации).
+- `reproduce.mjs`: нормализация funnel `triggersInZone` → `signals`. Реестр: 4 импортировано + 9 запланировано = 13.
+
 ## [0.8.12] — 2026-09-16
 
 ### Added — Архив стратегий C3: V3.2 Volume Climax & Absorption (ФАЛЬСИФИЦИРОВАНА, 4 варианта воспроизведены)

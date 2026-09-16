@@ -1,0 +1,163 @@
+{
+  "kind": "CRYPTORA_REPRODUCTION_EVIDENCE",
+  "origin": "DERIVED_BY_CRYPTORA",
+  "versionId": "V3_3_HTF_ZONE_MITIGATION",
+  "variantId": "while-protective-displacement",
+  "slice": "train",
+  "runAtUtc": "2026-09-16T17:54:45.873Z",
+  "runner": "scripts/strategy-archive/reproduce.mjs",
+  "dataset": {
+    "repo": "https://github.com/nub36/svechnoy-suslik-binance-data.git",
+    "commit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f",
+    "intervalsRead": [
+      "1h",
+      "4h"
+    ],
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "loader": "monthly ZIP → CSV, openTime µs→ms normalised, closeTime=open+span−1, isClosed=true"
+  },
+  "sourceArtifact": {
+    "path": "artifacts/research/v33/v33-train-metrics-while-protective-displacement.json",
+    "sha256": "61cdc7929412e58c030836293263ab7304d7bd9307a2cbf09322799ef8cf0513"
+  },
+  "deterministicDigest": "fnv1a32:c1bbd4ba:n6957",
+  "tradeCount": 6957,
+  "funnel": {
+    "signals": 15957,
+    "pendingCreated": 15957,
+    "filled": 6957,
+    "expired": 0,
+    "cancelled": 849,
+    "rejected": 8140,
+    "unresolved": 9
+  },
+  "maxCandleOpenTimeRead": 1716728400000,
+  "metrics": {
+    "n": 6957,
+    "grossRPerTrade": 0.0778,
+    "feeDragRHeadline": 0.0511,
+    "netRPerTradeHeadline": 0.0267,
+    "feeDragRStress": 0.0731,
+    "netRPerTradeStress": 0.0047,
+    "profitFactor": 1.2341,
+    "maxDrawdownR": -43.67,
+    "positiveRRatePct": 66.16,
+    "grossMedianR": 0.0915,
+    "avgWinR": 0.62,
+    "avgLossR": -0.9823,
+    "medianBarsHeld": 6,
+    "stopDistancePct": {
+      "p25": 1.0914,
+      "median": 1.6953,
+      "p75": 2.6374
+    },
+    "exits": {
+      "TP1_THEN_BE": 3295,
+      "SL": 2298,
+      "TP1_THEN_TIMEOUT": 379,
+      "TP2": 865,
+      "TIMEOUT": 120
+    },
+    "outlierDependence": {
+      "grossExpectancy": 0.0778,
+      "exTop1": 0.0758,
+      "exTop5": 0.071,
+      "exTop1Pct": 0.0264,
+      "removedForTop1Pct": 70
+    },
+    "byDirection": {
+      "SHORT": {
+        "n": 3420,
+        "grossExpectancy": 0.1188
+      },
+      "LONG": {
+        "n": 3537,
+        "grossExpectancy": 0.0382
+      }
+    },
+    "bySymbol": {
+      "BTCUSDT": {
+        "n": 1135,
+        "grossExpectancy": 0.1074
+      },
+      "ETHUSDT": {
+        "n": 1149,
+        "grossExpectancy": 0.1003
+      },
+      "BNBUSDT": {
+        "n": 1092,
+        "grossExpectancy": 0.0944
+      },
+      "SOLUSDT": {
+        "n": 1154,
+        "grossExpectancy": 0.0407
+      },
+      "XRPUSDT": {
+        "n": 1213,
+        "grossExpectancy": 0.0893
+      },
+      "DOGEUSDT": {
+        "n": 1214,
+        "grossExpectancy": 0.0378
+      }
+    }
+  },
+  "comparison": {
+    "checks": {
+      "n": true,
+      "funnel": true,
+      "grossRPerTrade": true,
+      "netRPerTrade": true,
+      "netRPerTradeSpot": true,
+      "feeDragR": true,
+      "profitFactor": true,
+      "maxDrawdownR": true,
+      "exits": true,
+      "bySymbol": true,
+      "byDirection": true,
+      "outlierDependence": true,
+      "stopDistancePct": true,
+      "medianBarsHeld": true,
+      "avgWinR": true,
+      "avgLossR": true,
+      "grossMedianR": true,
+      "positiveRRatePct": true,
+      "tp1HitRatePct": true,
+      "tp2HitRatePct": true
+    },
+    "allMatched": true,
+    "firstMismatch": null,
+    "source": {
+      "n": 6957,
+      "grossRPerTrade": 0.0778,
+      "netRPerTrade": {
+        "FUT_4": 0.0267,
+        "SPOT": 0.0047
+      },
+      "profitFactor": 1.2341,
+      "funnel": {
+        "zonesTotal": 10665,
+        "zonesMitigated": 8627,
+        "zonesDead": 8238,
+        "zonesSkippedByWarmup": 0,
+        "skippedNoSwingLeg": 0,
+        "triggersInZone": 15957,
+        "multiZoneBars": 8756,
+        "pendingCreated": 15957,
+        "filled": 6957,
+        "expired": 0,
+        "cancelled": 849,
+        "rejected": 8140,
+        "unresolved": 9,
+        "triggersWithTp1BehindClose": 7762
+      }
+    }
+  }
+}

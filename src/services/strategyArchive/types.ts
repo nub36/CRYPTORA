@@ -88,6 +88,8 @@ export type ResearchVerdict =
   | 'REJECTED_ON_TRAIN'
   | 'FALSIFIED_ON_TRAIN'
   | 'FAILED_VALIDATION'
+  /** Passed pre-registered TRAIN criteria but was never validated (source status V3_3_TRAIN_ONLY). NOT a positive result. */
+  | 'TRAIN_ONLY_NOT_VALIDATED'
   | 'VALIDATED_GROSS_ONLY'
   | 'VALIDATED_FOR_RESEARCH'
   | 'BASELINE';

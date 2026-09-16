@@ -83,6 +83,8 @@ const srcFunnel = target.funnel ? { ...target.funnel } : null;
 if (srcFunnel && 'cascadesWithVolume' in srcFunnel) {
   srcFunnel.signals = srcFunnel.cascadesWithVolume; delete srcFunnel.cascadesWithVolume; delete srcFunnel.cascadesFailingAbsorption;
 }
+// V3.3: funnel has `triggersInZone` (= signals) plus zone-level counters that live in report extras.
+if (srcFunnel && 'triggersInZone' in srcFunnel && !('signals' in srcFunnel)) srcFunnel.signals = srcFunnel.triggersInZone;
 const norm = (f) => f && Object.fromEntries(Object.keys(report.funnel).map((k) => [k, f[k]]));
 const checks = {
   n: cmp(target.n, m.n),
