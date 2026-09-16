@@ -3,17 +3,22 @@
  *
  * Source: svechnoy-suslik-v2 @ 965fb15 (TRAIN result; pre-registration d9394b1). Frozen V2 engine 4839074. Dataset c3c1dce.
  * RESEARCH VERDICT: REJECTED_ON_TRAIN — no fixed-RR arm is net-positive; fee drag is identical across arms.
- * REPRODUCTION STATUS: see `reproducibility` — entries depend on the frozen V2 engine (sniper filter over
- * 15m/30m/1h/4h); the exit arms are ported here, the engine is ported separately (C6) as an isolated archive dependency.
+ * REPRODUCTION STATUS: REPRODUCED (C6) — all five arms re-run inside CRYPTORA over the isolated legacy engine port
+ * (`legacy/v2`, frozen 4839074) on dataset c3c1dce; n=317, gross/net/PF/DD/exits/bySymbol/byDirection/byTimeframe matched.
  * ⚠️ Historical research only. CRYPTORA does not execute trades.
  */
 
 import type {
-  ResultOrigin, SourceFilePin, SpecResearchDiscrepancy, StrategyDefinition, StrategyVariant,
+  ReproductionEvidence, ResultOrigin, SourceFilePin, SpecResearchDiscrepancy, StrategyDefinition, StrategyVariant,
 } from '../../types';
 import { RR_ARMS, V27_CONSTANTS } from './v27Core';
 import { runV27Series } from './v27Runner';
 import aTrain from '../../results/v27/v27-train-metrics.json' with { type: 'json' };
+import rRR15 from '../../results/v27/cryptora-reproduction/v27-train-RR15-reproduction.json' with { type: 'json' };
+import rRR20 from '../../results/v27/cryptora-reproduction/v27-train-RR20-reproduction.json' with { type: 'json' };
+import rRR25 from '../../results/v27/cryptora-reproduction/v27-train-RR25-reproduction.json' with { type: 'json' };
+import rRR30 from '../../results/v27/cryptora-reproduction/v27-train-RR30-reproduction.json' with { type: 'json' };
+import rRR40 from '../../results/v27/cryptora-reproduction/v27-train-RR40-reproduction.json' with { type: 'json' };
 
 const ARTIFACT = 'artifacts/research/v27/v27-train-metrics.json';
 const ARTIFACT_SHA = '70fd54b51f53a6b7aa90a868d093bd7a488e4268108a5c63fe33eb9e988c939c';
@@ -82,11 +87,31 @@ export const V27_DISCREPANCIES: readonly SpecResearchDiscrepancy[] = Object.free
     id: 'D-V27-004',
     specStatement: 'Entries come from the frozen V2 engine `4839074` (evaluateV2, resolveEntry, executableLadder, trackOutcome slot, sniper filter).',
     researchBehaviour: 'The research file only decides where the TP sits; the entry population (317 sniper entries, 106,994 actionable setups) is produced by the frozen engine over 15m/30m/1h/4h with HTF context.',
-    impact: 'Reproduction inside CRYPTORA requires the isolated legacy engine port (C6); until then the status is SOURCE_CHAIN_VERIFIED_NOT_RERUN.',
+    impact: 'Reproduced in C6 through the isolated legacy engine port (`legacy/v2`); the port is an archive dependency only, never wired to LIVE or BacktestEngine.',
     reproductionPolicy: 'PRESERVE_RESEARCH_BEHAVIOUR',
     evidence: ['research/v27_rr_test.ts imports'],
   },
 ]);
+
+const V27_REPRO = [rRR15, rRR20, rRR25, rRR30, rRR40];
+export const V27_REPRODUCTION_EVIDENCE: readonly ReproductionEvidence[] = Object.freeze(
+  V27_REPRO.map((e) => ({
+    slice: `${e.slice}:${e.variantId}`,
+    runAtUtc: e.runAtUtc,
+    datasetCommit: e.dataset.commit,
+    sourceArtifactPath: e.sourceArtifact.path,
+    sourceArtifactSha256: e.sourceArtifact.sha256,
+    deterministicDigest: e.deterministicDigest,
+    tradeCount: e.tradeCount,
+    allMatched: e.comparison.allMatched,
+    firstMismatch: e.comparison.firstMismatch,
+    evidencePath: `src/services/strategyArchive/results/v27/cryptora-reproduction/v27-train-${e.variantId}-reproduction.json`,
+  })),
+);
+export const V27_REPRODUCED_RESULTS = Object.freeze({
+  origin: 'DERIVED_BY_CRYPTORA' as ResultOrigin,
+  train: Object.fromEntries(V27_REPRO.map((e) => [e.variantId, { n: e.metrics.n, grossRPerTrade: e.metrics.grossRPerTrade, feeDragR: e.metrics.feeDragRHeadline, netRPerTrade: e.metrics.netRPerTradeHeadline, netRPerTradeStress: e.metrics.netRPerTradeStress, profitFactor: e.metrics.profitFactor, maxDrawdownR: e.metrics.maxDrawdownR, digest: e.deterministicDigest }])),
+});
 
 export const V27_SOURCE_RESULTS = Object.freeze({
   origin: 'SOURCE_REPORTED' as ResultOrigin,
@@ -101,6 +126,7 @@ export const V27_CAVEATS_RU: readonly string[] = Object.freeze([
   'RR40 — наименее убыточная, а не оптимальная цель (предрегистрация: «наименее отрицательное — это неудача поиска»). Headline-варианта нет.',
   'Входы — sniper-фильтр замороженного движка V2 `4839074` на 15m/30m/1h/4h с общим слотом позиции (frozen tracker); стоп 0.25 ATR, а не 0.05 из задания (D-V27-001).',
   'Не сопоставимо с V3.x: другой движок входов, четыре таймфрейма в одном пуле, горизонт 50 баров.',
+  'Воспроизводимость в CRYPTORA: REPRODUCED — все пять веток перезапущены на датасете c3c1dce через изолированный порт замороженного движка V2 (4839074) и совпали с артефактом источника по всем полям (n=317; RR40 digest fnv1a32:48b330bc:n317). «Воспроизведено» означает только повторяемость чисел, а не пригодность стратегии.',
   'CRYPTORA не исполняет сделки.',
 ]);
 
@@ -119,8 +145,8 @@ const definition: StrategyDefinition = {
   name: 'Target RR Optimisation (fixed 1.5–4.0R)',
   nameRu: 'Оптимизация фиксированной цели RR',
   verdict: 'REJECTED_ON_TRAIN',
-  reproducibility: 'SOURCE_CHAIN_VERIFIED_NOT_RERUN',
-  reproductionBlockedReason: 'Entry population is produced by the frozen V2 engine 4839074 (15m/30m/1h/4h, HTF context, sniper filter). The exit arms are ported; the engine is ported in C6 as an isolated legacy dependency, after which a rerun is attempted.',
+  reproducibility: 'REPRODUCED',
+  reproductionEvidence: V27_REPRODUCTION_EVIDENCE,
   legacyEngineDependency: 'FROZEN_V2_ENGINE_4839074',
   variants: V27_VARIANTS,
   slicesAvailable: ['train'],

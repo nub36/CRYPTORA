@@ -4,6 +4,24 @@
 
 ---
 
+## [0.8.15] — 2026-09-16
+
+### Added — Архив стратегий C6: замороженный движок V2 `4839074` (изолированно) + V2.2…V2.6 + перезапуски V2.2–V2.8
+- `src/services/strategyArchive/legacy/v2/` — движок V2 источника @ `4839074` (engine/htf/indicators/structure/tracker/risk,
+  `resolveEntry`, `executableLadder`, `v24Engine`, `corridorEntry`, research `v22/v23Engine`, `v22/v23/v24Replay`) с `LEGACY_V2_PROVENANCE`
+  (sha256 каждого файла); DB-класс `Settings` заменён read-only ридером sha-пинованного snapshot. Только для `definitions/v2_*`;
+  тест запрещает импорт из любого production-модуля. `EXECUTION_CODE_PORTED = NONE`.
+- `definitions/v2_2-htf-spot-engine` (REJECTED_ON_TRAIN, pin `5ce58db`), `v2_3-sniper-reversal` (REJECTED_ON_TRAIN, `2ee06d1`),
+  `v2_4-asymmetric-sniper` (FAILED_VALIDATION, `c52fda7`, freeze `53c9ad8`), `v2_5-trailing-stop` (TRAIN_ONLY_NOT_VALIDATED, `07dabbb`),
+  `v2_6-sniper-trailing` (REJECTED_ON_TRAIN, `e89cf1e`) — все arms, артефакты, расхождения D-V22…D-V26, оговорки RU.
+- Реальные перезапуски на `c3c1dce` (15m/30m/1h/4h + 1d HTF) совпали с артефактами по всем сравниваемым полям → `REPRODUCED`:
+  V2.2 FULL n=5323; V2.3 S-cor n=1497; V2.4 S-asym TRAIN n=689 и VALIDATION n=234 (провал воспроизведён); V2.5 V25 n=30 867;
+  V2.6 V26 / V26-frozen-exit n=317; V2.7 RR15…RR40 n=317; V2.8 7 TRAIN-веток + SMC/Trail VALIDATION n=98. Частичный охват
+  (не все ветки V2.2/V2.3/V2.4/V2.5) явно указан в `*_REPRODUCED_RESULTS.scope`. Evidence: `results/v2x/cryptora-reproduction/`.
+- `scripts/strategy-archive/reproduce.mjs`: object-keyed arms V2.x, сравнение нечувствительно к порядку ключей.
+- Реестр: 11 импортировано + 2 запланировано (V2.1a/b) = 13. Тесты `legacyV2.test.ts` (30) — изоляция, provenance, look-ahead
+  (`maxOpenTimeRead ≤ toMs`), replay-примитивы, честность статусов; `v27v28.test.ts` обновлён. Все 71 sha-пин V2.2–V2.8 пересчитаны.
+
 ## [0.8.14] — 2026-09-16
 
 ### Added — Архив стратегий C5: V2.7 + V2.8 (семантика комиссий сохранена)

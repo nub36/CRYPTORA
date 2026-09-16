@@ -20,8 +20,8 @@ const local = (p: string) => 'src/services/strategyArchive/results/' + p.replace
 describe('V2.7 — fixed-RR optimisation: REJECTED_ON_TRAIN, no headline, fee drag invariant', () => {
   it('verdict/reproducibility are separate; no headline variant; TRAIN only; legacy engine dependency declared', () => {
     expect(V27_DEFINITION.verdict).toBe('REJECTED_ON_TRAIN');
-    expect(V27_DEFINITION.reproducibility).toBe('SOURCE_CHAIN_VERIFIED_NOT_RERUN');
-    expect(V27_DEFINITION.reproductionBlockedReason).toMatch(/4839074/);
+    expect(V27_DEFINITION.reproducibility).toBe('REPRODUCED');
+    expect(V27_DEFINITION.reproductionEvidence?.length).toBe(5);
     expect(V27_DEFINITION.legacyEngineDependency).toBe('FROZEN_V2_ENGINE_4839074');
     expect(V27_DEFINITION.headlineVariantId).toBeUndefined();
     expect(V27_DEFINITION.slicesAvailable).toEqual(['train']);
@@ -40,9 +40,10 @@ describe('V2.7 — fixed-RR optimisation: REJECTED_ON_TRAIN, no headline, fee dr
     expect(t.best.arm).toBe('RR40'); expect(t.best.positive).toBe(false);
     expect(V27_VARIANTS.find((x) => x.id === 'RR40')!.sourceRole).toMatch(/NOT an optimum/);
   });
-  it('runner refuses to fabricate entries (no legacy engine wired) and refuses non-existent slices', () => {
+  it('runner refuses unknown arms / non-existent slices; empty series yield zero trades (no fabrication)', () => {
     const input = { symbol: 'BTCUSDT', bySeries: {}, split: { symbol: 'BTCUSDT', timeframe: '15m' as const, trainFromMs: 0, trainToMs: 1, validFromMs: 2, validToMs: 3, testFromMs: 4, testToMs: 5 } };
-    expect(() => V27_DEFINITION.runSeries(input, 'train')).toThrow(/REPRODUCTION_NOT_WIRED/);
+    expect(() => V27_DEFINITION.runSeries(input, 'train')).toThrow(/no headline/);
+    expect(V27_DEFINITION.runSeries(input, 'train', 'RR40').trades).toEqual([]);
     expect(() => reproduce(V27_DEFINITION, [], 'validation')).toThrow(/never run/);
     expect(() => reproduce(V27_DEFINITION, [], 'train', undefined, 'RR99')).toThrow(/unknown variant/);
   });
@@ -56,7 +57,8 @@ describe('V2.7 — fixed-RR optimisation: REJECTED_ON_TRAIN, no headline, fee dr
 describe('V2.8 — zero-fee sniper + trailing: VALIDATED_GROSS_ONLY, never comparable with net@fees', () => {
   it('verdict VALIDATED_GROSS_ONLY; fee semantics GROSS_ONLY_ZERO_FEE; headline = frozen candidate Trail; both slices', () => {
     expect(V28_DEFINITION.verdict).toBe('VALIDATED_GROSS_ONLY');
-    expect(V28_DEFINITION.reproducibility).toBe('SOURCE_CHAIN_VERIFIED_NOT_RERUN');
+    expect(V28_DEFINITION.reproducibility).toBe('REPRODUCED');
+    expect(V28_DEFINITION.reproductionEvidence?.length).toBe(9);
     expect(V28_DEFINITION.assumptions.feeSemantics).toBe('GROSS_ONLY_ZERO_FEE');
     expect(V28_DEFINITION.assumptions.fees.makerBps).toBe(0); expect(V28_DEFINITION.assumptions.fees.takerBps).toBe(0);
     expect(V28_DEFINITION.headlineVariantId).toBe('Trail');
@@ -79,9 +81,9 @@ describe('V2.8 — zero-fee sniper + trailing: VALIDATED_GROSS_ONLY, never compa
     expect(smc.grossRPerTrade).toBe(-0.1821);                           // anchor collapsed out of sample
     expect(V28_SOURCE_RESULTS.feeSemantics).toBe('GROSS_ONLY_ZERO_FEE');
   });
-  it('runner refuses to fabricate entries; RR arms are rejected on the validation slice', () => {
+  it('runner: empty series yield zero trades; RR arms are rejected on the validation slice', () => {
     const input = { symbol: 'BTCUSDT', bySeries: {}, split: { symbol: 'BTCUSDT', timeframe: '15m' as const, trainFromMs: 0, trainToMs: 1, validFromMs: 2, validToMs: 3, testFromMs: 4, testToMs: 5 } };
-    expect(() => V28_DEFINITION.runSeries(input, 'train')).toThrow(/REPRODUCTION_NOT_WIRED/);
+    expect(V28_DEFINITION.runSeries(input, 'train').trades).toEqual([]);
     expect(() => V28_DEFINITION.runSeries(input, 'validation', 'RR25')).toThrow(/not run on slice validation/);
   });
   it('caveats: gross-only warning first, incomparability with V3.x, one-trade fragility, no promise wording', () => {
@@ -90,8 +92,8 @@ describe('V2.8 — zero-fee sniper + trailing: VALIDATED_GROSS_ONLY, never compa
     expect(all).toMatch(/НЕ сопоставимо с net-результатами V3\.x/); expect(all).toMatch(/ОДНОЙ сделки/);
     expect(all).not.toMatch(/прибыльная стратегия|лучший сигнал|ожидаемая доходность/i);
   });
-  it('registry: 6 imported + 7 planned = 13; V2.7/V2.8 no longer planned', () => {
-    expect(STRATEGY_ARCHIVE.length).toBe(6); expect(STRATEGY_ARCHIVE_PLANNED.length).toBe(7);
+  it('registry: 11 imported + 2 planned = 13; V2.7/V2.8 no longer planned', () => {
+    expect(STRATEGY_ARCHIVE.length).toBe(11); expect(STRATEGY_ARCHIVE_PLANNED.length).toBe(2);
     expect(STRATEGY_ARCHIVE_TOTAL_ROWS).toBe(13);
     expect(STRATEGY_ARCHIVE_PLANNED.some((p) => p.version === '2.7' || p.version === '2.8')).toBe(false);
   });

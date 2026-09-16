@@ -11,12 +11,21 @@
  */
 
 import type {
-  ResultOrigin, SourceFilePin, SpecResearchDiscrepancy, StrategyDefinition, StrategyVariant,
+  ReproductionEvidence, ResultOrigin, SourceFilePin, SpecResearchDiscrepancy, StrategyDefinition, StrategyVariant,
 } from '../../types';
 import { ARM_ORDER, V28_CONSTANTS } from './v28Core';
 import { runV28Series } from './v28Runner';
 import aTrain from '../../results/v28/v28-train-metrics.json' with { type: 'json' };
 import aValid from '../../results/v28/v28-validation-metrics.json' with { type: 'json' };
+import rTSMC from '../../results/v28/cryptora-reproduction/v28-train-SMC-reproduction.json' with { type: 'json' };
+import rTTrail from '../../results/v28/cryptora-reproduction/v28-train-Trail-reproduction.json' with { type: 'json' };
+import rTRR15 from '../../results/v28/cryptora-reproduction/v28-train-RR15-reproduction.json' with { type: 'json' };
+import rTRR20 from '../../results/v28/cryptora-reproduction/v28-train-RR20-reproduction.json' with { type: 'json' };
+import rTRR25 from '../../results/v28/cryptora-reproduction/v28-train-RR25-reproduction.json' with { type: 'json' };
+import rTRR30 from '../../results/v28/cryptora-reproduction/v28-train-RR30-reproduction.json' with { type: 'json' };
+import rTRR40 from '../../results/v28/cryptora-reproduction/v28-train-RR40-reproduction.json' with { type: 'json' };
+import rVSMC from '../../results/v28/cryptora-reproduction/v28-validation-SMC-reproduction.json' with { type: 'json' };
+import rVTrail from '../../results/v28/cryptora-reproduction/v28-validation-Trail-reproduction.json' with { type: 'json' };
 
 const TRAIN_ART = 'artifacts/research/v28/v28-train-metrics.json';
 const TRAIN_SHA = '34c82d05b8200b82fbcd5a3c0ce1e40cc19d3fc9deb09c4a3ad6c6d35f1146ec';
@@ -103,11 +112,34 @@ export const V28_DISCREPANCIES: readonly SpecResearchDiscrepancy[] = Object.free
     id: 'D-V28-005',
     specStatement: 'Entries and the SMC arm depend on the frozen V2 engine `4839074`.',
     researchBehaviour: 'Sniper entry population (317 TRAIN / 98 VALIDATION) and the SMC arm come from evaluateV2 / resolveEntry / executableLadder / trackOutcome.',
-    impact: 'Reproduction inside CRYPTORA requires the isolated legacy engine port (C6); until then SOURCE_CHAIN_VERIFIED_NOT_RERUN.',
+    impact: 'Reproduced in C6 through the isolated legacy engine port (`legacy/v2`); the port is an archive dependency only, never wired to LIVE or BacktestEngine.',
     reproductionPolicy: 'PRESERVE_RESEARCH_BEHAVIOUR',
     evidence: ['research/v28_gross_only.ts imports'],
   },
 ]);
+
+const V28_REPRO = [rTSMC, rTTrail, rTRR15, rTRR20, rTRR25, rTRR30, rTRR40, rVSMC, rVTrail];
+/** REPRODUCED (C6): TRAIN 7 arms + VALIDATION SMC/Trail re-run over the isolated legacy engine port. Fees = 0 preserved. */
+export const V28_REPRODUCTION_EVIDENCE: readonly ReproductionEvidence[] = Object.freeze(
+  V28_REPRO.map((e) => ({
+    slice: `${e.slice}:${e.variantId}`,
+    runAtUtc: e.runAtUtc,
+    datasetCommit: e.dataset.commit,
+    sourceArtifactPath: e.sourceArtifact.path,
+    sourceArtifactSha256: e.sourceArtifact.sha256,
+    deterministicDigest: e.deterministicDigest,
+    tradeCount: e.tradeCount,
+    allMatched: e.comparison.allMatched,
+    firstMismatch: e.comparison.firstMismatch,
+    evidencePath: `src/services/strategyArchive/results/v28/cryptora-reproduction/v28-${e.slice}-${e.variantId}-reproduction.json`,
+  })),
+);
+export const V28_REPRODUCED_RESULTS = Object.freeze({
+  origin: 'DERIVED_BY_CRYPTORA' as ResultOrigin,
+  feeSemantics: 'GROSS_ONLY_ZERO_FEE' as const,
+  train: Object.fromEntries(V28_REPRO.filter((e) => e.slice === 'train').map((e) => [e.variantId, { n: e.metrics.n, grossRPerTrade: e.metrics.grossRPerTrade, profitFactor: e.metrics.profitFactor, maxDrawdownR: e.metrics.maxDrawdownR, digest: e.deterministicDigest }])),
+  validation: Object.fromEntries(V28_REPRO.filter((e) => e.slice === 'validation').map((e) => [e.variantId, { n: e.metrics.n, grossRPerTrade: e.metrics.grossRPerTrade, profitFactor: e.metrics.profitFactor, maxDrawdownR: e.metrics.maxDrawdownR, digest: e.deterministicDigest }])),
+});
 
 export const V28_SOURCE_RESULTS = Object.freeze({
   origin: 'SOURCE_REPORTED' as ResultOrigin,
@@ -126,6 +158,7 @@ export const V28_CAVEATS_RU: readonly string[] = Object.freeze([
   'Кандидат заморожен до валидации (852167c) по устойчивости к выбросам, а не по сырому gross: победитель TRAIN по gross — SMC (0.1490) — на VALIDATION рухнул до −0.1821.',
   'На TRAIN сравнивались 7 выходов на одном наборе из 317 входов; RR-варианты никогда не валидировались. TEST-2026 предзаявлен, но не запускался (данных не было).',
   'В источнике вытеснена V3.0 (SUPERSEDED). Входы — замороженный движок V2 `4839074`, четыре таймфрейма в одном пуле.',
+  'Воспроизводимость в CRYPTORA: REPRODUCED — TRAIN (7 выходов, n=317) и VALIDATION (SMC + Trail, n=98) перезапущены на датасете c3c1dce через изолированный порт замороженного движка V2 (4839074) и совпали с артефактами источника (Trail VALIDATION digest fnv1a32:7a323ada:n98). Комиссии = 0 сохранены как в источнике. «Воспроизведено» ≠ «работает».',
   'CRYPTORA не исполняет сделки.',
 ]);
 
@@ -144,8 +177,8 @@ const definition: StrategyDefinition = {
   name: 'Zero-fee Sniper + Trailing (gross-only)',
   nameRu: 'Снайпер + трейлинг при нулевых комиссиях (только gross)',
   verdict: 'VALIDATED_GROSS_ONLY',
-  reproducibility: 'SOURCE_CHAIN_VERIFIED_NOT_RERUN',
-  reproductionBlockedReason: 'Entry population and the SMC arm are produced by the frozen V2 engine 4839074 (15m/30m/1h/4h, HTF context, sniper filter, frozen trackOutcome). Exit arms are ported; the engine is ported in C6 as an isolated legacy dependency, after which a rerun is attempted.',
+  reproducibility: 'REPRODUCED',
+  reproductionEvidence: V28_REPRODUCTION_EVIDENCE,
   legacyEngineDependency: 'FROZEN_V2_ENGINE_4839074',
   variants: V28_VARIANTS,
   headlineVariantId: 'Trail',
