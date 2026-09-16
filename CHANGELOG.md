@@ -4,6 +4,20 @@
 
 ---
 
+## [0.8.11] — 2026-09-16
+
+### Added — Архив стратегий C2: V3.1 HTF Trend Pullback & Mitigation (ФАЛЬСИФИЦИРОВАНА, воспроизведена)
+- `definitions/v3_1-htf-trend-pullback/` — дословный порт `research/v31_trend_pullback.ts` (sha `1f18bb3c…`,
+  pin `292050c`): оба архивных варианта `leg` (PRIMARY) и `same-bar` (SECONDARY), без выбора лучшего.
+- Реальный прогон TRAIN на датасете `c3c1dce`: leg n=158 gross −0.0838 net −0.1097 PF 0.7873; same-bar n=82
+  net −0.2819 — все поля источника (funnel, exits, bySymbol, TP1/TP2 hit rate…) совпали. Статус
+  `REPRODUCED`, research verdict `FALSIFIED_ON_TRAIN` — два независимых измерения.
+- Контракт: `StrategyVariant`, `slicesAvailable` (движок отказывается «изобретать» VALIDATION для
+  TRAIN-only версий), `ArchiveTrade.tags`; примитивы `emaSeries`, `structureBias`, `detectStructureBreak`.
+- Расхождения D-V31-001…003 (перекрытие, раскрытый источником баг двойного учёта, Spot/futures).
+- Универсальный офлайн-скрипт `scripts/strategy-archive/reproduce.mjs` (`--version --slice --variant`).
+- Реестр: 2 импортировано + 11 запланировано = 13 строк источника (`STRATEGY_ARCHIVE_TOTAL_ROWS`).
+
 ## [0.8.10] — 2026-09-16
 
 ### Changed — Архив стратегий C1: V3.0 реально воспроизведена на закреплённом датасете

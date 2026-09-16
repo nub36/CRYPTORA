@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  ARCHIVE_TF_MS, FROZEN_ENGINE, FROZEN_SETTINGS_SHA256, STRATEGY_ARCHIVE, STRATEGY_ARCHIVE_PLANNED,
+  ARCHIVE_TF_MS, FROZEN_ENGINE, FROZEN_SETTINGS_SHA256, STRATEGY_ARCHIVE, STRATEGY_ARCHIVE_PLANNED, STRATEGY_ARCHIVE_TOTAL_ROWS,
   V30_DEFINITION, V30_REPRODUCED_RESULTS, V30_SOURCE_PINS, V30_SOURCE_RESULTS, V30_CAVEATS_RU, V30_COMMITS,
   ohlcvToArchiveCandles, archiveCandlesToOhlcv, detectTimestampUnit, toMs, validateSeries, splitFor,
 } from '@/services/strategyArchive';
@@ -202,10 +202,15 @@ describe('registry & status honesty', () => {
     expect(all).toMatch(/не исполняет сделки/);
     expect(all).not.toMatch(/прибыльная стратегия|лучший сигнал|ожидаемая доходность/i);
   });
-  it('registry lists V3.0 and keeps every not-yet-imported version (incl. V3.1 FALSIFIED) visible', () => {
-    expect(STRATEGY_ARCHIVE.map((d) => d.id)).toEqual(['V3_0_HTF_LIQUIDATION_TRAP']);
-    expect(STRATEGY_ARCHIVE_PLANNED.find((p) => p.version === '3.1')?.sourceVerdict).toBe('FALSIFIED_ON_TRAIN');
-    expect(STRATEGY_ARCHIVE_PLANNED.length).toBe(11);
+  it('registry: imported + planned = the 13 source archive rows, no version listed twice, negatives visible', () => {
+    const imported = STRATEGY_ARCHIVE.map((d) => d.version);
+    const planned = STRATEGY_ARCHIVE_PLANNED.map((p) => p.version);
+    expect(new Set([...imported, ...planned]).size).toBe(imported.length + planned.length);
+    // source docs/STRATEGY_ARCHIVE.md @2d8a3dd: 13 rows (V2.1a, V2.1b, V2.2…V2.8, V3.0…V3.3); baseline run is a reference, not a row
+    const expected = ['2.1a', '2.1b', '2.2', '2.3', '2.4', '2.5', '2.6', '2.7', '2.8', '3.0', '3.1', '3.2', '3.3'];
+    expect([...imported, ...planned].sort()).toEqual(expected.sort());
+    expect(STRATEGY_ARCHIVE_TOTAL_ROWS).toBe(13);
+    expect(STRATEGY_ARCHIVE.find((d) => d.version === '3.1')?.verdict).toBe('FALSIFIED_ON_TRAIN');
   });
   it('definition is immutable', () => {
     expect(Object.isFrozen(V30_DEFINITION)).toBe(true);

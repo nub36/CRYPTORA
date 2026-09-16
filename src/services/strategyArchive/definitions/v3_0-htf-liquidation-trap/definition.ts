@@ -132,6 +132,7 @@ const definition: StrategyDefinition = {
   verdict: 'VALIDATED_FOR_RESEARCH',
   reproducibility: 'REPRODUCED',
   reproductionEvidence: V30_REPRODUCTION_EVIDENCE,
+  slicesAvailable: ['train', 'validation'],
   execTimeframe: V30_CONSTANTS.EXEC_TF,
   structuralTimeframe: V30_CONSTANTS.STRUCT_TF,
   symbols: V30_CONSTANTS.SYMBOLS,

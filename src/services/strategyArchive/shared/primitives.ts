@@ -143,3 +143,109 @@ export function quantileSorted(sorted: readonly number[], f: number): number {
   const i = Math.min(sorted.length - 1, Math.max(0, Math.round(f * (sorted.length - 1))));
   return sorted[i]!;
 }
+
+/* ------------------------------------------------------------------ */
+/* Additional frozen primitives used by V3.1+ (same source files/hashes) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * EMA aligned to `values`; null until the seed bar (SMA of the first `period`).
+ * Ported verbatim from src/strategy/v2/indicators.ts `emaSeries`.
+ */
+export function emaSeries(values: readonly number[], period: number): (number | null)[] {
+  const n = values.length;
+  const out: (number | null)[] = new Array(n).fill(null);
+  if (period < 1 || n < period) return out;
+  const k = 2 / (period + 1);
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += values[i] ?? 0;
+  let prev = sum / period;
+  out[period - 1] = prev;
+  for (let i = period; i < n; i++) {
+    prev = (values[i] ?? 0) * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+
+export type StructureBias = 'BULLISH' | 'BEARISH' | 'RANGE';
+
+/** Swings confirmed at or before `atIndex` (src/strategy/v2/structure.ts `knownSwings`). */
+export function knownSwings(swings: readonly ArchiveSwing[], atIndex: number): ArchiveSwing[] {
+  return swings.filter((s) => s.confirmedIndex <= atIndex);
+}
+
+/** HH+HL → BULLISH, LH+LL → BEARISH, else RANGE (structure.ts `structureBias`). */
+export function structureBias(swings: readonly ArchiveSwing[], atIndex: number): StructureBias {
+  const known = knownSwings(swings, atIndex);
+  const highs = known.filter((s) => s.kind === 'HIGH').slice(-2);
+  const lows = known.filter((s) => s.kind === 'LOW').slice(-2);
+  if (highs.length < 2 || lows.length < 2) return 'RANGE';
+  const hh = highs[1]!.price > highs[0]!.price;
+  const hl = lows[1]!.price > lows[0]!.price;
+  const lh = highs[1]!.price < highs[0]!.price;
+  const ll = lows[1]!.price < lows[0]!.price;
+  if (hh && hl) return 'BULLISH';
+  if (lh && ll) return 'BEARISH';
+  return 'RANGE';
+}
+
+export interface ArchiveStructureBreak {
+  type: 'BOS' | 'CHOCH';
+  direction: 'LONG' | 'SHORT';
+  index: number;
+  time: number;
+  level: number;
+  levelIndex: number;
+  penetrationAtr: number;
+  wickPenetrationAtr: number;
+  wickOnly: boolean;
+}
+
+/**
+ * Structure break at `index`: CLOSE beyond the most recent swing confirmed strictly
+ * BEFORE the bar. A wick through the level is returned with wickOnly=true and is NOT
+ * a break. Ported verbatim from structure.ts `detectStructureBreak` (reason string dropped).
+ */
+export function detectStructureBreak(
+  candles: readonly ArchiveCandle[],
+  swings: readonly ArchiveSwing[],
+  index: number,
+  atr: number | null,
+  minPenetrationAtr: number,
+): ArchiveStructureBreak | null {
+  const bar = candles[index];
+  if (!bar || atr === null || atr <= 0) return null;
+  const known = knownSwings(swings, index - 1);
+  const priorBias = structureBias(swings, index - 1);
+  const lastHigh = [...known].reverse().find((s) => s.kind === 'HIGH');
+  const lastLow = [...known].reverse().find((s) => s.kind === 'LOW');
+
+  const mk = (direction: 'LONG' | 'SHORT', level: number, levelIndex: number): ArchiveStructureBreak => {
+    const closeBeyond = direction === 'LONG' ? bar.close - level : level - bar.close;
+    const wickBeyond = direction === 'LONG' ? bar.high - level : level - bar.low;
+    const wickOnly = closeBeyond <= 0 && wickBeyond > 0;
+    const continues =
+      (direction === 'LONG' && priorBias === 'BULLISH') ||
+      (direction === 'SHORT' && priorBias === 'BEARISH');
+    return {
+      type: continues ? 'BOS' : 'CHOCH',
+      direction, index, time: bar.openTime, level, levelIndex,
+      penetrationAtr: closeBeyond / atr,
+      wickPenetrationAtr: wickBeyond / atr,
+      wickOnly,
+    };
+  };
+
+  if (lastHigh && bar.high > lastHigh.price) {
+    const br = mk('LONG', lastHigh.price, lastHigh.index);
+    if (!br.wickOnly && br.penetrationAtr >= minPenetrationAtr) return br;
+    return br.wickOnly ? br : null;
+  }
+  if (lastLow && bar.low < lastLow.price) {
+    const br = mk('SHORT', lastLow.price, lastLow.index);
+    if (!br.wickOnly && br.penetrationAtr >= minPenetrationAtr) return br;
+    return br.wickOnly ? br : null;
+  }
+  return null;
+}

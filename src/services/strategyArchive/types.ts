@@ -158,6 +158,23 @@ export interface ArchiveTrade {
   /** Fee in R at the stress fee model, if defined. */
   feeRStress: number | null;
   stopDistancePct: number;
+  /** Version-specific flags copied from the research runner (e.g. hitTp1, pullbackSource). */
+  tags?: Readonly<Record<string, string | number | boolean>>;
+}
+
+/**
+ * A pre-registered configuration of one version that the SOURCE ran and archived
+ * (e.g. V3.1 `--pullback=leg|same-bar`). Variants are part of the historical record;
+ * they are never cherry-picked — every archived variant is listed with its own verdict.
+ */
+export interface StrategyVariant {
+  id: string;
+  label: string;
+  /** How the source designated it (PRIMARY / SECONDARY / SENSITIVITY / UNPROMOTED …). */
+  sourceRole: string;
+  sourceVerdict: string;
+  artifactPath: string;
+  artifactSha256: string;
 }
 
 export interface FunnelCounts {
@@ -200,6 +217,7 @@ export interface RMetrics {
 
 export interface ReproductionReport {
   versionId: string;
+  variantId: string | null;
   slice: SliceName;
   origin: 'DERIVED_BY_CRYPTORA';
   funnel: FunnelCounts;
@@ -236,8 +254,13 @@ export interface StrategyDefinition {
   assumptions: FrozenAssumptions;
   discrepancies: readonly SpecResearchDiscrepancy[];
   sourcePins: readonly SourceFilePin[];
+  /** Archived variants (if the source ran several); `headlineVariantId` = the source's pre-registered primary. */
+  variants?: readonly StrategyVariant[];
+  headlineVariantId?: string;
+  /** Slices the source actually ran (TRAIN-only versions never expose 'validation'). */
+  slicesAvailable: readonly SliceName[];
   /** Replays one symbol over one slice, preserving the research runner's semantics. */
-  runSeries(input: ArchiveSeriesInput, slice: SliceName): {
+  runSeries(input: ArchiveSeriesInput, slice: SliceName, variantId?: string): {
     trades: ArchiveTrade[];
     funnel: FunnelCounts;
     maxCandleOpenTimeRead: number;

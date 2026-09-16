@@ -45,7 +45,14 @@ export function reproduce(
   series: readonly SymbolSeries[],
   slice: SliceName,
   splits?: Readonly<Record<string, SplitWindow>>,
+  variantId?: string,
 ): ReproductionReport {
+  if (!definition.slicesAvailable.includes(slice)) {
+    throw new Error(`${definition.id}: slice "${slice}" was never run by the source — refusing to invent a result`);
+  }
+  if (variantId !== undefined && !definition.variants?.some((v) => v.id === variantId)) {
+    throw new Error(`${definition.id}: unknown variant "${variantId}"`);
+  }
   const funnel: FunnelCounts = {
     signals: 0, pendingCreated: 0, filled: 0, expired: 0, cancelled: 0, rejected: 0, unresolved: 0,
   };
@@ -54,13 +61,14 @@ export function reproduce(
   for (const s of series) {
     const split = splits?.[s.symbol] ?? splitFor(s.symbol, definition.execTimeframe);
     if (!split) continue;
-    const out = definition.runSeries({ symbol: s.symbol, bySeries: s.bySeries, split }, slice);
+    const out = definition.runSeries({ symbol: s.symbol, bySeries: s.bySeries, split }, slice, variantId);
     addFunnel(funnel, out.funnel);
     trades.push(...out.trades);
     if (out.maxCandleOpenTimeRead > maxRead) maxRead = out.maxCandleOpenTimeRead;
   }
   return {
     versionId: definition.id,
+    variantId: variantId ?? definition.headlineVariantId ?? null,
     slice,
     origin: 'DERIVED_BY_CRYPTORA',
     funnel,
