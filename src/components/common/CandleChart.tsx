@@ -13,6 +13,10 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   symbol = 'BTC/USDT',
   height = 380,
 }) => {
+  // Провенанс свечей определяется данными, а не константой: демо-провайдер помечает
+  // ряды синтетическим источником, LIVE-провайдер — фактическим биржевым.
+  const candleSource = data[0]?.provenance?.exchange;
+  const isDemoCandles = candleSource === 'synthetic-demo' || (data.length > 0 && !candleSource);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -106,10 +110,23 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       }
     };
 
+    // Немедленная подгонка под фактическую ширину контейнера: без этого canvas может
+    // остаться шире карточки (создан до финального layout/шрифтов) и обрезаться.
+    handleResize();
+
     window.addEventListener('resize', handleResize);
+
+    // ResizeObserver ловит смену ширины контейнера (сетка 72/28 при 1280px,
+    // сайдбар, скроллбар), которую window.resize не покрывает.
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && chartContainerRef.current) {
+      resizeObserver = new ResizeObserver(() => handleResize());
+      resizeObserver.observe(chartContainerRef.current);
+    }
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      resizeObserver?.disconnect();
       chart.remove();
       chartRef.current = null;
     };
@@ -149,8 +166,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         <span className="font-bold text-white tracking-tight text-sm drop-shadow-sm">
           {symbol}
         </span>
-        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-amber-300">
-          DEMO СВЕЧИ
+        <span
+          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${
+            isDemoCandles
+              ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+          }`}
+        >
+          {isDemoCandles ? 'DEMO СВЕЧИ' : `LIVE · ${(candleSource || 'binance').toUpperCase()}`}
         </span>
       </div>
 

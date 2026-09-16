@@ -7,6 +7,10 @@ import { CandleChart } from '@/components/common/CandleChart';
 import { Badge } from '@/components/common/Badge';
 import { OrderBookL2 } from '@/components/market/OrderBookL2';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
+import { LiquidationPulse } from '@/services/liquidations/LiquidationPulse';
+import { AssetPulsePanel } from '@/components/market/AssetPulsePanel';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { LiquidationData } from '@/types/market';
 import { MemoryTimeSeriesRepository } from '@/services/storage/TimeSeriesRepository';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { OrderBookSnapshot } from '@/types/realtime';
@@ -33,7 +37,13 @@ export const CoinDetailPage: React.FC = () => {
   const [futuresData, setFuturesData] = useState<FuturesAsset | null>(null);
   const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
   const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
+  const [liquidations, setLiquidations] = useState<LiquidationData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Высота основного графика: доминирующий элемент рабочей области на desktop,
+  // компактнее на мобильных. Значения детерминированы и не зависят от случайности.
+  const isDesktopWorkspace = useMediaQuery('(min-width: 1280px)');
+  const chartHeight = isDesktopWorkspace ? 460 : 340;
 
   useEffect(() => {
     if (symbol) {
@@ -58,11 +68,12 @@ export const CoinDetailPage: React.FC = () => {
 
     async function fetchData() {
       try {
-        const [detail, candleList, ftrs, rdr] = await Promise.all([
+        const [detail, candleList, ftrs, rdr, liqs] = await Promise.all([
           provider.getAssetDetail(symbol || 'BTC'),
           provider.getCandles(symbol || 'BTC', timeframe),
           provider.getFuturesList(),
           provider.getRadarEvents(symbol || 'BTC'),
+          provider.getLiquidations(),
         ]);
 
         setAsset(detail);
@@ -76,6 +87,7 @@ export const CoinDetailPage: React.FC = () => {
         );
         setFuturesData(matchFutures || null);
         setRadarEvents(rdr);
+        setLiquidations(liqs);
       } finally {
         setLoading(false);
       }
@@ -132,6 +144,16 @@ export const CoinDetailPage: React.FC = () => {
   const isStarred = watchlist.includes(asset.symbol);
   const livePrice = symbol ? livePrices[symbol.toUpperCase()] : undefined;
   const currentPrice = livePrice !== undefined ? livePrice : asset.price;
+
+  // Снимок «ликвидации + деривативы» строго по текущему активу.
+  // Источник данных определяется провайдером: фактические события, демо-набор или
+  // модельная оценка — с явной маркировкой происхождения в UI.
+  const pulse = LiquidationPulse.buildAssetPulse({
+    symbol: asset.symbol,
+    liquidations,
+    futures: futuresData,
+    priceChange24h: asset.change24h,
+  });
 
   return (
     <div className="mx-auto max-w-[1920px] space-y-3.5 px-3 py-3 sm:px-4">
@@ -254,8 +276,13 @@ export const CoinDetailPage: React.FC = () => {
         </Link>
       </div>
 
-      {/* Main Chart + Timeframes Row */}
-      <div className="space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
+      {/* Analytical Workspace: доминирующий график + снимок деривативов/ликвидаций.
+          Двухколоночная раскладка включается от 1280px; ниже Pulse складывается под график. */}
+      <div
+        data-qa="coin-workspace"
+        className="grid grid-cols-1 xl:grid-cols-[72fr_28fr] gap-3.5 items-start"
+      >
+      <div data-qa="coin-chart-card" className="space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
           <div className="flex items-center space-x-3">
             <span className="font-mono font-bold text-sm text-white">
@@ -286,13 +313,18 @@ export const CoinDetailPage: React.FC = () => {
         </div>
 
         {/* Interactive TradingView Lightweight Chart */}
-        <CandleChart data={candles} symbol={`${asset.symbol}/USDT`} height={380} />
+        <CandleChart data={candles} symbol={`${asset.symbol}/USDT`} height={chartHeight} />
+      </div>
+
+        <div className="xl:sticky xl:top-[70px]">
+          <AssetPulsePanel pulse={pulse} />
+        </div>
       </div>
 
       {/* Stats Grid: Market Metrics, Derivatives, Technical Indicators */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Card 1: Key Market Stats */}
-        <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-mono">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <Activity className="w-4 h-4 text-brand-cyan" />
             <span className="text-[13px] font-bold uppercase tracking-wider text-white">
@@ -341,61 +373,73 @@ export const CoinDetailPage: React.FC = () => {
         </div>
 
         {/* Card 2: Futures & Derivatives Snapshot */}
-        <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-mono">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <Layers className="w-4 h-4 text-brand-purple" />
             <span className="text-[13px] font-bold uppercase tracking-wider text-white">
-              Деривативы и фьючерсы
+              Деривативы: детали контракта
             </span>
           </div>
 
           {futuresData ? (
             <div className="space-y-2 text-xs">
+              {/* Детализация без дублей со снимком Pulse: там OI, OI Δ24ч и фандинг 8ч,
+                  здесь — остальные метрики контракта и производные показатели. */}
               <div className="flex justify-between">
-                <span className="text-slate-400">Mark Price</span>
+                <span className="text-slate-400">Mark / Index Price</span>
                 <span className="font-bold text-white">
-                  {formatCurrency(futuresData.markPrice, { decimals: futuresData.markPrice > 10 ? 2 : 4 })}
+                  {formatCurrency(futuresData.markPrice, { decimals: futuresData.markPrice > 10 ? 2 : 4 })} /{' '}
+                  {formatCurrency(futuresData.indexPrice, { decimals: futuresData.indexPrice > 10 ? 2 : 4 })}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Ставка финансирования (8h)</span>
+                <span className="text-slate-400">Спред метки к индексу</span>
+                <span className="text-slate-200 tabular-nums">
+                  {formatCurrency(futuresData.markPrice - futuresData.indexPrice, {
+                    decimals: futuresData.markPrice > 10 ? 2 : 4,
+                  })}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Прогноз фандинга (8h)</span>
                 <span
-                  className={`font-bold ${
-                    futuresData.fundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'
+                  className={`font-bold tabular-nums ${
+                    futuresData.predictedFundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'
                   }`}
                 >
-                  {futuresData.fundingRate >= 0 ? '+' : ''}
-                  {(futuresData.fundingRate).toFixed(4)}%
+                  {futuresData.predictedFundingRate >= 0 ? '+' : ''}
+                  {futuresData.predictedFundingRate.toFixed(4)}%
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Годовой фандинг (APR)</span>
-                <span className="text-slate-200 font-semibold">
+                <span className="text-slate-200 font-semibold tabular-nums">
                   {formatPercent(futuresData.annualizedFundingRate)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Открытый интерес (OI)</span>
-                <span className="font-bold text-white">
-                  {formatCurrency(futuresData.openInterest, { compact: true })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">OI Δ за 24 часа</span>
+                <span className="text-slate-400">OI Δ за 1 час</span>
                 <span
-                  className={`font-bold ${
-                    futuresData.openInterestChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'
+                  className={`font-bold tabular-nums ${
+                    futuresData.openInterestChange1h >= 0 ? 'text-brand-green' : 'text-brand-red'
                   }`}
                 >
-                  {formatPercent(futuresData.openInterestChange24h)}
+                  {formatPercent(futuresData.openInterestChange1h)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Суточный фьючерсный объем</span>
-                <span className="text-slate-200">
+                <span className="text-slate-200 tabular-nums">
                   {formatCurrency(futuresData.futuresVolume24h, { compact: true })}
                 </span>
               </div>
+              <Link
+                to="/futures"
+                className="inline-flex items-center space-x-1 text-[11px] text-brand-cyan hover:underline pt-1"
+              >
+                <span>Все фьючерсы и фандинг</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
           ) : (
             <div className="py-8 text-center text-[13px] text-slate-500">
@@ -405,7 +449,7 @@ export const CoinDetailPage: React.FC = () => {
         </div>
 
         {/* Card 3: Technical Indicators Snapshot */}
-        <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-mono">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <SlidersHorizontal className="w-4 h-4 text-brand-sky" />
             <span className="text-[13px] font-bold uppercase tracking-wider text-white">

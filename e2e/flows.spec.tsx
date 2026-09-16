@@ -1,7 +1,7 @@
 import './setup-dom';
 import { resetBrowserStorage } from './setup-dom';
 import { test, expect } from '@playwright/test';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import App from '@/App';
@@ -84,10 +84,54 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText('Ранг #3')).toBeInTheDocument();
     expect(screen.getByText(/SOL\/USDT Свечной график/i)).toBeInTheDocument();
     expect(screen.getByText(/Рыночная статистика/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/Деривативы и фьючерсы/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Деривативы: детали контракта/i)).toBeInTheDocument();
     expect(screen.getByText(/Технические индикаторы/i)).toBeInTheDocument();
     expect(screen.getByText(/ORDER BOOK \(L2\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Демо-пары на ведущих биржах/i)).toBeInTheDocument();
+  });
+
+  test('Coin Detail workspace: график слева, Derivatives/Liquidation Pulse справа, переходы сохранены', async () => {
+    renderApp('/coin/ETH');
+
+    await screen.findByRole('heading', { name: 'Ethereum' });
+
+    // Контракт раскладки: одна колонка по умолчанию и 72/28 от 1280px.
+    const workspace = document.querySelector('[data-qa="coin-workspace"]') as HTMLElement;
+    expect(workspace).not.toBeNull();
+    expect(workspace.className).toContain('grid-cols-1');
+    expect(workspace.className).toContain('xl:grid-cols-[72fr_28fr]');
+
+    // График остаётся частью рабочей области и несёт провенанс данных.
+    const chartCard = document.querySelector('[data-qa="coin-chart-card"]') as HTMLElement;
+    expect(chartCard).not.toBeNull();
+    expect(within(chartCard).getByText(/Свечной график/i)).toBeInTheDocument();
+    expect(within(chartCard).getByText(/DEMO СВЕЧИ/i)).toBeInTheDocument();
+
+    // Снимок по активу: три обязательных блока с явной маркировкой происхождения.
+    const pulse = screen.getByLabelText('Derivatives and liquidation pulse');
+    expect(pulse).toBeInTheDocument();
+    expect(within(pulse).getByText(/LIQUIDATION PULSE/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/DEMO DATASET/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/^Деривативы$/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/LONG 24H/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/SHORT 24H/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Открытый интерес \(OI\)/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Фандинг \(8ч\)/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Базис \(basis\)/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/ПЕРЕКОС ПОТОКА/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/DERIVED/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Не является торговым сигналом/i)).toBeInTheDocument();
+
+    // Переходы в детальные разделы доступны прямо из рабочей области.
+    expect(
+      within(pulse).getByRole('link', { name: /Карта и поток ликвидаций/i }).getAttribute('href')
+    ).toBe('/liquidations');
+    expect(
+      within(pulse).getByRole('link', { name: /Все фьючерсы и фандинг/i }).getAttribute('href')
+    ).toBe('/futures');
+
+    // Снимок не подменяет фактические данные: демо-режим помечен, значения не выдуманы.
+    expect(within(pulse).getByText(/\$28\.25M/)).toBeInTheDocument();
   });
 
   test('Futures: derivatives table, aggregated OI and funding rate filtering', async () => {

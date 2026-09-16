@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline';
 import { BinanceFuturesLiquidationStream } from '@/services/realtime/BinanceFuturesLiquidationStream';
+import { LiquidationPulse } from '@/services/liquidations/LiquidationPulse';
 
 describe('LiquidationPipeline Unit Tests', () => {
   it('parses raw Binance forceOrder SELL into LONG liquidation event', () => {
@@ -322,5 +323,169 @@ describe('BinanceFuturesLiquidationStream Unit Tests', () => {
 
     expect(stream.getState()).toBe('idle');
     expect(pipeline.getStreamState()).toBe('idle');
+  });
+});
+
+describe('LiquidationPulse — снимок по активу (честность и детерминизм)', () => {
+  const futures = (overrides: Record<string, unknown> = {}) => ({
+    symbol: 'ETH/USDT',
+    markPrice: 3451.2,
+    indexPrice: 3450.6,
+    fundingRate: 0.0084,
+    predictedFundingRate: 0.0091,
+    annualizedFundingRate: 9.19,
+    openInterest: 8940000000,
+    openInterestChange1h: 0.62,
+    openInterestChange24h: 4.15,
+    futuresVolume24h: 22150000000,
+    longLiquidations24h: 8450000,
+    shortLiquidations24h: 19800000,
+    basisPct: 0.035,
+    isDemo: true,
+    ...overrides,
+  });
+
+  const event = (symbol: string, side: 'LONG' | 'SHORT', amountUsd: number, id: string) => ({
+    id,
+    timestamp: new Date().toISOString(),
+    symbol,
+    side,
+    amountUsd,
+    price: 3450,
+    exchange: 'Binance Futures',
+    isDemo: false,
+  });
+
+  const factualSnapshot = (events: any[]) => ({
+    totalLong24h: events.filter((e) => e.side === 'LONG').reduce((a, e) => a + e.amountUsd, 0),
+    totalShort24h: events.filter((e) => e.side === 'SHORT').reduce((a, e) => a + e.amountUsd, 0),
+    total24h: events.reduce((a, e) => a + e.amountUsd, 0),
+    largestEvent: events[0] ?? null,
+    eventsCount24h: events.length,
+    lastEventAt: events.length ? events[0].timestamp : null,
+    dataStatus: events.length ? ('LIVE_STREAM' as const) : ('AWAITING_STREAM' as const),
+    recentEvents: events,
+    assetBreakdown: [],
+    exchangeBreakdown: [],
+    timeline: [],
+    isDemo: false,
+  });
+
+  it('использует фактические события актива, когда они есть (FACTUAL)', () => {
+    const snapshot = factualSnapshot([
+      event('ETH/USDT', 'LONG', 1_000_000, 'e1'),
+      event('ETH/USDT', 'SHORT', 3_000_000, 'e2'),
+      event('BTC/USDT', 'SHORT', 9_000_000, 'e3'),
+    ]);
+    const pulse = LiquidationPulse.buildAssetPulse({
+      symbol: 'ETH',
+      liquidations: snapshot as any,
+      futures: futures({ isDemo: false }) as any,
+      priceChange24h: 2.45,
+    });
+
+    // Фактические события по активу имеют приоритет над любой модельной оценкой.
+    expect(pulse.liquidation.source).toBe('FACTUAL');
+    expect(pulse.liquidation.longUsd).toBe(1_000_000);
+    expect(pulse.liquidation.shortUsd).toBe(3_000_000);
+    expect(pulse.liquidation.longSharePct).toBeCloseTo(25, 0);
+    expect(pulse.liquidation.topEvents).toHaveLength(2);
+    expect(pulse.liquidation.topEvents[0].id).toBe('e2');
+  });
+
+  it('показывает модельную оценку только как ESTIMATED и предупреждает об этом', () => {
+    const snapshot = factualSnapshot([]);
+    const pulse = LiquidationPulse.buildAssetPulse({
+      symbol: 'ETH',
+      liquidations: snapshot as any,
+      futures: futures({ isDemo: false }) as any,
+      priceChange24h: 2.45,
+    });
+
+    expect(pulse.liquidation.source).toBe('ESTIMATED');
+    expect(pulse.liquidation.note).toBeTruthy();
+    expect(pulse.liquidation.note).toContain('модель');
+  });
+
+  it('в демо-режиме отдаёт демонстрационный набор с явной маркировкой DEMO', () => {
+    const demo = {
+      ...factualSnapshot([]),
+      dataStatus: 'DEMO' as const,
+      isDemo: true,
+      assetBreakdown: [{ symbol: 'ETH', totalUsd: 28_250_000, longUsd: 8_450_000, shortUsd: 19_800_000 }],
+      recentEvents: [event('ETH/USDT', 'SHORT', 920_000, 'liq-003')],
+    };
+    const pulse = LiquidationPulse.buildAssetPulse({
+      symbol: 'ETH',
+      liquidations: demo as any,
+      futures: futures() as any,
+      priceChange24h: 2.45,
+    });
+
+    expect(pulse.liquidation.source).toBe('DEMO');
+    expect(pulse.liquidation.longUsd).toBe(8_450_000);
+    expect(pulse.liquidation.shortUsd).toBe(19_800_000);
+    expect(pulse.liquidation.longSharePct).toBeCloseTo(29.9, 1);
+    expect(pulse.liquidation.topEvents[0].id).toBe('liq-003');
+  });
+
+  it('не фабрикует данные: без потока и без модели статус UNAVAILABLE, баланс пуст', () => {
+    const pulse = LiquidationPulse.buildAssetPulse({
+      symbol: 'ETH',
+      liquidations: null,
+      futures: null,
+      priceChange24h: 0,
+    });
+
+    expect(pulse.liquidation.source).toBe('UNAVAILABLE');
+    expect(pulse.liquidation.totalUsd).toBe(0);
+    expect(pulse.imbalance).toBeNull();
+    expect(pulse.derivatives).toBeNull();
+  });
+
+  it('индикатор перекоса детерминирован и учитывает демо-входы явно', () => {
+    const demo = {
+      ...factualSnapshot([]),
+      dataStatus: 'DEMO' as const,
+      assetBreakdown: [{ symbol: 'ETH', totalUsd: 28_250_000, longUsd: 8_450_000, shortUsd: 19_800_000 }],
+    };
+    const input = {
+      symbol: 'ETH',
+      liquidations: demo as any,
+      futures: futures() as any,
+      priceChange24h: 2.45,
+    };
+
+    const first = LiquidationPulse.buildAssetPulse(input);
+    const second = LiquidationPulse.buildAssetPulse(input);
+
+    expect(first.imbalance).toEqual(second.imbalance);
+    expect(first.imbalance!.basedOnDemo).toBe(true);
+    expect(first.imbalance!.score).toBeGreaterThanOrEqual(-100);
+    expect(first.imbalance!.score).toBeLessThanOrEqual(100);
+    expect(
+      first.imbalance!.components.liquidation +
+        first.imbalance!.components.funding +
+        first.imbalance!.components.openInterest +
+        first.imbalance!.components.price
+    ).toBeCloseTo(first.imbalance!.score, 0);
+  });
+
+  it('матчит канонический символ, пару и суффикс USDT одинаково', () => {
+    const demo = {
+      ...factualSnapshot([]),
+      dataStatus: 'DEMO' as const,
+      assetBreakdown: [{ symbol: 'ETH', totalUsd: 1_000, longUsd: 400, shortUsd: 600 }],
+    };
+    for (const symbol of ['ETH', 'ETHUSDT', 'eth/usdt']) {
+      const pulse = LiquidationPulse.buildAssetPulse({
+        symbol,
+        liquidations: demo as any,
+        futures: futures() as any,
+        priceChange24h: 1,
+      });
+      expect(pulse.liquidation.totalUsd).toBe(1_000);
+      expect(pulse.symbol).toBe('ETH');
+    }
   });
 });
