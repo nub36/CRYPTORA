@@ -37,7 +37,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('LIVE-first: недоступный фактический источник даёт честное состояние без демо-котировок', async () => {
-    window.localStorage.setItem('cryptora_data_mode', 'live');
+    window.localStorage.removeItem('cryptora_qa_fixture');
     renderApp('/');
 
     // E2E-окружение изолировано: fetch отклоняется, WebSocket отсутствует.
@@ -50,7 +50,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('LIVE-first: переключателя режима данных в интерфейсе нет', async () => {
-    window.localStorage.setItem('cryptora_data_mode', 'live');
+    window.localStorage.removeItem('cryptora_qa_fixture');
     renderApp('/');
 
     // Статус источника — индикация, а не кнопка переключения режима.
@@ -62,7 +62,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('QA-фикстура: детерминированный датасет помечается провенансом', async () => {
-    window.localStorage.setItem('cryptora_data_mode', 'demo');
+    window.localStorage.setItem('cryptora_qa_fixture', '1');
     renderApp('/');
 
     expect(await screen.findByText('QA-ТИКЕР')).toBeInTheDocument();
@@ -70,6 +70,41 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(demoPrices.length).toBeGreaterThan(0);
     // Даже в этом внутреннем режиме переключателя в UI нет.
     expect(screen.queryByText(/Подробнее о Demo-режиме/i)).toBeNull();
+  });
+
+  test('PRODUCTION runtime: DEMO недоступен даже при недоступном LIVE-источнике и любом localStorage', async () => {
+    // Эмуляция production: политика фикстуры выключена (как в `vite build` без VITE_CRYPTORA_QA_FIXTURE).
+    // Пользователь мог оставить в хранилище любые «включающие» ключи — они обязаны игнорироваться.
+    window.localStorage.setItem('cryptora_qa_fixture', '1');
+    window.localStorage.setItem('cryptora_data_mode', 'demo');
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <MarketDataProviderComponent qaFixtureAllowed={false}>
+          <App />
+        </MarketDataProviderComponent>
+      </MemoryRouter>
+    );
+
+    // Источник в изолированном окружении недоступен → честное состояние, а не demo-fallback.
+    expect(await screen.findByText(/Фактический источник недоступен: рыночная сводка/i)).toBeInTheDocument();
+    expect(await screen.findByText('LIVE-ТИКЕР')).toBeInTheDocument();
+    expect(screen.queryByText('QA-ТИКЕР')).toBeNull();
+    expect(screen.queryAllByText('$64,850.25')).toHaveLength(0);
+
+    // Никаких контролов включения DEMO: ни кнопок, ни ссылок, ни подписей.
+    const demoControl = /демо|demo|qa-датасет|qa dataset|включить .*датасет/i;
+    for (const btn of screen.queryAllByRole('button')) {
+      expect(btn.textContent ?? '').not.toMatch(demoControl);
+      expect(btn.getAttribute('aria-label') ?? '').not.toMatch(demoControl);
+    }
+    for (const link of screen.queryAllByRole('link')) {
+      expect(link.textContent ?? '').not.toMatch(demoControl);
+    }
+    // Единственное действие в состоянии недоступности — повтор запроса.
+    expect(screen.getAllByRole('button', { name: /Повторить запрос/i }).length).toBeGreaterThan(0);
+    // Хранилище не «восстанавливает» demo и не записывает режим.
+    expect(window.localStorage.getItem('cryptora_data_mode')).toBe('demo'); // нетронуто и не используется
   });
 
   test('Overview: renders command center cards, chart, snapshots and source status', async () => {
@@ -296,7 +331,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('Статус источника и WebSocket: только индикация, переключение режима недоступно', async () => {
-    window.localStorage.setItem('cryptora_data_mode', 'live');
+    window.localStorage.removeItem('cryptora_qa_fixture');
     renderApp('/radar');
 
     // Радар маркирует происхождение данных и не даёт переключать режим.

@@ -38,7 +38,15 @@ const BASE = arg('base', process.env.CRYPTORA_QA_BASE || 'http://localhost:5173'
 const TAG = arg('tag', 'latest');
 const OUT_DIR = resolve(repoRoot, arg('out', 'screenshots'));
 
-const MODE = arg('mode', 'both'); // both | demo | live
+// Production-oriented QA: единственный пользовательский режим — LIVE.
+// `--mode=qa-fixture` — служебный прогон против dev-сервера (`npm run dev`) с
+// детерминированным QA-датасетом; в production-сборке этот ключ игнорируется,
+// поэтому «два пользовательских режима» скриптом больше не тестируются.
+const MODE = arg('mode', 'live'); // live (production) | qa-fixture (только dev-сервер)
+if (!['live', 'qa-fixture'].includes(MODE)) {
+  console.error(`[screenshot-qa] unknown --mode=${MODE}; allowed: live | qa-fixture`);
+  process.exit(2);
+}
 
 const ROUTES = arg('routes', '/,/coin/BTC')
   .split(',')
@@ -283,7 +291,7 @@ async function main() {
     failures: [],
   };
 
-  const MODES = MODE === 'both' ? ['demo', 'live'] : [MODE];
+  const MODES = [MODE];
 
   for (const currentMode of MODES) {
   for (const route of ROUTES) {
@@ -300,11 +308,13 @@ async function main() {
       await page.addInitScript(
         ({ mode, watchlist, alerts }) => {
           try {
-            localStorage.setItem('cryptora_data_mode', mode);
+            localStorage.removeItem('cryptora_data_mode'); // устаревший ключ, не используется
+            if (mode === 'qa-fixture') localStorage.setItem('cryptora_qa_fixture', '1');
+            else localStorage.removeItem('cryptora_qa_fixture');
             localStorage.setItem('cryptora_watchlist', JSON.stringify(watchlist));
             localStorage.setItem('cryptora_alerts', JSON.stringify(alerts));
           } catch {
-            /* localStorage может быть недоступен — режим по умолчанию demo */
+            /* localStorage может быть недоступен — режим по умолчанию LIVE */
           }
         },
         { mode: currentMode, watchlist: ['BTC', 'ETH', 'SOL'], alerts: ['alert-btc-vol', 'alert-eth-funding'] }

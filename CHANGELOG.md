@@ -4,6 +4,28 @@
 
 ---
 
+## [0.8.8] — 2026-09-16
+
+### Fixed — corrective: PRODUCTION = ТОЛЬКО LIVE (решение владельца по пункту A)
+- **Удалён пользовательский путь включения DEMO через localStorage.** `MarketDataContext` больше не читает
+  и не записывает `cryptora_data_mode`; `setDataMode` удалён из контракта контекста; режим фиксируется при
+  старте. В production-бандле строка `cryptora_data_mode` отсутствует.
+- **Новая политика `src/config/dataModePolicy.ts`:** production → всегда `live`, хранилище не читается;
+  QA-датасет доступен только в dev/test (Vite `DEV` или `VITE_CRYPTORA_QA_FIXTURE=1`) **и** по явному ключу
+  `cryptora_qa_fixture=1`. Фикстуры маркируются `QA` и не маскируются под LIVE.
+- **Недоступный источник в production** → «Фактический источник недоступен» + «Повторить запрос»,
+  без demo-fallback (кнопка включения демо в `DataSourceUnavailable` удалена ещё в 0.8.6 — теперь это
+  закреплено тестом production runtime).
+- **`scripts/screenshot-qa.mjs`:** режим по умолчанию `live` (production-oriented); `--mode=qa-fixture` —
+  служебный прогон только против dev-сервера; `demo`/`both` отклоняются.
+- **Документация:** `docs/DEPLOYMENT.md` — «Политика режима данных: PRODUCTION = ТОЛЬКО LIVE»; `STATUS.md` —
+  исправлен факт: production на VPS перед v0.8.5 = **v0.8.4 (`6a01ce1`)**, а не v0.8.3.
+
+### Tests
+- Новый e2e: «PRODUCTION runtime: DEMO недоступен даже при недоступном LIVE-источнике и любом localStorage».
+- Новый unit `tests/unit/dataModePolicy.test.ts` (4 теста).
+- `npm test` — 177/177; `npm run test:e2e` — 55/55; typecheck 0; build `index-BGwGjif0.js` 793.88 kB.
+
 ## [0.8.7] — 2026-09-16
 
 ### Changed — системная русификация интерфейса (UX-цикл владельца, п. 2)

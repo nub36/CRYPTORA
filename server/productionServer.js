@@ -144,7 +144,7 @@ const server = http.createServer((req, res) => {
       JSON.stringify({
         status: 'ok',
         app: 'CRYPTORA Market Intelligence Terminal',
-        version: '0.8.7',
+        version: '0.8.8',
         uptimeSeconds: Math.floor(process.uptime()),
         timestamp: new Date().toISOString(),
       })

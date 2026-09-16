@@ -65,8 +65,8 @@ npm run test:e2e
 
 # Визуальный и геометрический QA вёрстки (Chromium через Playwright):
 # скриншоты + замеры overflow / клиппинга / кегля навигации по viewport'ам
-node scripts/screenshot-qa.mjs --tag=qa --routes=/,/coin/BTC
-node scripts/screenshot-qa.mjs --tag=qa-live --mode=live --viewports=1024x768,1280x800,1440x900,1920x1080
+node scripts/screenshot-qa.mjs --tag=qa --routes=/,/coin/BTC          # production-режим (LIVE), по умолчанию
+node scripts/screenshot-qa.mjs --tag=qa-fixture --mode=qa-fixture       # только против dev-сервера: QA-датасет
 ```
 
 > QA-скрипт опционально принимает `CRYPTORA_CHROMIUM_PATH`, `CRYPTORA_CHROMIUM_LD_PATH`

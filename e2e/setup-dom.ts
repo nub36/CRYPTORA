@@ -34,7 +34,7 @@ setGlobal('document', window.document);
 setGlobal('navigator', window.navigator);
 setGlobal('location', window.location);
 // Браузеры предоставляют localStorage как глобальный объект — JSDOM-шим должен
-// вести себя так же, иначе persistence-контракты (cryptora_data_mode и др.)
+// вести себя так же, иначе persistence-контракты (cryptora_qa_fixture, watchlist и др.)
 // молча уходят в fallback и тесты проверяют не тот режим.
 if (window.localStorage) {
   setGlobal('localStorage', window.localStorage);
@@ -137,7 +137,7 @@ expect.extend({
 /**
  * Изоляция состояния между тестами.
  * localStorage в JSDOM-шиме действительно работает, а провайдер рыночных данных
- * сохраняет в нём выбранный режим (`cryptora_data_mode`) и списки (watchlist/alerts).
+ * хранит флаг QA-фикстуры (`cryptora_qa_fixture`) и списки (watchlist/alerts).
  * Без сброса тест, переключивший режим на LIVE, загрязнял бы последующие тесты
  * (и, что важнее, включал бы реальные сетевые вызовы к биржам).
  *
@@ -151,7 +151,7 @@ export function resetBrowserStorage(): void {
     window.sessionStorage.clear();
     // E2E-прогон детерминирован: базовый режим тестов — демонстрационный датасет.
     // Продуктовый режим по умолчанию — LIVE (см. отдельный тест LIVE-first).
-    window.localStorage.setItem('cryptora_data_mode', 'demo');
+    window.localStorage.setItem('cryptora_qa_fixture', '1');
   } catch {
     /* storage может быть недоступен — тесты продолжат в режиме по умолчанию */
   }

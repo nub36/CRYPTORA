@@ -14,13 +14,14 @@ export interface UserAlert {
   createdAt: string;
 }
 
-export type DataMode = 'demo' | 'live';
+import { resolveInitialDataMode, QA_FIXTURE_ALLOWED, type DataMode } from '@/config/dataModePolicy';
+
+export type { DataMode };
 
 interface MarketDataContextType {
   provider: MarketDataProvider;
   isDemo: boolean;
   dataMode: DataMode;
-  setDataMode: (mode: DataMode) => void;
   realtimeStatus: RealtimeConnectionState;
   livePrices: Record<string, number>;
   subscribeSymbol: (symbol: string) => void;
@@ -53,18 +54,20 @@ const singletonLiveProvider = new LiveMarketDataProvider({
 export const MarketDataProviderComponent: React.FC<{
   children: React.ReactNode;
   customProvider?: MarketDataProvider;
-}> = ({ children, customProvider }) => {
-  // LIVE-FIRST (v0.8.5): по умолчанию терминал работает с фактическим источником.
-  // Внутренний QA-датасет включается только фикстурой окружения и никогда
-  // не подменяет собой недоступные фактические данные.
-  const [dataMode, setDataMode] = useState<DataMode>(() => {
-    try {
-      const saved = localStorage.getItem('cryptora_data_mode');
-      return saved === 'demo' ? 'demo' : 'live';
-    } catch {
-      return 'live';
-    }
-  });
+  /**
+   * Переопределение политики QA-фикстуры (только для тестов): `false` эмулирует
+   * production runtime, где DEMO недоступен ни при каких условиях.
+   */
+  qaFixtureAllowed?: boolean;
+}> = ({ children, customProvider, qaFixtureAllowed = QA_FIXTURE_ALLOWED }) => {
+  // PRODUCTION = ТОЛЬКО LIVE (решение владельца). Режим фиксируется один раз при
+  // старте и не переключается в runtime: пользовательского DEMO-режима нет.
+  // QA-датасет доступен только в dev/test через явный ключ `cryptora_qa_fixture=1`
+  // (см. src/config/dataModePolicy.ts) и никогда не подменяет собой недоступные
+  // фактические данные.
+  const [dataMode] = useState<DataMode>(() =>
+    resolveInitialDataMode(typeof localStorage !== 'undefined' ? localStorage : null, qaFixtureAllowed)
+  );
 
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionState>('idle');
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
@@ -148,14 +151,6 @@ export const MarketDataProviderComponent: React.FC<{
 
   useEffect(() => {
     try {
-      localStorage.setItem('cryptora_data_mode', dataMode);
-    } catch {
-      // ignore
-    }
-  }, [dataMode]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem('cryptora_watchlist', JSON.stringify(watchlist));
     } catch {
       // ignore
@@ -203,7 +198,6 @@ export const MarketDataProviderComponent: React.FC<{
         provider: activeProvider,
         isDemo: activeProvider.isDemo,
         dataMode,
-        setDataMode,
         realtimeStatus,
         livePrices,
         subscribeSymbol,

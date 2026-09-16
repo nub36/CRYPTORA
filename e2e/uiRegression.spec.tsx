@@ -101,7 +101,8 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
   for (const mode of ['demo', 'live'] as const) {
     test(`Header typography (${mode}): ни один текстовый узел шапки не мельче ${MIN_HEADER_FONT_PX}px`, async () => {
       setWindowDimensions(1440, 900);
-      window.localStorage.setItem('cryptora_data_mode', mode);
+      if (mode === 'demo') window.localStorage.setItem('cryptora_qa_fixture', '1');
+      else window.localStorage.removeItem('cryptora_qa_fixture');
 
       // Шапка идентична на всех маршрутах: берём раздел без загрузки рыночных
       // данных, чтобы тест проверял типографику шапки, а не data-слой.
@@ -211,11 +212,11 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     fireEvent.click(menuBtn);
   });
 
-  test('Header инвариант: бейдж версии обновлён до v0.8.7', async () => {
+  test('Header инвариант: бейдж версии обновлён до v0.8.8', async () => {
     setWindowDimensions(1920, 1080);
     const { container } = renderApp('/');
     const header = container.querySelector('header') as HTMLElement;
-    expect(header.textContent).toContain('v0.8.7');
+    expect(header.textContent).toContain('v0.8.8');
   });
 
   test('Viewports layout smoke check: 390, 768, 1024, 1280, 1366, 1440, 1920', async () => {
