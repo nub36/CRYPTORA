@@ -29,6 +29,12 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         fontFamily: "'JetBrains Mono', 'SFMono-Regular', monospace",
         fontSize: 11,
       },
+      localization: {
+        // Явная локаль: защищает ось времени от невалидных системных тегов
+        // (например `en-US@posix` в минимальных контейнерах без LANG),
+        // на которых `Date.toLocaleString` бросает RangeError.
+        locale: 'en-US',
+      },
       grid: {
         vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
         horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
@@ -143,7 +149,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         <span className="font-bold text-white tracking-tight text-sm drop-shadow-sm">
           {symbol}
         </span>
-        <span className="text-[10px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold tracking-wide">
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-amber-300">
           DEMO СВЕЧИ
         </span>
       </div>

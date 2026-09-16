@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import App from '@/App';
+import { PRIMARY_NAV_ITEMS, PRIMARY_NAV_CAPACITY } from '@/components/layout/navigation';
 
 function setWindowDimensions(width: number, height: number) {
   Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: width });
@@ -11,73 +12,134 @@ function setWindowDimensions(width: number, height: number) {
   window.dispatchEvent(new Event('resize'));
 }
 
+function renderApp(initialPath = '/') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <MarketDataProviderComponent>
+        <App />
+      </MarketDataProviderComponent>
+    </MemoryRouter>
+  );
+}
+
+/**
+ * Регрессионный набор шапки CRYPTORA.
+ *
+ * Предыдущая версия набора проверяла только наличие ссылок и класс `whitespace-nowrap`
+ * и поэтому пропустила реальный UI-регресс: на 1280px правая часть шапки выходила
+ * за пределы вьюпорта, а элементы накладывались друг на друга (пункт «Обзор»
+ * перекрывал бейдж версии). Здесь добавлены проверки архитектурных инвариантов,
+ * которые такой регресс делают невозможным:
+ *   1. Ёмкость primary-навигации ограничена (6 пунктов) — бюджет места.
+ *   2. Кегль primary-навигации читаемый (>= 13px) — запрет «микроскопического» текста.
+ *   3. В шапке нет текста мельче 11px.
+ *   4. Компактный desktop-диапазон переводит навигацию во вторую строку (stacking)
+ *      вместо сжатия/наложения.
+ *   5. Вторичные service controls сворачиваются в иконки при нехватке места.
+ *
+ * Геометрические инварианты (реальные размеры и overflow) проверяются в браузере:
+ * `node scripts/screenshot-qa.mjs` — JSDOM не рассчитывает layout.
+ */
 test.describe('UI/UX Premium Redesign Regression Suite', () => {
   test.afterEach(() => {
     cleanup();
   });
 
-  test('Header at 1280px: fits without text wrapping and displays primary nav + dropdowns', async () => {
+  test('Header capacity budget: прямая навигация ограничена и сохраняет читаемый кегль', async () => {
     setWindowDimensions(1280, 800);
+    renderApp('/');
 
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <MarketDataProviderComponent>
-          <App />
-        </MarketDataProviderComponent>
-      </MemoryRouter>
-    );
+    // Ёмкость прямой навигации — жёсткий архитектурный бюджет
+    expect(PRIMARY_NAV_ITEMS.length).toBe(PRIMARY_NAV_CAPACITY);
+    expect(PRIMARY_NAV_ITEMS.length).toBeLessThanOrEqual(6);
 
-    // Verify Brand
-    expect(screen.getAllByText(/CRYPTORA/i).length).toBeGreaterThan(0);
+    // Кегль навигации: 13px (14px от 1536px), без микротекста
+    const nav = screen.getByLabelText('Главная навигация');
+    expect(nav.className).toContain('text-[13px]');
+    expect(nav.className).not.toMatch(/text-\[(9|10|11)px\]/);
 
-    // Primary visible links exist with whitespace-nowrap styling
-    const overviewLink = screen.getAllByRole('link', { name: /Обзор/i })[0];
-    expect(overviewLink).toBeInTheDocument();
-    expect(overviewLink.className).toContain('whitespace-nowrap');
+    // Все пункты прямой навигации доступны и не ломают строку
+    for (const item of PRIMARY_NAV_ITEMS) {
+      const links = screen.getAllByRole('link', { name: new RegExp(item.label, 'i') });
+      expect(links.length).toBeGreaterThan(0);
+      expect(links[0].className).toContain('whitespace-nowrap');
+    }
 
-    const marketLink = screen.getAllByRole('link', { name: /Рынок/i })[0];
-    expect(marketLink).toBeInTheDocument();
-    expect(marketLink.className).toContain('whitespace-nowrap');
+    // Вторичные разделы живут в группированных меню
+    expect(screen.getByRole('button', { name: /Аналитика/i }).className).toContain('whitespace-nowrap');
+    expect(screen.getByRole('button', { name: /Инструменты/i }).className).toContain('whitespace-nowrap');
+  });
 
-    const futuresLink = screen.getAllByRole('link', { name: /Фьючерсы/i })[0];
-    expect(futuresLink).toBeInTheDocument();
+  test('Header typography: ни один текстовый узел шапки не мельче 11px', async () => {
+    setWindowDimensions(1440, 900);
+    const { container } = renderApp('/');
 
-    const liquidationsLink = screen.getAllByRole('link', { name: /Ликвидации/i })[0];
-    expect(liquidationsLink).toBeInTheDocument();
+    const header = container.querySelector('header') as HTMLElement;
+    expect(header).not.toBeNull();
 
-    const screenerLink = screen.getAllByRole('link', { name: /Скринер/i })[0];
-    expect(screenerLink).toBeInTheDocument();
+    const tinyText: string[] = [];
+    header.querySelectorAll<HTMLElement>('*').forEach((el) => {
+      if (el.children.length > 0) return;
+      const text = (el.textContent || '').trim();
+      if (!text) return;
+      // Кегль в JSDOM не рассчитывается из Tailwind-классов — читаем классы
+      const match = el.className.match(/text-\[(\d+(?:\.\d+)?)px\]/);
+      if (match && parseFloat(match[1]) < 11) tinyText.push(`"${text}" (${match[1]}px)`);
+    });
 
-    const radarLink = screen.getAllByRole('link', { name: /Радар/i })[0];
-    expect(radarLink).toBeInTheDocument();
+    expect(tinyText).toEqual([]);
+  });
 
-    // Secondary navigation dropdown triggers exist
-    const analyticsBtn = screen.getByRole('button', { name: /Аналитика/i });
-    expect(analyticsBtn).toBeInTheDocument();
-    expect(analyticsBtn.className).toContain('whitespace-nowrap');
+  test('Header compact desktop (1024–1279px): навигация в отдельной строке (stacking), а не сжатие текста', async () => {
+    setWindowDimensions(1024, 768);
+    const { container } = renderApp('/');
 
-    const toolsBtn = screen.getByRole('button', { name: /Инструменты/i });
-    expect(toolsBtn).toBeInTheDocument();
-    expect(toolsBtn.className).toContain('whitespace-nowrap');
+    const nav = container.querySelector('nav[aria-label="Главная навигация"]') as HTMLElement;
+    expect(nav).not.toBeNull();
+
+    // Компактный режим: полная ширина, вторая строка, рамка-разделитель
+    expect(nav.className).toContain('order-3');
+    expect(nav.className).toContain('w-full');
+    expect(nav.className).toContain('border-t');
+    // Расширенный режим (от 1280px) возвращает навигацию в первую строку
+    expect(nav.className).toContain('xl:order-2');
+    expect(nav.className).toContain('xl:w-auto');
+    expect(nav.className).toContain('xl:flex-1');
+    expect(nav.className).toContain('xl:border-t-0');
+  });
+
+  test('Header service controls: вторичный поиск сворачивается до иконки, когда места мало', async () => {
+    setWindowDimensions(1024, 768);
+    renderApp('/');
+
+    // Inline-поле поиска существует в DOM, но раскрывается только от 1440px
+    const inlineInput = screen.getByLabelText('Поиск монеты', { selector: 'input' });
+    expect(inlineInput).toBeInTheDocument();
+    expect(inlineInput.parentElement?.parentElement?.className).toContain('navxl:block');
+
+    // Компактная кнопка поиска видна до 1440px и раскрывает панель поиска
+    const searchButton = screen.getAllByLabelText('Поиск монеты').find((el) => el.tagName === 'BUTTON');
+    expect(searchButton).toBeTruthy();
+    expect(searchButton!.parentElement?.className).toContain('navxl:hidden');
+
+    fireEvent.click(searchButton!);
+    const inputs = screen.getAllByLabelText('Поиск монеты', { selector: 'input' });
+    expect(inputs.length).toBeGreaterThan(1);
+    fireEvent.change(inputs[1], { target: { value: 'sol' } });
+    expect(screen.getAllByText('Solana').length).toBeGreaterThan(0);
+
+    // Повторный клик закрывает панель
+    fireEvent.click(searchButton!);
+    expect(screen.getAllByLabelText('Поиск монеты', { selector: 'input' }).length).toBe(1);
   });
 
   test('Dropdown Navigation: opens on click, renders items, and closes on Escape', async () => {
     setWindowDimensions(1440, 900);
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <MarketDataProviderComponent>
-          <App />
-        </MarketDataProviderComponent>
-      </MemoryRouter>
-    );
+    renderApp('/');
 
     const analyticsBtn = screen.getByRole('button', { name: /Аналитика/i });
-
-    // Click to open
     fireEvent.click(analyticsBtn);
 
-    // Verify sub-items inside dropdown menu
     expect(screen.getByRole('menu')).toBeInTheDocument();
     expect(screen.getByText('Карта рынка')).toBeInTheDocument();
     expect(screen.getByText('Корреляции')).toBeInTheDocument();
@@ -85,11 +147,9 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     expect(screen.getByText('Экосистемы')).toBeInTheDocument();
     expect(screen.getByText('Календарь')).toBeInTheDocument();
 
-    // Close with Escape key
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
 
-    // Tools dropdown test
     const toolsBtn = screen.getByRole('button', { name: /Инструменты/i });
     fireEvent.click(toolsBtn);
 
@@ -99,38 +159,40 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     expect(screen.getByText('Стратегии')).toBeInTheDocument();
     expect(screen.getByText('Сигналы')).toBeInTheDocument();
 
-    // Close tools dropdown
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
   test('Mobile navigation (< 1024px): toggle button displays menu with categorized sections', async () => {
     setWindowDimensions(390, 844);
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <MarketDataProviderComponent>
-          <App />
-        </MarketDataProviderComponent>
-      </MemoryRouter>
-    );
+    renderApp('/');
 
     const menuBtn = screen.getByLabelText(/Меню/i);
     expect(menuBtn).toBeInTheDocument();
 
-    // Open mobile menu
     fireEvent.click(menuBtn);
 
     expect(screen.getByText('Основные разделы')).toBeInTheDocument();
     expect(screen.getAllByText('Аналитика').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Инструменты').length).toBeGreaterThan(0);
 
-    // Close mobile menu
+    // Статусные метки drawer: режим данных, WebSocket, тариф
+    expect(screen.getByText(/ДЕМОНСТРАЦИОННЫЙ РЕЖИМ/i)).toBeInTheDocument();
+    expect(screen.getByText(/WS (ONLINE|IDLE)/i)).toBeInTheDocument();
+    expect(screen.getByTitle(/Тарифный план/i)).toBeInTheDocument();
+
     fireEvent.click(menuBtn);
   });
 
-  test('Viewports layout smoke check: 390, 768, 1024, 1280, 1440, 1920', async () => {
-    const viewports = [390, 768, 1024, 1280, 1440, 1920];
+  test('Header инвариант: бейдж версии обновлён до v0.8.1', async () => {
+    setWindowDimensions(1920, 1080);
+    const { container } = renderApp('/');
+    const header = container.querySelector('header') as HTMLElement;
+    expect(header.textContent).toContain('v0.8.1');
+  });
+
+  test('Viewports layout smoke check: 390, 768, 1024, 1280, 1366, 1440, 1920', async () => {
+    const viewports = [390, 768, 1024, 1280, 1366, 1440, 1920];
 
     for (const w of viewports) {
       setWindowDimensions(w, 800);

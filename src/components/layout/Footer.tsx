@@ -7,8 +7,8 @@ export const Footer: React.FC = () => {
   const { openDemoModal } = useMarketData();
 
   return (
-    <footer className="mt-14 bg-[#070b14]/90 border-t border-white/[0.08] text-xs text-slate-400 py-8 px-4 font-sans backdrop-blur-md">
-      <div className="max-w-[1920px] mx-auto space-y-6">
+    <footer className="mt-6 border-t border-white/[0.08] bg-[#070b14]/90 px-4 py-6 font-sans text-xs text-slate-400 backdrop-blur-md">
+      <div className="mx-auto max-w-[1920px] space-y-5">
         {/* Top Disclaimer Banner */}
         <div className="p-3.5 bg-amber-500/[0.06] border border-amber-500/25 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center space-x-2.5">
@@ -29,7 +29,7 @@ export const Footer: React.FC = () => {
         </div>
 
         {/* Footer Navigation & Columns */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-4 border-t border-white/[0.05] text-xs">
+        <div className="grid grid-cols-2 gap-6 border-t border-white/[0.05] pt-4 text-xs md:grid-cols-4">
           <div>
             <div className="font-bold text-white font-mono tracking-wider mb-2 flex items-center space-x-1.5">
               <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
@@ -107,7 +107,7 @@ export const Footer: React.FC = () => {
         {/* Bottom bar */}
         <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-mono">
           <div>
-            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.0.
+            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.1.
           </div>
           <div className="mt-2 sm:mt-0 flex items-center space-x-3">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>

@@ -115,7 +115,7 @@ export const CoinDetailPage: React.FC = () => {
     return (
       <div className="max-w-xl mx-auto my-12 p-6 bg-surface border border-surface-border rounded-lg text-center space-y-3">
         <h2 className="text-lg font-bold text-white font-mono">Актив не найден</h2>
-        <p className="text-xs text-slate-400">
+        <p className="text-[13px] text-slate-400">
           Инструмент «{symbol}» не зарегистрирован в демонстрационной базе данных.
         </p>
         <Link
@@ -134,9 +134,9 @@ export const CoinDetailPage: React.FC = () => {
   const currentPrice = livePrice !== undefined ? livePrice : asset.price;
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="mx-auto max-w-[1920px] space-y-3.5 px-3 py-3 sm:px-4">
       {/* Breadcrumbs & Back */}
-      <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+      <div className="flex items-center justify-between font-mono text-[13px] text-slate-400">
         <div className="flex items-center space-x-2">
           <Link to="/market" className="hover:text-white flex items-center space-x-1">
             <ChevronLeft className="w-3.5 h-3.5" />
@@ -182,7 +182,7 @@ export const CoinDetailPage: React.FC = () => {
               </span>
             </div>
 
-            <p className="text-xs text-slate-400 font-sans mt-1 max-w-2xl line-clamp-1">
+            <p className="mt-1 max-w-3xl font-sans text-[13px] text-slate-400">
               {asset.description}
             </p>
           </div>
@@ -255,7 +255,7 @@ export const CoinDetailPage: React.FC = () => {
       </div>
 
       {/* Main Chart + Timeframes Row */}
-      <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 space-y-3">
+      <div className="space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
           <div className="flex items-center space-x-3">
             <span className="font-mono font-bold text-sm text-white">
@@ -295,7 +295,7 @@ export const CoinDetailPage: React.FC = () => {
         <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3 font-mono">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <Activity className="w-4 h-4 text-brand-cyan" />
-            <span className="font-bold text-xs uppercase tracking-wider text-white">
+            <span className="text-[13px] font-bold uppercase tracking-wider text-white">
               Рыночная статистика
             </span>
           </div>
@@ -344,7 +344,7 @@ export const CoinDetailPage: React.FC = () => {
         <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3 font-mono">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <Layers className="w-4 h-4 text-brand-purple" />
-            <span className="font-bold text-xs uppercase tracking-wider text-white">
+            <span className="text-[13px] font-bold uppercase tracking-wider text-white">
               Деривативы и фьючерсы
             </span>
           </div>
@@ -398,7 +398,7 @@ export const CoinDetailPage: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="py-8 text-center text-slate-500 text-xs">
+            <div className="py-8 text-center text-[13px] text-slate-500">
               Нет активного фьючерсного бессрочного контракта в демо-выборке.
             </div>
           )}
@@ -408,7 +408,7 @@ export const CoinDetailPage: React.FC = () => {
         <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3 font-mono">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <SlidersHorizontal className="w-4 h-4 text-brand-sky" />
-            <span className="font-bold text-xs uppercase tracking-wider text-white">
+            <span className="text-[13px] font-bold uppercase tracking-wider text-white">
               Технические индикаторы
             </span>
           </div>
@@ -426,7 +426,7 @@ export const CoinDetailPage: React.FC = () => {
                 }`}
               >
                 {(dynamicIndicators?.rsi14 ?? 50).toFixed(1)}{' '}
-                <span className="text-[10px] font-normal text-slate-400">
+                <span className="text-[11px] font-normal text-slate-400">
                   {(dynamicIndicators?.rsi14 ?? 50) >= 70
                     ? '(Перекуплен)'
                     : (dynamicIndicators?.rsi14 ?? 50) <= 30
@@ -455,7 +455,7 @@ export const CoinDetailPage: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Bollinger Upper/Lower</span>
-              <span className="text-slate-400 text-[11px]">
+              <span className="text-xs text-slate-400">
                 {formatCurrency(dynamicIndicators?.bollinger?.upper ?? 0, { compact: true })} /{' '}
                 {formatCurrency(dynamicIndicators?.bollinger?.lower ?? 0, { compact: true })}
               </span>
@@ -463,7 +463,7 @@ export const CoinDetailPage: React.FC = () => {
             {dynamicIndicators && 'atr14' in dynamicIndicators && (
               <div className="flex justify-between">
                 <span className="text-slate-400">ATR (14) / VWAP</span>
-                <span className="text-brand-cyan text-[11px]">
+                <span className="text-xs text-brand-cyan">
                   ±{formatCurrency((dynamicIndicators as any).atr14, { compact: true })} /{' '}
                   {formatCurrency((dynamicIndicators as any).vwap, { compact: true })}
                 </span>
@@ -489,15 +489,15 @@ export const CoinDetailPage: React.FC = () => {
           {/* Trading Pairs Table */}
           <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-              <span className="font-mono font-bold text-xs uppercase tracking-wider text-white">
+              <span className="font-mono text-[13px] font-bold uppercase tracking-wider text-white">
                 {asset.isDemo ? 'Демо-пары на ведущих биржах' : 'Пары на ведущих биржах (Spot Market)'}
               </span>
-              <span className="text-[10px] font-mono text-slate-500">Биржевая глубина</span>
+              <span className="text-[11px] font-mono text-slate-400">Биржевая глубина</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs font-mono">
-                <thead className="text-slate-400 text-[11px] border-b border-surface-border">
+                <thead className="border-b border-surface-border text-xs text-slate-400">
                   <tr>
                     <th className="py-2 text-left">Биржа</th>
                     <th className="py-2 text-left">Пара</th>
@@ -528,13 +528,13 @@ export const CoinDetailPage: React.FC = () => {
             <div className="flex items-center justify-between pb-2 border-b border-surface-border">
               <div className="flex items-center space-x-2">
                 <Radio className="w-4 h-4 text-brand-cyan" />
-                <span className="font-mono font-bold text-xs uppercase tracking-wider text-white">
+                <span className="font-mono text-[13px] font-bold uppercase tracking-wider text-white">
                   События Market Radar по {asset.symbol}
                 </span>
               </div>
               <Link
                 to="/radar"
-                className="text-[11px] font-mono text-brand-cyan hover:underline flex items-center space-x-1"
+                className="flex items-center space-x-1 font-mono text-xs text-brand-cyan hover:underline"
               >
                 <span>Все аномалии</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
@@ -542,7 +542,7 @@ export const CoinDetailPage: React.FC = () => {
             </div>
 
             {radarEvents.length === 0 ? (
-              <div className="py-6 text-center text-slate-500 font-mono text-xs">
+              <div className="py-6 text-center font-mono text-[13px] text-slate-500">
                 По инструменту {asset.symbol} активных аномалий не зафиксировано.
               </div>
             ) : (
@@ -562,7 +562,7 @@ export const CoinDetailPage: React.FC = () => {
                         {re.severity}
                       </Badge>
                       <span className="text-white font-semibold">{re.type}</span>
-                      <span className="text-slate-400 text-[11px] hidden sm:inline">
+                      <span className="hidden text-xs text-slate-400 sm:inline">
                         {re.observation}
                       </span>
                     </div>

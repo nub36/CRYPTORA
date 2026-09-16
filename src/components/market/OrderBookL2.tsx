@@ -79,10 +79,10 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
       <div className="flex items-center justify-between pb-2 border-b border-surface-border">
         <div className="flex items-center space-x-2">
           <span className="font-bold text-white tracking-wide">ORDER BOOK (L2)</span>
-          <span className="text-[10px] text-slate-400">SPOT {symbol}/USDT</span>
+          <span className="text-[11px] text-slate-400">SPOT {symbol}/USDT</span>
         </div>
         <span
-          className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+          className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
             depthData.isSynthetic
               ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
               : 'bg-brand-green/10 text-brand-green border border-brand-green/30'
@@ -93,7 +93,7 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
       </div>
 
       {/* Column Headers */}
-      <div className="grid grid-cols-3 text-[10px] text-slate-500 font-semibold py-1.5 border-b border-surface-border/50">
+      <div className="grid grid-cols-3 text-[11px] text-slate-400 font-semibold py-1.5 border-b border-surface-border/50">
         <div>ЦЕНА (USDT)</div>
         <div className="text-right">РАЗМЕР ({symbol})</div>
         <div className="text-right">СУММА</div>
@@ -136,9 +136,9 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
           <span className="text-white text-sm">
             {formatCurrency(currentPrice, { decimals: currentPrice > 10 ? 2 : 4 })}
           </span>
-          <span className="text-[10px] text-slate-400 font-normal">MID PRICE</span>
+          <span className="text-[11px] text-slate-400 font-normal">MID PRICE</span>
         </div>
-        <div className="text-[10px] text-slate-400 font-mono">
+        <div className="text-[11px] text-slate-400 font-mono">
           СПРЕД: <span className="text-slate-200 font-bold">${spreadUsd.toFixed(2)}</span>{' '}
           <span className="text-brand-cyan">({spreadBps.toFixed(1)} bps)</span>
         </div>

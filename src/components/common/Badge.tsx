@@ -20,7 +20,7 @@ export const Badge: React.FC<BadgeProps> = ({
     'inline-flex items-center font-medium font-mono rounded-md tracking-tight transition-all duration-150 select-none';
 
   const sizeClasses = {
-    xs: 'px-1.5 py-0.5 text-[10px] leading-tight',
+    xs: 'px-1.5 py-0.5 text-[11px] leading-tight',
     sm: 'px-2 py-0.5 text-xs',
     md: 'px-2.5 py-1 text-xs',
   };

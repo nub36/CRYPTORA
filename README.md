@@ -62,7 +62,17 @@ npm run start
 
 # Запуск E2E тестов
 npm run test:e2e
+
+# Визуальный и геометрический QA вёрстки (Chromium через Playwright):
+# скриншоты + замеры overflow / клиппинга / кегля навигации по viewport'ам
+node scripts/screenshot-qa.mjs --tag=qa --routes=/,/coin/BTC
+node scripts/screenshot-qa.mjs --tag=qa-live --mode=live --viewports=1024x768,1280x800,1440x900,1920x1080
 ```
+
+> QA-скрипт опционально принимает `CRYPTORA_CHROMIUM_PATH`, `CRYPTORA_CHROMIUM_LD_PATH`
+> и `CRYPTORA_QA_FONTS_DIR` — они нужны только в изолированных средах без доступа
+> к загрузке браузеров Playwright и к Google Fonts. Артефакты складываются в `screenshots/`,
+> код возврата `1` означает найденные layout-нарушения.
 
 ---
 
