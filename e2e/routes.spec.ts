@@ -14,6 +14,9 @@ const ROUTES = [
   '/tools',
   '/strategies',
   '/signals',
+  '/correlations',
+  '/onchain',
+  '/journal',
 ];
 
 test.describe('Terminal Server & Route Availability', () => {

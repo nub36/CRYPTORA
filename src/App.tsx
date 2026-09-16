@@ -19,6 +19,9 @@ import { HeatmapsPage } from '@/pages/HeatmapsPage';
 import { ToolsPage } from '@/pages/ToolsPage';
 import { StrategiesPage } from '@/pages/StrategiesPage';
 import { SignalsPage } from '@/pages/SignalsPage';
+import { CorrelationsPage } from '@/pages/CorrelationsPage';
+import { OnChainPage } from '@/pages/OnChainPage';
+import { JournalPage } from '@/pages/JournalPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 export const App: React.FC = () => {
@@ -44,6 +47,9 @@ export const App: React.FC = () => {
           <Route path="/tools" element={<ToolsPage />} />
           <Route path="/strategies" element={<StrategiesPage />} />
           <Route path="/signals" element={<SignalsPage />} />
+          <Route path="/correlations" element={<CorrelationsPage />} />
+          <Route path="/onchain" element={<OnChainPage />} />
+          <Route path="/journal" element={<JournalPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

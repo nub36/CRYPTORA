@@ -11,6 +11,17 @@
 
 ## 1. Что сделано
 
+### Новые специализированные разделы аналитического терминала
+- **Матрица корреляций и Бета (`src/pages/CorrelationsPage.tsx` & `src/services/analytics/CorrelationEngine.ts`):**
+  - Расчет коэффициента корреляции Пирсона между топовыми криптовалютами и макро-бенчмарками (S&P 500, Gold, DXY).
+  - Расчет коэффициента Beta относительно Bitcoin ($\beta = \text{Cov}(R_i, R_{\text{BTC}}) / \text{Var}(R_{\text{BTC}})$) для выявления высокобетовых и защитных активов.
+- **Он-чейн и макро-метрики (`src/pages/OnChainPage.tsx` & `src/services/analytics/OnChainService.ts`):**
+  - MVRV Z-Score, NUPL (Net Unrealized Profit/Loss), хешрейт Bitcoin, активные адреса, стейкинг ETH и медианный Gas Gwei.
+  - Таблица суточных потоков монет на биржах (Exchange Inflows, Outflows, Netflow USD).
+- **Ручной журнал сделок и рефлексии (`src/pages/JournalPage.tsx` & `src/services/journal/JournalService.ts`):**
+  - Автономная тетрадь трейдера для фиксации сетапов, ошибок, самодисциплины (шкала 1–5) и уроков.
+  - Расчет Win Rate %, совокупного PnL и средней оценки дисциплины без подключения к биржевым ключам.
+
 ### Этап 16: Коммерческая архитектура и тарифные планы (`src/services/subscription/PlanManager.ts`)
 - Разграничение прав доступа и лимитов для уровней `FREE`, `PRO` и `ENTERPRISE` (Institutional Terminal).
 - Управление лимитами алертов, доступом к бэктестингу, AI-аналитику, кластерам ликвидаций и экспорту данных.
@@ -70,7 +81,8 @@
 
 ## 3. Результаты тестов (Все гейты пройдены со 100% успехом)
 - **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (`tsc --noEmit`).
-- **Unit Tests (`npm test`):** PASSED — 20 тестовых люксов, **125 тестов успешно пройдено**:
+- **Unit Tests (`npm test`):** PASSED — 21 тестовый люкс, **130 тестов успешно пройдено**:
+  - `tests/unit/extendedAnalytics.test.ts` (5 тестов: корреляция Пирсона, бета к BTC, он-чейн метрики, журнал сделок)
   - `tests/unit/calculators.test.ts` (10 тестов: размер позиции, PnL/ROE, цена ликвидации, фандинг, DCA)
   - `tests/unit/liquidations.test.ts` (5 тестов: forceOrder парсинг, 24h агрегаты, кластеры риска)
   - `tests/unit/screener.test.ts` (6 тестов: мультифакторная фильтрация, пресеты)
@@ -91,12 +103,9 @@
   - `tests/unit/assetRegistry.test.ts` (7 тестов)
   - `tests/unit/formatters.test.ts` (10 тестов)
   - `tests/unit/sorting.test.ts` (3 теста)
-- **Build (`npm run build`):** PASSED — чистая production-сборка (`tsc -b && vite build`):
-  - `dist/index.html` (1.48 kB)
-  - `dist/assets/index-BOMP-TL-.css` (32.91 kB)
-  - `dist/assets/index-SY8YQ3XJ.js` (627.32 kB)
-- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **31 сквозной тест** (`@playwright/test`):
-  - 14 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
+- **Build (`npm run build`):** PASSED — чистая production-сборка (`tsc -b && vite build`).
+- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **34 сквозных теста** (`@playwright/test`):
+  - 17 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
   - 11 тестов пользовательских сценариев (`e2e/flows.spec.tsx`)
   - 6 адаптивных смоук-тестов (`e2e/responsive.spec.tsx` для 390, 768, 1024, 1440, 1920px)
 

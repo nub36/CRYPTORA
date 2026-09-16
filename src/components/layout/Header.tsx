@@ -19,6 +19,9 @@ import {
   BarChart3,
   Wrench,
   Grid3X3,
+  Network,
+  Grid,
+  BookOpen,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -62,6 +65,9 @@ export const Header: React.FC = () => {
     { label: 'Карта рынка', path: '/heatmaps', icon: Grid3X3 },
     { label: 'Стратегии', path: '/strategies', icon: Cpu },
     { label: 'Сигналы', path: '/signals', icon: BarChart3 },
+    { label: 'Он-чейн', path: '/onchain', icon: Network },
+    { label: 'Корреляции', path: '/correlations', icon: Grid },
+    { label: 'Журнал', path: '/journal', icon: BookOpen },
     { label: 'Инструменты', path: '/tools', icon: Wrench },
   ];
 
