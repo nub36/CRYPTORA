@@ -26,18 +26,18 @@
 ## 3. Реестр этапов
 
 - [01-VISUAL-FOUNDATION.md](01-VISUAL-FOUNDATION.md) — Полноценный визуальный интерфейс терминала на контролируемых типизированных Demo-данных (ЗАВЕРШЕН).
-- [02-MARKET-DATA.md](02-MARKET-DATA.md) — Подключение публичных спотовых рыночных данных Binance и KuCoin (ТЕКУЩИЙ ЭТАП).
-- [03-REALTIME.md](03-REALTIME.md) — WebSockets реального времени и шина событий.
-- [04-COIN-PAGES.md](04-COIN-PAGES.md) — Углубленные карточки активов со стаканами и историей.
-- [05-FUTURES.md](05-FUTURES.md) — Полномасштабный сбор и нормализация деривативов (OI, Funding).
-- [06-LIQUIDATIONS.md](06-LIQUIDATIONS.md) — Поток принудительных ликвидаций и тепловая карта уровней.
-- [07-INDICATORS.md](07-INDICATORS.md) — Высокопроизводительный индикаторный движок.
-- [08-SCREENER.md](08-SCREENER.md) — Серверный скринер реального времени.
-- [09-MARKET-RADAR.md](09-MARKET-RADAR.md) — Математический движок детекции аномалий (Z-Score).
-- [10-ALERTS.md](10-ALERTS.md) — Сервис триггеров и каналы доставки (Telegram, Webhook).
-- [11-HISTORICAL-DATA.md](11-HISTORICAL-DATA.md) — Хранилище временных рядов (TimescaleDB / ClickHouse).
-- [12-BACKTEST.md](12-BACKTEST.md) — Движок бэктестинга без Look-Ahead Bias с учетом комиссий и фандинга.
-- [13-STRATEGIES.md](13-STRATEGIES.md) — Декларативный конструктор правил стратегий.
-- [14-SIGNALS.md](14-SIGNALS.md) — Неизменяемый журнал аудируемых сигналов.
-- [15-AI-ANALYST.md](15-AI-ANALYST.md) — Слой объяснений AI поверх структурированных фактов движка.
-- [16-MONETIZATION.md](16-MONETIZATION.md) — Интеграция тарифов и биллинга.
+- [02-MARKET-DATA.md](02-MARKET-DATA.md) — Подключение публичных спотовых рыночных данных Binance и KuCoin (ЗАВЕРШЕН).
+- [03-REALTIME.md](03-REALTIME.md) — WebSockets реального времени и шина событий (ЗАВЕРШЕН).
+- [04-COIN-PAGES.md](04-COIN-PAGES.md) — Углубленные карточки активов со стаканами и историей (ЗАВЕРШЕН).
+- [05-FUTURES.md](05-FUTURES.md) — Полномасштабный сбор и нормализация деривативов (OI, Funding) (ЗАВЕРШЕН).
+- [06-LIQUIDATIONS.md](06-LIQUIDATIONS.md) — Поток принудительных ликвидаций и тепловая карта уровней (ЗАВЕРШЕН).
+- [07-INDICATORS.md](07-INDICATORS.md) — Высокопроизводительный индикаторный движок (ЗАВЕРШЕН).
+- [08-SCREENER.md](08-SCREENER.md) — Серверный скринер реального времени (ЗАВЕРШЕН).
+- [09-MARKET-RADAR.md](09-MARKET-RADAR.md) — Математический движок детекции аномалий (Z-Score) (ЗАВЕРШЕН).
+- [10-ALERTS.md](10-ALERTS.md) — Сервис триггеров и каналы доставки (Telegram, Webhook) (ЗАВЕРШЕН).
+- [11-HISTORICAL-DATA.md](11-HISTORICAL-DATA.md) — Хранилище временных рядов (TimescaleDB / ClickHouse) (ЗАВЕРШЕН).
+- [12-BACKTEST.md](12-BACKTEST.md) — Движок бэктестинга без Look-Ahead Bias с учетом комиссий и фандинга (ЗАВЕРШЕН).
+- [13-STRATEGIES.md](13-STRATEGIES.md) — Декларативный конструктор правил стратегий (ЗАВЕРШЕН).
+- [14-SIGNALS.md](14-SIGNALS.md) — Неизменяемый журнал аудируемых сигналов (ЗАВЕРШЕН).
+- [15-AI-ANALYST.md](15-AI-ANALYST.md) — Слой объяснений AI поверх структурированных фактов движка (ЗАВЕРШЕН).
+- [16-MONETIZATION.md](16-MONETIZATION.md) — Интеграция тарифов и биллинга (ЗАВЕРШЕН).
