@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { JournalService, JournalEntry } from '@/services/journal/JournalService';
 import { BookOpen, Plus, Trash2, Award, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { sideLabel } from '@/utils/labels';
 
 export const JournalPage: React.FC = () => {
   const journal = useMemo(() => JournalService.getInstance(), []);
@@ -71,10 +72,10 @@ export const JournalPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <BookOpen className="w-5 h-5 text-brand-purple" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ЖУРНАЛ СДЕЛОК И РЕФЛЕКСИИ (TRADE JOURNAL)
+              ЖУРНАЛ СДЕЛОК И РЕФЛЕКСИИ
             </h1>
             <Badge variant="purple" size="sm">
-              RESEARCH & DISCIPLINE
+              ИССЛЕДОВАНИЯ И ДИСЦИПЛИНА
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -113,7 +114,7 @@ export const JournalPage: React.FC = () => {
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
-          <div className="text-[11px] text-slate-400">Процент прибыльных (Win Rate)</div>
+          <div className="text-[11px] text-slate-400">Доля прибыльных</div>
           <div className="text-2xl font-bold text-amber-400 mt-1">{summary.winRatePct}%</div>
           <div className="text-[10px] text-slate-500 mt-0.5">По закрытым сделкам</div>
         </div>
@@ -150,7 +151,7 @@ export const JournalPage: React.FC = () => {
             <span className="font-bold text-white uppercase tracking-wider">
               Новая запись в аналитический журнал
             </span>
-            <span className="text-[11px] text-slate-500">Local Journal Storage</span>
+            <span className="text-[11px] text-slate-500">Локальное хранилище журнала</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -172,8 +173,8 @@ export const JournalPage: React.FC = () => {
                 onChange={(e) => setDirection(e.target.value as any)}
                 className="w-full bg-surface-elevated border border-surface-border rounded px-2.5 py-1.5 text-white"
               >
-                <option value="LONG">LONG</option>
-                <option value="SHORT">SHORT</option>
+                <option value="LONG">ЛОНГ</option>
+                <option value="SHORT">ШОРТ</option>
               </select>
             </div>
 
@@ -276,7 +277,7 @@ export const JournalPage: React.FC = () => {
                       : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
                   }`}
                 >
-                  {entry.direction}
+                  {sideLabel(entry.direction)}
                 </span>
                 <span className="text-slate-400 text-[11px]">
                   Вход: ${entry.entryPrice.toLocaleString()} → Выход: ${entry.exitPrice.toLocaleString()}

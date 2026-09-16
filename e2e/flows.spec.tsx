@@ -32,8 +32,8 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     renderApp('/');
 
     // Полоса котировок маркирует фактический режим, демо-подпись не показывается.
-    expect(await screen.findByText('LIVE TICKER')).toBeInTheDocument();
-    expect(screen.queryByText('QA TICKER')).toBeNull();
+    expect(await screen.findByText('LIVE-ТИКЕР')).toBeInTheDocument();
+    expect(screen.queryByText('QA-ТИКЕР')).toBeNull();
   });
 
   test('LIVE-first: недоступный фактический источник даёт честное состояние без демо-котировок', async () => {
@@ -46,7 +46,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     // Ключевое отличие от прежнего поведения: демо-числа не подставляются вместо факта.
     expect(screen.queryByText('$64,850.25')).toBeNull();
-    expect(screen.queryByText('QA TICKER')).toBeNull();
+    expect(screen.queryByText('QA-ТИКЕР')).toBeNull();
   });
 
   test('LIVE-first: переключателя режима данных в интерфейсе нет', async () => {
@@ -65,7 +65,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     window.localStorage.setItem('cryptora_data_mode', 'demo');
     renderApp('/');
 
-    expect(await screen.findByText('QA TICKER')).toBeInTheDocument();
+    expect(await screen.findByText('QA-ТИКЕР')).toBeInTheDocument();
     const demoPrices = await screen.findAllByText('$64,850.25');
     expect(demoPrices.length).toBeGreaterThan(0);
     // Даже в этом внутреннем режиме переключателя в UI нет.
@@ -86,7 +86,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/24h Спот Объем/i)).toBeInTheDocument();
     expect(screen.getByText(/Доминация BTC/i)).toBeInTheDocument();
     expect(screen.getByText(/Индекс жадности/i)).toBeInTheDocument();
-    expect(screen.getByText(/Широта рынка \(Breadth\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Широта рынка$/i)).toBeInTheDocument();
 
     // Main Chart
     expect(screen.getByText('BTC / USDT')).toBeInTheDocument();
@@ -95,15 +95,15 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/ФЬЮЧЕРСНЫЙ СРЕЗ/i)).toBeInTheDocument();
     expect(screen.getByText(/ЛИКВИДАЦИИ ЗА 24H/i)).toBeInTheDocument();
     expect(screen.getByText('ТЕПЛОВАЯ КАРТА')).toBeInTheDocument();
-    expect(screen.getByText('MARKET RADAR (LATEST)')).toBeInTheDocument();
-    expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ \(PREVIEW\)/i)).toBeInTheDocument();
+    expect(screen.getByText('РЫНОЧНЫЙ РАДАР: ПОСЛЕДНЕЕ')).toBeInTheDocument();
+    expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ \(ПРЕВЬЮ\)/i)).toBeInTheDocument();
   });
 
   test('Market Navigation: search, multi-column sorting and watchlist toggling', async () => {
     renderApp('/market');
 
     await screen.findByText('Bitcoin');
-    expect(screen.getByText(/РЫНОЧНЫЕ КОТИРОВКИ \(MARKET\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/^РЫНОЧНЫЕ КОТИРОВКИ$/i)).toBeInTheDocument();
     expect(screen.getByText('Ethereum')).toBeInTheDocument();
     expect(screen.getByText('Solana')).toBeInTheDocument();
 
@@ -131,7 +131,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Рыночная статистика/i)).toBeInTheDocument();
     expect(screen.getByText(/Деривативы: детали контракта/i)).toBeInTheDocument();
     expect(screen.getByText(/Технические индикаторы/i)).toBeInTheDocument();
-    expect(screen.getByText(/ORDER BOOK \(L2\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/СТАКАН ЗАЯВОК \(L2\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Пары на ведущих биржах \(QA-датасет\)/i)).toBeInTheDocument();
   });
 
@@ -153,18 +153,18 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(within(chartCard).getByText(/QA-СВЕЧИ/i)).toBeInTheDocument();
 
     // Снимок по активу: три обязательных блока с явной маркировкой происхождения.
-    const pulse = screen.getByLabelText('Derivatives and liquidation pulse');
+    const pulse = screen.getByLabelText('Пульс деривативов и ликвидаций по активу');
     expect(pulse).toBeInTheDocument();
-    expect(within(pulse).getByText(/LIQUIDATION PULSE/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/QA DATASET/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Пульс ликвидаций/i)).toBeInTheDocument();
+    expect(within(pulse).getAllByText(/QA-ДАТАСЕТ|^QA$/i).length).toBeGreaterThan(0);
     expect(within(pulse).getByText(/^Деривативы$/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/LONG 24H/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/SHORT 24H/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Лонги 24ч/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Шорты 24ч/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/Открытый интерес \(OI\)/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/Фандинг \(8ч\)/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/Базис \(basis\)/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/^Базис$/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/ПЕРЕКОС ПОТОКА/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/DERIVED/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/^ПРОИЗВОДНЫЙ$/)).toBeInTheDocument();
     expect(within(pulse).getByText(/Не является торговым сигналом/i)).toBeInTheDocument();
 
     // Переходы в детальные разделы доступны прямо из рабочей области.
@@ -200,10 +200,10 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     await screen.findByText(/КАРТА И ПОТОК ЛИКВИДАЦИЙ/i);
     // Mandatory methodology distinction
     expect(
-      screen.getByText(/ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL/i)
+      screen.getByText(/ФАКТИЧЕСКАЯ ЛИКВИДАЦИЯ ≠ РАСЧЁТНЫЙ УРОВЕНЬ/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Ликвидировано Long \(24h\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ликвидировано Short \(24h\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ликвидировано лонгов \(24ч\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ликвидировано шортов \(24ч\)/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Журнал событий ликвидаций QA-датасета/i)
     ).toBeInTheDocument();
@@ -214,7 +214,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     // Карта плотности строится поверх расчетной модели и маркируется как ESTIMATED.
     const card = await screen.findByLabelText(/Расчетная тепловая карта плотности ликвидаций/i);
-    expect(within(card).getByText(/Тепловая карта плотности ликвидаций \(Price × Time\)/i)).toBeInTheDocument();
+    expect(within(card).getByText(/Тепловая карта плотности ликвидаций: цена × время/i)).toBeInTheDocument();
     expect(within(card).getByText('MODEL / ESTIMATED')).toBeInTheDocument();
     expect(within(card).getByText(/ВХОД: QA-СВЕЧИ|candles/i)).toBeInTheDocument();
 
@@ -225,19 +225,19 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     // Карта никогда не подменяет фактический журнал событий: разделение уровней сохраняется.
     expect(
-      screen.getByText(/ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL/i)
+      screen.getByText(/ФАКТИЧЕСКАЯ ЛИКВИДАЦИЯ ≠ РАСЧЁТНЫЙ УРОВЕНЬ/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/Журнал событий ликвидаций QA-датасета/i)).toBeInTheDocument();
-    expect(screen.getByText(/Расчетные уровни плечевых тиров/i)).toBeInTheDocument();
+    expect(screen.getByText(/Расчётные уровни ликвидаций по плечам/i)).toBeInTheDocument();
   });
 
   test('Screener: working filters and quick presets over demo dataset', async () => {
     renderApp('/screener');
 
-    await screen.findByText(/КРИПТО-СКРИНЕР \(SCREENER TERMINAL\)/i);
+    await screen.findByRole("heading", { name: /^КРИПТО-СКРИНЕР$/i });
 
     // Apply preset
-    const gainersBtn = screen.getByRole('button', { name: /Top Gainers/i });
+    const gainersBtn = screen.getByRole('button', { name: /Лидеры роста/i });
     fireEvent.click(gainersBtn);
 
     await waitFor(() => {
@@ -252,7 +252,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   test('Market Radar: anomaly feed and severity filtering', async () => {
     renderApp('/radar');
 
-    await screen.findByText(/MARKET RADAR \(ДЕТЕКТОР АНОМАЛИЙ\)/i);
+    await screen.findByText(/РЫНОЧНЫЙ РАДАР: ДЕТЕКТОР АНОМАЛИЙ/i);
     expect(
       screen.getByText(/Аномальный всплеск спотового и фьючерсного объема/i)
     ).toBeInTheDocument();
@@ -263,14 +263,14 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     expect(screen.getByText(/КАЛЬКУЛЯТОРЫ И РИСК-ИНСТРУМЕНТЫ/i)).toBeInTheDocument();
     expect(screen.getByText(/Калькулятор размера позиции/i)).toBeInTheDocument();
-    expect(screen.getByText(/Калькулятор PnL & ROE/i)).toBeInTheDocument();
-    expect(screen.getByText(/Сумма риска \(Stop Loss \$\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Калькулятор PnL и ROE/i)).toBeInTheDocument();
+    expect(screen.getByText(/Сумма риска \(стоп-лосс, \$\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Чистый PnL \(\$\)/i)).toBeInTheDocument();
   });
 
   test('Strategies & Signals: honest architectural previews without fake performance claims', async () => {
     renderApp('/strategies');
-    expect(screen.getByText(/STRATEGY LAB \(ЛАБОРАТОРИЯ СТРАТЕГИЙ\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/^ЛАБОРАТОРИЯ СТРАТЕГИЙ$/i)).toBeInTheDocument();
     expect(screen.getByText(/АРХИТЕКТУРНЫЙ ПРОТОТИП/i)).toBeInTheDocument();
 
     renderApp('/signals');
@@ -283,16 +283,16 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     renderApp('/');
 
     // Watchlist Drawer
-    const watchlistBtn = screen.getByLabelText(/Открыть Watchlist/i);
+    const watchlistBtn = screen.getByLabelText(/Открыть избранное/i);
     fireEvent.click(watchlistBtn);
-    expect(screen.getByText(/Избранное \(Watchlist\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Избранное$/i)).toBeInTheDocument();
     const closeWatchlistBtn = screen.getByLabelText('Закрыть');
     fireEvent.click(closeWatchlistBtn);
 
     // Alerts Modal
     const alertsBtn = screen.getByLabelText(/Открыть алерты/i);
     fireEvent.click(alertsBtn);
-    expect(screen.getByText(/Система алертов \(Alerts Preview\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Система алертов \(превью\)/i)).toBeInTheDocument();
   });
 
   test('Статус источника и WebSocket: только индикация, переключение режима недоступно', async () => {
@@ -300,7 +300,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     renderApp('/radar');
 
     // Радар маркирует происхождение данных и не даёт переключать режим.
-    expect(screen.getByText(/LIVE ANOMALY ENGINE/i)).toBeInTheDocument();
+    expect(screen.getByText(/LIVE-ДЕТЕКТОР АНОМАЛИЙ/i)).toBeInTheDocument();
     const headerChip = document.querySelector('[data-qa="data-source-status"]') as HTMLElement;
     expect(headerChip).not.toBeNull();
     expect(headerChip.closest('button')).toBeNull();

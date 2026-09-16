@@ -6,6 +6,7 @@ import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable
 import { BacktestEngine, BacktestResult, StrategyRule } from '@/services/backtest/BacktestEngine';
 import { OHLCV, Timeframe } from '@/types/market';
 import { formatPercent } from '@/utils/formatters';
+import { sideLabel } from '@/utils/labels';
 
 export const StrategiesPage: React.FC = () => {
   const { provider } = useMarketData();
@@ -45,10 +46,10 @@ export const StrategiesPage: React.FC = () => {
       id: `strat-${strategyType.toLowerCase()}`,
       name:
         strategyType === 'RSI_REVERSAL'
-          ? 'RSI(14) Reversal Strategy'
+          ? 'RSI (14): разворот из перепроданности'
           : strategyType === 'EMA_CROSS'
-          ? 'EMA (9 / 21) Trend Crossover'
-          : '20-Bar Channel High Breakout',
+          ? 'EMA (9 / 21): трендовое пересечение'
+          : 'Пробой максимума 20-барного канала',
       type: strategyType,
       parameters: {
         oversoldThreshold: 30,
@@ -87,14 +88,14 @@ export const StrategiesPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Cpu className="w-5 h-5 text-brand-purple" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              STRATEGY LAB (ЛАБОРАТОРИЯ СТРАТЕГИЙ)
+              ЛАБОРАТОРИЯ СТРАТЕГИЙ
             </h1>
             <Badge variant="purple" size="sm">
               АРХИТЕКТУРНЫЙ ПРОТОТИП
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Конструктор формализованных правил и побарная симуляция на исторических данных (Zero Look-Ahead Bias).
+            Конструктор формализованных правил и побарная симуляция на исторических данных (без заглядывания в будущее).
           </p>
         </div>
 
@@ -107,7 +108,7 @@ export const StrategiesPage: React.FC = () => {
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
         <div className="flex items-center space-x-2 text-white font-mono font-bold">
           <ShieldCheck className="w-4 h-4 text-brand-green" />
-          <span>CRYPTORA — аналитический терминал (Non-Execution Invariant)</span>
+          <span>CRYPTORA — аналитический терминал: инвариант без исполнения ордеров</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-400">
           Все расчеты в Лаборатории стратегий представляют собой <strong>математическую ретроспективную симуляцию</strong> на исторических барах с вычетом комиссий тейкера (0.05%) и проскальзывания (0.02%). Платформа <strong>не подключается к торговым ключам и не исполняет реальные ордера</strong> на биржах.
@@ -137,7 +138,7 @@ export const StrategiesPage: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Инструмент (Asset)</label>
+            <label className="text-[11px] text-slate-400 block mb-1">Инструмент</label>
             <select
               value={symbol}
               onChange={(e) => setSymbol(e.target.value as any)}
@@ -172,12 +173,12 @@ export const StrategiesPage: React.FC = () => {
             >
               <option value="RSI_REVERSAL">RSI (14) Разворот из перепроданности</option>
               <option value="EMA_CROSS">EMA (9 / 21) Трендовое пересечение</option>
-              <option value="BREAKOUT">20-Bar Channel High Breakout</option>
+              <option value="BREAKOUT">Пробой максимума 20-барного канала</option>
             </select>
           </div>
 
           <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Stop Loss (Уровень отмены, %)</label>
+            <label className="text-[11px] text-slate-400 block mb-1">Стоп-лосс (уровень отмены, %)</label>
             <input
               type="number"
               step="0.5"
@@ -190,7 +191,7 @@ export const StrategiesPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Take Profit (Целевой ориентир, %)</label>
+            <label className="text-[11px] text-slate-400 block mb-1">Тейк-профит (целевой ориентир, %)</label>
             <input
               type="number"
               step="0.5"
@@ -223,7 +224,7 @@ export const StrategiesPage: React.FC = () => {
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Винрейт (Win Rate)</div>
+              <div className="text-[11px] font-mono text-slate-400">Доля прибыльных</div>
               <div className="text-lg font-bold font-mono text-amber-400 mt-1">
                 {backtestResult.winRatePct}%
               </div>
@@ -233,15 +234,15 @@ export const StrategiesPage: React.FC = () => {
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Profit Factor</div>
+              <div className="text-[11px] font-mono text-slate-400">Профит-фактор</div>
               <div className="text-lg font-bold font-mono text-brand-cyan mt-1">
                 {backtestResult.profitFactor}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Gross Win / Gross Loss</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Валовая прибыль / валовый убыток</div>
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Макс. просадка (Drawdown)</div>
+              <div className="text-[11px] font-mono text-slate-400">Макс. просадка</div>
               <div className="text-lg font-bold font-mono text-rose-400 mt-1">
                 -{backtestResult.maxDrawdownPct}%
               </div>
@@ -249,7 +250,7 @@ export const StrategiesPage: React.FC = () => {
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Sharpe Ratio</div>
+              <div className="text-[11px] font-mono text-slate-400">Коэффициент Шарпа</div>
               <div className="text-lg font-bold font-mono text-purple-400 mt-1">
                 {backtestResult.sharpeRatio}
               </div>
@@ -300,7 +301,7 @@ export const StrategiesPage: React.FC = () => {
                       <tr key={trade.id} className="hover:bg-surface-elevated/40">
                         <td className="py-1.5 px-2 text-slate-400">{trade.id}</td>
                         <td className="py-1.5 px-2">
-                          <span className="text-brand-green font-bold">{trade.side}</span>
+                          <span className="text-brand-green font-bold">{sideLabel(trade.side)}</span>
                         </td>
                         <td className="py-1.5 px-2 text-white">
                           ${trade.entryPrice.toLocaleString()}

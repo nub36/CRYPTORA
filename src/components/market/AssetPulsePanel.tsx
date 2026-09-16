@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Flame, Layers, Gauge, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import { AssetPulse, AssetLiquidationSource } from '@/services/liquidations/LiquidationPulse';
 import { formatCurrency, formatPercent, formatTimestamp } from '@/utils/formatters';
+import { sideLabel } from '@/utils/labels';
 import { Badge } from '@/components/common/Badge';
 
 interface AssetPulsePanelProps {
@@ -10,14 +11,14 @@ interface AssetPulsePanelProps {
 }
 
 const SOURCE_BADGE: Record<AssetLiquidationSource, { label: string; variant: 'green' | 'amber' | 'cyan' | 'neutral' }> = {
-  FACTUAL: { label: 'FACTUAL · BINANCE', variant: 'green' },
-  DEMO: { label: 'QA DATASET', variant: 'amber' },
-  ESTIMATED: { label: 'ESTIMATED · MODEL', variant: 'cyan' },
+  FACTUAL: { label: 'ФАКТ · BINANCE', variant: 'green' },
+  DEMO: { label: 'QA-ДАТАСЕТ', variant: 'amber' },
+  ESTIMATED: { label: 'MODEL / ESTIMATED', variant: 'cyan' },
   UNAVAILABLE: { label: 'НЕТ ДАННЫХ', variant: 'neutral' },
 };
 
 /**
- * AssetPulsePanel — компактный Derivatives / Liquidation Pulse по текущему активу.
+ * AssetPulsePanel — компактный Derivatives / Пульс ликвидаций по текущему активу.
  *
  * Это СНИМОК (snapshot), а не дубль нижних детальных секций: здесь только то, что
  * даёт мгновенную картину по инструменту — ликвидации за 24ч с долями, значимые
@@ -30,14 +31,14 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
   const isDemoInputs = derivatives?.isDemo ?? false;
 
   return (
-    <aside className="flex flex-col gap-2.5" aria-label="Derivatives and liquidation pulse">
+    <aside className="flex flex-col gap-2.5" aria-label="Пульс деривативов и ликвидаций по активу">
       {/* Ликвидации по активу */}
       <section className="rounded-lg border border-surface-border bg-surface p-3 space-y-2">
         <header className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2">
             <Flame className="w-4 h-4 text-rose-400" />
             <span className="text-[13px] font-bold uppercase tracking-wider text-white font-mono">
-              Liquidation Pulse
+              Пульс ликвидаций
             </span>
           </div>
           <Badge variant={source.variant}>{source.label}</Badge>
@@ -47,7 +48,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
           <>
             <div className="grid grid-cols-2 gap-2 font-mono">
               <div className="rounded border border-emerald-500/25 bg-emerald-950/20 px-2 py-1.5">
-                <div className="text-[11px] text-emerald-300/90 uppercase tracking-wide">Long 24h</div>
+                <div className="text-[11px] text-emerald-300/90 uppercase tracking-wide">Лонги 24ч</div>
                 <div className="text-base font-bold text-emerald-300 tabular-nums">
                   {formatCurrency(liquidation.longUsd, { compact: true })}
                 </div>
@@ -56,7 +57,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
                 </div>
               </div>
               <div className="rounded border border-rose-500/25 bg-rose-950/20 px-2 py-1.5">
-                <div className="text-[11px] text-rose-300/90 uppercase tracking-wide">Short 24h</div>
+                <div className="text-[11px] text-rose-300/90 uppercase tracking-wide">Шорты 24ч</div>
                 <div className="text-base font-bold text-rose-300 tabular-nums">
                   {formatCurrency(liquidation.shortUsd, { compact: true })}
                 </div>
@@ -68,8 +69,8 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
 
             <div className="space-y-1">
               <div className="flex justify-between text-[11px] font-mono text-slate-400">
-                <span className="text-emerald-300">Longs {liquidation.longSharePct}%</span>
-                <span className="text-rose-300">Shorts {liquidation.shortSharePct}%</span>
+                <span className="text-emerald-300">Лонги {liquidation.longSharePct}%</span>
+                <span className="text-rose-300">Шорты {liquidation.shortSharePct}%</span>
               </div>
               <div className="h-2 rounded-full overflow-hidden flex bg-[#111a30]">
                 <div className="bg-emerald-500 h-full" style={{ width: `${liquidation.longSharePct}%` }} />
@@ -102,7 +103,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
                 className="flex items-center justify-between rounded bg-surface-elevated/60 border border-white/[0.05] px-2 py-1 font-mono"
               >
                 <div className="flex items-center space-x-2 min-w-0">
-                  <Badge variant={event.side === 'LONG' ? 'green' : 'red'}>{event.side}</Badge>
+                  <Badge variant={event.side === 'LONG' ? 'green' : 'red'}>{sideLabel(event.side)}</Badge>
                   <span className="text-[11px] text-slate-400 truncate">
                     {formatTimestamp(event.timestamp)} · {event.exchange}
                   </span>
@@ -168,7 +169,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Базис (basis)</span>
+              <span className="text-slate-400">Базис</span>
               <span className="font-bold text-slate-200 tabular-nums">
                 {derivatives.basisPct >= 0 ? '+' : ''}
                 {derivatives.basisPct.toFixed(3)}%
@@ -199,7 +200,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
               Перекос потока
             </span>
           </div>
-          <Badge variant="cyan">DERIVED</Badge>
+          <Badge variant="cyan">ПРОИЗВОДНЫЙ</Badge>
         </header>
 
         {imbalance ? (

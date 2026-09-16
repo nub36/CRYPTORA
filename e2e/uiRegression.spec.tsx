@@ -205,17 +205,17 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
 
     // Статусные метки drawer: режим данных, WebSocket, тариф
     expect(screen.getAllByText(/QA-ДАТАСЕТ/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/WS (ONLINE|IDLE)/i)).toBeInTheDocument();
+    expect(screen.getByText(/WS (ОНЛАЙН|ОЖИДАНИЕ)/i)).toBeInTheDocument();
     expect(screen.getByTitle(/Тарифный план/i)).toBeInTheDocument();
 
     fireEvent.click(menuBtn);
   });
 
-  test('Header инвариант: бейдж версии обновлён до v0.8.6', async () => {
+  test('Header инвариант: бейдж версии обновлён до v0.8.7', async () => {
     setWindowDimensions(1920, 1080);
     const { container } = renderApp('/');
     const header = container.querySelector('header') as HTMLElement;
-    expect(header.textContent).toContain('v0.8.6');
+    expect(header.textContent).toContain('v0.8.7');
   });
 
   test('Viewports layout smoke check: 390, 768, 1024, 1280, 1366, 1440, 1920', async () => {

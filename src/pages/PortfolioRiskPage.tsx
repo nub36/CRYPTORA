@@ -68,10 +68,10 @@ export const PortfolioRiskPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <PieChart className="w-5 h-5 text-cyan-400" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ПОРТФЕЛЬНЫЙ РИСК И СТРЕСС-ТЕСТИРОВАНИЕ (PORTFOLIO RISK & VAR)
+              ПОРТФЕЛЬНЫЙ РИСК И СТРЕСС-ТЕСТИРОВАНИЕ
             </h1>
             <Badge variant="cyan" size="sm">
-              RISK INTELLIGENCE
+              РИСК-АНАЛИТИКА
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -107,7 +107,7 @@ export const PortfolioRiskPage: React.FC = () => {
       <div className="p-4 bg-[#0a0f1d] border border-white/[0.08] rounded-xl text-xs font-sans text-slate-300 space-y-2 shadow-panel">
         <div className="flex items-center space-x-2 text-white font-mono font-bold">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Non-Custodial / Аналитическое моделирование риска</span>
+          <span>Без кастоди: аналитическое моделирование риска</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-400">
           CRYPTORA не подключается к Web3-кошелькам, не хранит активы и не запрашивает транзакционных подписей. Все расчеты риска и стресс-тестирования выполняются локально как математическая декомпозиция для информирования пользователя.
@@ -117,7 +117,7 @@ export const PortfolioRiskPage: React.FC = () => {
       {/* Risk Metrics Dashboard */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Объем портфеля (Total Value)</div>
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Стоимость портфеля</div>
           <div className="text-2xl font-bold text-white mt-1.5 tabular-nums">
             ${report.totalValueUsd.toLocaleString()}
           </div>
@@ -125,7 +125,7 @@ export const PortfolioRiskPage: React.FC = () => {
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Portfolio Beta к BTC</div>
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Бета портфеля к BTC</div>
           <div
             className={`text-2xl font-black mt-1.5 tabular-nums ${
               report.portfolioBeta > 1.2
@@ -141,7 +141,7 @@ export const PortfolioRiskPage: React.FC = () => {
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">1-Day VaR (95% Доверие)</div>
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">VaR за 1 день (доверие 95%)</div>
           <div className="text-2xl font-bold text-rose-400 mt-1.5 tabular-nums">
             -${report.dailyVaR95Usd.toLocaleString()}
           </div>
@@ -151,7 +151,7 @@ export const PortfolioRiskPage: React.FC = () => {
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Концентрация (HHI Индекс)</div>
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Концентрация (индекс HHI)</div>
           <div className="text-2xl font-bold text-amber-400 mt-1.5 tabular-nums">
             {report.hhiConcentrationIndex}
           </div>
@@ -268,7 +268,7 @@ export const PortfolioRiskPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Zap className="w-4 h-4 text-brand-purple" />
             <span className="font-bold text-white uppercase tracking-wider">
-              Стресс-тестирование портфеля (Historical & Macro Shock Scenarios)
+              Стресс-тестирование портфеля: исторические и макро-шоки
             </span>
           </div>
           <span className="text-[11px] text-slate-500">Симуляция экстремальных фаз</span>

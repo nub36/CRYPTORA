@@ -1,0 +1,65 @@
+/**
+ * CRYPTORA — единый словарь русских подписей для машинных enum-значений.
+ * ---------------------------------------------------------------------------
+ * Машинные коды (`VOLUME_SPIKE`, `HIGH`, `LONG`…) остаются латиницей в данных,
+ * схемах Zod и `data-qa`-атрибутах — это контракт, а не текст интерфейса.
+ * В пользовательском слое они переводятся только через эти функции, чтобы
+ * терминология была одинаковой во всех разделах (UX-цикл владельца, п. 2).
+ *
+ * Общепринятые аббревиатуры (OI, RSI, MACD, VaR, TVL, WS, LIVE, QA, MODEL /
+ * ESTIMATED) сознательно не переводятся — см. docs/DESIGN_SYSTEM.md, раздел 11.
+ */
+import type { RadarEventType, RadarSeverity } from '../types/market';
+
+export const RADAR_EVENT_TYPE_LABELS: Record<RadarEventType, string> = {
+  VOLUME_SPIKE: 'Всплеск объёма',
+  OI_SPIKE: 'Всплеск OI',
+  FUNDING_EXTREME: 'Экстремальный фандинг',
+  LIQUIDATION_BURST: 'Каскад ликвидаций',
+  PRICE_MOVE: 'Резкое движение цены',
+  VOLATILITY_EXPANSION: 'Расширение волатильности',
+};
+
+export const RADAR_SEVERITY_LABELS: Record<RadarSeverity, string> = {
+  HIGH: 'Высокая',
+  MEDIUM: 'Средняя',
+  INFO: 'Инфо',
+};
+
+export type PositionSide = 'LONG' | 'SHORT';
+
+/** Именительный падеж: «Лонг» / «Шорт». */
+export const SIDE_LABELS: Record<PositionSide, string> = {
+  LONG: 'Лонг',
+  SHORT: 'Шорт',
+};
+
+/** Множественное число: «Лонги» / «Шорты». */
+export const SIDE_PLURAL_LABELS: Record<PositionSide, string> = {
+  LONG: 'Лонги',
+  SHORT: 'Шорты',
+};
+
+export type ImpactLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export const IMPACT_LABELS: Record<ImpactLevel, string> = {
+  HIGH: 'Высокое',
+  MEDIUM: 'Среднее',
+  LOW: 'Низкое',
+};
+
+export function radarEventTypeLabel(type: RadarEventType): string {
+  return RADAR_EVENT_TYPE_LABELS[type] ?? type;
+}
+
+export function radarSeverityLabel(severity: RadarSeverity): string {
+  return RADAR_SEVERITY_LABELS[severity] ?? severity;
+}
+
+export function sideLabel(side: PositionSide, plural = false): string {
+  return (plural ? SIDE_PLURAL_LABELS : SIDE_LABELS)[side] ?? side;
+}
+
+export function impactLabel(impact: ImpactLevel): string {
+  return IMPACT_LABELS[impact] ?? impact;
+}

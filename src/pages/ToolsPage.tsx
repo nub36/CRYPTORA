@@ -84,7 +84,7 @@ export const ToolsPage: React.FC = () => {
         <div className="flex items-center space-x-2">
           <Wrench className="w-5 h-5 text-cyan-400" />
           <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-            КАЛЬКУЛЯТОРЫ И РИСК-ИНСТРУМЕНТЫ (TOOLS)
+            КАЛЬКУЛЯТОРЫ И РИСК-ИНСТРУМЕНТЫ
           </h1>
           <span className="text-[10px] font-mono font-semibold text-emerald-400 bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
             РАБОТАЮЩИЙ РАСЧЕТНЫЙ МОДУЛЬ
@@ -102,7 +102,7 @@ export const ToolsPage: React.FC = () => {
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Shield className="w-4 h-4 text-cyan-400" />
             <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
-              Калькулятор размера позиции (Position Sizing)
+              Калькулятор размера позиции
             </h2>
           </div>
 
@@ -139,7 +139,7 @@ export const ToolsPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-slate-400 block mb-1">Цена Stop-Loss ($)</label>
+              <label className="text-slate-400 block mb-1">Цена стоп-лосса ($)</label>
               <input
                 type="number"
                 value={posStopLossPrice}
@@ -152,14 +152,14 @@ export const ToolsPage: React.FC = () => {
           {/* Result Box */}
           <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-mono text-xs">
             <div className="flex justify-between items-center tabular-nums">
-              <span className="text-slate-400">Сумма риска (Stop Loss $)</span>
+              <span className="text-slate-400">Сумма риска (стоп-лосс, $)</span>
               <span className="font-bold text-rose-400">
                 -{formatCurrency(posResult.riskAmountUsd)}
               </span>
             </div>
 
             <div className="flex justify-between items-center tabular-nums">
-              <span className="text-slate-400">Дистанция до Stop-Loss</span>
+              <span className="text-slate-400">Дистанция до стоп-лосса</span>
               <span className="font-semibold text-slate-300">
                 ${posResult.stopLossDistanceUsd.toFixed(2)} ({posResult.stopLossDistancePct.toFixed(2)}%)
               </span>
@@ -193,7 +193,7 @@ export const ToolsPage: React.FC = () => {
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Calculator className="w-4 h-4 text-emerald-400" />
             <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
-              Калькулятор PnL & ROE (Прибыль / Убыток)
+              Калькулятор PnL и ROE
             </h2>
           </div>
 
@@ -319,7 +319,7 @@ export const ToolsPage: React.FC = () => {
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Flame className="w-4 h-4 text-rose-400" />
             <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
-              Цена ликвидации (Liq Price)
+              Цена ликвидации
             </h2>
           </div>
 
@@ -474,7 +474,7 @@ export const ToolsPage: React.FC = () => {
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <TrendingUp className="w-4 h-4 text-emerald-400" />
             <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
-              DCA Симулятор усреднения
+              Симулятор усреднения (DCA)
             </h2>
           </div>
 

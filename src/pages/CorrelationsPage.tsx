@@ -24,10 +24,10 @@ export const CorrelationsPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Grid className="w-5 h-5 text-brand-cyan" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              МАТРИЦА КОРРЕЛЯЦИЙ И БЕТА (CORRELATION & BETA TERMINAL)
+              МАТРИЦА КОРРЕЛЯЦИЙ И БЕТА
             </h1>
             <Badge variant="cyan" size="sm">
-              MACRO & CROSS-ASSET
+              МАКРО И КРОСС-АКТИВЫ
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -36,7 +36,7 @@ export const CorrelationsPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded border border-cyan-500/30">
-          РОЛЛИНГ 30-DAY WINDOW
+          СКОЛЬЗЯЩЕЕ ОКНО 30 ДНЕЙ
         </div>
       </div>
 
@@ -66,7 +66,7 @@ export const CorrelationsPage: React.FC = () => {
             <table className="w-full text-center font-mono text-xs border-collapse">
               <thead>
                 <tr>
-                  <th className="p-2 text-left text-slate-400 text-[11px]">Asset</th>
+                  <th className="p-2 text-left text-slate-400 text-[11px]">Актив</th>
                   {assets.map((asset) => (
                     <th key={asset} className="p-2 text-slate-300 font-bold text-[11px]">
                       {asset}
@@ -126,9 +126,9 @@ export const CorrelationsPage: React.FC = () => {
               <thead className="text-[11px] text-slate-500 border-b border-surface-border">
                 <tr>
                   <th className="py-2 px-1">Актив</th>
-                  <th className="py-2 px-1 text-center">Beta</th>
-                  <th className="py-2 px-1 text-center">Corr</th>
-                  <th className="py-2 px-1 text-right">30d Vol</th>
+                  <th className="py-2 px-1 text-center">Бета</th>
+                  <th className="py-2 px-1 text-center">Корр.</th>
+                  <th className="py-2 px-1 text-right">Волат. 30д</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border/50 text-[11px]">

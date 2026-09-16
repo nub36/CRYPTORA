@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { CalendarService, EventCategory, EventImpact } from '@/services/analytics/CalendarService';
 import { Calendar, Clock, ShieldCheck, Filter } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { impactLabel } from '@/utils/labels';
 
 export const CalendarPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<EventCategory | 'ALL'>('ALL');
@@ -23,10 +24,10 @@ export const CalendarPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Calendar className="w-5 h-5 text-brand-cyan" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              МАКРО-КАЛЕНДАРЬ И СОБЫТИЯ (ECONOMIC CALENDAR)
+              МАКРО-КАЛЕНДАРЬ И СОБЫТИЯ
             </h1>
             <Badge variant="cyan" size="sm">
-              CATALYST TRACKER
+              ТРЕКЕР КАТАЛИЗАТОРОВ
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -49,7 +50,7 @@ export const CalendarPage: React.FC = () => {
                 Ближайший ключевой макро-катализатор
               </span>
               <Badge variant="red" size="xs">
-                HIGH VOLATILITY RISK
+                РИСК ВЫСОКОЙ ВОЛАТИЛЬНОСТИ
               </Badge>
             </div>
             <div className="text-slate-400 text-[11px] flex items-center space-x-1">
@@ -121,7 +122,7 @@ export const CalendarPage: React.FC = () => {
                   : 'bg-surface text-slate-400 border-surface-border hover:text-white'
               }`}
             >
-              {imp === 'ALL' ? 'Любая' : imp}
+              {imp === 'ALL' ? 'Любое' : impactLabel(imp)}
             </button>
           ))}
 
@@ -170,7 +171,7 @@ export const CalendarPage: React.FC = () => {
                   variant={event.impact === 'HIGH' ? 'red' : 'amber'}
                   size="xs"
                 >
-                  {event.impact} IMPACT
+                  {impactLabel(event.impact).toUpperCase()} ВЛИЯНИЕ
                 </Badge>
                 <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
                   {event.category}

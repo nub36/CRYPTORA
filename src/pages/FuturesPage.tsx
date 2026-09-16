@@ -67,12 +67,12 @@ export const FuturesPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ФЬЮЧЕРСЫ И ДЕРИВАТИВЫ (PERPETUAL MARKETS)
+              ФЬЮЧЕРСЫ И ДЕРИВАТИВЫ
             </h1>
             {dataMode === 'live' ? (
               <span className="text-[10px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
-                LIVE DERIVATIVES (BINANCE FUTURES)
+                LIVE-ДЕРИВАТИВЫ · BINANCE FUTURES
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
@@ -118,7 +118,7 @@ export const FuturesPage: React.FC = () => {
                 : 'bg-[#111a30] border border-white/[0.08] text-slate-300 hover:bg-[#162342] hover:text-white'
             }`}
           >
-            Шорт &lt; 0 (Squeeze Watch)
+            Шорт &lt; 0 (риск сквиза)
           </button>
         </div>
       </div>
@@ -196,14 +196,14 @@ export const FuturesPage: React.FC = () => {
                   onClick={() => handleSort('markPrice')}
                   className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
                 >
-                  Mark Price
+                  Цена метки
                 </th>
                 <th
                   onClick={() => handleSort('fundingRate')}
                   className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
                 >
                   <div className="flex items-center justify-end space-x-1">
-                    <span>Funding (8h)</span>
+                    <span>Фандинг (8ч)</span>
                     {sortConfig.key === 'fundingRate' && (
                       sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                     )}
@@ -220,7 +220,7 @@ export const FuturesPage: React.FC = () => {
                   className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
                 >
                   <div className="flex items-center justify-end space-x-1">
-                    <span>Open Interest</span>
+                    <span>Открытый интерес</span>
                     {sortConfig.key === 'openInterest' && (
                       sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                     )}
@@ -247,7 +247,7 @@ export const FuturesPage: React.FC = () => {
                   onClick={() => handleSort('futuresVolume24h')}
                   className="py-2.5 px-3 text-right cursor-pointer hover:text-white hidden sm:table-cell"
                 >
-                  24h Объем
+                  Объём 24ч
                 </th>
                 <th
                   onClick={() => handleSort('basisPct')}
@@ -259,7 +259,7 @@ export const FuturesPage: React.FC = () => {
                   onClick={() => handleSort('shortLiquidations24h')}
                   className="py-2.5 px-3 text-right cursor-pointer hover:text-white hidden md:table-cell"
                 >
-                  Short Liqs (24h)
+                  Ликв. шортов (24ч)
                 </th>
               </tr>
             </thead>

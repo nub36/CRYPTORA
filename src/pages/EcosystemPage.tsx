@@ -16,10 +16,10 @@ export const EcosystemPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Layers className="w-5 h-5 text-brand-purple" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ЭКОСИСТЕМЫ И LAYER-2 (DEFI & ROLLUPS TERMINAL)
+              ЭКОСИСТЕМЫ И СЕТИ L2
             </h1>
             <Badge variant="purple" size="sm">
-              TVL & METRICS
+              TVL И МЕТРИКИ
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -54,7 +54,7 @@ export const EcosystemPage: React.FC = () => {
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
-          <div className="text-[11px] text-slate-400">Доля Layer-2 сетей</div>
+          <div className="text-[11px] text-slate-400">Доля сетей L2</div>
           <div className="text-2xl font-bold text-brand-cyan mt-1">
             {overview.l2SharePct}%
           </div>
@@ -68,7 +68,7 @@ export const EcosystemPage: React.FC = () => {
           <div className="text-2xl font-bold text-brand-green mt-1">
             ${(overview.totalDailyFeesUsd / 1e6).toFixed(2)}M
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Суммарный Gas Fee сетей</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Суммарные комиссии сетей</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
@@ -97,7 +97,7 @@ export const EcosystemPage: React.FC = () => {
                 <th className="py-2.5 px-2 text-center">Слой</th>
                 <th className="py-2.5 px-2 text-right">TVL (USD)</th>
                 <th className="py-2.5 px-2 text-right">7d Динамика</th>
-                <th className="py-2.5 px-2 text-right">Суточный Gas</th>
+                <th className="py-2.5 px-2 text-right">Комиссии за сутки</th>
                 <th className="py-2.5 px-2 text-right">Скорость (TPS)</th>
                 <th className="py-2.5 px-2 text-right">Активные адреса</th>
                 <th className="py-2.5 px-2 text-right">Стейблкоины</th>

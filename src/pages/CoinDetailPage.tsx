@@ -4,6 +4,7 @@ import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetDetail, OHLCV, Timeframe, FuturesAsset, RadarEvent } from '@/types/market';
 import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters';
+import { radarEventTypeLabel, radarSeverityLabel } from '@/utils/labels';
 import { CandleChart } from '@/components/common/CandleChart';
 import { Badge } from '@/components/common/Badge';
 import { OrderBookL2 } from '@/components/market/OrderBookL2';
@@ -228,7 +229,7 @@ export const CoinDetailPage: React.FC = () => {
           <div className="text-right font-mono">
             <div className="text-2xl font-black text-white flex items-center justify-end space-x-1.5">
               {livePrice !== undefined && (
-                <span className="w-2 h-2 rounded-full bg-brand-green animate-pulse inline-block" title="Realtime WebSocket Tick" />
+                <span className="w-2 h-2 rounded-full bg-brand-green animate-pulse inline-block" title="Тик реального времени (WebSocket)" />
               )}
               <span>{formatCurrency(currentPrice, { decimals: currentPrice > 10 ? 2 : 4 })}</span>
             </div>
@@ -272,7 +273,7 @@ export const CoinDetailPage: React.FC = () => {
           className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-purple text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
         >
           <Cpu className="w-3.5 h-3.5 text-brand-purple" />
-          <span>Симуляция в Strategy Lab</span>
+          <span>Симуляция в лаборатории стратегий</span>
         </Link>
         <Link
           to="/tools"
@@ -303,8 +304,8 @@ export const CoinDetailPage: React.FC = () => {
               {asset.symbol}/USDT Свечной график
             </span>
             <div className="hidden sm:flex items-center space-x-2 text-xs font-mono text-slate-400">
-              <span>24h High: <strong className="text-slate-200">{formatCurrency(asset.high24h)}</strong></span>
-              <span>24h Low: <strong className="text-slate-200">{formatCurrency(asset.low24h)}</strong></span>
+              <span>Макс. 24ч: <strong className="text-slate-200">{formatCurrency(asset.high24h)}</strong></span>
+              <span>Мин. 24ч: <strong className="text-slate-200">{formatCurrency(asset.low24h)}</strong></span>
             </div>
           </div>
 
@@ -348,27 +349,27 @@ export const CoinDetailPage: React.FC = () => {
 
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-slate-400">Капитализация (Market Cap)</span>
+              <span className="text-slate-400">Капитализация</span>
               <span className="font-bold text-white">{formatCurrency(asset.marketCap)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">24h Объем торгов</span>
+              <span className="text-slate-400">Объём торгов 24ч</span>
               <span className="font-bold text-white">{formatCurrency(asset.volume24h)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">В обращении (Circulating)</span>
+              <span className="text-slate-400">В обращении</span>
               <span className="text-slate-200">
                 {formatNumber(asset.circulatingSupply, { compact: true })} {asset.symbol}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">All-Time High (ATH)</span>
+              <span className="text-slate-400">Исторический максимум (ATH)</span>
               <span className="text-slate-200">
                 {formatCurrency(asset.ath)} ({asset.athDate})
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">All-Time Low (ATL)</span>
+              <span className="text-slate-400">Исторический минимум (ATL)</span>
               <span className="text-slate-200">
                 {formatCurrency(asset.atl)} ({asset.atlDate})
               </span>
@@ -400,7 +401,7 @@ export const CoinDetailPage: React.FC = () => {
               {/* Детализация без дублей со снимком Pulse: там OI, OI Δ24ч и фандинг 8ч,
                   здесь — остальные метрики контракта и производные показатели. */}
               <div className="flex justify-between">
-                <span className="text-slate-400">Mark / Index Price</span>
+                <span className="text-slate-400">Метка / индексная цена</span>
                 <span className="font-bold text-white">
                   {formatCurrency(futuresData.markPrice, { decimals: futuresData.markPrice > 10 ? 2 : 4 })} /{' '}
                   {formatCurrency(futuresData.indexPrice, { decimals: futuresData.indexPrice > 10 ? 2 : 4 })}
@@ -494,7 +495,7 @@ export const CoinDetailPage: React.FC = () => {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">MACD Histogram</span>
+              <span className="text-slate-400">Гистограмма MACD</span>
               <span
                 className={`font-bold ${
                   (dynamicIndicators?.macd?.hist ?? 0) >= 0 ? 'text-brand-green' : 'text-brand-red'
@@ -512,7 +513,7 @@ export const CoinDetailPage: React.FC = () => {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Bollinger Upper/Lower</span>
+              <span className="text-slate-400">Полосы Боллинджера (верх / низ)</span>
               <span className="text-xs text-slate-400">
                 {formatCurrency(dynamicIndicators?.bollinger?.upper ?? 0, { compact: true })} /{' '}
                 {formatCurrency(dynamicIndicators?.bollinger?.lower ?? 0, { compact: true })}
@@ -617,9 +618,9 @@ export const CoinDetailPage: React.FC = () => {
                         }
                         size="xs"
                       >
-                        {re.severity}
+                        {radarSeverityLabel(re.severity)}
                       </Badge>
-                      <span className="text-white font-semibold">{re.type}</span>
+                      <span className="text-white font-semibold">{radarEventTypeLabel(re.type)}</span>
                       <span className="hidden text-xs text-slate-400 sm:inline">
                         {re.observation}
                       </span>

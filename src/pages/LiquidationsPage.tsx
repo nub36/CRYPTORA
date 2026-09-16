@@ -3,6 +3,7 @@ import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { LiquidationData } from '@/types/market';
 import { formatCurrency, formatTimestamp } from '@/utils/formatters';
+import { sideLabel } from '@/utils/labels';
 import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline';
 import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
 import { LiquidationHeatmap } from '@/components/market/LiquidationHeatmap';
@@ -126,12 +127,12 @@ export const LiquidationsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold text-white tracking-wide">
-              КАРТА И ПОТОК ЛИКВИДАЦИЙ (LIQUIDATIONS)
+              КАРТА И ПОТОК ЛИКВИДАЦИЙ
             </h1>
             {data.dataStatus === 'LIVE_STREAM' && (
               <span className="text-[10px] font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
-                LIVE STREAM (BINANCE FUTURES)
+                LIVE-ПОТОК · BINANCE FUTURES
               </span>
             )}
             {(data.dataStatus === 'AWAITING_STREAM' || data.dataStatus === 'UNAVAILABLE') && (
@@ -169,18 +170,18 @@ export const LiquidationsPage: React.FC = () => {
       <div className="p-3.5 bg-amber-500/[0.08] border border-amber-500/30 rounded-xl text-xs font-sans text-slate-300 space-y-1.5 shadow-panel">
         <div className="flex items-center space-x-2 text-amber-300 font-mono font-bold">
           <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-400" />
-          <span>КРИТИЧЕСКИЙ ПРИНЦИП: ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL</span>
+          <span>КРИТИЧЕСКИЙ ПРИНЦИП: ФАКТИЧЕСКАЯ ЛИКВИДАЦИЯ ≠ РАСЧЁТНЫЙ УРОВЕНЬ</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-300">
-          <strong>Фактическое событие ликвидации (Actual Event):</strong> Публичный биржевой ордер принудительного закрытия позиции при наступлении маржин-колла. Это подтвержденный свершившийся факт.<br />
-          <strong>Расчетный ликвидационный уровень (Estimated / Model Level):</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">ESTIMATED / MODEL</code>.
+          <strong>Фактическое событие ликвидации:</strong> Публичный биржевой ордер принудительного закрытия позиции при наступлении маржин-колла. Это подтвержденный свершившийся факт.<br />
+          <strong>Расчётный ликвидационный уровень:</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">MODEL / ESTIMATED</code> (расчётная модель).
         </p>
       </div>
 
       {/* Aggregate Long/Short Ratio Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
-          <div className="text-xs text-slate-400 uppercase tracking-wider">Ликвидировано Long (24h)</div>
+          <div className="text-xs text-slate-400 uppercase tracking-wider">Ликвидировано лонгов (24ч)</div>
           <div className="text-2xl font-black text-emerald-400 mt-1 tabular-nums">
             {formatCurrency(data.totalLong24h, { compact: true })}
           </div>
@@ -190,7 +191,7 @@ export const LiquidationsPage: React.FC = () => {
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
-          <div className="text-xs text-slate-400 uppercase tracking-wider">Ликвидировано Short (24h)</div>
+          <div className="text-xs text-slate-400 uppercase tracking-wider">Ликвидировано шортов (24ч)</div>
           <div className="text-2xl font-black text-rose-400 mt-1 tabular-nums">
             {formatCurrency(data.totalShort24h, { compact: true })}
           </div>
@@ -207,7 +208,7 @@ export const LiquidationsPage: React.FC = () => {
                 {formatCurrency(data.largestEvent.amountUsd, { compact: true })}
               </div>
               <div className="text-[11px] text-rose-300 mt-0.5">
-                {data.largestEvent.symbol} ({data.largestEvent.side}) на {data.largestEvent.exchange}
+                {data.largestEvent.symbol} ({sideLabel(data.largestEvent.side).toLowerCase()}) на {data.largestEvent.exchange}
               </div>
             </>
           ) : (
@@ -223,8 +224,8 @@ export const LiquidationsPage: React.FC = () => {
       {data.total24h > 0 && (
       <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
         <div className="flex justify-between text-xs mb-2">
-          <span className="text-emerald-400 font-bold tabular-nums">Longs: {longPct}%</span>
-          <span className="text-rose-400 font-bold tabular-nums">Shorts: {shortPct}%</span>
+          <span className="text-emerald-400 font-bold tabular-nums">Лонги: {longPct}%</span>
+          <span className="text-rose-400 font-bold tabular-nums">Шорты: {shortPct}%</span>
         </div>
         <div className="w-full h-3 rounded-full overflow-hidden flex bg-[#111a30]">
           <div className="bg-emerald-500 h-full" style={{ width: `${longPct}%` }} />
@@ -240,9 +241,9 @@ export const LiquidationsPage: React.FC = () => {
           <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
             <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Хронология ликвидаций по 3-часовым барам (24H Timeline)</span>
+              <span>Хронология ликвидаций по 3-часовым барам за 24ч</span>
             </span>
-            <span className="text-[10px] text-slate-400">UTC Bars</span>
+            <span className="text-[10px] text-slate-400">Бары по UTC</span>
           </div>
 
           {/* Bar Chart: фактическое распределение событий по 3-часовым барам */}
@@ -265,13 +266,13 @@ export const LiquidationsPage: React.FC = () => {
                     <div
                       style={{ height: `${Math.max(4, longHeight)}px` }}
                       className="w-1/2 bg-emerald-500/80 rounded-t group-hover:bg-emerald-400 transition-colors"
-                      title={`Longs: ${formatCurrency(bar.longUsd, { compact: true })}`}
+                      title={`Лонги: ${formatCurrency(bar.longUsd, { compact: true })}`}
                     />
                     {/* Short bar */}
                     <div
                       style={{ height: `${Math.max(4, shortHeight)}px` }}
                       className="w-1/2 bg-rose-500/80 rounded-t group-hover:bg-rose-400 transition-colors"
-                      title={`Shorts: ${formatCurrency(bar.shortUsd, { compact: true })}`}
+                      title={`Шорты: ${formatCurrency(bar.shortUsd, { compact: true })}`}
                     />
                   </div>
                   <span className="text-[10px] text-slate-400 group-hover:text-white tabular-nums">
@@ -285,11 +286,11 @@ export const LiquidationsPage: React.FC = () => {
           <div className="flex items-center justify-center space-x-6 text-[11px] pt-2 border-t border-white/[0.06] text-slate-400">
             <div className="flex items-center space-x-1.5">
               <span className="w-3 h-3 bg-emerald-500 rounded"></span>
-              <span>Long Liquidations</span>
+              <span>Ликвидации лонгов</span>
             </div>
             <div className="flex items-center space-x-1.5">
               <span className="w-3 h-3 bg-rose-500 rounded"></span>
-              <span>Short Liquidations</span>
+              <span>Ликвидации шортов</span>
             </div>
           </div>
         </div>
@@ -372,7 +373,7 @@ export const LiquidationsPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Layers className="w-4 h-4 text-cyan-400" />
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Расчетные уровни плечевых тиров (Estimated Liquidation Levels)
+              Расчётные уровни ликвидаций по плечам
             </span>
           </div>
           <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded-full border border-cyan-500/30">
@@ -406,7 +407,7 @@ export const LiquidationsPage: React.FC = () => {
             >
               <div className="flex items-center justify-between text-[11px]">
                 <span className={c.side === 'LONG' ? 'text-brand-green font-bold' : 'text-brand-red font-bold'}>
-                  {c.leverageTier}x {c.side} Liq
+                  {c.leverageTier}x {sideLabel(c.side).toLowerCase()}
                 </span>
                 <span className="text-slate-400">±{c.distancePct}%</span>
               </div>
@@ -429,16 +430,16 @@ export const LiquidationsPage: React.FC = () => {
             <span className="text-xs font-bold text-white uppercase tracking-wider">
               {data.dataStatus === 'DEMO'
                 ? 'Журнал событий ликвидаций QA-датасета'
-                : 'Журнал фактических событий ликвидаций (Actual Event Log)'}
+                : 'Журнал фактических событий ликвидаций'}
             </span>
           </div>
           {data.dataStatus === 'DEMO' ? (
             <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-              QA DATASET
+              QA-ДАТАСЕТ
             </span>
           ) : (
             <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30">
-              BINANCE FUTURES forceOrder@arr
+              BINANCE FUTURES · forceOrder@arr
             </span>
           )}
         </div>
@@ -477,7 +478,7 @@ export const LiquidationsPage: React.FC = () => {
                           : 'bg-rose-950 text-brand-red border border-rose-500/30'
                       }`}
                     >
-                      {event.side}
+                      {sideLabel(event.side)}
                     </span>
                   </td>
                   <td className="py-2 text-right font-bold text-white">

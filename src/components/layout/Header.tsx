@@ -388,7 +388,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="hidden shrink-0 rounded border border-cyan-500/30 bg-cyan-950/80 px-1.5 font-mono text-[11px] font-semibold tracking-normal text-cyan-400 navxl:inline-block">
-                  v0.8.6
+                  v0.8.7
                 </span>
               </div>
               <span className="hidden whitespace-nowrap font-sans text-[11px] tracking-tight text-slate-400 2xl:block">
@@ -534,8 +534,8 @@ export const Header: React.FC = () => {
             type="button"
             onClick={openWatchlist}
             className="relative shrink-0 rounded-md border border-transparent p-2 text-slate-300 transition-colors hover:border-white/[0.08] hover:bg-white/[0.06] hover:text-white"
-            title="Открыть Watchlist"
-            aria-label="Открыть Watchlist"
+            title="Открыть избранное"
+            aria-label="Открыть избранное"
           >
             <Star className="h-4 w-4 text-amber-400" />
             {watchlist.length > 0 && (
@@ -666,7 +666,7 @@ export const Header: React.FC = () => {
               <span
                 className={`h-1.5 w-1.5 rounded-full ${isRealtimeUp ? 'bg-emerald-400' : 'bg-slate-400'}`}
               />
-              <span>{isRealtimeUp ? 'WS ONLINE' : 'WS IDLE'}</span>
+              <span>{isRealtimeUp ? 'WS ОНЛАЙН' : 'WS ОЖИДАНИЕ'}</span>
             </span>
 
             <button
@@ -752,8 +752,8 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-mono text-[11px] text-slate-400">
-            <span>CRYPTORA v0.8.6</span>
-            <span>{dataMode === 'live' ? 'LIVE MARKET DATA' : 'QA DATASET'}</span>
+            <span>CRYPTORA v0.8.7</span>
+            <span>{dataMode === 'live' ? 'LIVE-ДАННЫЕ РЫНКА' : 'QA-ДАТАСЕТ'}</span>
           </div>
         </div>
       )}

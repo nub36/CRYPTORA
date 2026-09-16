@@ -87,11 +87,11 @@ export const ScreenerPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              КРИПТО-СКРИНЕР (SCREENER TERMINAL)
+              КРИПТО-СКРИНЕР
             </h1>
             {dataMode === 'live' ? (
               <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
-                LIVE SPOT (BINANCE / KUCOIN)
+                LIVE СПОТ · BINANCE / KUCOIN
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
@@ -114,28 +114,28 @@ export const ScreenerPage: React.FC = () => {
             className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-emerald-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
             <Sparkles className="w-3 h-3 text-emerald-400" />
-            <span>Top Gainers (&gt;5%)</span>
+            <span>Лидеры роста (&gt;5%)</span>
           </button>
           <button
             onClick={applyPresetShortSqueeze}
             className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-violet-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
             <Sparkles className="w-3 h-3 text-violet-400" />
-            <span>Short Squeeze (Funding &lt; 0)</span>
+            <span>Шорт-сквиз (фандинг &lt; 0)</span>
           </button>
           <button
             onClick={applyPresetLargeCap}
             className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-cyan-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
             <Sparkles className="w-3 h-3 text-cyan-400" />
-            <span>High Volume (&gt;$1B)</span>
+            <span>Крупный объём (&gt;$1B)</span>
           </button>
           <button
             onClick={applyPresetAiSector}
             className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-amber-400/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
             <Sparkles className="w-3 h-3 text-amber-400" />
-            <span>AI Sector</span>
+            <span>Сектор ИИ</span>
           </button>
           <button
             onClick={handleReset}
@@ -171,11 +171,11 @@ export const ScreenerPage: React.FC = () => {
               className="w-full bg-surface-elevated border border-surface-border rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-brand-cyan"
             >
               <option value="all">Все сектора</option>
-              <option value="l1">Layer 1</option>
+              <option value="l1">L1-сети</option>
               <option value="defi">DeFi</option>
-              <option value="l2">Layer 2</option>
-              <option value="ai">AI & Data</option>
-              <option value="meme">Meme</option>
+              <option value="l2">L2-сети</option>
+              <option value="ai">ИИ и данные</option>
+              <option value="meme">Мемкоины</option>
             </select>
           </div>
 
@@ -217,15 +217,15 @@ export const ScreenerPage: React.FC = () => {
 
           {/* Funding Filter */}
           <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Ставка Funding</label>
+            <label className="text-[11px] text-slate-400 block mb-1">Ставка фандинга</label>
             <select
               value={fundingFilter}
               onChange={(e) => setFundingFilter(e.target.value as any)}
               className="w-full bg-surface-elevated border border-surface-border rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-brand-cyan"
             >
               <option value="all">Все ставки</option>
-              <option value="positive">Только &gt; 0 (Long)</option>
-              <option value="negative">Только &lt; 0 (Short)</option>
+              <option value="positive">Только &gt; 0 (платят лонги)</option>
+              <option value="negative">Только &lt; 0 (платят шорты)</option>
             </select>
           </div>
         </div>

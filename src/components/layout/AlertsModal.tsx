@@ -43,7 +43,7 @@ export const AlertsModal: React.FC = () => {
           </div>
           <div>
             <h3 className="text-base font-bold text-white tracking-tight">
-              Система алертов (Alerts Preview)
+              Система алертов (превью)
             </h3>
             <p className="text-xs text-slate-400 font-mono">
               Локальные триггеры терминала (прототип)

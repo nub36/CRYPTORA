@@ -63,11 +63,11 @@ export const MarketPage: React.FC = () => {
 
   const categories: { label: string; value: AssetCategory }[] = [
     { label: 'Все активы', value: 'all' },
-    { label: 'Layer 1', value: 'l1' },
+    { label: 'L1-сети', value: 'l1' },
     { label: 'DeFi', value: 'defi' },
-    { label: 'Layer 2', value: 'l2' },
-    { label: 'AI & Data', value: 'ai' },
-    { label: 'Meme', value: 'meme' },
+    { label: 'L2-сети', value: 'l2' },
+    { label: 'ИИ и данные', value: 'ai' },
+    { label: 'Мемкоины', value: 'meme' },
   ];
 
   return (
@@ -78,11 +78,11 @@ export const MarketPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              РЫНОЧНЫЕ КОТИРОВКИ (MARKET)
+              РЫНОЧНЫЕ КОТИРОВКИ
             </h1>
             {dataMode === 'live' ? (
               <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
-                LIVE SPOT (BINANCE / KUCOIN)
+                LIVE СПОТ · BINANCE / KUCOIN
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">

@@ -3,6 +3,7 @@ import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { RadarEvent } from '@/types/market';
 import { formatTimestamp } from '@/utils/formatters';
+import { radarEventTypeLabel, radarSeverityLabel } from '@/utils/labels';
 import { Badge } from '@/components/common/Badge';
 import { Link } from 'react-router-dom';
 import { Radio, ArrowUpRight, Sparkles, AlertCircle } from 'lucide-react';
@@ -64,12 +65,12 @@ export const RadarPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              MARKET RADAR (ДЕТЕКТОР АНОМАЛИЙ)
+              РЫНОЧНЫЙ РАДАР: ДЕТЕКТОР АНОМАЛИЙ
             </h1>
             {dataMode === 'live' ? (
               <span className="text-[10px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
-                LIVE ANOMALY ENGINE
+                LIVE-ДЕТЕКТОР АНОМАЛИЙ
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
@@ -93,12 +94,12 @@ export const RadarPage: React.FC = () => {
             className="bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
           >
             <option value="all">Все типы аномалий</option>
-            <option value="VOLUME_SPIKE">Volume Spike</option>
-            <option value="OI_SPIKE">OI Spike</option>
-            <option value="FUNDING_EXTREME">Funding Extreme</option>
-            <option value="LIQUIDATION_BURST">Liquidation Burst</option>
-            <option value="PRICE_MOVE">Price Move</option>
-            <option value="VOLATILITY_EXPANSION">Volatility Expansion</option>
+            <option value="VOLUME_SPIKE">Всплеск объёма</option>
+            <option value="OI_SPIKE">Всплеск OI</option>
+            <option value="FUNDING_EXTREME">Экстремальный фандинг</option>
+            <option value="LIQUIDATION_BURST">Каскад ликвидаций</option>
+            <option value="PRICE_MOVE">Резкое движение цены</option>
+            <option value="VOLATILITY_EXPANSION">Расширение волатильности</option>
           </select>
 
           {/* Severity filter */}
@@ -108,9 +109,9 @@ export const RadarPage: React.FC = () => {
             className="bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
           >
             <option value="all">Любая важность</option>
-            <option value="HIGH">Только HIGH</option>
-            <option value="MEDIUM">Только MEDIUM</option>
-            <option value="INFO">Только INFO</option>
+            <option value="HIGH">Только высокая</option>
+            <option value="MEDIUM">Только средняя</option>
+            <option value="INFO">Только информационная</option>
           </select>
         </div>
       </div>
@@ -121,7 +122,7 @@ export const RadarPage: React.FC = () => {
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center space-x-2 font-bold text-white">
               <Sparkles className="w-4 h-4 text-brand-cyan" />
-              <span>AI ANALYST BRIEFING: {aiBriefing.headline}</span>
+              <span>БРИФИНГ AI-АНАЛИТИКА: {aiBriefing.headline}</span>
             </div>
             <span className="text-[10px] text-slate-400 bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
               Основано на детерминированных фактах
@@ -194,16 +195,16 @@ export const RadarPage: React.FC = () => {
                     }
                     size="sm"
                   >
-                    {event.severity}
+                    {radarSeverityLabel(event.severity)}
                   </Badge>
 
                   <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono border border-slate-700">
-                    {event.type}
+                    {radarEventTypeLabel(event.type)}
                   </span>
 
                   {!event.isDemo && (
                     <span className="text-[10px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
-                      LIVE DETECTED
+                      LIVE-ДЕТЕКЦИЯ
                     </span>
                   )}
                 </div>

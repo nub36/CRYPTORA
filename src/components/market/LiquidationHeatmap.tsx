@@ -62,7 +62,7 @@ export const LiquidationHeatmap: React.FC<LiquidationHeatmapProps> = ({ model, u
         <div className="flex items-center space-x-2">
           <Layers className="w-4 h-4 text-cyan-400" />
           <span className="text-[13px] font-bold uppercase tracking-wider text-white font-mono">
-            Тепловая карта плотности ликвидаций (Price × Time)
+            Тепловая карта плотности ликвидаций: цена × время
           </span>
         </div>
         <div className="flex items-center space-x-2">

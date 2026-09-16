@@ -11,6 +11,7 @@ import {
   RadarEvent,
 } from '@/types/market';
 import { formatCurrency, formatPercent, formatTimestamp } from '@/utils/formatters';
+import { radarEventTypeLabel } from '@/utils/labels';
 import { CandleChart } from '@/components/common/CandleChart';
 import { HeatmapGrid } from '@/components/common/HeatmapGrid';
 import { Badge } from '@/components/common/Badge';
@@ -157,7 +158,7 @@ export const OverviewPage: React.FC = () => {
         <span>
           {dataMode === 'live' ? (
             <>
-              <strong>Источник данных: LIVE Spot (Binance / KuCoin).</strong> Котировки, объёмы и ликвидации
+              <strong>Источник данных: LIVE спот (Binance / KuCoin).</strong> Котировки, объёмы и ликвидации
               поступают из фактических источников; при недоступности источника значения не подставляются.
             </>
           ) : (
@@ -209,7 +210,7 @@ export const OverviewPage: React.FC = () => {
             className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span>DeFi & L2 TVL</span>
+            <span>TVL DeFi и L2</span>
           </Link>
           <Link
             to="/journal"
@@ -345,8 +346,8 @@ export const OverviewPage: React.FC = () => {
         {/* Market Breadth */}
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span className="uppercase tracking-wider">Широта рынка (Breadth)</span>
-            <span className="text-[10px] text-emerald-400 font-mono font-semibold">80% UP</span>
+            <span className="uppercase tracking-wider">Широта рынка</span>
+            <span className="text-[10px] text-emerald-400 font-mono font-semibold">80% РОСТ</span>
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 flex items-center space-x-2 tabular-nums">
             <span className="text-emerald-400">{overview.marketBreadth.advancing}▲</span>
@@ -370,7 +371,7 @@ export const OverviewPage: React.FC = () => {
             <Zap className={`w-3.5 h-3.5 ${dataMode === 'live' ? 'text-cyan-400' : 'text-amber-400'}`} />
           </div>
           <div className={`text-sm font-bold font-mono mt-1.5 ${dataMode === 'live' ? 'text-white' : 'text-amber-200'}`}>
-            {dataMode === 'live' ? 'LIVE Spot (Binance / KuCoin)' : 'Внутренний датасет QA'}
+            {dataMode === 'live' ? 'LIVE спот (Binance / KuCoin)' : 'Внутренний датасет QA'}
           </div>
           <div className="text-[10px] text-slate-400 font-mono mt-1 flex items-center space-x-1.5">
             <span
@@ -414,7 +415,7 @@ export const OverviewPage: React.FC = () => {
                     }`}
                   >
                     {dataMode === 'live'
-                      ? `LIVE SPOT${btcAsset?.provenance?.exchange ? `: ${btcAsset.provenance.exchange.toUpperCase()}` : ' (BINANCE / KUCOIN)'}`
+                      ? `LIVE СПОТ${btcAsset?.provenance?.exchange ? `: ${btcAsset.provenance.exchange.toUpperCase()}` : ' · BINANCE / KUCOIN'}`
                       : 'Спот и перп · QA-датасет'}
                   </span>
                 </div>
@@ -497,7 +498,7 @@ export const OverviewPage: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <Layers className="w-4 h-4 text-violet-400" />
                 <span className="font-bold text-sm text-white font-mono tracking-wide">
-                  ФЬЮЧЕРСНЫЙ СРЕЗ (DERIVATIVES)
+                  ФЬЮЧЕРСНЫЙ СРЕЗ
                 </span>
               </div>
               <Link
@@ -519,7 +520,7 @@ export const OverviewPage: React.FC = () => {
               </div>
 
               <div className="bg-[#111a30] p-3 rounded-lg border border-white/[0.06]">
-                <div className="text-[11px] text-slate-400 font-mono">Суточный объем Perp</div>
+                <div className="text-[11px] text-slate-400 font-mono">Суточный объём перпов</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalFuturesVolume, { compact: true })}
                 </div>
@@ -581,11 +582,11 @@ export const OverviewPage: React.FC = () => {
                   <>
                     <div className="flex items-center justify-between mb-2 font-mono text-xs">
                       <span className="text-emerald-400 font-semibold tabular-nums">
-                        Longs: {formatCurrency(liquidations.totalLong24h, { compact: true })} (
+                        Лонги: {formatCurrency(liquidations.totalLong24h, { compact: true })} (
                         {((liquidations.totalLong24h / liquidations.total24h) * 100).toFixed(1)}%)
                       </span>
                       <span className="text-rose-400 font-semibold tabular-nums">
-                        Shorts: {formatCurrency(liquidations.totalShort24h, { compact: true })} (
+                        Шорты: {formatCurrency(liquidations.totalShort24h, { compact: true })} (
                         {((liquidations.totalShort24h / liquidations.total24h) * 100).toFixed(1)}%)
                       </span>
                     </div>
@@ -620,7 +621,7 @@ export const OverviewPage: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
                       <span className="text-slate-300">
-                        Whale {liquidations.largestEvent.side === 'SHORT' ? 'Short' : 'Long'} Liq:{' '}
+                        Крупная ликвидация {liquidations.largestEvent.side === 'SHORT' ? 'шорта' : 'лонга'}:{' '}
                         <strong className="text-white">{liquidations.largestEvent.symbol}</strong>
                       </span>
                     </div>
@@ -646,7 +647,7 @@ export const OverviewPage: React.FC = () => {
             <div className="flex items-center space-x-2">
               <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
               <span className="font-bold text-sm text-white font-mono tracking-wide">
-                MARKET RADAR (LATEST)
+                РЫНОЧНЫЙ РАДАР: ПОСЛЕДНЕЕ
               </span>
             </div>
             <Link
@@ -677,7 +678,7 @@ export const OverviewPage: React.FC = () => {
                       }
                       size="xs"
                     >
-                      {event.type.replace('_', ' ')}
+                      {radarEventTypeLabel(event.type)}
                     </Badge>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono tabular-nums">
@@ -771,7 +772,7 @@ export const OverviewPage: React.FC = () => {
                 <div className="text-emerald-300 font-bold tabular-nums">+{highestFunding.fundingRate.toFixed(4)}%</div>
               </div>
               <div className="bg-violet-950/40 border border-violet-500/30 p-2.5 rounded-lg">
-                <div className="text-[10px] text-violet-400 uppercase font-semibold">Мин фандинг (Shorts):</div>
+                <div className="text-[10px] text-violet-400 uppercase font-semibold">Мин. фандинг (платят шорты):</div>
                 <div className="font-bold text-white mt-0.5">{lowestFunding.symbol}</div>
                 <div className="text-violet-300 font-bold tabular-nums">{lowestFunding.fundingRate.toFixed(4)}%</div>
               </div>
@@ -786,7 +787,7 @@ export const OverviewPage: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
                 <span className="font-bold text-sm text-white font-mono tracking-wide">
-                  АНАЛИТИЧЕСКИЕ СЕТАПЫ (PREVIEW)
+                  АНАЛИТИЧЕСКИЕ СЕТАПЫ (ПРЕВЬЮ)
                 </span>
               </div>
               <Badge variant="amber" size="xs">
@@ -806,7 +807,7 @@ export const OverviewPage: React.FC = () => {
             {/* Structured Setup Mock Card */}
             <div className="p-3.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs font-mono space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-white">BTC/USDT 4H Breakout</span>
+                <span className="font-bold text-white">BTC/USDT: пробой на 4ч</span>
                 <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
                   ПРИМЕР СЕТАПА (НЕ СИГНАЛ)
                 </span>
@@ -818,7 +819,7 @@ export const OverviewPage: React.FC = () => {
               </div>
 
               <div className="text-[11px] text-slate-400 space-y-1 pt-1.5 border-t border-white/[0.06]">
-                <div className="text-emerald-400 text-[10px]">✓ Подтверждение: OI Surge +7.2%, Funding &gt; 0</div>
+                <div className="text-emerald-400 text-[10px]">✓ Подтверждение: рост OI +7.2%, фандинг &gt; 0</div>
                 <div className="text-rose-400 text-[10px]">⚠ Опровергающие: RSI-14 перегрет (68.4)</div>
               </div>
             </div>

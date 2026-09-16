@@ -49,7 +49,7 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
 
       // Shell verification
       expect(screen.getAllByText(/CRYPTORA/i).length).toBeGreaterThan(0);
-      expect(screen.getByText('QA TICKER')).toBeInTheDocument();
+      expect(screen.getByText('QA-ТИКЕР')).toBeInTheDocument();
 
       // Check root container exists
       const main = container.querySelector('main');

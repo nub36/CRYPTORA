@@ -15,10 +15,10 @@ export const OnChainPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Network className="w-5 h-5 text-brand-cyan" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ОН-ЧЕЙН И МАКРО-МЕТРИКИ (ON-CHAIN TERMINAL)
+              ОН-ЧЕЙН И МАКРО-МЕТРИКИ
             </h1>
             <Badge variant="green" size="sm">
-              FUNDAMENTAL VALUATION
+              ФУНДАМЕНТАЛЬНАЯ ОЦЕНКА
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -27,7 +27,7 @@ export const OnChainPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/30">
-          СЕТЕВОЙ СЛОЙ (L1 MACRO)
+          СЕТЕВОЙ СЛОЙ (МАКРО L1)
         </div>
       </div>
 
@@ -100,7 +100,7 @@ export const OnChainPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Database className="w-4 h-4 text-brand-cyan" />
             <span className="font-bold text-white uppercase tracking-wider">
-              Суточные потоки биткоинов на биржах (Exchange Netflows)
+              Суточные потоки биткоинов на биржах
             </span>
           </div>
           <span className="text-[11px] text-slate-500">
@@ -113,8 +113,8 @@ export const OnChainPage: React.FC = () => {
             <thead className="text-[11px] text-slate-500 border-b border-surface-border">
               <tr>
                 <th className="py-2 px-2">Биржа</th>
-                <th className="py-2 px-2 text-right">Приток (Inflow BTC)</th>
-                <th className="py-2 px-2 text-right">Отток (Outflow BTC)</th>
+                <th className="py-2 px-2 text-right">Приток (BTC)</th>
+                <th className="py-2 px-2 text-right">Отток (BTC)</th>
                 <th className="py-2 px-2 text-right">Чистый нетфлоу (BTC)</th>
                 <th className="py-2 px-2 text-right">Эквивалент ($)</th>
               </tr>

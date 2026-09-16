@@ -52,10 +52,10 @@ export const Footer: React.FC = () => {
             </div>
             <ul className="space-y-1.5 text-slate-400">
               <li>
-                <Link to="/" className="hover:text-cyan-400 transition-colors">Обзор рынка (Overview)</Link>
+                <Link to="/" className="hover:text-cyan-400 transition-colors">Обзор рынка</Link>
               </li>
               <li>
-                <Link to="/market" className="hover:text-cyan-400 transition-colors">Таблица активов (Market)</Link>
+                <Link to="/market" className="hover:text-cyan-400 transition-colors">Таблица активов</Link>
               </li>
               <li>
                 <Link to="/futures" className="hover:text-cyan-400 transition-colors">Деривативы и фьючерсы</Link>
@@ -75,7 +75,7 @@ export const Footer: React.FC = () => {
                 <Link to="/screener" className="hover:text-cyan-400 transition-colors">Крипто-скринер</Link>
               </li>
               <li>
-                <Link to="/radar" className="hover:text-cyan-400 transition-colors">Market Radar</Link>
+                <Link to="/radar" className="hover:text-cyan-400 transition-colors">Рыночный радар</Link>
               </li>
               <li>
                 <Link to="/heatmaps" className="hover:text-cyan-400 transition-colors">Тепловая карта рынка</Link>
@@ -92,7 +92,7 @@ export const Footer: React.FC = () => {
             </div>
             <ul className="space-y-1.5 text-slate-400">
               <li>
-                <Link to="/strategies" className="hover:text-cyan-400 transition-colors">Strategy Lab (Превью)</Link>
+                <Link to="/strategies" className="hover:text-cyan-400 transition-colors">Лаборатория стратегий (превью)</Link>
               </li>
               <li>
                 <Link to="/signals" className="hover:text-cyan-400 transition-colors">Аудит сетапов</Link>
@@ -110,7 +110,7 @@ export const Footer: React.FC = () => {
         {/* Bottom bar */}
         <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-mono">
           <div>
-            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.6.
+            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.7.
           </div>
           <div className="mt-2 sm:mt-0 flex items-center space-x-3">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>

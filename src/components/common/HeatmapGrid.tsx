@@ -81,7 +81,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
       return {
         bg,
         label: formatCurrency(val, { compact: true }),
-        sublabel: `Cap: ${formatCurrency(asset.marketCap, { compact: true })}`,
+        sublabel: `Кап.: ${formatCurrency(asset.marketCap, { compact: true })}`,
       };
     }
 
@@ -115,7 +115,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
     return {
       bg,
       label: `${fundingRate.toFixed(4)}%`,
-      sublabel: `Ann: ${(fundingRate * 3 * 365).toFixed(1)}%`,
+      sublabel: `Годовых: ${(fundingRate * 3 * 365).toFixed(1)}%`,
     };
   };
 
@@ -129,7 +129,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
           </span>
           {isAnyLive ? (
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
-              LIVE TILES
+              LIVE-ПЛИТКИ
             </span>
           ) : (
             <span className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold">
@@ -148,7 +148,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
-            24h Change
+            Изм. 24ч
           </button>
           <button
             onClick={() => setMetric('volume')}
@@ -158,7 +158,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
-            Объем (Volume)
+            Объём
           </button>
           <button
             onClick={() => setMetric('oi')}
@@ -168,7 +168,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
-            Open Interest
+            Открытый интерес
           </button>
           <button
             onClick={() => setMetric('funding')}
@@ -178,7 +178,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
-            Funding Rate
+            Фандинг
           </button>
         </div>
       </div>

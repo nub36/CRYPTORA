@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { sideLabel } from '@/utils/labels';
 import { SignalsAuditLedger, AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 
 export const SignalsPage: React.FC = () => {
@@ -24,7 +25,7 @@ export const SignalsPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <BarChart3 className="w-5 h-5 text-brand-cyan" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              АНАЛИТИЧЕСКИЕ СЕТАПЫ И СИГНАЛЫ (SIGNALS)
+              АНАЛИТИЧЕСКИЕ СЕТАПЫ И СИГНАЛЫ
             </h1>
             <Badge variant="amber" size="sm">
               ПРОТОТИП МЕТОДОЛОГИИ
@@ -61,13 +62,13 @@ export const SignalsPage: React.FC = () => {
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Инвалидация (Stop Loss)</div>
+          <div className="text-[11px] font-mono text-slate-400">Инвалидация (стоп)</div>
           <div className="text-lg font-bold font-mono text-rose-400 mt-1">{summary.invalidatedCount}</div>
           <div className="text-[10px] text-slate-500 mt-0.5">Отмена гипотезы</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Прозрачный Win Rate</div>
+          <div className="text-[11px] font-mono text-slate-400">Прозрачная доля успешных</div>
           <div className="text-lg font-bold font-mono text-amber-400 mt-1">{summary.accuracyRatePct}%</div>
           <div className="text-[10px] text-slate-500 mt-0.5">Без ошибки выжившего</div>
         </div>
@@ -84,7 +85,7 @@ export const SignalsPage: React.FC = () => {
               <span className="text-rose-400">ОШИБКА ХЭША</span>
             )}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Append-only ledger</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Реестр только на добавление</div>
         </div>
       </div>
 
@@ -162,10 +163,10 @@ export const SignalsPage: React.FC = () => {
                   size="sm"
                 >
                   {setup.status === 'TARGET_REACHED'
-                    ? 'TARGET REACHED (+TP)'
+                    ? 'ЦЕЛЬ ДОСТИГНУТА'
                     : setup.status === 'INVALIDATED'
-                    ? 'INVALIDATED (STOP)'
-                    : `${setup.direction} IDEA`}
+                    ? 'ИНВАЛИДИРОВАН (СТОП)'
+                    : `ИДЕЯ: ${sideLabel(setup.direction).toUpperCase()}`}
                 </Badge>
               </div>
 
@@ -187,7 +188,7 @@ export const SignalsPage: React.FC = () => {
                 </div>
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-                <div className="text-[11px] text-slate-400">Уровень отмены (Stop)</div>
+                <div className="text-[11px] text-slate-400">Уровень отмены (стоп)</div>
                 <div className="text-sm font-bold text-rose-400 mt-0.5">
                   &lt; ${setup.invalidationLevel.toLocaleString()}
                 </div>
@@ -199,7 +200,7 @@ export const SignalsPage: React.FC = () => {
                 </div>
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-                <div className="text-[11px] text-slate-400">Risk/Reward (R:R)</div>
+                <div className="text-[11px] text-slate-400">Риск / прибыль (R:R)</div>
                 <div className="text-sm font-bold text-amber-400 mt-0.5">
                   1 : {setup.riskRewardRatio}
                 </div>
@@ -211,7 +212,7 @@ export const SignalsPage: React.FC = () => {
               <div className="p-3 rounded bg-emerald-950/20 border border-emerald-500/20 space-y-1.5">
                 <div className="font-bold text-emerald-400 font-mono flex items-center space-x-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Подтверждающие наблюдения (Supporting Evidence)</span>
+                  <span>Подтверждающие наблюдения</span>
                 </div>
                 <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
                   {setup.confirmingFactors.map((factor, idx) => (
@@ -223,7 +224,7 @@ export const SignalsPage: React.FC = () => {
               <div className="p-3 rounded bg-rose-950/20 border border-rose-500/20 space-y-1.5">
                 <div className="font-bold text-rose-400 font-mono flex items-center space-x-1.5">
                   <AlertOctagon className="w-3.5 h-3.5" />
-                  <span>Опровергающие факторы (Opposing Evidence / Risk)</span>
+                  <span>Опровергающие факторы и риски</span>
                 </div>
                 <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
                   {setup.invalidationFactors.map((factor, idx) => (
