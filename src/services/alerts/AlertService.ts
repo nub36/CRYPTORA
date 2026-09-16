@@ -36,6 +36,7 @@ export class AlertService {
   private rules: Map<string, AlertRule> = new Map();
   private triggeredHistory: TriggeredAlertEvent[] = [];
   private cooldownMs: number;
+  private ruleCounter = 0;
 
   constructor(cooldownMs = 300000) {
     // 5 minutes default cooldown
@@ -83,7 +84,7 @@ export class AlertService {
     targetValue: number,
     deliveryChannel: AlertDeliveryChannel = 'IN_APP'
   ): AlertRule {
-    const id = `alert-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const id = `alert-${Date.now()}-${++this.ruleCounter}-${Math.floor(Math.random() * 10000)}`;
     const rule: AlertRule = {
       id,
       symbol: symbol.toUpperCase(),
