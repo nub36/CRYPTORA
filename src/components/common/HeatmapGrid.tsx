@@ -22,6 +22,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
   const [metric, setMetric] = useState<HeatmapMetric>(initialMetric);
 
   const displayAssets = assets.slice(0, limit);
+  const isAnyLive = displayAssets.some((a) => !a.isDemo);
 
   // Helper to get tile style based on metric
   const getTileData = (asset: AssetSummary) => {
@@ -93,9 +94,15 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
           <span className="font-bold text-sm text-white font-mono tracking-wide">
             ТЕПЛОВАЯ КАРТА
           </span>
-          <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-            DEMO TILES
-          </span>
+          {isAnyLive ? (
+            <span className="text-[10px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
+              LIVE TILES
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+              DEMO TILES
+            </span>
+          )}
         </div>
 
         {/* Metric Selector Buttons */}

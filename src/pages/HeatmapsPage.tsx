@@ -5,7 +5,7 @@ import { HeatmapGrid } from '@/components/common/HeatmapGrid';
 import { Grid3X3, Info } from 'lucide-react';
 
 export const HeatmapsPage: React.FC = () => {
-  const { provider } = useMarketData();
+  const { provider, dataMode } = useMarketData();
   const [assets, setAssets] = useState<AssetSummary[]>([]);
 
   useEffect(() => {
@@ -22,12 +22,20 @@ export const HeatmapsPage: React.FC = () => {
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               ТЕПЛОВАЯ КАРТА РЫНКА (MARKET HEATMAP)
             </h1>
-            <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              ДЕМОНСТРАЦИОННАЯ СЕТКА
-            </span>
+            {dataMode === 'live' ? (
+              <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2 py-0.5 rounded border border-brand-green/30">
+                LIVE TILES (BINANCE / KUCOIN)
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                ДЕМОНСТРАЦИОННАЯ СЕТКА
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Демонстрационная визуальная оценка доходностей, концентрации объемов и ставок фандинга.
+            {dataMode === 'live'
+              ? 'Визуальная оценка доходностей, концентрации объемов и ставок фандинга в реальном времени.'
+              : 'Демонстрационная визуальная оценка доходностей, концентрации объемов и ставок фандинга.'}
           </p>
         </div>
       </div>
