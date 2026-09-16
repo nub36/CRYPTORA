@@ -24,6 +24,11 @@ import {
   ArrowDownRight,
   Sparkles,
   Zap,
+  PieChart,
+  Grid,
+  Network,
+  Calendar,
+  BookOpen,
 } from 'lucide-react';
 
 export const OverviewPage: React.FC = () => {
@@ -109,6 +114,57 @@ export const OverviewPage: React.FC = () => {
           <span>Ограничения этапа</span>
           <ArrowUpRight className="w-3 h-3" />
         </button>
+      </div>
+
+      {/* Quick Terminal Intelligence Hub */}
+      <div className="bg-surface border border-surface-border rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+        <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+          Специализированные аналитические разделы:
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/portfolio"
+            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+          >
+            <PieChart className="w-3.5 h-3.5 text-brand-cyan" />
+            <span>Портфель & VaR</span>
+          </Link>
+          <Link
+            to="/correlations"
+            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+          >
+            <Grid className="w-3.5 h-3.5 text-brand-purple" />
+            <span>Корреляции & Beta</span>
+          </Link>
+          <Link
+            to="/onchain"
+            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+          >
+            <Network className="w-3.5 h-3.5 text-brand-green" />
+            <span>Он-чейн & MVRV</span>
+          </Link>
+          <Link
+            to="/calendar"
+            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+          >
+            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+            <span>Макро-календарь</span>
+          </Link>
+          <Link
+            to="/ecosystem"
+            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+          >
+            <Layers className="w-3.5 h-3.5 text-brand-cyan" />
+            <span>DeFi & L2 TVL</span>
+          </Link>
+          <Link
+            to="/journal"
+            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-brand-purple" />
+            <span>Журнал трейдера</span>
+          </Link>
+        </div>
       </div>
 
       {/* SECTION A: Market Summary Cards */}
