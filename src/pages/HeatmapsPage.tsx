@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary } from '@/types/market';
 import { HeatmapGrid } from '@/components/common/HeatmapGrid';
 import { Grid3X3, Info } from 'lucide-react';
@@ -7,13 +8,21 @@ import { Grid3X3, Info } from 'lucide-react';
 export const HeatmapsPage: React.FC = () => {
   const { provider, dataMode } = useMarketData();
   const [assets, setAssets] = useState<AssetSummary[]>([]);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
   useEffect(() => {
-    provider.getAssets().then(setAssets);
+    provider
+      .getAssets()
+      .then((data) => {
+        setAssets(data);
+        setSourceUnavailable(false);
+      })
+      .catch(() => setSourceUnavailable(true));
   }, [provider]);
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+      {sourceUnavailable && <DataSourceUnavailable subject="рыночные данные" />}
       {/* Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
         <div>

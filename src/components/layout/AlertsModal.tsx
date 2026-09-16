@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
 import { Bell, X, Plus, Trash2, CheckCircle2 } from 'lucide-react';
-import { DEMO_ASSETS } from '@/services/data/DemoMarketDataProvider';
+import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 
 export const AlertsModal: React.FC = () => {
   const { isAlertsModalOpen, closeAlertsModal, alerts, addAlert, removeAlert } = useMarketData();
@@ -72,8 +72,8 @@ export const AlertsModal: React.FC = () => {
                 onChange={(e) => setSymbol(e.target.value)}
                 className="w-full bg-surface border border-surface-border rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-cyan font-mono"
               >
-                {DEMO_ASSETS.map((a) => (
-                  <option key={a.id} value={a.symbol}>
+                {CANONICAL_ASSETS.map((a) => (
+                  <option key={a.symbol} value={a.symbol}>
                     {a.symbol} ({a.name})
                   </option>
                 ))}

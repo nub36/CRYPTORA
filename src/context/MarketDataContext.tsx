@@ -57,12 +57,15 @@ export const MarketDataProviderComponent: React.FC<{
   children: React.ReactNode;
   customProvider?: MarketDataProvider;
 }> = ({ children, customProvider }) => {
+  // LIVE-FIRST (v0.8.5): по умолчанию терминал работает с фактическим источником.
+  // Демонстрационный датасет включается только явным выбором пользователя и никогда
+  // не подменяет собой недоступные фактические данные.
   const [dataMode, setDataMode] = useState<DataMode>(() => {
     try {
       const saved = localStorage.getItem('cryptora_data_mode');
-      return saved === 'live' ? 'live' : 'demo';
+      return saved === 'demo' ? 'demo' : 'live';
     } catch {
-      return 'demo';
+      return 'live';
     }
   });
 

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { AssetSummary } from '@/types/market';
-import { DEMO_FUTURES } from '@/services/data/DemoMarketDataProvider';
+import React, { useEffect, useState } from 'react';
+import { AssetSummary, FuturesAsset } from '@/types/market';
+import { useMarketData } from '@/context/MarketDataContext';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { Link } from 'react-router-dom';
 
@@ -19,14 +19,40 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
   initialMetric = 'change24h',
   compact = false,
 }) => {
+  const { provider } = useMarketData();
   const [metric, setMetric] = useState<HeatmapMetric>(initialMetric);
+  const [futuresList, setFuturesList] = useState<FuturesAsset[]>([]);
+
+  // LIVE-FIRST: деривативные метрики (OI, фандинг) берутся только из активного
+  // провайдера. Если фактических данных нет — плитка честно сообщает об этом,
+  // демонстрационные или производные «на глаз» значения не подставляются.
+  useEffect(() => {
+    let isActive = true;
+    provider
+      .getFuturesList()
+      .then((list) => {
+        if (isActive) setFuturesList(list);
+      })
+      .catch(() => {
+        if (isActive) setFuturesList([]);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [provider]);
 
   const displayAssets = assets.slice(0, limit);
   const isAnyLive = displayAssets.some((a) => !a.isDemo);
 
+  const UNAVAILABLE_TILE = {
+    bg: 'bg-surface-inset border-white/[0.06] text-slate-500',
+    label: 'НЕТ ДАННЫХ',
+    sublabel: 'источник недоступен',
+  };
+
   // Helper to get tile style based on metric
   const getTileData = (asset: AssetSummary) => {
-    const futures = DEMO_FUTURES.find((f) => f.symbol.startsWith(asset.symbol));
+    const futuresRow = futuresList.find((f) => f.symbol.startsWith(asset.symbol));
 
     if (metric === 'change24h') {
       const val = asset.change24h;
@@ -60,8 +86,9 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
     }
 
     if (metric === 'oi') {
-      const oiVal = futures ? futures.openInterest : asset.marketCap * 0.05;
-      const oiChange = futures ? futures.openInterestChange24h : asset.change24h;
+      if (!futuresRow) return UNAVAILABLE_TILE;
+      const oiVal = futuresRow.openInterest;
+      const oiChange = futuresRow.openInterestChange24h;
       const bg =
         oiChange >= 5
           ? 'bg-violet-950/90 border-violet-500/40 text-violet-200'
@@ -77,7 +104,8 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
     }
 
     // Funding metric
-    const fundingRate = futures ? futures.fundingRate : 0.01;
+    if (!futuresRow) return UNAVAILABLE_TILE;
+    const fundingRate = futuresRow.fundingRate;
     let bg = 'bg-slate-900/80 border-slate-700/30 text-slate-300';
     if (fundingRate > 0.02) bg = 'bg-amber-950/90 border-amber-500/40 text-amber-200';
     else if (fundingRate > 0) bg = 'bg-emerald-950/70 border-emerald-600/30 text-emerald-300';

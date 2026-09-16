@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary, AssetCategory } from '@/types/market';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { sortData, SortConfig } from '@/utils/sorting';
@@ -8,8 +9,9 @@ import { Star, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const MarketPage: React.FC = () => {
-  const { provider, watchlist, toggleWatchlist, livePrices } = useMarketData();
+  const { provider, watchlist, toggleWatchlist, livePrices, dataMode } = useMarketData();
   const [assets, setAssets] = useState<AssetSummary[]>([]);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('all');
   const [sortConfig, setSortConfig] = useState<SortConfig<AssetSummary>>({
@@ -19,9 +21,13 @@ export const MarketPage: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    provider.getAssets().then((data) => {
-      setAssets(data);
-    });
+    provider
+      .getAssets()
+      .then((data) => {
+        setAssets(data);
+        setSourceUnavailable(false);
+      })
+      .catch(() => setSourceUnavailable(true));
   }, [provider]);
 
   // Handle column sort toggle
@@ -66,24 +72,33 @@ export const MarketPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+      {sourceUnavailable && <DataSourceUnavailable subject="рыночные данные" />}
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-white/[0.08] gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between pb-3 border-b border-white/[0.08] gap-3">
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               РЫНОЧНЫЕ КОТИРОВКИ (MARKET)
             </h1>
-            <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-              30 ДЕМО-АКТИВОВ
-            </span>
+            {dataMode === 'live' ? (
+              <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
+                LIVE SPOT (BINANCE / KUCOIN)
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                30 ДЕМО-АКТИВОВ
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Демонстрационные данные 30 активов: котировки, суточные дельты и спарклайны зафиксированы для оценки UX.
+            {dataMode === 'live'
+              ? 'Котировки, суточные дельты и спарклайны поступают из фактических источников (Binance Spot / KuCoin).'
+              : 'Демонстрационные данные 30 активов: котировки, суточные дельты и спарклайны зафиксированы для оценки UX.'}
           </p>
         </div>
 
         {/* Search & Category Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="flex min-w-0 flex-col sm:flex-row sm:items-center gap-2">
           {/* Search */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -97,7 +112,7 @@ export const MarketPage: React.FC = () => {
           </div>
 
           {/* Categories */}
-          <div className="flex items-center space-x-1 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {categories.map((cat) => (
               <button
                 key={cat.value}
@@ -321,8 +336,16 @@ export const MarketPage: React.FC = () => {
         {/* Footer info in table */}
         <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-mono">
           <div>Показано: {filteredAssets.length} из {assets.length} активов</div>
-          <div className="flex items-center space-x-1 text-[11px] text-amber-400/90">
-            <span>● Контролируемый детерминированный слой</span>
+          <div
+            className={`flex items-center space-x-1 text-[11px] ${
+              dataMode === 'live' ? (sourceUnavailable ? 'text-rose-400/90' : 'text-brand-green/90') : 'text-amber-400/90'
+            }`}
+          >
+            {dataMode === 'live' ? (
+              <span>{sourceUnavailable ? '● Источник недоступен' : '● Источник: Binance Spot / KuCoin'}</span>
+            ) : (
+              <span>● Контролируемый детерминированный слой (DEMO)</span>
+            )}
           </div>
         </div>
       </div>

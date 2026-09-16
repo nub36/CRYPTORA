@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetDetail, OHLCV, Timeframe, FuturesAsset, RadarEvent } from '@/types/market';
 import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters';
 import { CandleChart } from '@/components/common/CandleChart';
@@ -39,6 +40,7 @@ export const CoinDetailPage: React.FC = () => {
   const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
   const [liquidations, setLiquidations] = useState<LiquidationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
   // Высота основного графика: доминирующий элемент рабочей области на desktop,
   // компактнее на мобильных. Значения детерминированы и не зависят от случайности.
@@ -65,6 +67,7 @@ export const CoinDetailPage: React.FC = () => {
   useEffect(() => {
     if (!symbol) return;
     setLoading(true);
+    setSourceUnavailable(false);
 
     async function fetchData() {
       try {
@@ -88,6 +91,9 @@ export const CoinDetailPage: React.FC = () => {
         setFuturesData(matchFutures || null);
         setRadarEvents(rdr);
         setLiquidations(liqs);
+      } catch {
+        // LIVE-FIRST: актив не получен от источника — честное состояние без демо-подстановки.
+        setSourceUnavailable(true);
       } finally {
         setLoading(false);
       }
@@ -123,12 +129,20 @@ export const CoinDetailPage: React.FC = () => {
     );
   }
 
+  if (!asset && sourceUnavailable) {
+    return (
+      <div className="mx-auto my-12 max-w-2xl px-4">
+        <DataSourceUnavailable subject={`данные по инструменту ${symbol}`} />
+      </div>
+    );
+  }
+
   if (!asset) {
     return (
       <div className="max-w-xl mx-auto my-12 p-6 bg-surface border border-surface-border rounded-lg text-center space-y-3">
         <h2 className="text-lg font-bold text-white font-mono">Актив не найден</h2>
         <p className="text-[13px] text-slate-400">
-          Инструмент «{symbol}» не зарегистрирован в демонстрационной базе данных.
+          Инструмент «{symbol}» отсутствует в реестре инструментов терминала.
         </p>
         <Link
           to="/market"

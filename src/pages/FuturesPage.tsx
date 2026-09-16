@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { FuturesAsset } from '@/types/market';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { sortData, SortConfig } from '@/utils/sorting';
@@ -10,6 +11,7 @@ import { ChevronUp, ChevronDown } from 'lucide-react';
 export const FuturesPage: React.FC = () => {
   const { provider, dataMode } = useMarketData();
   const [futures, setFutures] = useState<FuturesAsset[]>([]);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [filterFunding, setFilterFunding] = useState<'all' | 'positive' | 'negative'>('all');
   const [sortConfig, setSortConfig] = useState<SortConfig<FuturesAsset>>({
     key: 'openInterest',
@@ -18,9 +20,13 @@ export const FuturesPage: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    provider.getFuturesList().then((data) => {
-      setFutures(data);
-    });
+    provider
+      .getFuturesList()
+      .then((data) => {
+        setFutures(data);
+        setSourceUnavailable(false);
+      })
+      .catch(() => setSourceUnavailable(true));
   }, [provider]);
 
   const handleSort = (key: keyof FuturesAsset) => {
@@ -55,6 +61,7 @@ export const FuturesPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+      {sourceUnavailable && <DataSourceUnavailable subject="данные деривативов (OI, фандинг)" />}
       {/* Page Title & Badges */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>

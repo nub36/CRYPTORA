@@ -27,6 +27,37 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     cleanup();
   });
 
+  test('LIVE-first: режим по умолчанию — фактический источник, а не демо-датасет', async () => {
+    window.localStorage.clear();
+    renderApp('/');
+
+    // Полоса котировок маркирует фактический режим, демо-подпись не показывается.
+    expect(await screen.findByText('LIVE TICKER')).toBeInTheDocument();
+    expect(screen.queryByText('DEMO TICKER')).toBeNull();
+  });
+
+  test('LIVE-first: недоступный фактический источник даёт честное состояние без демо-котировок', async () => {
+    window.localStorage.setItem('cryptora_data_mode', 'live');
+    renderApp('/');
+
+    // E2E-окружение изолировано: fetch отклоняется, WebSocket отсутствует.
+    expect(await screen.findByText(/Фактический рыночный поток недоступен/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Фактический источник недоступен: рыночная сводка/i)).toBeInTheDocument();
+
+    // Ключевое отличие от прежнего поведения: демо-числа не подставляются вместо факта.
+    expect(screen.queryByText('$64,850.25')).toBeNull();
+    expect(screen.queryByText('DEMO TICKER')).toBeNull();
+  });
+
+  test('DEMO-режим остаётся доступным явным выбором и показывает демо-датасет', async () => {
+    window.localStorage.setItem('cryptora_data_mode', 'demo');
+    renderApp('/');
+
+    expect(await screen.findByText('DEMO TICKER')).toBeInTheDocument();
+    const demoPrices = await screen.findAllByText('$64,850.25');
+    expect(demoPrices.length).toBeGreaterThan(0);
+  });
+
   test('Overview: renders command center cards, chart, snapshots and demo notification', async () => {
     renderApp('/');
 

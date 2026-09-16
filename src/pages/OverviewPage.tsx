@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import {
   MarketOverviewData,
   AssetSummary,
@@ -13,6 +14,7 @@ import { formatCurrency, formatPercent, formatTimestamp } from '@/utils/formatte
 import { CandleChart } from '@/components/common/CandleChart';
 import { HeatmapGrid } from '@/components/common/HeatmapGrid';
 import { Badge } from '@/components/common/Badge';
+import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 import { Link } from 'react-router-dom';
 import {
   TrendingUp,
@@ -32,7 +34,7 @@ import {
 } from 'lucide-react';
 
 export const OverviewPage: React.FC = () => {
-  const { provider, openDemoModal } = useMarketData();
+  const { provider, openDemoModal, dataMode } = useMarketData();
 
   const [overview, setOverview] = useState<MarketOverviewData | null>(null);
   const [assets, setAssets] = useState<AssetSummary[]>([]);
@@ -42,10 +44,12 @@ export const OverviewPage: React.FC = () => {
   const [liquidations, setLiquidations] = useState<LiquidationData | null>(null);
   const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       setLoading(true);
+      setSourceUnavailable(false);
       try {
         const [ov, assts, ftrs, liqs, rdr] = await Promise.all([
           provider.getMarketOverview(),
@@ -62,6 +66,10 @@ export const OverviewPage: React.FC = () => {
 
         const candles = await provider.getCandles('BTC', selectedTimeframe);
         setBtcCandles(candles);
+      } catch {
+        // LIVE-FIRST: источник не ответил — показываем честное состояние,
+        // демонстрационные числа вместо фактических не подставляются.
+        setSourceUnavailable(true);
       } finally {
         setLoading(false);
       }
@@ -71,8 +79,19 @@ export const OverviewPage: React.FC = () => {
 
   // When timeframe changes for BTC chart
   useEffect(() => {
-    provider.getCandles('BTC', selectedTimeframe).then(setBtcCandles);
+    provider
+      .getCandles('BTC', selectedTimeframe)
+      .then(setBtcCandles)
+      .catch(() => setBtcCandles([]));
   }, [selectedTimeframe, provider]);
+
+  if (!loading && sourceUnavailable && !overview) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-6">
+        <DataSourceUnavailable subject="рыночная сводка командного центра" />
+      </div>
+    );
+  }
 
   if (loading || !overview) {
     return (
@@ -93,6 +112,17 @@ export const OverviewPage: React.FC = () => {
   const topGainers = sortedByChange.slice(0, 4);
   const topLosers = sortedByChange.slice(-4).reverse();
 
+  // LIVE-FIRST: значения карточки BTC берутся из фактических данных, без подстановки демо-чисел
+  const btcAsset = assets.find((a) => a.symbol === 'BTC');
+  const btcIndicators = btcCandles.length > 0 ? IndicatorEngine.computeCompleteIndicators(btcCandles) : null;
+  const btcPrice =
+    btcAsset && Number.isFinite(btcAsset.price) && btcAsset.price > 0
+      ? btcAsset.price
+      : btcCandles.length > 0
+        ? btcCandles[btcCandles.length - 1].close
+        : null;
+  const btcChange24h = btcAsset && Number.isFinite(btcAsset.change24h) ? btcAsset.change24h : null;
+
   // Aggregate futures stats
   const totalFuturesVolume = futures.reduce((acc, f) => acc + f.futuresVolume24h, 0);
   const totalOpenInterest = futures.reduce((acc, f) => acc + f.openInterest, 0);
@@ -105,14 +135,36 @@ export const OverviewPage: React.FC = () => {
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
       {/* Top Demo Notification Strip */}
-      <div className="bg-amber-500/[0.08] border border-amber-500/30 rounded-xl px-3.5 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-amber-300 gap-2 shadow-sm">
+      <div
+        className={`border rounded-xl px-3.5 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono gap-2 shadow-sm ${
+          dataMode === 'live'
+            ? 'bg-cyan-500/[0.07] border-cyan-500/25 text-cyan-200'
+            : 'bg-amber-500/[0.08] border-amber-500/30 text-amber-300'
+        }`}
+      >
         <div className="flex items-center space-x-2.5">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            <span
+              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${
+                dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
+              }`}
+            ></span>
+            <span
+              className={`relative inline-flex rounded-full h-2 w-2 ${dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-500'}`}
+            ></span>
           </span>
           <span>
-            <strong>КОМАНДНЫЙ ЦЕНТР: ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ.</strong> Все цены, объемы, открытый интерес, ликвидации и события зафиксированы для оценки интерфейса (Этап 1).
+            {dataMode === 'live' ? (
+              <>
+                <strong>КОМАНДНЫЙ ЦЕНТР: LIVE-ДАННЫЕ.</strong> Котировки, объёмы и ликвидации поступают из
+                фактических источников (Binance / KuCoin). При недоступности источника значения не подставляются.
+              </>
+            ) : (
+              <>
+                <strong>КОМАНДНЫЙ ЦЕНТР: ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ.</strong> Все цены, объемы, открытый интерес,
+                ликвидации и события зафиксированы для оценки интерфейса (Этап 1).
+              </>
+            )}
           </span>
         </div>
         <button
@@ -182,21 +234,33 @@ export const OverviewPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
             <span className="uppercase tracking-wider">Капитализация рынка</span>
-            <span
-              className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
-                overview.marketCapChange24h >= 0
-                  ? 'text-emerald-400 bg-emerald-950/40'
-                  : 'text-rose-400 bg-rose-950/40'
-              }`}
-            >
-              {formatPercent(overview.marketCapChange24h)}
+            <span className="flex items-center space-x-1">
+              {dataMode === 'live' && (
+                <span
+                  title="MODEL / ESTIMATED: точная 24h-дельта капитализации из источника не поступает"
+                  className="text-[10px] font-mono font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
+                >
+                  EST.
+                </span>
+              )}
+              <span
+                className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                  overview.marketCapChange24h >= 0
+                    ? 'text-emerald-400 bg-emerald-950/40'
+                    : 'text-rose-400 bg-rose-950/40'
+                }`}
+              >
+                {formatPercent(overview.marketCapChange24h)}
+              </span>
             </span>
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalMarketCap, { compact: true })}
           </div>
           <div className="text-[10px] text-slate-400 font-mono mt-1">
-            24h дельта: +$64.8B
+            {dataMode === 'live'
+              ? 'MODEL / ESTIMATED: абсолютная 24h-дельта источником не отдаётся'
+              : 'Демонстрационная оценка 24h-дельты'}
           </div>
         </div>
 
@@ -204,21 +268,31 @@ export const OverviewPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
             <span className="uppercase tracking-wider">24h Спот Объем</span>
-            <span
-              className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
-                overview.volumeChange24h >= 0
-                  ? 'text-emerald-400 bg-emerald-950/40'
-                  : 'text-rose-400 bg-rose-950/40'
-              }`}
-            >
-              {formatPercent(overview.volumeChange24h)}
+            <span className="flex items-center space-x-1">
+              {dataMode === 'live' && (
+                <span
+                  title="MODEL / ESTIMATED: точная 24h-дельта объёма из источника не поступает"
+                  className="text-[10px] font-mono font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
+                >
+                  EST.
+                </span>
+              )}
+              <span
+                className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                  overview.volumeChange24h >= 0
+                    ? 'text-emerald-400 bg-emerald-950/40'
+                    : 'text-rose-400 bg-rose-950/40'
+                }`}
+              >
+                {formatPercent(overview.volumeChange24h)}
+              </span>
             </span>
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalVolume24h, { compact: true })}
           </div>
           <div className="text-[10px] text-slate-400 font-mono mt-1">
-            Активность выше нормы
+            {dataMode === 'live' ? 'Суммарный объём доступных источников' : 'Демонстрационный суммарный объём'}
           </div>
         </div>
 
@@ -247,8 +321,19 @@ export const OverviewPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-amber-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
             <span className="uppercase tracking-wider">Индекс жадности</span>
-            <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/15 px-1.5 py-0.2 rounded">
-              DEMO
+            <span
+              title={
+                dataMode === 'live'
+                  ? 'MODEL / ESTIMATED: внешний источник индекса (Alternative.me) не подключён'
+                  : undefined
+              }
+              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                dataMode === 'live'
+                  ? 'text-slate-400 bg-white/[0.06] border border-white/[0.12]'
+                  : 'text-amber-300 bg-amber-500/15'
+              }`}
+            >
+              {dataMode === 'live' ? 'MODEL / ESTIMATED' : 'DEMO'}
             </span>
           </div>
           <div className="flex items-baseline space-x-2 mt-1.5">
@@ -308,13 +393,33 @@ export const OverviewPage: React.FC = () => {
               <div>
                 <div className="flex items-center space-x-2">
                   <span className="font-mono font-bold text-lg text-white">BTC / USDT</span>
-                  <span className="text-xs bg-[#111a30] text-cyan-300 px-2 py-0.5 rounded-full font-mono border border-cyan-500/30 font-semibold">
-                    Spot & Perp Demo
+                  <span
+                    className={`text-xs bg-[#111a30] px-2 py-0.5 rounded-full font-mono border font-semibold ${
+                      dataMode === 'live'
+                        ? 'text-brand-green border-brand-green/30'
+                        : 'text-cyan-300 border-cyan-500/30'
+                    }`}
+                  >
+                    {dataMode === 'live'
+                      ? `LIVE SPOT${btcAsset?.provenance?.exchange ? `: ${btcAsset.provenance.exchange.toUpperCase()}` : ' (BINANCE / KUCOIN)'}`
+                      : 'Spot & Perp Demo'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 mt-0.5 font-mono">
-                  <span className="text-xl font-bold text-white tabular-nums">$64,850.25</span>
-                  <span className="text-xs font-semibold text-emerald-400 tabular-nums">+3.18% 24h</span>
+                  <span className="text-xl font-bold text-white tabular-nums">
+                    {btcPrice !== null ? formatCurrency(btcPrice) : 'НЕТ ДАННЫХ'}
+                  </span>
+                  {btcChange24h !== null ? (
+                    <span
+                      className={`text-xs font-semibold tabular-nums ${
+                        btcChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {formatPercent(btcChange24h)} 24h
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-slate-500">24h: НЕТ ДАННЫХ</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -342,9 +447,24 @@ export const OverviewPage: React.FC = () => {
 
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-white/[0.04]">
             <div className="flex items-center space-x-3">
-              <span>SMA20: <strong className="text-slate-200 tabular-nums">$63,877</strong></span>
-              <span>SMA50: <strong className="text-slate-200 tabular-nums">$62,386</strong></span>
-              <span>RSI-14: <strong className="text-emerald-400 tabular-nums">68.4</strong></span>
+              <span>
+                SMA20:{' '}
+                <strong className="text-slate-200 tabular-nums">
+                  {btcIndicators ? formatCurrency(btcIndicators.sma20, { decimals: 0 }) : '—'}
+                </strong>
+              </span>
+              <span>
+                SMA50:{' '}
+                <strong className="text-slate-200 tabular-nums">
+                  {btcIndicators ? formatCurrency(btcIndicators.sma50, { decimals: 0 }) : '—'}
+                </strong>
+              </span>
+              <span>
+                RSI-14:{' '}
+                <strong className="text-emerald-400 tabular-nums">
+                  {btcIndicators && Number.isFinite(btcIndicators.rsi14) ? btcIndicators.rsi14.toFixed(1) : '—'}
+                </strong>
+              </span>
             </div>
             <Link
               to="/coin/BTC"
@@ -675,7 +795,7 @@ export const OverviewPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <span className="font-bold text-white">BTC/USDT 4H Breakout</span>
                 <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
-                  LONG SETUP DEMO
+                  ПРИМЕР СЕТАПА (НЕ СИГНАЛ)
                 </span>
               </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Cpu, ShieldCheck, PlayCircle, Sliders, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { BacktestEngine, BacktestResult, StrategyRule } from '@/services/backtest/BacktestEngine';
 import { OHLCV, Timeframe } from '@/types/market';
 import { formatPercent } from '@/utils/formatters';
@@ -17,14 +18,21 @@ export const StrategiesPage: React.FC = () => {
   const positionSizeUsd = 2000;
 
   const [candles, setCandles] = useState<OHLCV[]>([]);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
   // Fetch historical candles for backtest simulation
   useEffect(() => {
     async function loadCandles() {
-      const data = await provider.getCandles(symbol, timeframe);
-      setCandles(data);
+      try {
+        const data = await provider.getCandles(symbol, timeframe);
+        setCandles(data);
+        setSourceUnavailable(false);
+      } catch {
+        setCandles([]);
+        setSourceUnavailable(true);
+      }
     }
     loadCandles();
   }, [provider, symbol, timeframe]);
@@ -72,6 +80,7 @@ export const StrategiesPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+      {sourceUnavailable && <DataSourceUnavailable subject="исторические свечи" />}
       {/* Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
         <div>

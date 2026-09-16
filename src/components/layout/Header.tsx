@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
-import { DEMO_ASSETS } from '@/services/data/DemoMarketDataProvider';
+import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 import {
   PRIMARY_NAV_ITEMS,
   ANALYTICS_NAV_ITEMS,
@@ -56,6 +56,7 @@ export const Header: React.FC = () => {
     openWatchlist,
     openAlertsModal,
     dataMode,
+    provider,
     realtimeStatus,
     userPlan,
     openPlanModal,
@@ -111,13 +112,32 @@ export const Header: React.FC = () => {
     closeAllOverlays();
   }, [location.pathname, closeAllOverlays]);
 
+  // Метрики для поисковых подсказок: только фактически полученные от провайдера.
+  useEffect(() => {
+    let isActive = true;
+    provider
+      .getAssets()
+      .then((list) => {
+        if (isActive) setSearchMetrics(new Map(list.map((a) => [a.symbol, a.change24h])));
+      })
+      .catch(() => {
+        if (isActive) setSearchMetrics(new Map());
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [provider]);
+
   // Фокус в поле компактного поиска после его раскрытия
   useEffect(() => {
     if (compactSearchOpen) compactSearchInputRef.current?.focus();
   }, [compactSearchOpen]);
 
+  // Поиск работает по статическому каталогу символов. Рыночная метрика (24h)
+  // показывается только если актив реально пришёл из активного провайдера —
+  // иначе подсказка остаётся без чисел (LIVE-FIRST).
   const searchResults = searchQuery.trim()
-    ? DEMO_ASSETS.filter(
+    ? CANONICAL_ASSETS.filter(
         (a) =>
           a.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
           a.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -141,6 +161,7 @@ export const Header: React.FC = () => {
   const planLabel = userPlan === 'FREE' ? 'FREE' : userPlan === 'PRO' ? 'PRO' : 'ENTERPRISE';
   const planShortLabel = userPlan === 'FREE' ? 'FREE' : userPlan === 'PRO' ? 'PRO' : 'ENT';
   const isLiveMode = dataMode === 'live';
+  const [searchMetrics, setSearchMetrics] = useState<Map<string, number>>(new Map());
   const isRealtimeUp = realtimeStatus === 'connected';
   const realtimeLabel = isRealtimeUp
     ? 'WebSocket подключен'
@@ -303,27 +324,32 @@ export const Header: React.FC = () => {
       <div className="border-b border-white/[0.06] px-3 py-1 font-mono text-[11px] font-bold uppercase text-slate-400">
         Результаты поиска
       </div>
-      {searchResults.map((asset) => (
-        <button
-          key={asset.id}
-          type="button"
-          onMouseDown={() => handleSelectAsset(asset.symbol)}
-          className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-white/[0.06]"
-        >
-          <div>
-            <span className="mr-1.5 font-mono font-bold text-white">{asset.symbol}</span>
-            <span className="text-[11px] text-slate-400">{asset.name}</span>
-          </div>
-          <span
-            className={`font-mono text-[11px] font-semibold ${
-              asset.change24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
-            }`}
+      {searchResults.map((asset) => {
+        const change24h = searchMetrics.get(asset.symbol);
+        return (
+          <button
+            key={asset.symbol}
+            type="button"
+            onMouseDown={() => handleSelectAsset(asset.symbol)}
+            className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-white/[0.06]"
           >
-            {asset.change24h >= 0 ? '+' : ''}
-            {asset.change24h}%
-          </span>
-        </button>
-      ))}
+            <div>
+              <span className="mr-1.5 font-mono font-bold text-white">{asset.symbol}</span>
+              <span className="text-[11px] text-slate-400">{asset.name}</span>
+            </div>
+            {typeof change24h === 'number' && (
+              <span
+                className={`font-mono text-[11px] font-semibold ${
+                  change24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {change24h >= 0 ? '+' : ''}
+                {change24h}%
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -363,7 +389,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="hidden shrink-0 rounded border border-cyan-500/30 bg-cyan-950/80 px-1.5 font-mono text-[11px] font-semibold tracking-normal text-cyan-400 navxl:inline-block">
-                  v0.8.4
+                  v0.8.5
                 </span>
               </div>
               <span className="hidden whitespace-nowrap font-sans text-[11px] tracking-tight text-slate-400 2xl:block">
@@ -585,27 +611,32 @@ export const Header: React.FC = () => {
                   Совпадений не найдено
                 </div>
               ) : (
-                searchResults.map((asset) => (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    onMouseDown={() => handleSelectAsset(asset.symbol)}
-                    className="flex w-full items-center justify-between border-b border-white/[0.05] px-3 py-2.5 text-left last:border-b-0 hover:bg-white/[0.06]"
-                  >
-                    <div className="flex items-center gap-x-2">
-                      <span className="font-mono text-[13px] font-bold text-white">{asset.symbol}</span>
-                      <span className="text-xs text-slate-400">{asset.name}</span>
-                    </div>
-                    <span
-                      className={`font-mono text-xs font-semibold ${
-                        asset.change24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                      }`}
+                searchResults.map((asset) => {
+                  const change24h = searchMetrics.get(asset.symbol);
+                  return (
+                    <button
+                      key={asset.symbol}
+                      type="button"
+                      onMouseDown={() => handleSelectAsset(asset.symbol)}
+                      className="flex w-full items-center justify-between border-b border-white/[0.05] px-3 py-2.5 text-left last:border-b-0 hover:bg-white/[0.06]"
                     >
-                      {asset.change24h >= 0 ? '+' : ''}
-                      {asset.change24h}%
-                    </span>
-                  </button>
-                ))
+                      <div className="flex items-center gap-x-2">
+                        <span className="font-mono text-[13px] font-bold text-white">{asset.symbol}</span>
+                        <span className="text-xs text-slate-400">{asset.name}</span>
+                      </div>
+                      {typeof change24h === 'number' && (
+                        <span
+                          className={`font-mono text-xs font-semibold ${
+                            change24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          }`}
+                        >
+                          {change24h >= 0 ? '+' : ''}
+                          {change24h}%
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
               )}
             </div>
           )}
@@ -734,7 +765,7 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-mono text-[11px] text-slate-400">
-            <span>CRYPTORA v0.8.4</span>
+            <span>CRYPTORA v0.8.5</span>
             <span>{dataMode === 'live' ? 'LIVE MARKET DATA' : 'DEMO DATASET'}</span>
           </div>
         </div>

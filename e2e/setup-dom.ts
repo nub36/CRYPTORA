@@ -149,6 +149,9 @@ export function resetBrowserStorage(): void {
   try {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    // E2E-прогон детерминирован: базовый режим тестов — демонстрационный датасет.
+    // Продуктовый режим по умолчанию — LIVE (см. отдельный тест LIVE-first).
+    window.localStorage.setItem('cryptora_data_mode', 'demo');
   } catch {
     /* storage может быть недоступен — тесты продолжат в режиме по умолчанию */
   }

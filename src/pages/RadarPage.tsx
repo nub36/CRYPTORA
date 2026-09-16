@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { RadarEvent } from '@/types/market';
 import { formatTimestamp } from '@/utils/formatters';
 import { Badge } from '@/components/common/Badge';
@@ -11,13 +12,18 @@ import { AiExplanationEngine, AiMarketBriefing } from '@/services/ai/AiExplanati
 export const RadarPage: React.FC = () => {
   const { provider, dataMode } = useMarketData();
   const [events, setEvents] = useState<RadarEvent[]>([]);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
 
   useEffect(() => {
-    provider.getRadarEvents().then((data) => {
-      setEvents(data);
-    });
+    provider
+      .getRadarEvents()
+      .then((data) => {
+        setEvents(data);
+        setSourceUnavailable(false);
+      })
+      .catch(() => setSourceUnavailable(true));
 
     if (dataMode === 'live') {
       const feed = RealtimeFeedManager.getInstance();
@@ -51,6 +57,7 @@ export const RadarPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+      {sourceUnavailable && <DataSourceUnavailable subject="сигналы радара" />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>

@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { useMarketData } from '@/context/MarketDataContext';
 
 export const Footer: React.FC = () => {
-  const { openDemoModal } = useMarketData();
+  const { openDemoModal, dataMode } = useMarketData();
+  const [utcNow, setUtcNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setUtcNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const utcClock = utcNow.toISOString().slice(11, 19);
+
 
   return (
     <footer className="mt-6 border-t border-white/[0.08] bg-[#070b14]/90 px-4 py-6 font-sans text-xs text-slate-400 backdrop-blur-md">
@@ -15,7 +24,10 @@ export const Footer: React.FC = () => {
             <ShieldAlert className="w-5 h-5 text-amber-400 flex-shrink-0" />
             <span className="text-slate-300 text-xs">
               <strong className="text-amber-300">Отказ от ответственности (Этап 1-2):</strong>{' '}
-              CRYPTORA не является биржей или брокером. Мы не принимаем клиентские средства, не управляем активами и не запрашиваем торговые ключи API. Все цифры в демонстрационном режиме зафиксированы для оценки интерфейса.
+              CRYPTORA не является биржей или брокером. Мы не принимаем клиентские средства, не управляем активами и не запрашиваем торговые ключи API.{' '}
+              {dataMode === 'live'
+                ? 'Рыночные данные поступают из фактических источников и могут быть неполными или временно недоступными.'
+                : 'Все цифры в демонстрационном режиме зафиксированы для оценки интерфейса.'}
             </span>
           </div>
 
@@ -107,13 +119,13 @@ export const Footer: React.FC = () => {
         {/* Bottom bar */}
         <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-mono">
           <div>
-            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.4.
+            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.5.
           </div>
           <div className="mt-2 sm:mt-0 flex items-center space-x-3">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Слой данных: Active Market Data Gateway</span>
+            <span>{dataMode === 'live' ? 'Слой данных: LIVE (Binance / KuCoin)' : 'Слой данных: DEMO-датасет'}</span>
             <span>•</span>
-            <span>UTC 12:00:00</span>
+            <span>UTC {utcClock}</span>
           </div>
         </div>
       </div>

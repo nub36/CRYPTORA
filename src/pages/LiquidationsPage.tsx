@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { LiquidationData } from '@/types/market';
 import { formatCurrency, formatTimestamp } from '@/utils/formatters';
 import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline';
@@ -11,6 +12,7 @@ export const LiquidationsPage: React.FC = () => {
   const { provider } = useMarketData();
   const [data, setData] = useState<LiquidationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [clusterInput, setClusterInput] = useState<{
     markPrice: number;
     openInterestUsd: number;
@@ -21,11 +23,20 @@ export const LiquidationsPage: React.FC = () => {
   useEffect(() => {
     let isActive = true;
     const load = () => {
-      provider.getLiquidations().then((res) => {
-        if (!isActive) return;
-        setData(res);
-        setLoading(false);
-      });
+      provider
+        .getLiquidations()
+        .then((res) => {
+          if (!isActive) return;
+          setData(res);
+          setSourceUnavailable(false);
+          setLoading(false);
+        })
+        .catch(() => {
+          // Поток ликвидаций недоступен: честное состояние вместо подстановки демо.
+          if (!isActive) return;
+          setSourceUnavailable(true);
+          setLoading(false);
+        });
     };
 
     load();
@@ -43,8 +54,8 @@ export const LiquidationsPage: React.FC = () => {
   // а не из зашитых констант. Нет метрик — нет модели: подставлять «примерные» числа нельзя.
   useEffect(() => {
     let isActive = true;
-    Promise.all([provider.getFuturesList(), provider.getCandles('BTC', '4h')]).then(
-      ([futures, btcCandles]) => {
+    Promise.all([provider.getFuturesList(), provider.getCandles('BTC', '4h')])
+      .then(([futures, btcCandles]) => {
         if (!isActive) return;
         const btc = futures.find((f) => f.symbol.toUpperCase().startsWith('BTC'));
         if (btc && btc.markPrice > 0 && btc.openInterest > 0) {
@@ -66,8 +77,13 @@ export const LiquidationsPage: React.FC = () => {
           setClusterInput(null);
           setHeatmap(null);
         }
-      }
-    );
+      })
+      .catch(() => {
+        // Входные метрики модели не получены — карта честно не строится.
+        if (!isActive) return;
+        setClusterInput(null);
+        setHeatmap(null);
+      });
     return () => {
       isActive = false;
     };
@@ -80,6 +96,14 @@ export const LiquidationsPage: React.FC = () => {
       clusterInput.openInterestUsd
     );
   }, [clusterInput]);
+
+  if (!loading && sourceUnavailable && !data) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-2xl items-center px-4">
+        <DataSourceUnavailable subject="поток ликвидаций" />
+      </div>
+    );
+  }
 
   if (loading || !data) {
     return (

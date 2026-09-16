@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary, AssetCategory, ScreenerFilters } from '@/types/market';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { useNavigate } from 'react-router-dom';
 import { RotateCcw, Star, Sparkles } from 'lucide-react';
 
 export const ScreenerPage: React.FC = () => {
-  const { provider, watchlist, toggleWatchlist } = useMarketData();
+  const { provider, watchlist, toggleWatchlist, dataMode } = useMarketData();
   const [results, setResults] = useState<AssetSummary[]>([]);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [totalCount, setTotalCount] = useState(30);
   const navigate = useNavigate();
 
@@ -39,7 +41,10 @@ export const ScreenerPage: React.FC = () => {
   }, [query, category, minPriceChange, maxPriceChange, minVolume, fundingFilter, provider]);
 
   useEffect(() => {
-    provider.getAssets().then((a) => setTotalCount(a.length));
+    provider
+      .getAssets()
+      .then((a) => setTotalCount(a.length))
+      .catch(() => setSourceUnavailable(true));
   }, [provider]);
 
   const handleReset = () => {
@@ -76,6 +81,7 @@ export const ScreenerPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+      {sourceUnavailable && <DataSourceUnavailable subject="результаты скринера" />}
       {/* Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
@@ -83,17 +89,25 @@ export const ScreenerPage: React.FC = () => {
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               КРИПТО-СКРИНЕР (SCREENER TERMINAL)
             </h1>
-            <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-              ДЕМО-ДАТАСЕТ
-            </span>
+            {dataMode === 'live' ? (
+              <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
+                LIVE SPOT (BINANCE / KUCOIN)
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                ДЕМО-ДАТАСЕТ
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу на демонстрационном датасете.
+            {dataMode === 'live'
+              ? 'Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу на фактических рыночных данных.'
+              : 'Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу на демонстрационном датасете.'}
           </p>
         </div>
 
         {/* Presets */}
-        <div className="flex items-center space-x-1.5 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
           <span className="text-slate-400 mr-1 hidden lg:inline font-semibold">Пресеты:</span>
           <button
             onClick={applyPresetGainers}

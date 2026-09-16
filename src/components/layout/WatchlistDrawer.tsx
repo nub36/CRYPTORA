@@ -1,16 +1,39 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
-import { DEMO_ASSETS } from '@/services/data/DemoMarketDataProvider';
+import { AssetSummary } from '@/types/market';
 import { X, Star, ArrowUpRight, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 
 export const WatchlistDrawer: React.FC = () => {
-  const { watchlist, toggleWatchlist, isWatchlistOpen, closeWatchlist } = useMarketData();
+  const { watchlist, toggleWatchlist, isWatchlistOpen, closeWatchlist, provider } = useMarketData();
+  const [assets, setAssets] = useState<AssetSummary[]>([]);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
+
+  // LIVE-FIRST: избранное показывает только данные активного провайдера.
+  useEffect(() => {
+    if (!isWatchlistOpen) return;
+    let isActive = true;
+    provider
+      .getAssets()
+      .then((list) => {
+        if (!isActive) return;
+        setAssets(list);
+        setSourceUnavailable(false);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setAssets([]);
+        setSourceUnavailable(true);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [isWatchlistOpen, provider]);
 
   if (!isWatchlistOpen) return null;
 
-  const watchedAssets = DEMO_ASSETS.filter((a) => watchlist.includes(a.symbol));
+  const watchedAssets = assets.filter((a) => watchlist.includes(a.symbol));
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs">
@@ -36,7 +59,15 @@ export const WatchlistDrawer: React.FC = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto py-4 space-y-2">
-            {watchedAssets.length === 0 ? (
+            {sourceUnavailable ? (
+              <div className="text-center py-12 text-slate-400 text-sm" data-qa="watchlist-unavailable">
+                <Star className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <p>Фактический источник недоступен.</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Демонстрационные значения вместо рыночных данных не подставляются.
+                </p>
+              </div>
+            ) : watchedAssets.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-sm">
                 <Star className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                 <p>Ваш список наблюдения пуст.</p>
