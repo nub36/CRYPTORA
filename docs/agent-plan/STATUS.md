@@ -172,11 +172,12 @@
 
 ## 7. Commit hash и статус Git remote
 - **Commit hash (основной коммит исправления):** `6655ff7` —
-  `fix(ui): resolve header responsive regression, restore chart rendering, polish coin detail (v0.8.1)`
-  (полный хэш: `6655ff7e8f621ca56f34c66261c47e10aca4ff15`, ветка `arena/01a0a997-cryptora`).
-  Хэш актуализируется автоматически: `git log -1 --format=%H`. Собственная запись хэша
-  в файле всегда отстаёт на один коммит — ориентируйтесь на вывод `git log`. Финальный HEAD
-  ветки после документирующего коммита: `07380dcabb6a013720cfcc89c40d64d1a8610ff0`.
+  `fix(ui): resolve header responsive regression, restore chart rendering, polish coin detail (v0.8.1)`.
+- **Дополняющий коммит:** `57770ee` —
+  `test(e2e): harden suite against live-mode leakage and network flakiness; fix last micro-text in header`.
+- **Ветка:** `arena/01a0a997-cryptora` (репозиторий `nub36/CRYPTORA`).
+- Запись хэшей в файле всегда отстаёт на один коммит (самореференция невозможна) —
+  актуальные значения берутся командой `git log --oneline -5` в этой ветке.
 - **Git remote / push:** ветка `arena/01a0a997-cryptora` отправлена в `origin`
   (`git push origin arena/01a0a997-cryptora`).
 - **Production VPS:** НЕ обновлялся (по требованию задачи). Deployment-инфраструктура не менялась.
