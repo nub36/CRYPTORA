@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, ShieldAlert } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { useMarketData } from '@/context/MarketDataContext';
 
 export const Footer: React.FC = () => {
-  const { openDemoModal, dataMode } = useMarketData();
+  const { dataMode } = useMarketData();
   const [utcNow, setUtcNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -24,20 +24,11 @@ export const Footer: React.FC = () => {
             <ShieldAlert className="w-5 h-5 text-amber-400 flex-shrink-0" />
             <span className="text-slate-300 text-xs">
               <strong className="text-amber-300">Отказ от ответственности (Этап 1-2):</strong>{' '}
-              CRYPTORA не является биржей или брокером. Мы не принимаем клиентские средства, не управляем активами и не запрашиваем торговые ключи API.{' '}
-              {dataMode === 'live'
-                ? 'Рыночные данные поступают из фактических источников и могут быть неполными или временно недоступными.'
-                : 'Все цифры в демонстрационном режиме зафиксированы для оценки интерфейса.'}
+              CRYPTORA не является биржей или брокером. Мы не принимаем клиентские средства, не управляем
+              активами и не запрашиваем торговые ключи API. Все значения поступают из фактических источников
+              и могут быть неполными или временно недоступными.
             </span>
           </div>
-
-          <button
-            onClick={openDemoModal}
-            className="text-xs font-mono text-amber-300 hover:underline flex items-center space-x-1 flex-shrink-0 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/30"
-          >
-            <AlertCircle className="w-3.5 h-3.5" />
-            <span>Подробнее о Demo-режиме</span>
-          </button>
         </div>
 
         {/* Footer Navigation & Columns */}
@@ -119,11 +110,11 @@ export const Footer: React.FC = () => {
         {/* Bottom bar */}
         <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-mono">
           <div>
-            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.5.
+            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.6.
           </div>
           <div className="mt-2 sm:mt-0 flex items-center space-x-3">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>{dataMode === 'live' ? 'Слой данных: LIVE (Binance / KuCoin)' : 'Слой данных: DEMO-датасет'}</span>
+            <span>{dataMode === 'live' ? 'Слой данных: LIVE (Binance / KuCoin)' : 'Слой данных: QA-датасет'}</span>
             <span>•</span>
             <span>UTC {utcClock}</span>
           </div>

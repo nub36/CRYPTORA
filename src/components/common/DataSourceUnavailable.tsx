@@ -1,6 +1,5 @@
 import React from 'react';
-import { RadioTower, Eye } from 'lucide-react';
-import { useMarketData } from '@/context/MarketDataContext';
+import { RadioTower, RefreshCw } from 'lucide-react';
 
 interface DataSourceUnavailableProps {
   /** Что именно не получено от источника — подставляется в честный текст. */
@@ -14,17 +13,14 @@ interface DataSourceUnavailableProps {
  * DataSourceUnavailable — честное состояние «источник недоступен».
  *
  * LIVE-FIRST: когда фактический источник не отдал данные, терминал прямо сообщает
- * об этом и не подставляет демонстрационные значения. Демо-датасет остаётся
- * доступен, но только как явный выбор пользователя (кнопка ведёт в переключатель
- * режима данных).
+ * об этом и не подставляет значения из другого датасета. Переключателя режима в
+ * интерфейсе нет: терминал всегда работает с фактическим источником.
  */
 export const DataSourceUnavailable: React.FC<DataSourceUnavailableProps> = ({
   subject,
   detail,
   compact = false,
 }) => {
-  const { openDemoModal, dataMode } = useMarketData();
-
   return (
     <div
       data-qa="source-unavailable"
@@ -40,19 +36,19 @@ export const DataSourceUnavailable: React.FC<DataSourceUnavailableProps> = ({
             Фактический источник недоступен: {subject}
           </p>
           <p className="text-xs text-amber-200/70 font-sans mt-0.5">
-            {detail ??
-              'Данные не пришли от источника. Демонстрационные значения вместо фактических не подставляются.'}
+            {detail ?? 'Данные не пришли от источника. Значения вместо фактических не подставляются.'}
           </p>
         </div>
       </div>
 
       <button
         type="button"
-        onClick={openDemoModal}
+        onClick={() => window.location.reload()}
+        aria-label={`Повторить запрос: ${subject}`}
         className="flex items-center space-x-1.5 self-start sm:self-auto px-2.5 py-1.5 rounded-md border border-white/[0.12] bg-surface-elevated text-[11px] font-semibold text-slate-200 hover:border-amber-400/50 hover:text-amber-200 transition-colors flex-shrink-0"
       >
-        <Eye className="w-3.5 h-3.5" />
-        <span>{dataMode === 'live' ? 'Демонстрационный режим' : 'Настройки данных'}</span>
+        <RefreshCw className="w-3.5 h-3.5" />
+        <span>Повторить запрос</span>
       </button>
     </div>
   );

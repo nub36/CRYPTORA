@@ -52,7 +52,6 @@ export const Header: React.FC = () => {
   const {
     watchlist,
     alerts,
-    openDemoModal,
     openWatchlist,
     openAlertsModal,
     dataMode,
@@ -389,7 +388,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="hidden shrink-0 rounded border border-cyan-500/30 bg-cyan-950/80 px-1.5 font-mono text-[11px] font-semibold tracking-normal text-cyan-400 navxl:inline-block">
-                  v0.8.5
+                  v0.8.6
                 </span>
               </div>
               <span className="hidden whitespace-nowrap font-sans text-[11px] tracking-tight text-slate-400 2xl:block">
@@ -429,18 +428,26 @@ export const Header: React.FC = () => {
 
         {/* ----------------------- Secondary service controls ----------------------- */}
         <div className="order-2 ml-auto flex h-14 shrink-0 items-center gap-x-1.5 sm:gap-x-2">
-          {/* Data mode chip: полнота раскрывается по мере появления места */}
-          {isLiveMode ? (
-            <button
-              type="button"
-              onClick={openDemoModal}
-              className="hidden shrink-0 cursor-pointer items-center gap-x-1.5 whitespace-nowrap rounded-md border border-emerald-500/35 bg-emerald-950/40 px-2 py-1 font-mono text-[11px] text-emerald-400 transition-all hover:bg-emerald-900/40 sm:inline-flex navxl:px-2.5"
-              title={`Режим LIVE Spot: Binance/KuCoin. Статус WebSocket: ${realtimeStatus}`}
-            >
+          {/* Статус источника и соединения: только индикация, переключателя режима в интерфейсе нет */}
+          <span
+            role="status"
+            data-qa="data-source-status"
+            aria-label={`Источник данных: ${isLiveMode ? `LIVE Spot, ${realtimeLabel}` : 'внутренний датасет QA'}`}
+            title={`Источник данных: ${isLiveMode ? 'LIVE Spot (Binance / KuCoin)' : 'внутренний датасет QA'}. Статус WebSocket: ${realtimeStatus}`}
+            className={`hidden shrink-0 items-center gap-x-1.5 whitespace-nowrap rounded-md border px-2 py-1 font-mono text-[11px] sm:inline-flex navxl:px-2.5 ${
+              isLiveMode
+                ? 'border-emerald-500/35 bg-emerald-950/40 text-emerald-400'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+            }`}
+          >
+            {isLiveMode ? (
               <Radio className="h-3.5 w-3.5 shrink-0 animate-pulse text-emerald-400" />
-              {/* Полная формулировка присутствует в DOM всегда; на узких экранах сжимается визуально */}
-              <span className="hidden font-bold navxl:inline">LIVE SPOT</span>
-              <span className="font-bold navxl:hidden">LIVE</span>
+            ) : (
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+            )}
+            <span className="hidden font-bold navxl:inline">{isLiveMode ? 'LIVE SPOT' : 'QA-ДАТАСЕТ'}</span>
+            <span className="font-bold navxl:hidden">{isLiveMode ? 'LIVE' : 'QA'}</span>
+            {isLiveMode && (
               <span
                 className={`ml-0.5 shrink-0 rounded px-1 font-mono text-[11px] font-bold ${
                   isRealtimeUp
@@ -452,44 +459,28 @@ export const Header: React.FC = () => {
               >
                 {isRealtimeUp ? 'WS ●' : 'WS ⟳'}
               </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={openDemoModal}
-              className="hidden shrink-0 cursor-pointer items-center gap-x-1.5 whitespace-nowrap rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 font-mono text-[11px] text-amber-300 transition-all hover:bg-amber-500/20 sm:inline-flex navxl:px-2.5"
-              title="Нажмите для просмотра информации о демо-режиме"
-            >
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-              <span className="hidden font-semibold navxl:inline">ДЕМО-ДАННЫЕ</span>
-              <span className="font-semibold navxl:hidden">ДЕМО</span>
-            </button>
-          )}
+            )}
+          </span>
 
-          {/* Compact data-mode indicator for narrow viewports (< 640px) */}
-          <button
-            type="button"
-            onClick={openDemoModal}
-            aria-label={
-              isLiveMode ? `Режим данных LIVE Spot, ${realtimeLabel}` : 'Режим данных: демонстрационный'
-            }
-            className={`inline-flex shrink-0 items-center gap-x-1 rounded-md border p-1.5 transition-colors sm:hidden ${
+          {/* Компактный статус источника для узких экранов (< 640px) */}
+          <span
+            role="status"
+            data-qa="data-source-status-compact"
+            aria-label={`Источник данных: ${isLiveMode ? `LIVE Spot, ${realtimeLabel}` : 'внутренний датасет QA'}`}
+            title={`Источник данных: ${isLiveMode ? 'LIVE Spot (Binance / KuCoin)' : 'внутренний датасет QA'}`}
+            className={`inline-flex shrink-0 items-center gap-x-1 rounded-md border p-1.5 sm:hidden ${
               isLiveMode
                 ? 'border-emerald-500/35 bg-emerald-950/40 text-emerald-400'
                 : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
             }`}
           >
-            {isLiveMode ? (
-              <Activity className="h-4 w-4" />
-            ) : (
-              <AlertTriangle className="h-4 w-4 text-amber-400" />
-            )}
+            {isLiveMode ? <Activity className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4 text-amber-400" />}
             <span
               className={`h-1.5 w-1.5 rounded-full ${
                 isLiveMode ? (isRealtimeUp ? 'bg-emerald-400' : 'bg-amber-400') : 'bg-amber-400'
               }`}
             />
-          </button>
+          </span>
 
           {/* Plan tier chip (раскрывается только на очень широких экранах) */}
           <button
@@ -646,14 +637,10 @@ export const Header: React.FC = () => {
       {/* Mobile / tablet menu (< 1024px) */}
       {mobileMenuOpen && (
         <div className="max-h-[85vh] space-y-3 overflow-y-auto border-b border-white/[0.1] bg-[#070b14]/98 px-4 py-4 backdrop-blur-2xl lg:hidden">
-          {/* Status strip: режим данных, realtime, тариф */}
+          {/* Status strip: источник данных, realtime, тариф */}
           <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.08] pb-3">
-            <button
-              type="button"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                openDemoModal();
-              }}
+            <span
+              role="status"
               className={`flex items-center gap-x-1.5 rounded border px-2.5 py-1 font-mono text-xs ${
                 isLiveMode
                   ? 'border-emerald-500/35 bg-emerald-950/40 text-emerald-300'
@@ -665,8 +652,8 @@ export const Header: React.FC = () => {
               ) : (
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
               )}
-              <span>{isLiveMode ? 'LIVE SPOT' : 'ДЕМОНСТРАЦИОННЫЙ РЕЖИМ'}</span>
-            </button>
+              <span>{isLiveMode ? 'LIVE SPOT' : 'QA-ДАТАСЕТ'}</span>
+            </span>
 
             <span
               className={`flex items-center gap-x-1.5 rounded border px-2.5 py-1 font-mono text-xs ${
@@ -765,8 +752,8 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-mono text-[11px] text-slate-400">
-            <span>CRYPTORA v0.8.5</span>
-            <span>{dataMode === 'live' ? 'LIVE MARKET DATA' : 'DEMO DATASET'}</span>
+            <span>CRYPTORA v0.8.6</span>
+            <span>{dataMode === 'live' ? 'LIVE MARKET DATA' : 'QA DATASET'}</span>
           </div>
         </div>
       )}

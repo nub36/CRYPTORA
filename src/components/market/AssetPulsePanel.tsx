@@ -11,7 +11,7 @@ interface AssetPulsePanelProps {
 
 const SOURCE_BADGE: Record<AssetLiquidationSource, { label: string; variant: 'green' | 'amber' | 'cyan' | 'neutral' }> = {
   FACTUAL: { label: 'FACTUAL · BINANCE', variant: 'green' },
-  DEMO: { label: 'DEMO DATASET', variant: 'amber' },
+  DEMO: { label: 'QA DATASET', variant: 'amber' },
   ESTIMATED: { label: 'ESTIMATED · MODEL', variant: 'cyan' },
   UNAVAILABLE: { label: 'НЕТ ДАННЫХ', variant: 'neutral' },
 };
@@ -134,7 +134,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             </span>
           </div>
           <Badge variant={isDemoInputs ? 'amber' : 'green'}>
-            {isDemoInputs ? 'DEMO' : 'LIVE · BINANCE FUTURES'}
+            {isDemoInputs ? 'QA' : 'LIVE · BINANCE FUTURES'}
           </Badge>
         </header>
 
@@ -254,7 +254,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             <p className="text-[11px] text-slate-500 font-sans leading-relaxed">
               Производный индикатор на фиксированных весах (ликвидации 40, фандинг 25, OI 15, цена 20).
               Не является торговым сигналом.
-              {imbalance.basedOnDemo && ' В расчете есть демонстрационные или модельные входные метрики.'}
+              {imbalance.basedOnDemo && ' В расчёте есть входные метрики QA-датасета или модели.'}
             </p>
           </>
         ) : (

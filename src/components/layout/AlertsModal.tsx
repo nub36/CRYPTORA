@@ -46,7 +46,7 @@ export const AlertsModal: React.FC = () => {
               Система алертов (Alerts Preview)
             </h3>
             <p className="text-xs text-slate-400 font-mono">
-              Локальная демонстрация триггеров терминала
+              Локальные триггеры терминала (прототип)
             </p>
           </div>
         </div>
@@ -122,7 +122,7 @@ export const AlertsModal: React.FC = () => {
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
             <span>Активные демо-алерты ({alerts.length})</span>
             <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-              Demo Queue
+              Очередь прототипа
             </span>
           </div>
 

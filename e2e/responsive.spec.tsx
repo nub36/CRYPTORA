@@ -24,7 +24,7 @@ function setWindowDimensions(width: number, height: number) {
   window.dispatchEvent(new Event('resize'));
 }
 
-// Сброс localStorage до каждого теста: гарантирует режим DEMO по умолчанию
+// QA-фикстура: сброс localStorage переводит прогон на детерминированный датасет
 // и исключает реальные сетевые вызовы к биржам из E2E-прогона.
 test.beforeEach(() => {
   resetBrowserStorage();
@@ -49,7 +49,7 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
 
       // Shell verification
       expect(screen.getAllByText(/CRYPTORA/i).length).toBeGreaterThan(0);
-      expect(screen.getByText('DEMO TICKER')).toBeInTheDocument();
+      expect(screen.getByText('QA TICKER')).toBeInTheDocument();
 
       // Check root container exists
       const main = container.querySelector('main');
@@ -87,7 +87,7 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
     fireEvent.click(menuBtn);
 
     // Verify mobile menu items are displayed
-    expect(screen.getByText(/ДЕМОНСТРАЦИОННЫЙ РЕЖИМ/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/QA-ДАТАСЕТ/i).length).toBeGreaterThan(0);
 
     // Close mobile menu
     fireEvent.click(menuBtn);

@@ -76,7 +76,7 @@ export const FuturesPage: React.FC = () => {
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
+                QA-ДАТАСЕТ
               </span>
             )}
           </div>

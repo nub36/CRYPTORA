@@ -189,7 +189,7 @@ export const CoinDetailPage: React.FC = () => {
             </Badge>
           ) : (
             <Badge variant="demo" size="xs">
-              ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
+              QA-ДАТАСЕТ
             </Badge>
           )}
         </div>
@@ -531,7 +531,7 @@ export const CoinDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Order Book L2, Demo Trading Pairs & Radar Stream */}
+      {/* Order Book L2, Trading Pairs & Radar Stream */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Order Book L2 Column */}
         <div className="lg:col-span-1 min-h-[380px]">
@@ -548,7 +548,7 @@ export const CoinDetailPage: React.FC = () => {
           <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-surface-border">
               <span className="font-mono text-[13px] font-bold uppercase tracking-wider text-white">
-                {asset.isDemo ? 'Демо-пары на ведущих биржах' : 'Пары на ведущих биржах (Spot Market)'}
+                {asset.isDemo ? 'Пары на ведущих биржах (QA-датасет)' : 'Пары на ведущих биржах (Spot Market)'}
               </span>
               <span className="text-[11px] font-mono text-slate-400">Биржевая глубина</span>
             </div>

@@ -11,7 +11,7 @@ import { TrendingUp, TrendingDown, RadioTower } from 'lucide-react';
  *
  * LIVE-FIRST (v0.8.5): котировки приходят только из активного провайдера данных.
  * Если фактический источник недоступен, полоса честно сообщает об этом и не
- * подставляет демонстрационные числа (инвариант: сбой LIVE ≠ подмена на DEMO).
+ * подставляет числа из другого датасета (инвариант: сбой LIVE ≠ подмена на QA-датасет).
  */
 export const MarketTicker: React.FC = () => {
   const { provider, dataMode } = useMarketData();
@@ -63,7 +63,7 @@ export const MarketTicker: React.FC = () => {
               isLiveMode ? 'text-emerald-400/90' : 'text-amber-300/90'
             }`}
           >
-            {isLiveMode ? 'LIVE TICKER' : 'DEMO TICKER'}
+            {isLiveMode ? 'LIVE TICKER' : 'QA TICKER'}
           </span>
         </div>
 
@@ -76,8 +76,8 @@ export const MarketTicker: React.FC = () => {
             <span>
               {sourceUnavailable
                 ? isLiveMode
-                  ? 'Фактический рыночный поток недоступен — демонстрационные котировки не подставляются.'
-                  : 'Демонстрационный датасет недоступен.'
+                  ? 'Фактический рыночный поток недоступен — значения не подставляются.'
+                  : 'Датасет источника недоступен.'
                 : 'Ожидание данных от источника…'}
             </span>
           </div>

@@ -37,14 +37,14 @@ export const HeatmapsPage: React.FC = () => {
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                ДЕМОНСТРАЦИОННАЯ СЕТКА
+                QA-ДАТАСЕТ
               </span>
             )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
             {dataMode === 'live'
               ? 'Визуальная оценка доходностей, концентрации объемов и ставок фандинга в реальном времени.'
-              : 'Демонстрационная визуальная оценка доходностей, концентрации объемов и ставок фандинга.'}
+              : 'Визуальная оценка доходностей, концентрации объемов и ставок фандинга на QA-датасете.'}
           </p>
         </div>
       </div>

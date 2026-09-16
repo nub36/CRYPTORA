@@ -25,7 +25,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
 
   // LIVE-FIRST: деривативные метрики (OI, фандинг) берутся только из активного
   // провайдера. Если фактических данных нет — плитка честно сообщает об этом,
-  // демонстрационные или производные «на глаз» значения не подставляются.
+  // значения из другого датасета или производные «на глаз» не не подставляются.
   useEffect(() => {
     let isActive = true;
     provider
@@ -133,7 +133,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
             </span>
           ) : (
             <span className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold">
-              DEMO TILES
+              QA-СЕТКА
             </span>
           )}
         </div>

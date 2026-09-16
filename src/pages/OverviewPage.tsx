@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 
 export const OverviewPage: React.FC = () => {
-  const { provider, openDemoModal, dataMode } = useMarketData();
+  const { provider, dataMode, realtimeStatus } = useMarketData();
 
   const [overview, setOverview] = useState<MarketOverviewData | null>(null);
   const [assets, setAssets] = useState<AssetSummary[]>([]);
@@ -68,7 +68,7 @@ export const OverviewPage: React.FC = () => {
         setBtcCandles(candles);
       } catch {
         // LIVE-FIRST: источник не ответил — показываем честное состояние,
-        // демонстрационные числа вместо фактических не подставляются.
+        // значения из другого датасета вместо фактических не подставляются.
         setSourceUnavailable(true);
       } finally {
         setLoading(false);
@@ -134,46 +134,39 @@ export const OverviewPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
-      {/* Top Demo Notification Strip */}
+      {/* Строка статуса источника данных: только индикация происхождения значений */}
       <div
-        className={`border rounded-xl px-3.5 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono gap-2 shadow-sm ${
+        role="status"
+        data-qa="overview-source-status"
+        className={`border rounded-xl px-3.5 py-2.5 flex items-start sm:items-center space-x-2.5 text-xs font-mono ${
           dataMode === 'live'
-            ? 'bg-cyan-500/[0.07] border-cyan-500/25 text-cyan-200'
-            : 'bg-amber-500/[0.08] border-amber-500/30 text-amber-300'
+            ? 'bg-cyan-500/[0.06] border-cyan-500/25 text-cyan-200'
+            : 'bg-amber-500/[0.07] border-amber-500/25 text-amber-200'
         }`}
       >
-        <div className="flex items-center space-x-2.5">
-          <span className="relative flex h-2 w-2">
-            <span
-              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${
-                dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
-              }`}
-            ></span>
-            <span
-              className={`relative inline-flex rounded-full h-2 w-2 ${dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-500'}`}
-            ></span>
-          </span>
-          <span>
-            {dataMode === 'live' ? (
-              <>
-                <strong>КОМАНДНЫЙ ЦЕНТР: LIVE-ДАННЫЕ.</strong> Котировки, объёмы и ликвидации поступают из
-                фактических источников (Binance / KuCoin). При недоступности источника значения не подставляются.
-              </>
-            ) : (
-              <>
-                <strong>КОМАНДНЫЙ ЦЕНТР: ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ.</strong> Все цены, объемы, открытый интерес,
-                ликвидации и события зафиксированы для оценки интерфейса (Этап 1).
-              </>
-            )}
-          </span>
-        </div>
-        <button
-          onClick={openDemoModal}
-          className="text-amber-400 hover:text-amber-200 transition-colors flex items-center space-x-1 flex-shrink-0 text-[11px] font-semibold bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/30"
-        >
-          <span>Ограничения этапа</span>
-          <ArrowUpRight className="w-3 h-3" />
-        </button>
+        <span className="relative flex h-2 w-2 mt-1 sm:mt-0 flex-shrink-0">
+          <span
+            className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${
+              dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
+            }`}
+          ></span>
+          <span
+            className={`relative inline-flex rounded-full h-2 w-2 ${dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-500'}`}
+          ></span>
+        </span>
+        <span>
+          {dataMode === 'live' ? (
+            <>
+              <strong>Источник данных: LIVE Spot (Binance / KuCoin).</strong> Котировки, объёмы и ликвидации
+              поступают из фактических источников; при недоступности источника значения не подставляются.
+            </>
+          ) : (
+            <>
+              <strong>Источник данных: внутренний датасет QA.</strong> Значения зафиксированы для
+              воспроизводимых проверок интерфейса и не выдаются за фактический рыночный поток.
+            </>
+          )}
+        </span>
       </div>
 
       {/* Quick Terminal Intelligence Hub */}
@@ -260,7 +253,7 @@ export const OverviewPage: React.FC = () => {
           <div className="text-[10px] text-slate-400 font-mono mt-1">
             {dataMode === 'live'
               ? 'MODEL / ESTIMATED: абсолютная 24h-дельта источником не отдаётся'
-              : 'Демонстрационная оценка 24h-дельты'}
+              : 'Оценка 24h-дельты по QA-датасету'}
           </div>
         </div>
 
@@ -292,7 +285,7 @@ export const OverviewPage: React.FC = () => {
             {formatCurrency(overview.totalVolume24h, { compact: true })}
           </div>
           <div className="text-[10px] text-slate-400 font-mono mt-1">
-            {dataMode === 'live' ? 'Суммарный объём доступных источников' : 'Демонстрационный суммарный объём'}
+            {dataMode === 'live' ? 'Суммарный объём доступных источников' : 'Суммарный объём QA-датасета'}
           </div>
         </div>
 
@@ -333,7 +326,7 @@ export const OverviewPage: React.FC = () => {
                   : 'text-amber-300 bg-amber-500/15'
               }`}
             >
-              {dataMode === 'live' ? 'MODEL / ESTIMATED' : 'DEMO'}
+              {dataMode === 'live' ? 'MODEL / ESTIMATED' : 'QA'}
             </span>
           </div>
           <div className="flex items-baseline space-x-2 mt-1.5">
@@ -365,23 +358,43 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Demo Status Card */}
+        {/* Статус режима данных: только индикация источника и соединения */}
         <div
-          onClick={openDemoModal}
-          className="bg-amber-500/[0.08] border border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-400/50 transition-all cursor-pointer rounded-xl p-3.5 shadow-panel"
+          data-qa="overview-mode-card"
+          className={`border rounded-xl p-3.5 shadow-panel ${
+            dataMode === 'live' ? 'bg-[#0a0f1d] border-white/[0.08]' : 'bg-amber-500/[0.07] border-amber-500/25'
+          }`}
         >
-          <div className="text-[11px] font-mono text-amber-300 flex items-center justify-between font-bold uppercase tracking-wider">
-            <span>РЕЖИМ СИСТЕМЫ</span>
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
+          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between font-bold uppercase tracking-wider">
+            <span>РЕЖИМ ДАННЫХ</span>
+            <Zap className={`w-3.5 h-3.5 ${dataMode === 'live' ? 'text-cyan-400' : 'text-amber-400'}`} />
           </div>
-          <div className="text-sm font-bold font-mono text-amber-200 mt-1.5">
-            Демонстрационный
+          <div className={`text-sm font-bold font-mono mt-1.5 ${dataMode === 'live' ? 'text-white' : 'text-amber-200'}`}>
+            {dataMode === 'live' ? 'LIVE Spot (Binance / KuCoin)' : 'Внутренний датасет QA'}
           </div>
-          <div className="text-[10px] text-amber-300/80 font-mono mt-1 hover:underline flex items-center space-x-1">
-            <span>Спецификация этапа</span>
-            <ArrowUpRight className="w-3 h-3" />
+          <div className="text-[10px] text-slate-400 font-mono mt-1 flex items-center space-x-1.5">
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full ${
+                realtimeStatus === 'connected'
+                  ? 'bg-emerald-400'
+                  : realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting'
+                  ? 'bg-amber-400'
+                  : 'bg-slate-500'
+              }`}
+            />
+            <span>
+              WebSocket:{' '}
+              {realtimeStatus === 'connected'
+                ? 'подключен'
+                : realtimeStatus === 'connecting'
+                ? 'подключение'
+                : realtimeStatus === 'reconnecting'
+                ? 'переподключение'
+                : 'нет соединения'}
+            </span>
           </div>
         </div>
+
       </div>
 
       {/* SECTION B & C: Main Chart & Futures/Liquidations Row */}
@@ -402,7 +415,7 @@ export const OverviewPage: React.FC = () => {
                   >
                     {dataMode === 'live'
                       ? `LIVE SPOT${btcAsset?.provenance?.exchange ? `: ${btcAsset.provenance.exchange.toUpperCase()}` : ' (BINANCE / KUCOIN)'}`
-                      : 'Spot & Perp Demo'}
+                      : 'Спот и перп · QA-датасет'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 mt-0.5 font-mono">
@@ -625,7 +638,7 @@ export const OverviewPage: React.FC = () => {
       {/* SECTION C: Heatmap Grid Preview */}
       <HeatmapGrid assets={assets} limit={18} compact={true} />
 
-      {/* SECTION D: Radar Feed, Top Movers, Signals Demo */}
+      {/* SECTION D: Radar Feed, Top Movers, Signals Preview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Column 1: Market Radar Stream */}
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col shadow-panel">
@@ -783,7 +796,7 @@ export const OverviewPage: React.FC = () => {
 
             <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs space-y-1.5 mb-3">
               <div className="font-bold text-amber-300 flex items-center space-x-1.5">
-                <span>Демонстрация будущей методологии</span>
+                <span>Прототип методологии</span>
               </div>
               <p className="text-slate-300 text-[11px] leading-relaxed">
                 CRYPTORA не публикует слепые кнопки «BUY/SELL». Сетапы будут создаваться строго алгоритмическим движком с открытыми аргументами, точным уровнем инвалидации и неизменяемым журналом аудита.

@@ -16,8 +16,8 @@ function renderApp(initialPath = '/') {
   );
 }
 
-// Сброс localStorage до каждого теста: гарантирует режим DEMO по умолчанию
-// и исключает реальные сетевые вызовы к биржам из E2E-прогона.
+// QA-фикстура: сброс localStorage переводит прогон на детерминированный
+// датасет и исключает реальные сетевые вызовы к биржам из E2E-прогона.
 test.beforeEach(() => {
   resetBrowserStorage();
 });
@@ -33,7 +33,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     // Полоса котировок маркирует фактический режим, демо-подпись не показывается.
     expect(await screen.findByText('LIVE TICKER')).toBeInTheDocument();
-    expect(screen.queryByText('DEMO TICKER')).toBeNull();
+    expect(screen.queryByText('QA TICKER')).toBeNull();
   });
 
   test('LIVE-first: недоступный фактический источник даёт честное состояние без демо-котировок', async () => {
@@ -46,26 +46,40 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     // Ключевое отличие от прежнего поведения: демо-числа не подставляются вместо факта.
     expect(screen.queryByText('$64,850.25')).toBeNull();
-    expect(screen.queryByText('DEMO TICKER')).toBeNull();
+    expect(screen.queryByText('QA TICKER')).toBeNull();
   });
 
-  test('DEMO-режим остаётся доступным явным выбором и показывает демо-датасет', async () => {
+  test('LIVE-first: переключателя режима данных в интерфейсе нет', async () => {
+    window.localStorage.setItem('cryptora_data_mode', 'live');
+    renderApp('/');
+
+    // Статус источника — индикация, а не кнопка переключения режима.
+    const statusChip = await screen.findByText('LIVE SPOT');
+    expect(statusChip.closest('button')).toBeNull();
+    expect(screen.queryByText(/Подробнее о Demo-режиме/i)).toBeNull();
+    expect(screen.queryByText(/Ограничения этапа/i)).toBeNull();
+    expect(screen.queryByText(/Демонстрационный режим/i)).toBeNull();
+  });
+
+  test('QA-фикстура: детерминированный датасет помечается провенансом', async () => {
     window.localStorage.setItem('cryptora_data_mode', 'demo');
     renderApp('/');
 
-    expect(await screen.findByText('DEMO TICKER')).toBeInTheDocument();
+    expect(await screen.findByText('QA TICKER')).toBeInTheDocument();
     const demoPrices = await screen.findAllByText('$64,850.25');
     expect(demoPrices.length).toBeGreaterThan(0);
+    // Даже в этом внутреннем режиме переключателя в UI нет.
+    expect(screen.queryByText(/Подробнее о Demo-режиме/i)).toBeNull();
   });
 
-  test('Overview: renders command center cards, chart, snapshots and demo notification', async () => {
+  test('Overview: renders command center cards, chart, snapshots and source status', async () => {
     renderApp('/');
 
     expect(screen.getAllByText(/CRYPTORA/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Рынок\. Данные\. Решения\./i).length).toBeGreaterThan(0);
 
-    // Explicit demo warning banner at top of command center
-    await screen.findByText(/КОМАНДНЫЙ ЦЕНТР/i);
+    // Строка статуса источника данных в шапке командного центра
+    await screen.findByText(/Источник данных:/i);
 
     // Summary cards
     await screen.findByText(/Капитализация рынка/i);
@@ -118,7 +132,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Деривативы: детали контракта/i)).toBeInTheDocument();
     expect(screen.getByText(/Технические индикаторы/i)).toBeInTheDocument();
     expect(screen.getByText(/ORDER BOOK \(L2\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Демо-пары на ведущих биржах/i)).toBeInTheDocument();
+    expect(screen.getByText(/Пары на ведущих биржах \(QA-датасет\)/i)).toBeInTheDocument();
   });
 
   test('Coin Detail workspace: график слева, Derivatives/Liquidation Pulse справа, переходы сохранены', async () => {
@@ -136,13 +150,13 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     const chartCard = document.querySelector('[data-qa="coin-chart-card"]') as HTMLElement;
     expect(chartCard).not.toBeNull();
     expect(within(chartCard).getByText(/Свечной график/i)).toBeInTheDocument();
-    expect(within(chartCard).getByText(/DEMO СВЕЧИ/i)).toBeInTheDocument();
+    expect(within(chartCard).getByText(/QA-СВЕЧИ/i)).toBeInTheDocument();
 
     // Снимок по активу: три обязательных блока с явной маркировкой происхождения.
     const pulse = screen.getByLabelText('Derivatives and liquidation pulse');
     expect(pulse).toBeInTheDocument();
     expect(within(pulse).getByText(/LIQUIDATION PULSE/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/DEMO DATASET/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/QA DATASET/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/^Деривативы$/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/LONG 24H/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/SHORT 24H/i)).toBeInTheDocument();
@@ -191,7 +205,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Ликвидировано Long \(24h\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Ликвидировано Short \(24h\)/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Демонстрационный журнал событий ликвидаций/i)
+      screen.getByText(/Журнал событий ликвидаций QA-датасета/i)
     ).toBeInTheDocument();
   });
 
@@ -202,7 +216,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     const card = await screen.findByLabelText(/Расчетная тепловая карта плотности ликвидаций/i);
     expect(within(card).getByText(/Тепловая карта плотности ликвидаций \(Price × Time\)/i)).toBeInTheDocument();
     expect(within(card).getByText('MODEL / ESTIMATED')).toBeInTheDocument();
-    expect(within(card).getByText(/ВХОД: DEMO-СВЕЧИ|candles/i)).toBeInTheDocument();
+    expect(within(card).getByText(/ВХОД: QA-СВЕЧИ|candles/i)).toBeInTheDocument();
 
     // Полотно строится из ценовых строк (модель — детерминированная, без случайных значений).
     const plot = card.querySelector('[role="img"]');
@@ -213,7 +227,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(
       screen.getByText(/ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Демонстрационный журнал событий ликвидаций/i)).toBeInTheDocument();
+    expect(screen.getByText(/Журнал событий ликвидаций QA-датасета/i)).toBeInTheDocument();
     expect(screen.getByText(/Расчетные уровни плечевых тиров/i)).toBeInTheDocument();
   });
 
@@ -265,15 +279,8 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Кодекс прозрачности сигналов/i)).toBeInTheDocument();
   });
 
-  test('Modals & Drawers: Demo information modal, Watchlist drawer and Alerts preview', async () => {
+  test('Modals & Drawers: Watchlist drawer and Alerts preview', async () => {
     renderApp('/');
-
-    // Demo Modal
-    const demoBadge = screen.getByTitle(/Нажмите для просмотра информации о демо-режиме/i);
-    fireEvent.click(demoBadge);
-    expect(screen.getByText(/Статус данных: Демонстрационный режим/i)).toBeInTheDocument();
-    const closeDemoBtn = screen.getByRole('button', { name: /Понятно, продолжить/i });
-    fireEvent.click(closeDemoBtn);
 
     // Watchlist Drawer
     const watchlistBtn = screen.getByLabelText(/Открыть Watchlist/i);
@@ -288,26 +295,15 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Система алертов \(Alerts Preview\)/i)).toBeInTheDocument();
   });
 
-  test('Stage 3 Realtime & Mode Switch: toggles Live Spot mode and displays WebSocket status badge', async () => {
+  test('Статус источника и WebSocket: только индикация, переключение режима недоступно', async () => {
+    window.localStorage.setItem('cryptora_data_mode', 'live');
     renderApp('/radar');
 
-    // Default is demo stream
-    expect(screen.getByText(/ДЕМОНСТРАЦИОННЫЙ СТРИМ/i)).toBeInTheDocument();
-
-    // Open demo modal to switch mode
-    const demoBadge = screen.getByTitle(/Нажмите для просмотра информации о демо-режиме/i);
-    fireEvent.click(demoBadge);
-
-    // Click Switch to Live Spot
-    const switchLiveBtn = screen.getByRole('button', { name: /^LIVE$/i });
-    fireEvent.click(switchLiveBtn);
-
-    // Close modal
-    const closeDemoBtn = screen.getByRole('button', { name: /Понятно, продолжить/i });
-    fireEvent.click(closeDemoBtn);
-
-    // Header now reflects LIVE SPOT with WS indicator
-    expect(screen.getByText(/LIVE SPOT/i)).toBeInTheDocument();
+    // Радар маркирует происхождение данных и не даёт переключать режим.
     expect(screen.getByText(/LIVE ANOMALY ENGINE/i)).toBeInTheDocument();
+    const headerChip = document.querySelector('[data-qa="data-source-status"]') as HTMLElement;
+    expect(headerChip).not.toBeNull();
+    expect(headerChip.closest('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^LIVE$/i })).toBeNull();
   });
 });

@@ -95,14 +95,14 @@ export const ScreenerPage: React.FC = () => {
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                ДЕМО-ДАТАСЕТ
+                QA-ДАТАСЕТ
               </span>
             )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
             {dataMode === 'live'
               ? 'Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу на фактических рыночных данных.'
-              : 'Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу на демонстрационном датасете.'}
+              : 'Многофакторный отбор активов по динамике цены, объемам, секторам и фандингу на QA-датасете.'}
           </p>
         </div>
 

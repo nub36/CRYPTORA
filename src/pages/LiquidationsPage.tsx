@@ -143,7 +143,7 @@ export const LiquidationsPage: React.FC = () => {
             )}
             {data.dataStatus === 'DEMO' && (
               <span className="text-[10px] font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                ДЕМОНСТРАЦИОННЫЙ СРЕЗ
+                QA-СРЕЗ
               </span>
             )}
           </div>
@@ -155,7 +155,7 @@ export const LiquidationsPage: React.FC = () => {
             {data.dataStatus === 'UNAVAILABLE' &&
               'Фактический поток ликвидаций недоступен из текущей сети. Терминал не отображает оценочные суммы вместо реальных данных.'}
             {data.dataStatus === 'DEMO' &&
-              'Демонстрационный мониторинг принудительно закрытых маржинальных позиций по биржам.'}
+              'Мониторинг принудительно закрытых маржинальных позиций по биржам на QA-датасете.'}
           </p>
         </div>
 
@@ -428,13 +428,13 @@ export const LiquidationsPage: React.FC = () => {
             <Flame className="w-4 h-4 text-rose-500" />
             <span className="text-xs font-bold text-white uppercase tracking-wider">
               {data.dataStatus === 'DEMO'
-                ? 'Демонстрационный журнал событий ликвидаций (Demo Event Log)'
+                ? 'Журнал событий ликвидаций QA-датасета'
                 : 'Журнал фактических событий ликвидаций (Actual Event Log)'}
             </span>
           </div>
           {data.dataStatus === 'DEMO' ? (
             <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-              DEMO DATASET
+              QA DATASET
             </span>
           ) : (
             <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30">

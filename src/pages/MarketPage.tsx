@@ -86,14 +86,14 @@ export const MarketPage: React.FC = () => {
               </span>
             ) : (
               <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                30 ДЕМО-АКТИВОВ
+                30 АКТИВОВ (QA)
               </span>
             )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
             {dataMode === 'live'
               ? 'Котировки, суточные дельты и спарклайны поступают из фактических источников (Binance Spot / KuCoin).'
-              : 'Демонстрационные данные 30 активов: котировки, суточные дельты и спарклайны зафиксированы для оценки UX.'}
+              : 'Данные 30 активов из QA-датасета: котировки, суточные дельты и спарклайны зафиксированы для оценки интерфейса.'}
           </p>
         </div>
 
@@ -344,7 +344,7 @@ export const MarketPage: React.FC = () => {
             {dataMode === 'live' ? (
               <span>{sourceUnavailable ? '● Источник недоступен' : '● Источник: Binance Spot / KuCoin'}</span>
             ) : (
-              <span>● Контролируемый детерминированный слой (DEMO)</span>
+              <span>● Детерминированный QA-датасет</span>
             )}
           </div>
         </div>

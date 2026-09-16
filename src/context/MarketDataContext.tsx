@@ -30,9 +30,6 @@ interface MarketDataContextType {
   alerts: UserAlert[];
   addAlert: (alert: Omit<UserAlert, 'id' | 'createdAt'>) => void;
   removeAlert: (id: string) => void;
-  isDemoModalOpen: boolean;
-  openDemoModal: () => void;
-  closeDemoModal: () => void;
   isWatchlistOpen: boolean;
   openWatchlist: () => void;
   closeWatchlist: () => void;
@@ -58,7 +55,7 @@ export const MarketDataProviderComponent: React.FC<{
   customProvider?: MarketDataProvider;
 }> = ({ children, customProvider }) => {
   // LIVE-FIRST (v0.8.5): по умолчанию терминал работает с фактическим источником.
-  // Демонстрационный датасет включается только явным выбором пользователя и никогда
+  // Внутренний QA-датасет включается только фикстурой окружения и никогда
   // не подменяет собой недоступные фактические данные.
   const [dataMode, setDataMode] = useState<DataMode>(() => {
     try {
@@ -100,7 +97,6 @@ export const MarketDataProviderComponent: React.FC<{
     }
   });
 
-  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
   const [userPlan, setUserPlan] = useState<PlanTier>(() => PlanManager.getCurrentPlan());
@@ -217,9 +213,6 @@ export const MarketDataProviderComponent: React.FC<{
         alerts,
         addAlert,
         removeAlert,
-        isDemoModalOpen,
-        openDemoModal: () => setIsDemoModalOpen(true),
-        closeDemoModal: () => setIsDemoModalOpen(false),
         isWatchlistOpen,
         openWatchlist: () => setIsWatchlistOpen(true),
         closeWatchlist: () => setIsWatchlistOpen(false),

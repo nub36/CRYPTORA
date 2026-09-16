@@ -3,7 +3,6 @@ import { Routes, Route } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
 import { MarketTicker } from '@/components/layout/MarketTicker';
 import { Footer } from '@/components/layout/Footer';
-import { DemoModal } from '@/components/layout/DemoModal';
 import { WatchlistDrawer } from '@/components/layout/WatchlistDrawer';
 import { AlertsModal } from '@/components/layout/AlertsModal';
 import { PlanModal } from '@/components/layout/PlanModal';
@@ -64,7 +63,6 @@ export const App: React.FC = () => {
       <Footer />
 
       {/* Modals & Drawers */}
-      <DemoModal />
       <WatchlistDrawer />
       <AlertsModal />
       <PlanModal />

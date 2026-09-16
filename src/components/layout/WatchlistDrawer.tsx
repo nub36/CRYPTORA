@@ -64,7 +64,7 @@ export const WatchlistDrawer: React.FC = () => {
                 <Star className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                 <p>Фактический источник недоступен.</p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Демонстрационные значения вместо рыночных данных не подставляются.
+                  Значения из другого датасета вместо рыночных не подставляются.
                 </p>
               </div>
             ) : watchedAssets.length === 0 ? (

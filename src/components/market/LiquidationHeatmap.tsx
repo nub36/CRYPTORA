@@ -68,7 +68,7 @@ export const LiquidationHeatmap: React.FC<LiquidationHeatmapProps> = ({ model, u
         <div className="flex items-center space-x-2">
           {model && (
             <Badge variant={model.inputSource === 'DEMO' ? 'amber' : 'green'}>
-              {model.inputSource === 'DEMO' ? 'ВХОД: DEMO-СВЕЧИ' : 'ВХОД: ФАКТИЧЕСКИЕ СВЕЧИ'}
+              {model.inputSource === 'DEMO' ? 'ВХОД: QA-СВЕЧИ' : 'ВХОД: ФАКТИЧЕСКИЕ СВЕЧИ'}
             </Badge>
           )}
           <Badge variant="cyan">MODEL / ESTIMATED</Badge>

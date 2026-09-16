@@ -41,7 +41,7 @@ function renderApp(initialPath = '/') {
  * Геометрические инварианты (реальные размеры и overflow) проверяются в браузере:
  * `node scripts/screenshot-qa.mjs` — JSDOM не рассчитывает layout.
  */
-// Сброс localStorage до каждого теста: гарантирует режим DEMO по умолчанию
+// QA-фикстура: сброс localStorage переводит прогон на детерминированный датасет
 // и исключает реальные сетевые вызовы к биржам из E2E-прогона.
 test.beforeEach(() => {
   resetBrowserStorage();
@@ -204,18 +204,18 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     expect(screen.getAllByText('Инструменты').length).toBeGreaterThan(0);
 
     // Статусные метки drawer: режим данных, WebSocket, тариф
-    expect(screen.getByText(/ДЕМОНСТРАЦИОННЫЙ РЕЖИМ/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/QA-ДАТАСЕТ/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/WS (ONLINE|IDLE)/i)).toBeInTheDocument();
     expect(screen.getByTitle(/Тарифный план/i)).toBeInTheDocument();
 
     fireEvent.click(menuBtn);
   });
 
-  test('Header инвариант: бейдж версии обновлён до v0.8.5', async () => {
+  test('Header инвариант: бейдж версии обновлён до v0.8.6', async () => {
     setWindowDimensions(1920, 1080);
     const { container } = renderApp('/');
     const header = container.querySelector('header') as HTMLElement;
-    expect(header.textContent).toContain('v0.8.5');
+    expect(header.textContent).toContain('v0.8.6');
   });
 
   test('Viewports layout smoke check: 390, 768, 1024, 1280, 1366, 1440, 1920', async () => {
