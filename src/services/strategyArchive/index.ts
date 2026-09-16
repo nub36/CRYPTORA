@@ -12,3 +12,7 @@ export {
   V31_DEFINITION, V31_SOURCE_RESULTS, V31_REPRODUCTION_EVIDENCE, V31_REPRODUCED_RESULTS, V31_CAVEATS_RU, V31_RULES_RU, V31_DISCREPANCIES, V31_COMMITS, V31_SOURCE_PINS, V31_VARIANTS,
 } from './definitions/v3_1-htf-trend-pullback/definition';
 export { V31_CONSTANTS } from './definitions/v3_1-htf-trend-pullback/v31Core';
+export {
+  V32_DEFINITION, V32_SOURCE_RESULTS, V32_REPRODUCTION_EVIDENCE, V32_REPRODUCED_RESULTS, V32_CAVEATS_RU, V32_RULES_RU, V32_DISCREPANCIES, V32_COMMITS, V32_SOURCE_PINS, V32_VARIANTS,
+} from './definitions/v3_2-volume-climax/definition';
+export { V32_CONSTANTS } from './definitions/v3_2-volume-climax/v32Core';

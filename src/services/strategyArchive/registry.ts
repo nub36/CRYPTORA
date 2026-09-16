@@ -8,8 +8,9 @@
 import type { StrategyDefinition } from './types';
 import { V30_DEFINITION } from './definitions/v3_0-htf-liquidation-trap/definition';
 import { V31_DEFINITION } from './definitions/v3_1-htf-trend-pullback/definition';
+import { V32_DEFINITION } from './definitions/v3_2-volume-climax/definition';
 
-export const STRATEGY_ARCHIVE: readonly StrategyDefinition[] = Object.freeze([V30_DEFINITION, V31_DEFINITION]);
+export const STRATEGY_ARCHIVE: readonly StrategyDefinition[] = Object.freeze([V30_DEFINITION, V31_DEFINITION, V32_DEFINITION]);
 
 export interface PlannedEntry {
   version: string;
@@ -32,7 +33,6 @@ export const STRATEGY_ARCHIVE_PLANNED: readonly PlannedEntry[] = Object.freeze([
   { version: '2.6', name: 'Sniper + Trailing', sourceVerdict: 'REJECTED_ON_TRAIN' },
   { version: '2.7', name: 'Fixed-RR Target Optimisation', sourceVerdict: 'REJECTED_ON_TRAIN' },
   { version: '2.8', name: 'Zero-fee Sniper + Trailing', sourceVerdict: 'VALIDATED_GROSS_ONLY' },
-  { version: '3.2', name: 'HTF Volume Climax & Absorption', sourceVerdict: 'FALSIFIED_ON_TRAIN (+2 EMA50 variants UNPROMOTED)' },
   { version: '3.3', name: 'HTF Zone Mitigation & LTF Squeeze', sourceVerdict: 'TRAIN_ONLY (not validated)' },
 ]);
 

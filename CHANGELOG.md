@@ -4,6 +4,16 @@
 
 ---
 
+## [0.8.12] — 2026-09-16
+
+### Added — Архив стратегий C3: V3.2 Volume Climax & Absorption (ФАЛЬСИФИЦИРОВАНА, 4 варианта воспроизведены)
+- `definitions/v3_2-volume-climax/` — дословный порт `research/v32_volume_climax.ts` (sha `c209b8d7…`, pin `b46b4a0`).
+- Все 4 архивных варианта (cascade union/fast3 × tp1 cascade/ema50) реально прогнаны на `c3c1dce` и совпали
+  с источником по всем полям: primary n=307 gross −0.0082 net −0.0620; fast3 n=158 net −0.1126; union-ema50
+  n=213 net +0.0530; fast3-ema50 n=97 net +0.0108. Verdict `FALSIFIED_ON_TRAIN`; EMA50-варианты — `UNPROMOTED`
+  (F3 фальсифицирован) и не выдаются за «результат V3.2».
+- Расхождения D-V32-001…003. Реестр: 3 импортировано + 10 запланировано = 13.
+
 ## [0.8.11] — 2026-09-16
 
 ### Added — Архив стратегий C2: V3.1 HTF Trend Pullback & Mitigation (ФАЛЬСИФИЦИРОВАНА, воспроизведена)

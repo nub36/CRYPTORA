@@ -78,9 +78,15 @@ const sha = execFileSync('sha256sum', [localArtifact]).toString().split(' ')[0];
 
 const m = report.metrics;
 const cmp = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Source artifacts may name funnel keys differently (V3.2: cascadesWithVolume = signals).
+const srcFunnel = target.funnel ? { ...target.funnel } : null;
+if (srcFunnel && 'cascadesWithVolume' in srcFunnel) {
+  srcFunnel.signals = srcFunnel.cascadesWithVolume; delete srcFunnel.cascadesWithVolume; delete srcFunnel.cascadesFailingAbsorption;
+}
+const norm = (f) => f && Object.fromEntries(Object.keys(report.funnel).map((k) => [k, f[k]]));
 const checks = {
   n: cmp(target.n, m.n),
-  funnel: cmp(target.funnel, report.funnel),
+  funnel: cmp(norm(srcFunnel), norm(report.funnel)),
   grossRPerTrade: cmp(target.grossRPerTrade, m.grossRPerTrade),
   netRPerTrade: cmp(target.netRPerTrade?.FUT_4, m.netRPerTradeHeadline),
   netRPerTradeSpot: target.netRPerTrade?.SPOT === undefined ? null : cmp(target.netRPerTrade.SPOT, m.netRPerTradeStress),
