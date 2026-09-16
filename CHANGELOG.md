@@ -4,6 +4,19 @@
 
 ---
 
+## [0.8.14] — 2026-09-16
+
+### Added — Архив стратегий C5: V2.7 + V2.8 (семантика комиссий сохранена)
+- `definitions/v2_7-rr-optimization/` — порт `research/v27_rr_test.ts` @ `965fb15` (`simulateFixedRr`, `feeR`); 5 arms
+  RR15…RR40, все нетто-отрицательны (n=317), fee drag 0.1555 R одинаков → `REJECTED_ON_TRAIN`, headline нет.
+- `definitions/v2_8-zero-fee-sniper-trailing/` — порт `research/v28_gross_only.ts` @ `54243a7` / `v28_validate.ts` @ `1d4d575`
+  + `shared/legacyResearch/v25Trailing.ts` (frozen V2.5 trailing). Verdict `VALIDATED_GROSS_ONLY`; новый контракт
+  `FrozenAssumptions.feeSemantics` (`GROSS_ONLY_ZERO_FEE`) — V2.8 никогда не показывается рядом с net@fees V3.x без предупреждения.
+- Контракт: `StrategyDefinition.legacyEngineDependency` (`FROZEN_V2_ENGINE_4839074`), `scopeTimeframes` (V2.x: 15m/30m/1h/4h в одном пуле).
+- Reproducibility обеих версий = `SOURCE_CHAIN_VERIFIED_NOT_RERUN`: входы производит замороженный движок V2 `4839074`,
+  который переносится в C6 как изолированная архивная зависимость; раннеры отказываются выдумывать входы.
+- Расхождения D-V27-001…004, D-V28-001…005. Реестр: 6 импортировано + 7 запланировано = 13. Тесты `v27v28.test.ts` (13).
+
 ## [0.8.13] — 2026-09-16
 
 ### Added — Архив стратегий C4: V3.3 HTF Zone Mitigation & LTF Squeeze (ТОЛЬКО TRAIN, 8 прогонов воспроизведены)

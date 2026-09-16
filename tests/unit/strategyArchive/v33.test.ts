@@ -25,9 +25,8 @@ describe('V3.3 — eight archived runs, pre-registered headline, TRAIN only', ()
     expect(V33_DEFINITION.execTimeframe).toBe('1h'); expect(V33_DEFINITION.structuralTimeframe).toBe('4h');
     expect(V33_SOURCE_RESULTS.validation).toMatch(/NEVER RUN/);
   });
-  it('registry now has 4 real entries + 9 planned = 13; V3.3 no longer in PLANNED', () => {
-    expect(STRATEGY_ARCHIVE.length).toBe(4);
-    expect(STRATEGY_ARCHIVE_PLANNED.length).toBe(9);
+  it('registry total stays 13; V3.3 is imported and no longer in PLANNED', () => {
+    expect(STRATEGY_ARCHIVE.length + STRATEGY_ARCHIVE_PLANNED.length).toBe(13);
     expect(STRATEGY_ARCHIVE_TOTAL_ROWS).toBe(13);
     expect(STRATEGY_ARCHIVE_PLANNED.find((p) => p.version === '3.3')).toBeUndefined();
     expect(STRATEGY_ARCHIVE.find((d) => d.version === '3.3')?.id).toBe('V3_3_HTF_ZONE_MITIGATION');

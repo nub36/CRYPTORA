@@ -21,3 +21,11 @@ export {
 } from './definitions/v3_3-htf-zone-mitigation/definition';
 export { V33_CONSTANTS } from './definitions/v3_3-htf-zone-mitigation/v33Core';
 export { V33_VARIANT_IDS } from './definitions/v3_3-htf-zone-mitigation/v33Runner';
+export {
+  V27_DEFINITION, V27_SOURCE_RESULTS, V27_CAVEATS_RU, V27_RULES_RU, V27_DISCREPANCIES, V27_COMMITS, V27_SOURCE_PINS, V27_VARIANTS,
+} from './definitions/v2_7-rr-optimization/definition';
+export { V27_CONSTANTS, RR_ARMS as V27_RR_ARMS } from './definitions/v2_7-rr-optimization/v27Core';
+export {
+  V28_DEFINITION, V28_SOURCE_RESULTS, V28_CAVEATS_RU, V28_RULES_RU, V28_DISCREPANCIES, V28_COMMITS, V28_SOURCE_PINS, V28_VARIANTS,
+} from './definitions/v2_8-zero-fee-sniper-trailing/definition';
+export { V28_CONSTANTS, ARM_ORDER as V28_ARM_ORDER } from './definitions/v2_8-zero-fee-sniper-trailing/v28Core';

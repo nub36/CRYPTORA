@@ -25,13 +25,16 @@
 | `shared/primitives.ts` | Порт `structure.ts`/`indicators.ts`/`htf.ts` источника: свинги, ATR, RVOL (текущий бар исключён), выбор закрытых HTF-свечей по времени. |
 | `engine/reproductionEngine.ts` | Минимальный контракт: определение + нормализованные свечи + замороженные допущения → сделки → R-метрики → отчёт с детерминированным digest. |
 | `engine/rMetrics.ts` | R-метрики: gross/net R на сделку при комиссиях 2/5 bps (headline) и стресс-наборе, PF, maxDD (R), зависимость от top-1% выбросов, доля положительных. |
+| `definitions/v2_7-rr-optimization/` | V2.7 (ОТКЛОНЕНА НА TRAIN): `v27Core.ts` (`simulateFixedRr`, `feeR`), 5 arms RR15…RR40 без headline; раннер отказывается выдумывать входы без legacy-движка. |
+| `definitions/v2_8-zero-fee-sniper-trailing/` | V2.8 (ВАЛИДИРОВАНА ТОЛЬКО GROSS, fees=0): 7 exit-arms на TRAIN, SMC+Trail на VALIDATION; кандидат Trail заморожен до валидации. `feeSemantics: GROSS_ONLY_ZERO_FEE`. |
+| `shared/legacyResearch/v25Trailing.ts` | Замороженный research-симулятор трейлинга V2.5 (`fe6c307e…`), используется V2.5/V2.6/V2.8. |
 | `definitions/v3_3-htf-zone-mitigation/` | V3.3 (ТОЛЬКО TRAIN, НЕ ВАЛИДИРОВАНА): `v33Core.ts` (зоны OB/FVG 4H, митигация, абсорбция), `v33Runner.ts` (8 прогонов `<window>-<stop>-<leg>`; headline `while-protective-displacement` предзаявлен), `definition.ts`. Разворот из митигированной зоны, а не «Zone Continuation» (D-V33-001). |
 | `definitions/v3_2-volume-climax/` | V3.2 (ФАЛЬСИФИЦИРОВАНА НА TRAIN): 4 варианта `union-cascade` (PRIMARY) / `fast3-cascade` / `union-ema50`, `fast3-ema50` (UNPROMOTED). |
 | `definitions/v3_1-htf-trend-pullback/` | V3.1 (ФАЛЬСИФИЦИРОВАНА НА TRAIN): `v31Core.ts`, `v31Runner.ts` (варианты `leg` PRIMARY / `same-bar` SECONDARY), `definition.ts`. |
 | `definitions/v3_0-htf-liquidation-trap/` | V3.0: `v30Core.ts` (чистые правила), `v30Runner.ts` (дословная логика исследовательского прогона, включая перекрытие позиций), `definition.ts` (замороженное определение, константы, расхождения, оговорки). |
 | `provenance/provenance.json` | Неизменяемый манифест: source-репозиторий/коммит, dataset-репозиторий/коммит, sha256 исходников стратегии, артефактов валидации, замороженных настроек. |
 | `results/` | Дословные копии артефактов источника (метрики TRAIN/VALID, паритет порта, settings/splits). |
-| `registry.ts` | Реестр: перенесённые определения + список запланированных версий (9) с их исходными вердиктами. |
+| `registry.ts` | Реестр: перенесённые определения + список запланированных версий (7) с их исходными вердиктами. |
 
 Движок читает только ряды свечей, переданные вызывающей стороной. Никаких сетевых вызовов, БД, localStorage.
 
@@ -67,7 +70,9 @@
 | V3.1 HTF Trend Pullback & Mitigation | **FALSIFIED_ON_TRAIN** (primary n=158 net −0.1097; same-bar n=82 net −0.2819) | **REPRODUCED** (оба варианта, TRAIN; все поля совпали, digest `fnv1a32:faecff40:n158` / `fnv1a32:2eefcd7c:n82`) | `292050c` (prereg `760b15f`) | `results/v31/` |
 | V3.2 Volume Climax & Absorption | **FALSIFIED_ON_TRAIN** (primary n=307 gross −0.0082 net −0.0620; fast3 n=158 net −0.1126); EMA50-варианты (+0.0530 n=213 / +0.0108 n=97) — F3 fail → **UNPROMOTED** | **REPRODUCED** (все 4 варианта, TRAIN, все поля совпали) | `b46b4a0` (prereg `b631fba`) | `results/v32/` |
 | V3.3 HTF Zone Mitigation & LTF Squeeze | **TRAIN_ONLY_NOT_VALIDATED** (headline while/protective/displacement n=6957 gross +0.0778 net +0.0267 fee 0.0511 TP1 65.24 % — F1/F2/F3 pass на TRAIN, но хвост: ex-top-1 % gross 0.0264 < fee; VALIDATION не проводилась — окно израсходовано V3.0). 7 остальных прогонов — чувствительность: first/protective проваливают F1 (−0.0253, −0.0343); while/climax/swing проваливает F3; stop=climax до +0.1058 — постфактум | **REPRODUCED** (все 8 прогонов, TRAIN, все поля совпали; headline digest `fnv1a32:c1bbd4ba:n6957`) | `a7ecd79` (prereg `16728ef`, amend `01cbc28`, doc `2d8a3dd`) | `results/v33/` |
-| V2.1a…V2.8 | по источнику | запланированы (C5–C7) | — | — |
+| V2.7 Target RR Optimisation | **REJECTED_ON_TRAIN** (5 arms, n=317, все нетто-отрицательны: −0.0782…−0.0172; fee drag 0.1555 R одинаков для всех целей; headline нет) | **SOURCE_CHAIN_VERIFIED_NOT_RERUN** — входы зависят от замороженного движка V2 `4839074` (порт в C6) | `965fb15` (prereg `d9394b1`) | `results/v27/` |
+| V2.8 Zero-fee Sniper + Trailing | **VALIDATED_GROSS_ONLY** ⚠️ fees=0: TRAIN Trail gross +0.1462 (n=317, PF 1.3508); VALIDATION Trail gross +0.0488 (n=98, PF 1.1087) — PASS, но без одной сделки −0.0143; SMC-якорь на VALIDATION −0.1821. При 2/5 bps популяция теряет ≈0.1555 R → нетто отрицательна. **НЕ сопоставимо с net V3.x** | **SOURCE_CHAIN_VERIFIED_NOT_RERUN** — входы и SMC-arm зависят от `4839074` (порт в C6) | `1d4d575` (train `54243a7`, freeze `852167c`) | `results/v28/` |
+| V2.1a…V2.6 | по источнику | запланированы (C6–C7) | — | — |
 
 «Воспроизведено» — только повторяемость чисел на том же датасете. Для V3.1 и V3.2 воспроизведён именно **отрицательный** результат; для V3.3 воспроизведён TRAIN-only результат, который **не является валидированным** и не сравнивается с VALIDATION V3.0.
 
@@ -77,6 +82,8 @@
 **Политика:** историческое воспроизведение V3.0 **сохраняет** поведение исследования (перекрытие разрешено) — иначе числа TRAIN/VALID невоспроизводимы. Вариант без перекрытия, если понадобится, — **новый** вариант (например `V3.0-no-overlap`) с собственным прогоном, а не правка V3.0.
 
 **D-V31-001** — перекрытие позиций в раннере V3.1 (тот же паттерн). **D-V31-002** — источник раскрыл баг двойного учёта TP1 в первом прогоне; архивированы исправленные (худшие) цифры. **D-V31-003** — Spot-данные + futures-комиссии.
+
+**D-V27-001…004** — стоп 0.25 ATR вместо 0.05 из задания; горизонт 50 vs frozen 48; `best`=RR40 — наименее убыточный, не оптимум; входы от замороженного движка `4839074`. **D-V28-001…005** — все цифры gross при fees=0; PASS «на одной сделке»; кандидат Trail выбран до валидации по устойчивости к выбросам; TEST-2026 предзаявлен, не запускался; зависимость от `4839074`.
 
 **D-V33-001** — переименование: ранний черновик «HTF Zone Continuation» → итоговое «Zone Mitigation & LTF Squeeze»; логика — разворот из митигированной зоны в направлении исходного displacement. **D-V33-002** — перекрытие позиций (при window=while существенно раздувает n). **D-V33-003** — CORRIDOR_EXPIRY_BARS=3 унаследован из V3.0 без упоминания в предрегистрации. **D-V33-004** — 8 прогонов; primary предзаявлен (`isPrimary`), Amendment 1 добавил leg=swing и tie-break до чтения результатов; stop=climax — постфактум. **D-V33-005** — VALIDATION никогда не запускалась (окно уже прочитано V3.0; TEST-2026 не читается) → внесэмпловых данных нет.
 

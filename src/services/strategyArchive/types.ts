@@ -102,9 +102,17 @@ export interface FeeModelPerLeg {
   entryIsMaker: true;
 }
 
+/**
+ * Fee semantics of the archived figures. GROSS_ONLY versions (V2.8) must never be placed
+ * next to NET_AT_FEES versions (V3.x) without an explicit incomparability warning.
+ */
+export type FeeSemantics = 'NET_AT_FEES' | 'GROSS_ONLY_ZERO_FEE' | 'MIXED_PER_ARM';
+
 export interface FrozenAssumptions {
   fees: FeeModelPerLeg;
   stressFees?: FeeModelPerLeg;
+  /** Defaults to NET_AT_FEES when absent (V3.x convention). */
+  feeSemantics?: FeeSemantics;
   slippage: 'NOT_MODELLED';
   funding: 'NOT_MODELLED';
   spread: 'NOT_MODELLED';
@@ -250,7 +258,11 @@ export interface StrategyDefinition {
   /** Present iff reproducibility === 'REPRODUCED' (or MISMATCH/BLOCKED with the reason). */
   reproductionEvidence?: readonly ReproductionEvidence[];
   reproductionBlockedReason?: string;
+  /** Historical dependency on the frozen V2 engine `4839074` (entries/stops/N+1). NONE for V3.x. */
+  legacyEngineDependency?: 'FROZEN_V2_ENGINE_4839074' | 'NONE';
   execTimeframe: ArchiveTimeframe;
+  /** Multi-timeframe scope (V2.x ran 15m/30m/1h/4h in one pooled study); `execTimeframe` is then the first of these. */
+  scopeTimeframes?: readonly ArchiveTimeframe[];
   structuralTimeframe: ArchiveTimeframe | null;
   symbols: readonly string[];
   assumptions: FrozenAssumptions;
