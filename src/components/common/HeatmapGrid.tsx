@@ -30,13 +30,13 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
 
     if (metric === 'change24h') {
       const val = asset.change24h;
-      let bg = 'bg-slate-800';
-      if (val >= 8) bg = 'bg-emerald-600';
-      else if (val >= 4) bg = 'bg-emerald-700';
-      else if (val > 0) bg = 'bg-emerald-900/80';
-      else if (val <= -6) bg = 'bg-rose-600';
-      else if (val <= -2) bg = 'bg-rose-800';
-      else if (val < 0) bg = 'bg-rose-950/80';
+      let bg = 'bg-slate-900/90 border-slate-700/40 text-slate-200';
+      if (val >= 8) bg = 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300';
+      else if (val >= 4) bg = 'bg-emerald-900/70 border-emerald-600/35 text-emerald-200';
+      else if (val > 0) bg = 'bg-emerald-950/50 border-emerald-700/25 text-emerald-300';
+      else if (val <= -6) bg = 'bg-rose-950/90 border-rose-500/40 text-rose-300';
+      else if (val <= -2) bg = 'bg-rose-900/70 border-rose-600/35 text-rose-200';
+      else if (val < 0) bg = 'bg-rose-950/50 border-rose-700/25 text-rose-300';
 
       return {
         bg,
@@ -47,10 +47,10 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
 
     if (metric === 'volume') {
       const val = asset.volume24h;
-      let bg = 'bg-sky-950';
-      if (val >= 10e9) bg = 'bg-sky-600';
-      else if (val >= 1e9) bg = 'bg-sky-700';
-      else if (val >= 300e6) bg = 'bg-sky-900';
+      let bg = 'bg-sky-950/60 border-sky-800/30 text-sky-200';
+      if (val >= 10e9) bg = 'bg-sky-900/90 border-sky-400/50 text-cyan-200';
+      else if (val >= 1e9) bg = 'bg-sky-950/80 border-sky-600/40 text-sky-200';
+      else if (val >= 300e6) bg = 'bg-sky-950/50 border-sky-700/25 text-sky-300';
 
       return {
         bg,
@@ -62,7 +62,12 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
     if (metric === 'oi') {
       const oiVal = futures ? futures.openInterest : asset.marketCap * 0.05;
       const oiChange = futures ? futures.openInterestChange24h : asset.change24h;
-      const bg = oiChange >= 5 ? 'bg-purple-700' : oiChange > 0 ? 'bg-purple-900' : 'bg-slate-800';
+      const bg =
+        oiChange >= 5
+          ? 'bg-violet-950/90 border-violet-500/40 text-violet-200'
+          : oiChange > 0
+          ? 'bg-violet-950/60 border-violet-700/30 text-violet-300'
+          : 'bg-slate-900/80 border-slate-700/30 text-slate-300';
 
       return {
         bg,
@@ -73,76 +78,76 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
 
     // Funding metric
     const fundingRate = futures ? futures.fundingRate : 0.01;
-    let bg = 'bg-slate-800';
-    if (fundingRate > 0.02) bg = 'bg-amber-600';
-    else if (fundingRate > 0) bg = 'bg-emerald-800';
-    else if (fundingRate < -0.015) bg = 'bg-purple-800';
-    else if (fundingRate < 0) bg = 'bg-rose-800';
+    let bg = 'bg-slate-900/80 border-slate-700/30 text-slate-300';
+    if (fundingRate > 0.02) bg = 'bg-amber-950/90 border-amber-500/40 text-amber-200';
+    else if (fundingRate > 0) bg = 'bg-emerald-950/70 border-emerald-600/30 text-emerald-300';
+    else if (fundingRate < -0.015) bg = 'bg-violet-950/90 border-violet-500/40 text-violet-200';
+    else if (fundingRate < 0) bg = 'bg-rose-950/70 border-rose-600/30 text-rose-300';
 
     return {
       bg,
-      label: `${(fundingRate).toFixed(4)}%`,
+      label: `${fundingRate.toFixed(4)}%`,
       sublabel: `Ann: ${(fundingRate * 3 * 365).toFixed(1)}%`,
     };
   };
 
   return (
-    <div className="w-full bg-surface border border-surface-border rounded-lg p-3 sm:p-4">
+    <div className="w-full bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 sm:p-4 shadow-panel">
       {/* Header and Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-3 border-b border-surface-border gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-3 border-b border-white/[0.06] gap-2">
         <div className="flex items-center space-x-2">
-          <span className="font-bold text-sm text-white font-mono tracking-wide">
+          <span className="font-mono font-bold text-sm text-white tracking-wider uppercase">
             ТЕПЛОВАЯ КАРТА
           </span>
           {isAnyLive ? (
-            <span className="text-[10px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
+            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
               LIVE TILES
             </span>
           ) : (
-            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+            <span className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold">
               DEMO TILES
             </span>
           )}
         </div>
 
         {/* Metric Selector Buttons */}
-        <div className="flex items-center space-x-1 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex items-center space-x-1.5 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setMetric('change24h')}
-            className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'change24h'
-                ? 'bg-brand-cyan text-slate-950 font-bold'
-                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover'
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
             24h Change
           </button>
           <button
             onClick={() => setMetric('volume')}
-            className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'volume'
-                ? 'bg-brand-cyan text-slate-950 font-bold'
-                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover'
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
             Объем (Volume)
           </button>
           <button
             onClick={() => setMetric('oi')}
-            className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'oi'
-                ? 'bg-brand-cyan text-slate-950 font-bold'
-                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover'
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
             Open Interest
           </button>
           <button
             onClick={() => setMetric('funding')}
-            className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'funding'
-                ? 'bg-brand-cyan text-slate-950 font-bold'
-                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover'
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
             }`}
           >
             Funding Rate
@@ -164,21 +169,21 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
             <Link
               key={asset.id}
               to={`/coin/${asset.symbol}`}
-              className={`${tile.bg} p-2.5 rounded border border-white/10 hover:border-brand-cyan hover:scale-[1.02] transition-all flex flex-col justify-between min-h-[74px] shadow-sm select-none group`}
+              className={`${tile.bg} p-2.5 rounded-lg border hover:border-cyan-400/60 hover:scale-[1.02] transition-all duration-150 flex flex-col justify-between min-h-[76px] shadow-sm select-none group relative overflow-hidden`}
             >
               <div className="flex items-center justify-between">
-                <span className="font-extrabold text-sm text-white font-mono group-hover:underline">
+                <span className="font-extrabold text-sm font-mono tracking-tight group-hover:text-cyan-300 transition-colors">
                   {asset.symbol}
                 </span>
-                <span className="text-[10px] text-white/70 font-mono">
+                <span className="text-[10px] opacity-70 font-mono">
                   #{asset.rank}
                 </span>
               </div>
               <div className="mt-1">
-                <div className="text-xs font-bold text-white font-mono tracking-tight">
+                <div className="text-xs font-bold font-mono tracking-tight tabular-nums">
                   {tile.label}
                 </div>
-                <div className="text-[10px] text-white/80 font-mono truncate">
+                <div className="text-[10px] opacity-80 font-mono truncate tabular-nums">
                   {tile.sublabel}
                 </div>
               </div>
@@ -188,52 +193,52 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
       </div>
 
       {/* Legend Scale */}
-      <div className="mt-3 pt-3 border-t border-surface-border flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 gap-2">
-        <div className="flex items-center space-x-1">
-          <span>Шкала:</span>
+      <div className="mt-3.5 pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 gap-2">
+        <div className="flex items-center space-x-1.5">
+          <span className="text-slate-400 font-semibold">Шкала:</span>
           {metric === 'change24h' && (
             <div className="flex items-center space-x-1">
-              <span className="w-3.5 h-3 rounded bg-rose-700 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-rose-900 border border-rose-500/30 inline-block"></span>
               <span className="text-[10px]">&lt;-5%</span>
-              <span className="w-3.5 h-3 rounded bg-slate-800 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-slate-800 border border-slate-600/30 inline-block"></span>
               <span className="text-[10px]">0%</span>
-              <span className="w-3.5 h-3 rounded bg-emerald-700 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-emerald-900 border border-emerald-500/30 inline-block"></span>
               <span className="text-[10px]">&gt;+5%</span>
             </div>
           )}
           {metric === 'volume' && (
             <div className="flex items-center space-x-1">
-              <span className="w-3.5 h-3 rounded bg-sky-950 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-sky-950 border border-sky-800 inline-block"></span>
               <span className="text-[10px]">&lt;$300M</span>
-              <span className="w-3.5 h-3 rounded bg-sky-700 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-sky-800 border border-sky-500 inline-block"></span>
               <span className="text-[10px]">&gt;$1B</span>
-              <span className="w-3.5 h-3 rounded bg-sky-500 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-cyan-700 border border-cyan-400 inline-block"></span>
               <span className="text-[10px]">&gt;$10B</span>
             </div>
           )}
           {metric === 'oi' && (
             <div className="flex items-center space-x-1">
-              <span className="w-3.5 h-3 rounded bg-slate-800 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-slate-900 border border-slate-700 inline-block"></span>
               <span className="text-[10px]">Базовый</span>
-              <span className="w-3.5 h-3 rounded bg-purple-900 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-violet-950 border border-violet-700 inline-block"></span>
               <span className="text-[10px]">Рост OI</span>
-              <span className="w-3.5 h-3 rounded bg-purple-600 inline-block"></span>
+              <span className="w-3.5 h-3 rounded bg-violet-800 border border-violet-500 inline-block"></span>
               <span className="text-[10px]">&gt;+5% Всплеск</span>
             </div>
           )}
           {metric === 'funding' && (
             <div className="flex items-center space-x-1">
-              <span className="w-3.5 h-3 rounded bg-purple-800 inline-block"></span>
-              <span className="text-[10px]">Отрицательный (&lt;-0.01%)</span>
-              <span className="w-3.5 h-3 rounded bg-emerald-800 inline-block"></span>
-              <span className="text-[10px]">Нормальный (~0.01%)</span>
-              <span className="w-3.5 h-3 rounded bg-amber-600 inline-block"></span>
-              <span className="text-[10px]">Экстремум (&gt;0.02%)</span>
+              <span className="w-3.5 h-3 rounded bg-violet-900 inline-block"></span>
+              <span className="text-[10px]">&lt;-0.01%</span>
+              <span className="w-3.5 h-3 rounded bg-emerald-900 inline-block"></span>
+              <span className="text-[10px]">~0.01%</span>
+              <span className="w-3.5 h-3 rounded bg-amber-800 inline-block"></span>
+              <span className="text-[10px]">&gt;0.02%</span>
             </div>
           )}
         </div>
 
-        <span className="text-[10px] text-slate-500">
+        <span className="text-[10px] text-slate-400">
           Клик на плитку открывает страницу монеты
         </span>
       </div>

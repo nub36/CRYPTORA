@@ -54,21 +54,21 @@ export const FuturesPage: React.FC = () => {
   );
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
       {/* Page Title & Badges */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               ФЬЮЧЕРСЫ И ДЕРИВАТИВЫ (PERPETUAL MARKETS)
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-mono font-semibold text-brand-cyan bg-brand-cyan/10 px-2 py-0.5 rounded border border-brand-cyan/30 flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse mr-1" />
+              <span className="text-[10px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
                 LIVE DERIVATIVES (BINANCE FUTURES)
               </span>
             ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ
               </span>
             )}
@@ -81,34 +81,34 @@ export const FuturesPage: React.FC = () => {
         </div>
 
         {/* Filter Buttons */}
-        <div className="flex items-center space-x-1 font-mono text-xs">
-          <span className="text-slate-400 mr-1.5 hidden sm:inline">Фандинг:</span>
+        <div className="flex items-center space-x-1.5 font-mono text-xs">
+          <span className="text-slate-400 mr-1.5 hidden sm:inline font-semibold">Фандинг:</span>
           <button
             onClick={() => setFilterFunding('all')}
-            className={`px-2.5 py-1 rounded transition-colors ${
+            className={`px-3 py-1.5 rounded-lg transition-all font-semibold whitespace-nowrap min-h-[32px] ${
               filterFunding === 'all'
-                ? 'bg-brand-cyan text-slate-950 font-bold'
-                : 'bg-surface border border-surface-border text-slate-300 hover:bg-surface-hover'
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                : 'bg-[#111a30] border border-white/[0.08] text-slate-300 hover:bg-[#162342] hover:text-white'
             }`}
           >
             Все
           </button>
           <button
             onClick={() => setFilterFunding('positive')}
-            className={`px-2.5 py-1 rounded transition-colors ${
+            className={`px-3 py-1.5 rounded-lg transition-all font-semibold whitespace-nowrap min-h-[32px] ${
               filterFunding === 'positive'
-                ? 'bg-brand-cyan text-slate-950 font-bold'
-                : 'bg-surface border border-surface-border text-slate-300 hover:bg-surface-hover'
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                : 'bg-[#111a30] border border-white/[0.08] text-slate-300 hover:bg-[#162342] hover:text-white'
             }`}
           >
             Лонг &gt; 0
           </button>
           <button
             onClick={() => setFilterFunding('negative')}
-            className={`px-2.5 py-1 rounded transition-colors ${
+            className={`px-3 py-1.5 rounded-lg transition-all font-semibold whitespace-nowrap min-h-[32px] ${
               filterFunding === 'negative'
-                ? 'bg-brand-cyan text-slate-950 font-bold'
-                : 'bg-surface border border-surface-border text-slate-300 hover:bg-surface-hover'
+                ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                : 'bg-[#111a30] border border-white/[0.08] text-slate-300 hover:bg-[#162342] hover:text-white'
             }`}
           >
             Шорт &lt; 0 (Squeeze Watch)
@@ -118,43 +118,43 @@ export const FuturesPage: React.FC = () => {
 
       {/* Aggregate Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
-        <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] text-slate-400">Суммарный Открытый Интерес (OI)</div>
-          <div className="text-lg font-bold text-white mt-0.5">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Суммарный Открытый Интерес (OI)</div>
+          <div className="text-xl font-bold text-white mt-1 tabular-nums">
             {formatCurrency(overview.totalOpenInterestUsd, { compact: true })}
           </div>
-          <div className="text-[10px] text-brand-green mt-0.5">25 ключевых перп-контрактов</div>
+          <div className="text-[10px] text-emerald-400 mt-0.5 font-semibold">25 ключевых перп-контрактов</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] text-slate-400">Суточный объем деривативов</div>
-          <div className="text-lg font-bold text-white mt-0.5">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Суточный объем деривативов</div>
+          <div className="text-xl font-bold text-white mt-1 tabular-nums">
             {formatCurrency(overview.totalVolume24hUsd, { compact: true })}
           </div>
           <div className="text-[10px] text-slate-400 mt-0.5">Публичные данные Binance Futures</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] text-slate-400">Средний фандинг (8h / APR)</div>
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Средний фандинг (8h / APR)</div>
           <div
-            className={`text-lg font-bold mt-0.5 ${
-              overview.averageFundingRate8h >= 0 ? 'text-brand-green' : 'text-brand-red'
+            className={`text-xl font-bold mt-1 tabular-nums ${
+              overview.averageFundingRate8h >= 0 ? 'text-emerald-400' : 'text-rose-400'
             }`}
           >
             {overview.averageFundingRate8h >= 0 ? '+' : ''}
             {overview.averageFundingRate8h.toFixed(4)}%
           </div>
-          <div className="text-[10px] text-slate-300 mt-0.5">
+          <div className="text-[10px] text-slate-300 mt-0.5 tabular-nums">
             Годовая ставка: {formatPercent(overview.averageAnnualizedFundingApr)}
           </div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] text-slate-400">Рыночный режим (Базис)</div>
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Рыночный режим (Базис)</div>
           <div
-            className={`text-lg font-bold mt-0.5 ${
+            className={`text-xl font-bold mt-1 tabular-nums ${
               overview.marketRegime === 'CONTANGO'
-                ? 'text-brand-cyan'
+                ? 'text-cyan-400'
                 : overview.marketRegime === 'BACKWARDATION'
                 ? 'text-amber-400'
                 : 'text-slate-200'
@@ -162,14 +162,14 @@ export const FuturesPage: React.FC = () => {
           >
             {overview.marketRegime}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">
+          <div className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
             Базис перп/спот: {formatPercent(overview.averageBasisPct)}
           </div>
         </div>
       </div>
 
       {/* Dense Derivatives Table */}
-      <div className="bg-surface border border-surface-border rounded-lg overflow-hidden shadow-xl">
+      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left font-mono">
             <thead className="bg-surface-elevated/80 text-slate-400 text-[11px] uppercase border-b border-surface-border select-none sticky top-0 z-10">

@@ -50,22 +50,22 @@ export const RadarPage: React.FC = () => {
   }, [events]);
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
           <div className="flex items-center space-x-2">
-            <Radio className="w-5 h-5 text-brand-cyan animate-pulse" />
+            <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               MARKET RADAR (ДЕТЕКТОР АНОМАЛИЙ)
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-mono font-semibold text-brand-cyan bg-brand-cyan/10 px-2 py-0.5 rounded border border-brand-cyan/30 flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse mr-1" />
+              <span className="text-[10px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
                 LIVE ANOMALY ENGINE
               </span>
             ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 ДЕМОНСТРАЦИОННЫЙ СТРИМ
               </span>
             )}
@@ -83,7 +83,7 @@ export const RadarPage: React.FC = () => {
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="bg-surface border border-surface-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-brand-cyan"
+            className="bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
           >
             <option value="all">Все типы аномалий</option>
             <option value="VOLUME_SPIKE">Volume Spike</option>
@@ -98,7 +98,7 @@ export const RadarPage: React.FC = () => {
           <select
             value={selectedSeverity}
             onChange={(e) => setSelectedSeverity(e.target.value)}
-            className="bg-surface border border-surface-border rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-brand-cyan"
+            className="bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
           >
             <option value="all">Любая важность</option>
             <option value="HIGH">Только HIGH</option>
@@ -110,7 +110,7 @@ export const RadarPage: React.FC = () => {
 
       {/* AI Market Analyst Grounded Briefing Banner */}
       {aiBriefing && (
-        <div className="bg-surface border border-brand-cyan/30 rounded-lg p-4 font-mono text-xs space-y-3 shadow-md bg-gradient-to-r from-surface to-brand-cyan/5">
+        <div className="bg-[#0a0f1d] border border-cyan-500/30 rounded-xl p-4 font-mono text-xs space-y-3 shadow-panel bg-gradient-to-r from-[#0a0f1d] to-cyan-950/20">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center space-x-2 font-bold text-white">
               <Sparkles className="w-4 h-4 text-brand-cyan" />

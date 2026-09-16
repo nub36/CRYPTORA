@@ -34,21 +34,21 @@ export const LiquidationsPage: React.FC = () => {
   const shortPct = ((data.totalShort24h / data.total24h) * 100).toFixed(1);
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3 font-mono">
+    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5 font-mono">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold text-white tracking-wide">
               КАРТА И ПОТОК ЛИКВИДАЦИЙ (LIQUIDATIONS)
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-semibold text-brand-cyan bg-brand-cyan/10 px-2 py-0.5 rounded border border-brand-cyan/30 flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse mr-1" />
+              <span className="text-[10px] font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
                 LIVE STREAM (BINANCE FUTURES)
               </span>
             ) : (
-              <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+              <span className="text-[10px] font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 ДЕМОНСТРАЦИОННЫЙ СРЕЗ
               </span>
             )}
@@ -62,73 +62,73 @@ export const LiquidationsPage: React.FC = () => {
 
         <div className="text-xs text-slate-400 font-sans">
           Всего ликвидировано за 24ч:{' '}
-          <strong className="text-white font-mono">{formatCurrency(data.total24h, { compact: true })}</strong>
+          <strong className="text-white font-mono tabular-nums">{formatCurrency(data.total24h, { compact: true })}</strong>
         </div>
       </div>
 
       {/* CRITICAL METHODOLOGY DISCLAIMER */}
-      <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs font-sans text-slate-300 space-y-1.5">
-        <div className="flex items-center space-x-2 text-amber-400 font-mono font-bold">
-          <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+      <div className="p-3.5 bg-amber-500/[0.08] border border-amber-500/30 rounded-xl text-xs font-sans text-slate-300 space-y-1.5 shadow-panel">
+        <div className="flex items-center space-x-2 text-amber-300 font-mono font-bold">
+          <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-400" />
           <span>КРИТИЧЕСКИЙ ПРИНЦИП: ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-300">
           <strong>Фактическое событие ликвидации (Actual Event):</strong> Публичный биржевой ордер принудительного закрытия позиции при наступлении маржин-колла. Это подтвержденный свершившийся факт.<br />
-          <strong>Расчетный ликвидационный уровень (Estimated / Model Level):</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300 font-mono">ESTIMATED / MODEL</code>.
+          <strong>Расчетный ликвидационный уровень (Estimated / Model Level):</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">ESTIMATED / MODEL</code>.
         </p>
       </div>
 
       {/* Aggregate Long/Short Ratio Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="bg-surface border border-surface-border rounded-lg p-4">
-          <div className="text-xs text-slate-400">Ликвидировано Long (24h)</div>
-          <div className="text-xl font-black text-brand-green mt-1">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
+          <div className="text-xs text-slate-400 uppercase tracking-wider">Ликвидировано Long (24h)</div>
+          <div className="text-2xl font-black text-emerald-400 mt-1 tabular-nums">
             {formatCurrency(data.totalLong24h, { compact: true })}
           </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">{longPct}% от общего объема</div>
+          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">{longPct}% от общего объема</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4">
-          <div className="text-xs text-slate-400">Ликвидировано Short (24h)</div>
-          <div className="text-xl font-black text-brand-red mt-1">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
+          <div className="text-xs text-slate-400 uppercase tracking-wider">Ликвидировано Short (24h)</div>
+          <div className="text-2xl font-black text-rose-400 mt-1 tabular-nums">
             {formatCurrency(data.totalShort24h, { compact: true })}
           </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">{shortPct}% от общего объема (Шорт-сквиз)</div>
+          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">{shortPct}% от общего объема (Шорт-сквиз)</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4">
-          <div className="text-xs text-slate-400">Крупнейшее единичное событие</div>
-          <div className="text-xl font-black text-white mt-1">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
+          <div className="text-xs text-slate-400 uppercase tracking-wider">Крупнейшее единичное событие</div>
+          <div className="text-2xl font-black text-white mt-1 tabular-nums">
             {formatCurrency(data.largestEvent.amountUsd, { compact: true })}
           </div>
-          <div className="text-[11px] text-rose-400 mt-0.5">
+          <div className="text-[11px] text-rose-300 mt-0.5">
             {data.largestEvent.symbol} ({data.largestEvent.side}) на {data.largestEvent.exchange}
           </div>
         </div>
       </div>
 
       {/* Progress Bar */}
-      <div className="bg-surface border border-surface-border rounded-lg p-3">
-        <div className="flex justify-between text-xs mb-1.5">
-          <span className="text-brand-green font-bold">Longs: {longPct}%</span>
-          <span className="text-brand-red font-bold">Shorts: {shortPct}%</span>
+      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+        <div className="flex justify-between text-xs mb-2">
+          <span className="text-emerald-400 font-bold tabular-nums">Longs: {longPct}%</span>
+          <span className="text-rose-400 font-bold tabular-nums">Shorts: {shortPct}%</span>
         </div>
-        <div className="w-full h-3 rounded-full overflow-hidden flex bg-slate-800">
-          <div className="bg-brand-green h-full" style={{ width: `${longPct}%` }} />
-          <div className="bg-brand-red h-full" style={{ width: `${shortPct}%` }} />
+        <div className="w-full h-3 rounded-full overflow-hidden flex bg-[#111a30]">
+          <div className="bg-emerald-500 h-full" style={{ width: `${longPct}%` }} />
+          <div className="bg-rose-500 h-full" style={{ width: `${shortPct}%` }} />
         </div>
       </div>
 
       {/* Timeline & Breakdowns Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Timeline Visualization (8 cols) */}
-        <div className="lg:col-span-8 bg-surface border border-surface-border rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-surface-border">
+        <div className="lg:col-span-8 bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3.5 shadow-panel">
+          <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
             <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
-              <Clock className="w-3.5 h-3.5 text-brand-cyan" />
+              <Clock className="w-3.5 h-3.5 text-cyan-400" />
               <span>Хронология ликвидаций по 3-часовым барам (24H Timeline)</span>
             </span>
-            <span className="text-[10px] text-slate-500">UTC Bars</span>
+            <span className="text-[10px] text-slate-400">UTC Bars</span>
           </div>
 
           {/* Bar Chart Simulation */}
@@ -144,17 +144,17 @@ export const LiquidationsPage: React.FC = () => {
                     {/* Long bar */}
                     <div
                       style={{ height: `${Math.max(4, longHeight)}px` }}
-                      className="w-1/2 bg-brand-green/80 rounded-t group-hover:bg-brand-green transition-colors"
+                      className="w-1/2 bg-emerald-500/80 rounded-t group-hover:bg-emerald-400 transition-colors"
                       title={`Longs: ${formatCurrency(bar.longUsd, { compact: true })}`}
                     />
                     {/* Short bar */}
                     <div
                       style={{ height: `${Math.max(4, shortHeight)}px` }}
-                      className="w-1/2 bg-brand-red/80 rounded-t group-hover:bg-brand-red transition-colors"
+                      className="w-1/2 bg-rose-500/80 rounded-t group-hover:bg-rose-400 transition-colors"
                       title={`Shorts: ${formatCurrency(bar.shortUsd, { compact: true })}`}
                     />
                   </div>
-                  <span className="text-[10px] text-slate-400 group-hover:text-white">
+                  <span className="text-[10px] text-slate-400 group-hover:text-white tabular-nums">
                     {bar.timestamp}
                   </span>
                 </div>
@@ -162,13 +162,13 @@ export const LiquidationsPage: React.FC = () => {
             })}
           </div>
 
-          <div className="flex items-center justify-center space-x-6 text-[11px] pt-2 border-t border-surface-border text-slate-400">
+          <div className="flex items-center justify-center space-x-6 text-[11px] pt-2 border-t border-white/[0.06] text-slate-400">
             <div className="flex items-center space-x-1.5">
-              <span className="w-3 h-3 bg-brand-green rounded"></span>
+              <span className="w-3 h-3 bg-emerald-500 rounded"></span>
               <span>Long Liquidations</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-3 h-3 bg-brand-red rounded"></span>
+              <span className="w-3 h-3 bg-rose-500 rounded"></span>
               <span>Short Liquidations</span>
             </div>
           </div>
@@ -177,22 +177,22 @@ export const LiquidationsPage: React.FC = () => {
         {/* Exchange & Asset Breakdowns (4 cols) */}
         <div className="lg:col-span-4 space-y-4">
           {/* Exchange Breakdown */}
-          <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
-            <div className="text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-surface-border">
+          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
+            <div className="text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-white/[0.06]">
               Распределение по биржам
             </div>
-            <div className="space-y-2 text-xs">
+            <div className="space-y-2.5 text-xs">
               {data.exchangeBreakdown.map((ex) => (
                 <div key={ex.exchange} className="space-y-1">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between tabular-nums">
                     <span className="text-white font-semibold">{ex.exchange}</span>
                     <span className="text-slate-300">
                       {formatCurrency(ex.totalUsd, { compact: true })} ({ex.percentage}%)
                     </span>
                   </div>
-                  <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="w-full h-1.5 rounded-full bg-[#111a30] overflow-hidden">
                     <div
-                      className="bg-brand-cyan h-full rounded-full"
+                      className="bg-cyan-400 h-full rounded-full"
                       style={{ width: `${ex.percentage}%` }}
                     />
                   </div>
@@ -202,18 +202,18 @@ export const LiquidationsPage: React.FC = () => {
           </div>
 
           {/* Top Asset Liquidation Totals */}
-          <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
-            <div className="text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-surface-border">
+          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
+            <div className="text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-white/[0.06]">
               Топ активов по ликвидациям
             </div>
             <div className="space-y-1.5 text-xs">
               {data.assetBreakdown.slice(0, 5).map((ab) => (
                 <div
                   key={ab.symbol}
-                  className="flex items-center justify-between p-1.5 rounded bg-surface-elevated/40"
+                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/60 hover:bg-[#162342] transition-colors border border-white/[0.04]"
                 >
                   <span className="font-bold text-white">{ab.symbol}</span>
-                  <div className="text-right">
+                  <div className="text-right tabular-nums">
                     <span className="font-bold text-slate-200">
                       {formatCurrency(ab.totalUsd, { compact: true })}
                     </span>
@@ -229,15 +229,15 @@ export const LiquidationsPage: React.FC = () => {
       </div>
 
       {/* Estimated Liquidation Clusters (Model Simulation) */}
-      <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-surface-border">
+      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
+        <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
           <div className="flex items-center space-x-2">
-            <Layers className="w-4 h-4 text-brand-cyan" />
+            <Layers className="w-4 h-4 text-cyan-400" />
             <span className="text-xs font-bold text-white uppercase tracking-wider">
               Расчетная модель кластеров риска (Estimated Liquidation Heatmap Model)
             </span>
           </div>
-          <span className="text-[10px] font-mono text-brand-cyan bg-brand-cyan/10 px-1.5 py-0.5 rounded border border-brand-cyan/30">
+          <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded-full border border-cyan-500/30">
             ESTIMATED SIMULATION
           </span>
         </div>

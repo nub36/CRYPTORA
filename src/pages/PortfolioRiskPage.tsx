@@ -61,12 +61,12 @@ export const PortfolioRiskPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
       {/* Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
           <div className="flex items-center space-x-2">
-            <PieChart className="w-5 h-5 text-brand-cyan" />
+            <PieChart className="w-5 h-5 text-cyan-400" />
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               ПОРТФЕЛЬНЫЙ РИСК И СТРЕСС-ТЕСТИРОВАНИЕ (PORTFOLIO RISK & VAR)
             </h1>
@@ -81,22 +81,22 @@ export const PortfolioRiskPage: React.FC = () => {
 
         {/* Presets */}
         <div className="flex items-center space-x-1.5 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
-          <span className="text-slate-500 mr-1 hidden lg:inline">Пресеты:</span>
+          <span className="text-slate-400 mr-1 hidden lg:inline font-semibold">Пресеты:</span>
           <button
             onClick={applyPresetConservative}
-            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-brand-green text-slate-300 hover:text-white rounded transition-colors whitespace-nowrap"
+            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-emerald-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
           >
             Консервативный Core (60% BTC)
           </button>
           <button
             onClick={applyPresetBarbell}
-            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-brand-cyan text-slate-300 hover:text-white rounded transition-colors whitespace-nowrap"
+            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-cyan-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
           >
             Barbell (40% BTC / 30% Alts)
           </button>
           <button
             onClick={applyPresetHighBeta}
-            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-brand-purple text-slate-300 hover:text-white rounded transition-colors whitespace-nowrap"
+            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-violet-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
           >
             High-Beta Altseason
           </button>
@@ -104,9 +104,9 @@ export const PortfolioRiskPage: React.FC = () => {
       </div>
 
       {/* Non-Custodial Invariant Notice */}
-      <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
+      <div className="p-4 bg-[#0a0f1d] border border-white/[0.08] rounded-xl text-xs font-sans text-slate-300 space-y-2 shadow-panel">
         <div className="flex items-center space-x-2 text-white font-mono font-bold">
-          <ShieldCheck className="w-4 h-4 text-brand-green" />
+          <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span>Non-Custodial / Аналитическое моделирование риска</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-400">
@@ -115,51 +115,51 @@ export const PortfolioRiskPage: React.FC = () => {
       </div>
 
       {/* Risk Metrics Dashboard */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
-          <div className="text-[11px] text-slate-400">Объем портфеля (Total Value)</div>
-          <div className="text-2xl font-bold text-white mt-1">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Объем портфеля (Total Value)</div>
+          <div className="text-2xl font-bold text-white mt-1.5 tabular-nums">
             ${report.totalValueUsd.toLocaleString()}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Базовая валюта: USD</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Базовая валюта: USD</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
-          <div className="text-[11px] text-slate-400">Portfolio Beta к BTC</div>
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Portfolio Beta к BTC</div>
           <div
-            className={`text-2xl font-black mt-1 ${
+            className={`text-2xl font-black mt-1.5 tabular-nums ${
               report.portfolioBeta > 1.2
-                ? 'text-purple-400'
+                ? 'text-violet-400'
                 : report.portfolioBeta > 0.9
-                ? 'text-brand-cyan'
+                ? 'text-cyan-400'
                 : 'text-amber-400'
             }`}
           >
             {report.portfolioBeta}x
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Чувствительность к рынку</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Чувствительность к рынку</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
-          <div className="text-[11px] text-slate-400">1-Day VaR (95% Доверие)</div>
-          <div className="text-2xl font-bold text-rose-400 mt-1">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">1-Day VaR (95% Доверие)</div>
+          <div className="text-2xl font-bold text-rose-400 mt-1.5 tabular-nums">
             -${report.dailyVaR95Usd.toLocaleString()}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">
+          <div className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
             -{report.dailyVaR95Pct}% потенциальный риск в сутки
           </div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
-          <div className="text-[11px] text-slate-400">Концентрация (HHI Индекс)</div>
-          <div className="text-2xl font-bold text-amber-400 mt-1">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Концентрация (HHI Индекс)</div>
+          <div className="text-2xl font-bold text-amber-400 mt-1.5 tabular-nums">
             {report.hhiConcentrationIndex}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">
+          <div className="text-[10px] text-slate-400 mt-0.5">
             <span
               className={`font-semibold ${
                 report.concentrationRating === 'WELL_DIVERSIFIED'
-                  ? 'text-brand-green'
+                  ? 'text-emerald-400'
                   : report.concentrationRating === 'MODERATE_CONCENTRATION'
                   ? 'text-amber-400'
                   : 'text-rose-400'
@@ -172,12 +172,12 @@ export const PortfolioRiskPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
-          <div className="text-[11px] text-slate-400">Годовая волатильность</div>
-          <div className="text-2xl font-bold text-white mt-1">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
+          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Годовая волатильность</div>
+          <div className="text-2xl font-bold text-white mt-1.5 tabular-nums">
             {report.annualizedVolatilityPct}%
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Взвешенная $\sigma$ активов</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">Взвешенная волатильность</div>
         </div>
       </div>
 

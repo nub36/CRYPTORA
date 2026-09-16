@@ -76,9 +76,14 @@ export const OverviewPage: React.FC = () => {
 
   if (loading || !overview) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-mono text-sm">
-        <Activity className="w-5 h-5 animate-spin mr-2 text-brand-cyan" />
-        Загрузка командного центра CRYPTORA...
+      <div className="flex flex-col items-center justify-center min-h-[55vh] text-slate-400 font-mono text-sm space-y-3">
+        <div className="relative">
+          <div className="w-10 h-10 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin" />
+          <Activity className="w-5 h-5 text-cyan-400 absolute inset-0 m-auto" />
+        </div>
+        <span className="text-slate-300 tracking-wide text-xs">
+          Загрузка командного центра CRYPTORA...
+        </span>
       </div>
     );
   }
@@ -98,18 +103,21 @@ export const OverviewPage: React.FC = () => {
   const lowestFunding = sortedFunding[sortedFunding.length - 1];
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
       {/* Top Demo Notification Strip */}
-      <div className="bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-amber-300 gap-2">
-        <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+      <div className="bg-amber-500/[0.08] border border-amber-500/30 rounded-xl px-3.5 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs font-mono text-amber-300 gap-2 shadow-sm">
+        <div className="flex items-center space-x-2.5">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+          </span>
           <span>
             <strong>КОМАНДНЫЙ ЦЕНТР: ДЕМОНСТРАЦИОННЫЕ ДАННЫЕ.</strong> Все цены, объемы, открытый интерес, ликвидации и события зафиксированы для оценки интерфейса (Этап 1).
           </span>
         </div>
         <button
           onClick={openDemoModal}
-          className="text-amber-400 hover:underline flex items-center space-x-1 flex-shrink-0 text-[11px]"
+          className="text-amber-400 hover:text-amber-200 transition-colors flex items-center space-x-1 flex-shrink-0 text-[11px] font-semibold bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/30"
         >
           <span>Ограничения этапа</span>
           <ArrowUpRight className="w-3 h-3" />
@@ -117,150 +125,157 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* Quick Terminal Intelligence Hub */}
-      <div className="bg-surface border border-surface-border rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-        <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">
-          Специализированные аналитические разделы:
+      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs font-mono shadow-panel">
+        <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          <span>Специализированные аналитические разделы:</span>
         </span>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             to="/portfolio"
-            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
-            <PieChart className="w-3.5 h-3.5 text-brand-cyan" />
+            <PieChart className="w-3.5 h-3.5 text-cyan-400" />
             <span>Портфель & VaR</span>
           </Link>
           <Link
             to="/correlations"
-            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
-            <Grid className="w-3.5 h-3.5 text-brand-purple" />
+            <Grid className="w-3.5 h-3.5 text-violet-400" />
             <span>Корреляции & Beta</span>
           </Link>
           <Link
             to="/onchain"
-            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-emerald-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
-            <Network className="w-3.5 h-3.5 text-brand-green" />
+            <Network className="w-3.5 h-3.5 text-emerald-400" />
             <span>Он-чейн & MVRV</span>
           </Link>
           <Link
             to="/calendar"
-            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-amber-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <Calendar className="w-3.5 h-3.5 text-amber-400" />
             <span>Макро-календарь</span>
           </Link>
           <Link
             to="/ecosystem"
-            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
-            <Layers className="w-3.5 h-3.5 text-brand-cyan" />
+            <Layers className="w-3.5 h-3.5 text-cyan-400" />
             <span>DeFi & L2 TVL</span>
           </Link>
           <Link
             to="/journal"
-            className="px-2.5 py-1 rounded bg-surface-elevated hover:bg-surface-hover border border-surface-border text-slate-200 hover:text-white flex items-center space-x-1.5 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
-            <BookOpen className="w-3.5 h-3.5 text-brand-purple" />
+            <BookOpen className="w-3.5 h-3.5 text-violet-400" />
             <span>Журнал трейдера</span>
           </Link>
         </div>
       </div>
 
       {/* SECTION A: Market Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
         {/* Total Market Cap */}
-        <div className="bg-surface border border-surface-border rounded-md p-3 relative overflow-hidden">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span>Капитализация рынка</span>
+            <span className="uppercase tracking-wider">Капитализация рынка</span>
             <span
-              className={`text-[10px] font-bold ${
-                overview.marketCapChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'
+              className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                overview.marketCapChange24h >= 0
+                  ? 'text-emerald-400 bg-emerald-950/40'
+                  : 'text-rose-400 bg-rose-950/40'
               }`}
             >
               {formatPercent(overview.marketCapChange24h)}
             </span>
           </div>
-          <div className="text-lg sm:text-xl font-bold font-mono text-white mt-1">
+          <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalMarketCap, { compact: true })}
           </div>
-          <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+          <div className="text-[10px] text-slate-400 font-mono mt-1">
             24h дельта: +$64.8B
           </div>
         </div>
 
         {/* 24h Volume */}
-        <div className="bg-surface border border-surface-border rounded-md p-3 relative overflow-hidden">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span>24h Спот Объем</span>
+            <span className="uppercase tracking-wider">24h Спот Объем</span>
             <span
-              className={`text-[10px] font-bold ${
-                overview.volumeChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'
+              className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                overview.volumeChange24h >= 0
+                  ? 'text-emerald-400 bg-emerald-950/40'
+                  : 'text-rose-400 bg-rose-950/40'
               }`}
             >
               {formatPercent(overview.volumeChange24h)}
             </span>
           </div>
-          <div className="text-lg sm:text-xl font-bold font-mono text-white mt-1">
+          <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalVolume24h, { compact: true })}
           </div>
-          <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+          <div className="text-[10px] text-slate-400 font-mono mt-1">
             Активность выше нормы
           </div>
         </div>
 
         {/* BTC Dominance */}
-        <div className="bg-surface border border-surface-border rounded-md p-3">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span>Доминация BTC</span>
-            <span className="text-[10px] text-brand-cyan font-mono font-bold">ETH: {overview.ethDominance}%</span>
+            <span className="uppercase tracking-wider">Доминация BTC</span>
+            <span className="text-[10px] text-cyan-300 font-mono font-bold">ETH: {overview.ethDominance}%</span>
           </div>
-          <div className="text-lg sm:text-xl font-bold font-mono text-white mt-1">
+          <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {overview.btcDominance}%
           </div>
-          <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden flex">
+          <div className="w-full bg-[#111a30] h-1.5 rounded-full mt-2.5 overflow-hidden flex">
             <div
-              className="bg-brand-cyan h-full"
+              className="bg-cyan-400 h-full"
               style={{ width: `${overview.btcDominance}%` }}
             />
             <div
-              className="bg-brand-purple h-full"
+              className="bg-violet-500 h-full"
               style={{ width: `${overview.ethDominance}%` }}
             />
           </div>
         </div>
 
         {/* Fear & Greed Index */}
-        <div className="bg-surface border border-surface-border rounded-md p-3">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-amber-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span>Индекс жадности</span>
-            <span className="text-[10px] text-amber-400 font-mono">DEMO</span>
+            <span className="uppercase tracking-wider">Индекс жадности</span>
+            <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/15 px-1.5 py-0.2 rounded">
+              DEMO
+            </span>
           </div>
-          <div className="flex items-baseline space-x-2 mt-1">
-            <span className="text-lg sm:text-xl font-bold font-mono text-amber-400">
+          <div className="flex items-baseline space-x-2 mt-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-amber-400 tabular-nums">
               {overview.fearAndGreed.value}
             </span>
             <span className="text-xs text-slate-300 font-medium">
               {overview.fearAndGreed.sentiment}
             </span>
           </div>
-          <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+          <div className="text-[10px] text-slate-400 font-mono mt-1">
             Умеренный оптимизм
           </div>
         </div>
 
         {/* Market Breadth */}
-        <div className="bg-surface border border-surface-border rounded-md p-3">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span>Широта рынка (Breadth)</span>
-            <span className="text-[10px] text-brand-green font-mono">80% UP</span>
+            <span className="uppercase tracking-wider">Широта рынка (Breadth)</span>
+            <span className="text-[10px] text-emerald-400 font-mono font-semibold">80% UP</span>
           </div>
-          <div className="text-lg sm:text-xl font-bold font-mono text-white mt-1 flex items-center space-x-2">
-            <span className="text-brand-green">{overview.marketBreadth.advancing}▲</span>
+          <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 flex items-center space-x-2 tabular-nums">
+            <span className="text-emerald-400">{overview.marketBreadth.advancing}▲</span>
             <span className="text-slate-600">/</span>
-            <span className="text-brand-red">{overview.marketBreadth.declining}▼</span>
+            <span className="text-rose-400">{overview.marketBreadth.declining}▼</span>
           </div>
-          <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+          <div className="text-[10px] text-slate-400 font-mono mt-1">
             Преобладание покупок
           </div>
         </div>
@@ -268,16 +283,16 @@ export const OverviewPage: React.FC = () => {
         {/* Demo Status Card */}
         <div
           onClick={openDemoModal}
-          className="bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 transition-all cursor-pointer rounded-md p-3"
+          className="bg-amber-500/[0.08] border border-amber-500/30 hover:bg-amber-500/15 hover:border-amber-400/50 transition-all cursor-pointer rounded-xl p-3.5 shadow-panel"
         >
-          <div className="text-[11px] font-mono text-amber-400 flex items-center justify-between font-bold">
+          <div className="text-[11px] font-mono text-amber-300 flex items-center justify-between font-bold uppercase tracking-wider">
             <span>РЕЖИМ СИСТЕМЫ</span>
-            <Zap className="w-3.5 h-3.5" />
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <div className="text-sm font-bold font-mono text-amber-300 mt-1">
+          <div className="text-sm font-bold font-mono text-amber-200 mt-1.5">
             Демонстрационный
           </div>
-          <div className="text-[10px] text-amber-400/80 font-mono mt-0.5 hover:underline flex items-center space-x-1">
+          <div className="text-[10px] text-amber-300/80 font-mono mt-1 hover:underline flex items-center space-x-1">
             <span>Спецификация этапа</span>
             <ArrowUpRight className="w-3 h-3" />
           </div>
@@ -286,34 +301,34 @@ export const OverviewPage: React.FC = () => {
 
       {/* SECTION B & C: Main Chart & Futures/Liquidations Row */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Main BTC Chart Column (7 cols) */}
-        <div className="lg:col-span-7 bg-surface border border-surface-border rounded-lg p-3 sm:p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
+        {/* Main BTC Chart Column (7 cols) - The Command Center Focal Point */}
+        <div className="lg:col-span-7 bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 sm:p-4 space-y-3.5 shadow-panel relative">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.06] gap-2">
             <div className="flex items-center space-x-3">
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="font-mono font-bold text-base text-white">BTC / USDT</span>
-                  <span className="text-xs bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                  <span className="font-mono font-bold text-lg text-white">BTC / USDT</span>
+                  <span className="text-xs bg-[#111a30] text-cyan-300 px-2 py-0.5 rounded-full font-mono border border-cyan-500/30 font-semibold">
                     Spot & Perp Demo
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 mt-0.5 font-mono">
-                  <span className="text-lg font-bold text-white">$64,850.25</span>
-                  <span className="text-xs font-semibold text-brand-green">+3.18% 24h</span>
+                  <span className="text-xl font-bold text-white tabular-nums">$64,850.25</span>
+                  <span className="text-xs font-semibold text-emerald-400 tabular-nums">+3.18% 24h</span>
                 </div>
               </div>
             </div>
 
-            {/* Timeframe Selector */}
-            <div className="flex items-center space-x-1 font-mono text-xs bg-surface-elevated p-1 rounded border border-surface-border self-start sm:self-auto">
+            {/* Timeframe Selector Buttons */}
+            <div className="flex items-center space-x-1 font-mono text-xs bg-[#111a30] p-1 rounded-lg border border-white/[0.06] self-start sm:self-auto">
               {(['15m', '1h', '4h', '1D', '1W'] as Timeframe[]).map((tf) => (
                 <button
                   key={tf}
                   onClick={() => setSelectedTimeframe(tf)}
-                  className={`px-2 py-1 rounded transition-colors ${
+                  className={`px-3 py-1 rounded-md transition-all font-semibold min-h-[28px] ${
                     selectedTimeframe === tf
-                      ? 'bg-brand-cyan text-slate-950 font-bold'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/40'
+                      : 'text-slate-400 hover:text-white hover:bg-white/[0.06]'
                   }`}
                 >
                   {tf}
@@ -322,18 +337,18 @@ export const OverviewPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Candle Chart */}
-          <CandleChart data={btcCandles} symbol="BTC/USDT" height={320} />
+          {/* Candle Chart with ambient glow */}
+          <CandleChart data={btcCandles} symbol="BTC/USDT" height={340} />
 
-          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
+          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-white/[0.04]">
             <div className="flex items-center space-x-3">
-              <span>SMA20: <strong className="text-slate-200">$63,877</strong></span>
-              <span>SMA50: <strong className="text-slate-200">$62,386</strong></span>
-              <span>RSI-14: <strong className="text-brand-green">68.4</strong></span>
+              <span>SMA20: <strong className="text-slate-200 tabular-nums">$63,877</strong></span>
+              <span>SMA50: <strong className="text-slate-200 tabular-nums">$62,386</strong></span>
+              <span>RSI-14: <strong className="text-emerald-400 tabular-nums">68.4</strong></span>
             </div>
             <Link
               to="/coin/BTC"
-              className="text-brand-sky hover:underline flex items-center space-x-1"
+              className="text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-semibold"
             >
               <span>Полный анализ BTC</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -344,17 +359,17 @@ export const OverviewPage: React.FC = () => {
         {/* Snapshot Panels Column (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           {/* Futures Snapshot */}
-          <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4">
-            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-surface-border">
+          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 shadow-panel">
+            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
-                <Layers className="w-4 h-4 text-brand-purple" />
-                <span className="font-bold text-sm text-white font-mono">
+                <Layers className="w-4 h-4 text-violet-400" />
+                <span className="font-bold text-sm text-white font-mono tracking-wide">
                   ФЬЮЧЕРСНЫЙ СРЕЗ (DERIVATIVES)
                 </span>
               </div>
               <Link
                 to="/futures"
-                className="text-xs text-brand-sky hover:underline flex items-center space-x-1 font-mono"
+                className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-mono font-medium"
               >
                 <span>Все деривативы</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
@@ -362,17 +377,17 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div className="bg-surface-elevated/70 p-2.5 rounded border border-surface-border">
+              <div className="bg-[#111a30] p-3 rounded-lg border border-white/[0.06]">
                 <div className="text-[11px] text-slate-400 font-mono">Агрегированный OI</div>
-                <div className="text-base font-bold text-white font-mono mt-0.5">
+                <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalOpenInterest, { compact: true })}
                 </div>
-                <div className="text-[10px] text-brand-green font-mono mt-0.5">+6.8% за 24h</div>
+                <div className="text-[10px] text-emerald-400 font-mono mt-0.5 font-semibold">+6.8% за 24h</div>
               </div>
 
-              <div className="bg-surface-elevated/70 p-2.5 rounded border border-surface-border">
+              <div className="bg-[#111a30] p-3 rounded-lg border border-white/[0.06]">
                 <div className="text-[11px] text-slate-400 font-mono">Суточный объем Perp</div>
-                <div className="text-base font-bold text-white font-mono mt-0.5">
+                <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalFuturesVolume, { compact: true })}
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono mt-0.5">Базис BTC: +0.048%</div>
@@ -384,22 +399,22 @@ export const OverviewPage: React.FC = () => {
               {futures.slice(0, 3).map((f) => (
                 <div
                   key={f.symbol}
-                  className="flex items-center justify-between p-1.5 rounded bg-surface-elevated/40 hover:bg-surface-hover"
+                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/80 hover:bg-[#162342] transition-colors border border-white/[0.04]"
                 >
-                  <span className="font-bold text-slate-200">{f.symbol}</span>
-                  <span className="text-slate-400">
+                  <span className="font-bold text-white">{f.symbol}</span>
+                  <span className="text-slate-300 tabular-nums">
                     OI: {formatCurrency(f.openInterest, { compact: true })}
                   </span>
                   <span
-                    className={`font-semibold ${
-                      f.fundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'
+                    className={`font-semibold tabular-nums ${
+                      f.fundingRate >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
-                    F: {(f.fundingRate).toFixed(4)}%
+                    F: {f.fundingRate.toFixed(4)}%
                   </span>
                   <span
-                    className={`text-[11px] ${
-                      f.openInterestChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'
+                    className={`text-[11px] font-semibold tabular-nums ${
+                      f.openInterestChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
                     {formatPercent(f.openInterestChange24h)}
@@ -410,17 +425,17 @@ export const OverviewPage: React.FC = () => {
           </div>
 
           {/* Liquidations Snapshot */}
-          <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4">
-            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-surface-border">
+          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 shadow-panel">
+            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
-                <Flame className="w-4 h-4 text-brand-red" />
-                <span className="font-bold text-sm text-white font-mono">
+                <Flame className="w-4 h-4 text-rose-400" />
+                <span className="font-bold text-sm text-white font-mono tracking-wide">
                   ЛИКВИДАЦИИ ЗА 24H
                 </span>
               </div>
               <Link
                 to="/liquidations"
-                className="text-xs text-brand-sky hover:underline flex items-center space-x-1 font-mono"
+                className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-mono font-medium"
               >
                 <span>Детализация</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
@@ -430,24 +445,24 @@ export const OverviewPage: React.FC = () => {
             {liquidations && (
               <div>
                 <div className="flex items-center justify-between mb-2 font-mono text-xs">
-                  <span className="text-brand-green font-semibold">
+                  <span className="text-emerald-400 font-semibold tabular-nums">
                     Longs: {formatCurrency(liquidations.totalLong24h, { compact: true })} (25.4%)
                   </span>
-                  <span className="text-brand-red font-semibold">
+                  <span className="text-rose-400 font-semibold tabular-nums">
                     Shorts: {formatCurrency(liquidations.totalShort24h, { compact: true })} (74.6%)
                   </span>
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full h-2 rounded-full overflow-hidden flex bg-slate-800 mb-3">
+                <div className="w-full h-2 rounded-full overflow-hidden flex bg-[#111a30] mb-3">
                   <div
-                    className="bg-brand-green h-full"
+                    className="bg-emerald-500 h-full"
                     style={{
                       width: `${(liquidations.totalLong24h / liquidations.total24h) * 100}%`,
                     }}
                   />
                   <div
-                    className="bg-brand-red h-full"
+                    className="bg-rose-500 h-full"
                     style={{
                       width: `${(liquidations.totalShort24h / liquidations.total24h) * 100}%`,
                     }}
@@ -455,14 +470,14 @@ export const OverviewPage: React.FC = () => {
                 </div>
 
                 {/* Largest Whale Event */}
-                <div className="p-2.5 rounded bg-rose-950/30 border border-rose-500/20 text-xs font-mono flex items-center justify-between">
+                <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-xs font-mono flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                    <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
                     <span className="text-slate-300">
                       Whale Short Liq: <strong className="text-white">{liquidations.largestEvent.symbol}</strong>
                     </span>
                   </div>
-                  <span className="font-bold text-rose-400">
+                  <span className="font-bold text-rose-400 tabular-nums">
                     {formatCurrency(liquidations.largestEvent.amountUsd, { compact: true })}
                   </span>
                 </div>
@@ -478,17 +493,17 @@ export const OverviewPage: React.FC = () => {
       {/* SECTION D: Radar Feed, Top Movers, Signals Demo */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Column 1: Market Radar Stream */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 flex flex-col">
-          <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-surface-border">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col shadow-panel">
+          <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
             <div className="flex items-center space-x-2">
-              <Radio className="w-4 h-4 text-brand-cyan animate-pulse" />
-              <span className="font-bold text-sm text-white font-mono">
+              <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <span className="font-bold text-sm text-white font-mono tracking-wide">
                 MARKET RADAR (LATEST)
               </span>
             </div>
             <Link
               to="/radar"
-              className="text-xs text-brand-sky hover:underline flex items-center space-x-1 font-mono"
+              className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-mono font-medium"
             >
               <span>Все события</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -499,7 +514,7 @@ export const OverviewPage: React.FC = () => {
             {radarEvents.slice(0, 4).map((event) => (
               <div
                 key={event.id}
-                className="p-2.5 rounded bg-surface-elevated/70 border border-surface-border text-xs space-y-1 hover:border-slate-600 transition-colors"
+                className="p-3 rounded-lg bg-[#111a30]/80 border border-white/[0.06] text-xs space-y-1.5 hover:border-cyan-500/40 transition-colors"
               >
                 <div className="flex items-center justify-between font-mono">
                   <div className="flex items-center space-x-2">
@@ -517,11 +532,11 @@ export const OverviewPage: React.FC = () => {
                       {event.type.replace('_', ' ')}
                     </Badge>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono">
+                  <span className="text-[10px] text-slate-400 font-mono tabular-nums">
                     {formatTimestamp(event.timestamp)}
                   </span>
                 </div>
-                <div className="font-mono text-[11px] font-semibold text-brand-cyan">
+                <div className="font-mono text-[11px] font-semibold text-cyan-300 tabular-nums">
                   {event.metricValue}
                 </div>
                 <p className="text-[11px] text-slate-300 leading-tight">
@@ -533,14 +548,14 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Column 2: Top Movers & Funding Extremes */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 space-y-4">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-4 shadow-panel">
           <div>
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-surface-border">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
               <span className="font-bold text-xs text-white font-mono uppercase tracking-wider flex items-center space-x-1.5">
-                <TrendingUp className="w-3.5 h-3.5 text-brand-green" />
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Лидеры роста (24h)</span>
               </span>
-              <Link to="/market" className="text-[11px] text-brand-sky hover:underline font-mono">
+              <Link to="/market" className="text-[11px] text-cyan-400 hover:underline font-mono font-medium">
                 Рынок →
               </Link>
             </div>
@@ -550,15 +565,15 @@ export const OverviewPage: React.FC = () => {
                 <Link
                   key={asset.id}
                   to={`/coin/${asset.symbol}`}
-                  className="flex items-center justify-between p-1.5 rounded hover:bg-surface-hover transition-colors"
+                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/60 hover:bg-[#162342] transition-colors border border-white/[0.04]"
                 >
                   <div className="flex items-center space-x-2">
                     <span className="font-bold text-white">{asset.symbol}</span>
                     <span className="text-slate-400 text-[11px]">{asset.name}</span>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <span className="text-slate-300">{formatCurrency(asset.price)}</span>
-                    <span className="font-semibold text-brand-green flex items-center">
+                  <div className="flex items-center space-x-3 tabular-nums">
+                    <span className="text-slate-200">{formatCurrency(asset.price)}</span>
+                    <span className="font-semibold text-emerald-400 flex items-center">
                       <ArrowUpRight className="w-3 h-3 mr-0.5" />
                       {formatPercent(asset.change24h)}
                     </span>
@@ -569,10 +584,10 @@ export const OverviewPage: React.FC = () => {
           </div>
 
           <div>
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-surface-border">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
               <span className="font-bold text-xs text-white font-mono uppercase tracking-wider flex items-center space-x-1.5">
-                <ArrowDownRight className="w-3.5 h-3.5 text-brand-red" />
-                <span>Лидеры снижения (24h)</span>
+                <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />
+                <span>Лидеры падения (24h)</span>
               </span>
             </div>
 
@@ -581,15 +596,15 @@ export const OverviewPage: React.FC = () => {
                 <Link
                   key={asset.id}
                   to={`/coin/${asset.symbol}`}
-                  className="flex items-center justify-between p-1.5 rounded hover:bg-surface-hover transition-colors"
+                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/60 hover:bg-[#162342] transition-colors border border-white/[0.04]"
                 >
                   <div className="flex items-center space-x-2">
                     <span className="font-bold text-white">{asset.symbol}</span>
                     <span className="text-slate-400 text-[11px]">{asset.name}</span>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <span className="text-slate-300">{formatCurrency(asset.price)}</span>
-                    <span className="font-semibold text-brand-red flex items-center">
+                  <div className="flex items-center space-x-3 tabular-nums">
+                    <span className="text-slate-200">{formatCurrency(asset.price)}</span>
+                    <span className="font-semibold text-rose-400 flex items-center">
                       <ArrowDownRight className="w-3 h-3 mr-0.5" />
                       {formatPercent(asset.change24h)}
                     </span>
@@ -601,28 +616,28 @@ export const OverviewPage: React.FC = () => {
 
           {/* Funding Extremes widget */}
           {highestFunding && lowestFunding && (
-            <div className="pt-2 border-t border-surface-border grid grid-cols-2 gap-2 text-xs font-mono">
-              <div className="bg-emerald-950/30 border border-emerald-500/20 p-2 rounded">
-                <div className="text-[10px] text-emerald-400">Макс фандинг:</div>
-                <div className="font-bold text-white">{highestFunding.symbol}</div>
-                <div className="text-emerald-300 font-semibold">+{(highestFunding.fundingRate).toFixed(4)}%</div>
+            <div className="pt-2 border-t border-white/[0.06] grid grid-cols-2 gap-2 text-xs font-mono">
+              <div className="bg-emerald-950/40 border border-emerald-500/30 p-2.5 rounded-lg">
+                <div className="text-[10px] text-emerald-400 uppercase font-semibold">Макс фандинг:</div>
+                <div className="font-bold text-white mt-0.5">{highestFunding.symbol}</div>
+                <div className="text-emerald-300 font-bold tabular-nums">+{highestFunding.fundingRate.toFixed(4)}%</div>
               </div>
-              <div className="bg-purple-950/30 border border-purple-500/20 p-2 rounded">
-                <div className="text-[10px] text-purple-400">Мин фандинг (Shorts):</div>
-                <div className="font-bold text-white">{lowestFunding.symbol}</div>
-                <div className="text-purple-300 font-semibold">{(lowestFunding.fundingRate).toFixed(4)}%</div>
+              <div className="bg-violet-950/40 border border-violet-500/30 p-2.5 rounded-lg">
+                <div className="text-[10px] text-violet-400 uppercase font-semibold">Мин фандинг (Shorts):</div>
+                <div className="font-bold text-white mt-0.5">{lowestFunding.symbol}</div>
+                <div className="text-violet-300 font-bold tabular-nums">{lowestFunding.fundingRate.toFixed(4)}%</div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Column 3: Signals Architecture Preview (NOT fake signals!) */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 flex flex-col justify-between">
+        {/* Column 3: Signals Architecture Preview */}
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col justify-between shadow-panel">
           <div>
-            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-surface-border">
+            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
-                <Sparkles className="w-4 h-4 text-brand-amber" />
-                <span className="font-bold text-sm text-white font-mono">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-sm text-white font-mono tracking-wide">
                   АНАЛИТИЧЕСКИЕ СЕТАПЫ (PREVIEW)
                 </span>
               </div>
@@ -631,7 +646,7 @@ export const OverviewPage: React.FC = () => {
               </Badge>
             </div>
 
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-xs space-y-2 mb-3">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs space-y-1.5 mb-3">
               <div className="font-bold text-amber-300 flex items-center space-x-1.5">
                 <span>Демонстрация будущей методологии</span>
               </div>
@@ -641,10 +656,10 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             {/* Structured Setup Mock Card */}
-            <div className="p-3 bg-surface-elevated/80 border border-surface-border rounded-md text-xs font-mono space-y-2">
+            <div className="p-3.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs font-mono space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-white">BTC/USDT 4H Breakout</span>
-                <span className="text-[10px] text-brand-green bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-500/30 font-semibold">
+                <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
                   LONG SETUP DEMO
                 </span>
               </div>
@@ -654,17 +669,17 @@ export const OverviewPage: React.FC = () => {
                 <div>Инвалидация: <strong className="text-rose-400">&lt; $62,900</strong></div>
               </div>
 
-              <div className="text-[11px] text-slate-400 space-y-1 pt-1 border-t border-surface-border">
+              <div className="text-[11px] text-slate-400 space-y-1 pt-1.5 border-t border-white/[0.06]">
                 <div className="text-emerald-400 text-[10px]">✓ Подтверждение: OI Surge +7.2%, Funding &gt; 0</div>
                 <div className="text-rose-400 text-[10px]">⚠ Опровергающие: RSI-14 перегрет (68.4)</div>
               </div>
             </div>
           </div>
 
-          <div className="pt-3 border-t border-surface-border mt-3">
+          <div className="pt-3 border-t border-white/[0.06] mt-3">
             <Link
               to="/signals"
-              className="w-full py-2 bg-surface-elevated hover:bg-surface-hover text-brand-cyan text-xs font-mono font-semibold rounded flex items-center justify-center space-x-1.5 transition-colors border border-surface-border"
+              className="w-full py-2 bg-[#111a30] hover:bg-[#162342] text-cyan-400 hover:text-white text-xs font-mono font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition-colors border border-white/[0.08] hover:border-cyan-500/30 min-h-[36px]"
             >
               <span>Спецификация сигналов и бэктестинга</span>
               <ArrowUpRight className="w-3.5 h-3.5" />

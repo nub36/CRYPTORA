@@ -11,7 +11,7 @@ interface CandleChartProps {
 export const CandleChart: React.FC<CandleChartProps> = ({
   data,
   symbol = 'BTC/USDT',
-  height = 360,
+  height = 380,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -21,41 +21,41 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Create chart instance
+    // Create chart instance with modern dark terminal styling
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0f1420' },
+        background: { type: ColorType.Solid, color: '#090e1a' },
         textColor: '#94a3b8',
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: "'JetBrains Mono', 'SFMono-Regular', monospace",
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: 'rgba(30, 41, 59, 0.5)' },
-        horzLines: { color: 'rgba(30, 41, 59, 0.5)' },
+        vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
+        horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
       },
       crosshair: {
         vertLine: {
-          color: '#38bdf8',
+          color: '#22d3ee',
           width: 1,
           style: 2,
-          labelBackgroundColor: '#1e293b',
+          labelBackgroundColor: '#131c33',
         },
         horzLine: {
-          color: '#38bdf8',
+          color: '#22d3ee',
           width: 1,
           style: 2,
-          labelBackgroundColor: '#1e293b',
+          labelBackgroundColor: '#131c33',
         },
       },
       rightPriceScale: {
-        borderColor: '#1e293b',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
         scaleMargins: {
           top: 0.1,
-          bottom: 0.25,
+          bottom: 0.22,
         },
       },
       timeScale: {
-        borderColor: '#1e293b',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
         timeVisible: true,
         secondsVisible: false,
       },
@@ -77,12 +77,12 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       priceFormat: {
         type: 'volume',
       },
-      priceScaleId: '', // Overlay over chart with custom margins
+      priceScaleId: '', // Overlay over price
     });
 
     volumeSeries.priceScale().applyOptions({
       scaleMargins: {
-        top: 0.75,
+        top: 0.78,
         bottom: 0,
       },
     });
@@ -91,7 +91,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
 
-    // Resize observer
+    // Responsive resize handler
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
@@ -134,13 +134,20 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   }, [data]);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-md border border-surface-border bg-surface">
-      <div className="absolute top-2.5 left-3 z-10 flex items-center space-x-2 text-xs font-mono text-slate-400">
-        <span className="font-semibold text-slate-200">{symbol}</span>
-        <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+    <div className="relative w-full overflow-hidden rounded-xl border border-white/[0.08] bg-[#090e1a] shadow-panel-elevated group">
+      {/* Subtle Ambient Radial Glow */}
+      <div className="absolute top-0 left-1/4 w-96 h-36 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Floating Chart Header Badge */}
+      <div className="absolute top-3 left-3.5 z-10 flex items-center space-x-2 text-xs font-mono text-slate-300">
+        <span className="font-bold text-white tracking-tight text-sm drop-shadow-sm">
+          {symbol}
+        </span>
+        <span className="text-[10px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold tracking-wide">
           DEMO СВЕЧИ
         </span>
       </div>
+
       <div ref={chartContainerRef} className="w-full" style={{ height }} />
     </div>
   );

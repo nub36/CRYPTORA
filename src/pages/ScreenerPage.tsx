@@ -75,15 +75,15 @@ export const ScreenerPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
       {/* Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
               КРИПТО-СКРИНЕР (SCREENER TERMINAL)
             </h1>
-            <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+            <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
               ДЕМО-ДАТАСЕТ
             </span>
           </div>
@@ -93,39 +93,39 @@ export const ScreenerPage: React.FC = () => {
         </div>
 
         {/* Presets */}
-        <div className="flex items-center space-x-1 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
-          <span className="text-slate-500 mr-1 hidden lg:inline">Пресеты:</span>
+        <div className="flex items-center space-x-1.5 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
+          <span className="text-slate-400 mr-1 hidden lg:inline font-semibold">Пресеты:</span>
           <button
             onClick={applyPresetGainers}
-            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-brand-green text-slate-300 hover:text-white rounded transition-all whitespace-nowrap flex items-center space-x-1"
+            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-emerald-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
-            <Sparkles className="w-3 h-3 text-brand-green" />
+            <Sparkles className="w-3 h-3 text-emerald-400" />
             <span>Top Gainers (&gt;5%)</span>
           </button>
           <button
             onClick={applyPresetShortSqueeze}
-            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-purple-500 text-slate-300 hover:text-white rounded transition-all whitespace-nowrap flex items-center space-x-1"
+            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-violet-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
-            <Sparkles className="w-3 h-3 text-brand-purple" />
+            <Sparkles className="w-3 h-3 text-violet-400" />
             <span>Short Squeeze (Funding &lt; 0)</span>
           </button>
           <button
             onClick={applyPresetLargeCap}
-            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-brand-cyan text-slate-300 hover:text-white rounded transition-all whitespace-nowrap flex items-center space-x-1"
+            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-cyan-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
-            <Sparkles className="w-3 h-3 text-brand-cyan" />
+            <Sparkles className="w-3 h-3 text-cyan-400" />
             <span>High Volume (&gt;$1B)</span>
           </button>
           <button
             onClick={applyPresetAiSector}
-            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-amber-400 text-slate-300 hover:text-white rounded transition-all whitespace-nowrap flex items-center space-x-1"
+            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-amber-400/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
             <Sparkles className="w-3 h-3 text-amber-400" />
             <span>AI Sector</span>
           </button>
           <button
             onClick={handleReset}
-            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors"
+            className="p-2 bg-[#111a30] hover:bg-[#162342] text-slate-300 hover:text-white rounded-lg border border-white/[0.08] transition-colors min-h-[32px] min-w-[32px] flex items-center justify-center"
             title="Сбросить все фильтры"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -134,7 +134,7 @@ export const ScreenerPage: React.FC = () => {
       </div>
 
       {/* Filter Parameters Form */}
-      <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 space-y-3 font-mono text-xs">
+      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-3 font-mono text-xs shadow-panel">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Query search */}
           <div>
