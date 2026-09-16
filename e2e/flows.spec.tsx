@@ -1,4 +1,5 @@
 import './setup-dom';
+import { resetBrowserStorage } from './setup-dom';
 import { test, expect } from '@playwright/test';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -14,6 +15,12 @@ function renderApp(initialPath = '/') {
     </MemoryRouter>
   );
 }
+
+// Сброс localStorage до каждого теста: гарантирует режим DEMO по умолчанию
+// и исключает реальные сетевые вызовы к биржам из E2E-прогона.
+test.beforeEach(() => {
+  resetBrowserStorage();
+});
 
 test.describe('Playwright E2E: Core Terminal User Flows', () => {
   test.afterEach(() => {

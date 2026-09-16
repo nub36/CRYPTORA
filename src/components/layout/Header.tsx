@@ -416,7 +416,7 @@ export const Header: React.FC = () => {
               <span className="hidden font-bold navxl:inline">LIVE SPOT</span>
               <span className="font-bold navxl:hidden">LIVE</span>
               <span
-                className={`ml-0.5 shrink-0 rounded px-1 font-mono text-[10px] font-bold ${
+                className={`ml-0.5 shrink-0 rounded px-1 font-mono text-[11px] font-bold ${
                   isRealtimeUp
                     ? 'bg-emerald-500/20 text-emerald-300'
                     : realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting'

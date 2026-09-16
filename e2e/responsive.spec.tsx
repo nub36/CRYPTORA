@@ -1,4 +1,5 @@
 import './setup-dom';
+import { resetBrowserStorage } from './setup-dom';
 import { test, expect } from '@playwright/test';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -22,6 +23,12 @@ function setWindowDimensions(width: number, height: number) {
   Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: height });
   window.dispatchEvent(new Event('resize'));
 }
+
+// Сброс localStorage до каждого теста: гарантирует режим DEMO по умолчанию
+// и исключает реальные сетевые вызовы к биржам из E2E-прогона.
+test.beforeEach(() => {
+  resetBrowserStorage();
+});
 
 test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
   test.afterEach(() => {

@@ -1,4 +1,5 @@
 import './setup-dom';
+import { resetBrowserStorage } from './setup-dom';
 import { test, expect } from '@playwright/test';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -40,9 +41,16 @@ function renderApp(initialPath = '/') {
  * Геометрические инварианты (реальные размеры и overflow) проверяются в браузере:
  * `node scripts/screenshot-qa.mjs` — JSDOM не рассчитывает layout.
  */
+// Сброс localStorage до каждого теста: гарантирует режим DEMO по умолчанию
+// и исключает реальные сетевые вызовы к биржам из E2E-прогона.
+test.beforeEach(() => {
+  resetBrowserStorage();
+});
+
 test.describe('UI/UX Premium Redesign Regression Suite', () => {
   test.afterEach(() => {
     cleanup();
+    // Изоляция состояния обеспечивается общим before-each хуком в e2e/setup-dom.ts
   });
 
   test('Header capacity budget: прямая навигация ограничена и сохраняет читаемый кегль', async () => {
@@ -70,25 +78,44 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     expect(screen.getByRole('button', { name: /Инструменты/i }).className).toContain('whitespace-nowrap');
   });
 
-  test('Header typography: ни один текстовый узел шапки не мельче 11px', async () => {
-    setWindowDimensions(1440, 900);
-    const { container } = renderApp('/');
+  const MIN_HEADER_FONT_PX = 11;
 
+  function collectTinyHeaderText(container: HTMLElement): string[] {
     const header = container.querySelector('header') as HTMLElement;
     expect(header).not.toBeNull();
 
-    const tinyText: string[] = [];
+    const tiny: string[] = [];
     header.querySelectorAll<HTMLElement>('*').forEach((el) => {
       if (el.children.length > 0) return;
       const text = (el.textContent || '').trim();
       if (!text) return;
       // Кегль в JSDOM не рассчитывается из Tailwind-классов — читаем классы
       const match = el.className.match(/text-\[(\d+(?:\.\d+)?)px\]/);
-      if (match && parseFloat(match[1]) < 11) tinyText.push(`"${text}" (${match[1]}px)`);
+      if (match && parseFloat(match[1]) < MIN_HEADER_FONT_PX) tiny.push(`"${text}" (${match[1]}px)`);
     });
+    return tiny;
+  }
 
-    expect(tinyText).toEqual([]);
-  });
+  // Регресс возник именно в режиме LIVE SPOT: плашка режима данных со статусом WS
+  // рендерится только при dataMode === 'live'. Поэтому проверяем оба режима.
+  for (const mode of ['demo', 'live'] as const) {
+    test(`Header typography (${mode}): ни один текстовый узел шапки не мельче ${MIN_HEADER_FONT_PX}px`, async () => {
+      setWindowDimensions(1440, 900);
+      window.localStorage.setItem('cryptora_data_mode', mode);
+
+      // Шапка идентична на всех маршрутах: берём раздел без загрузки рыночных
+      // данных, чтобы тест проверял типографику шапки, а не data-слой.
+      const { container } = renderApp('/journal');
+
+      if (mode === 'live') {
+        // Подтверждаем, что плашка LIVE + WS действительно отрендерена
+        expect(container.querySelector('header')!.textContent).toMatch(/LIVE/);
+        expect(container.querySelector('header')!.textContent).toMatch(/WS/);
+      }
+
+      expect(collectTinyHeaderText(container as HTMLElement)).toEqual([]);
+    });
+  }
 
   test('Header compact desktop (1024–1279px): навигация в отдельной строке (stacking), а не сжатие текста', async () => {
     setWindowDimensions(1024, 768);

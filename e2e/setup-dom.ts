@@ -33,6 +33,13 @@ setGlobal('window', window);
 setGlobal('document', window.document);
 setGlobal('navigator', window.navigator);
 setGlobal('location', window.location);
+// Браузеры предоставляют localStorage как глобальный объект — JSDOM-шим должен
+// вести себя так же, иначе persistence-контракты (cryptora_data_mode и др.)
+// молча уходят в fallback и тесты проверяют не тот режим.
+if (window.localStorage) {
+  setGlobal('localStorage', window.localStorage);
+  setGlobal('sessionStorage', window.sessionStorage);
+}
 setGlobal('HTMLElement', window.HTMLElement);
 setGlobal('HTMLCanvasElement', window.HTMLCanvasElement);
 setGlobal('Element', window.Element);
@@ -77,6 +84,22 @@ if (window.HTMLCanvasElement) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Герметичность E2E-окружения: никаких реальных сетевых вызовов из тестов.
+// Node.js предоставляет глобальные `fetch` и `WebSocket`, поэтому без явных
+// заглушек Live-провайдер и realtime-клиент пытались бы реально подключаться
+// к биржам. Их асинхронные отказы прилетали бы в произвольный (следующий) тест
+// как uncaught exception и делали бы прогон флейки. Заглушки сохраняют честное
+// поведение приложения: Live-слой сообщает об ошибке источника данных.
+// ---------------------------------------------------------------------------
+setGlobal('fetch', () =>
+  Promise.reject(new TypeError('E2E: сеть отключена (детерминированное окружение тестов)'))
+);
+
+// `typeof WebSocket === 'undefined'` заставляет realtime-клиент честно
+// сообщить о недоступности транспорта вместо попытки подключения.
+setGlobal('WebSocket', undefined);
+
 setGlobal('ResizeObserver', class ResizeObserver {
   observe() {}
   unobserve() {}
@@ -110,3 +133,23 @@ expect.extend({
     };
   },
 });
+
+/**
+ * Изоляция состояния между тестами.
+ * localStorage в JSDOM-шиме действительно работает, а провайдер рыночных данных
+ * сохраняет в нём выбранный режим (`cryptora_data_mode`) и списки (watchlist/alerts).
+ * Без сброса тест, переключивший режим на LIVE, загрязнял бы последующие тесты
+ * (и, что важнее, включал бы реальные сетевые вызовы к биржам).
+ *
+ * ВАЖНО: функция экспортируется, а хук регистрируется в каждом spec-файле.
+ * ES-модуль кэшируется на процесс воркера, поэтому `test.beforeEach(...)`,
+ * вызванный здесь при импорте, применился бы только к первому spec-файлу.
+ */
+export function resetBrowserStorage(): void {
+  try {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  } catch {
+    /* storage может быть недоступен — тесты продолжат в режиме по умолчанию */
+  }
+}
