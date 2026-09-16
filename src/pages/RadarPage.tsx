@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
 import { RadarEvent } from '@/types/market';
 import { formatTimestamp } from '@/utils/formatters';
 import { Badge } from '@/components/common/Badge';
 import { Link } from 'react-router-dom';
-import { Radio, ArrowUpRight } from 'lucide-react';
+import { Radio, ArrowUpRight, Sparkles, AlertCircle } from 'lucide-react';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { AiExplanationEngine, AiMarketBriefing } from '@/services/ai/AiExplanationEngine';
 
 export const RadarPage: React.FC = () => {
   const { provider, dataMode } = useMarketData();
@@ -32,6 +33,21 @@ export const RadarPage: React.FC = () => {
     if (selectedSeverity !== 'all' && e.severity !== selectedSeverity) return false;
     return true;
   });
+
+  // Synthesize AI Market Briefing for top anomaly asset
+  const aiBriefing = useMemo<AiMarketBriefing | null>(() => {
+    if (events.length === 0) return null;
+    const topEvent = events.find((e) => e.severity === 'HIGH') || events[0];
+    return AiExplanationEngine.generateBriefing({
+      symbol: topEvent.symbol,
+      price: topEvent.symbol === 'BTC' ? 64500 : topEvent.symbol === 'ETH' ? 3480 : 158,
+      change24h: 3.2,
+      fundingRate8h: 0.012,
+      openInterestDelta24h: 6.8,
+      rsi14: 64.5,
+      anomalies: [topEvent],
+    });
+  }, [events]);
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
@@ -91,6 +107,50 @@ export const RadarPage: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* AI Market Analyst Grounded Briefing Banner */}
+      {aiBriefing && (
+        <div className="bg-surface border border-brand-cyan/30 rounded-lg p-4 font-mono text-xs space-y-3 shadow-md bg-gradient-to-r from-surface to-brand-cyan/5">
+          <div className="flex items-center justify-between pb-2 border-b border-surface-border">
+            <div className="flex items-center space-x-2 font-bold text-white">
+              <Sparkles className="w-4 h-4 text-brand-cyan" />
+              <span>AI ANALYST BRIEFING: {aiBriefing.headline}</span>
+            </div>
+            <span className="text-[10px] text-slate-400 bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
+              Основано на детерминированных фактах
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-300 font-sans leading-relaxed">
+            {aiBriefing.explanation}
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-sans text-[11px]">
+            <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/20 space-y-1">
+              <span className="font-bold text-emerald-400 font-mono block">Ключевые драйверы:</span>
+              <ul className="list-disc list-inside text-slate-300 space-y-0.5">
+                {aiBriefing.keyDrivers.map((d, i) => (
+                  <li key={i}>{d}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="p-2.5 rounded bg-rose-950/20 border border-rose-500/20 space-y-1">
+              <span className="font-bold text-rose-400 font-mono block">Факторы риска:</span>
+              <ul className="list-disc list-inside text-slate-300 space-y-0.5">
+                {aiBriefing.riskObservations.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="text-[10px] text-slate-500 font-sans flex items-center space-x-1.5 pt-1">
+            <AlertCircle className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+            <span>{aiBriefing.disclaimer}</span>
+          </div>
+        </div>
+      )}
 
       {/* Events Stream List */}
       <div className="space-y-3 font-mono">

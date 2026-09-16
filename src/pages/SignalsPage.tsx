@@ -1,8 +1,21 @@
-import React from 'react';
-import { BarChart3, AlertOctagon, CheckCircle2, Shield } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { SignalsAuditLedger, AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 
 export const SignalsPage: React.FC = () => {
+  const ledger = useMemo(() => SignalsAuditLedger.getInstance(), []);
+  const summary = useMemo(() => ledger.getSummary(), [ledger]);
+  const isIntegrityVerified = useMemo(() => ledger.verifyIntegrity(), [ledger]);
+
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'TARGET_REACHED' | 'INVALIDATED'>('ALL');
+
+  const setups = useMemo(() => {
+    const list = ledger.getSetups();
+    if (statusFilter === 'ALL') return list;
+    return list.filter((s) => s.status === statusFilter);
+  }, [ledger, statusFilter]);
+
   return (
     <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
       {/* Page Title */}
@@ -18,12 +31,60 @@ export const SignalsPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Прозрачные алгоритмические структуры с неизменяемым журналом аудита и фиксацией факторов отмены.
+            Прозрачные алгоритмические структуры с неизменяемым журналом аудита (SHA-256) и фиксацией факторов отмены.
           </p>
         </div>
 
         <div className="text-xs font-mono text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded border border-rose-500/30">
           НЕ ЯВЛЯЕТСЯ ФИНАНСОВОЙ РЕКОМЕНДАЦИЕЙ
+        </div>
+      </div>
+
+      {/* Transparent Performance Metrics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="bg-surface border border-surface-border rounded-lg p-3">
+          <div className="text-[11px] font-mono text-slate-400">Всего сетапов в реестре</div>
+          <div className="text-lg font-bold font-mono text-white mt-1">{summary.totalSetups}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">100% зафиксировано</div>
+        </div>
+
+        <div className="bg-surface border border-surface-border rounded-lg p-3">
+          <div className="text-[11px] font-mono text-slate-400">Активные наблюдения</div>
+          <div className="text-lg font-bold font-mono text-brand-cyan mt-1">{summary.activeCount}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">В процессе отработки</div>
+        </div>
+
+        <div className="bg-surface border border-surface-border rounded-lg p-3">
+          <div className="text-[11px] font-mono text-slate-400">Достигли целей (TP)</div>
+          <div className="text-lg font-bold font-mono text-brand-green mt-1">{summary.targetReachedCount}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Полное исполнение</div>
+        </div>
+
+        <div className="bg-surface border border-surface-border rounded-lg p-3">
+          <div className="text-[11px] font-mono text-slate-400">Инвалидация (Stop Loss)</div>
+          <div className="text-lg font-bold font-mono text-rose-400 mt-1">{summary.invalidatedCount}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Отмена гипотезы</div>
+        </div>
+
+        <div className="bg-surface border border-surface-border rounded-lg p-3">
+          <div className="text-[11px] font-mono text-slate-400">Прозрачный Win Rate</div>
+          <div className="text-lg font-bold font-mono text-amber-400 mt-1">{summary.accuracyRatePct}%</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Без ошибки выжившего</div>
+        </div>
+
+        <div className="bg-surface border border-surface-border rounded-lg p-3">
+          <div className="text-[11px] font-mono text-slate-400">Целостность реестра</div>
+          <div className="text-sm font-bold font-mono text-brand-green mt-1.5 flex items-center space-x-1">
+            {isIntegrityVerified ? (
+              <>
+                <Check className="w-4 h-4 text-brand-green" />
+                <span>SHA-256 OK</span>
+              </>
+            ) : (
+              <span className="text-rose-400">ОШИБКА ХЭША</span>
+            )}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Append-only ledger</div>
         </div>
       </div>
 
@@ -49,104 +110,130 @@ export const SignalsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Sample Structured Analytical Setups (Demo) */}
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
+        <div className="flex items-center space-x-2 font-mono text-xs">
+          <Filter className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-slate-400 text-xs">Статус:</span>
+          {(['ALL', 'ACTIVE', 'TARGET_REACHED', 'INVALIDATED'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setStatusFilter(tab)}
+              className={`px-3 py-1 rounded border transition-all ${
+                statusFilter === tab
+                  ? 'bg-brand-cyan/15 text-brand-cyan border-brand-cyan/40 font-bold'
+                  : 'bg-surface text-slate-400 border-surface-border hover:text-white'
+              }`}
+            >
+              {tab === 'ALL' && 'Все сетапы'}
+              {tab === 'ACTIVE' && 'Активные'}
+              {tab === 'TARGET_REACHED' && 'Цель достигнута'}
+              {tab === 'INVALIDATED' && 'Инвалидированы'}
+            </button>
+          ))}
+        </div>
+
+        <div className="text-[11px] font-mono text-slate-500">
+          Найдено: {setups.length} из {summary.totalSetups}
+        </div>
+      </div>
+
+      {/* Setups Cards */}
       <div className="space-y-4">
-        <div className="text-xs font-mono text-slate-400 uppercase tracking-wider font-bold">
-          Примеры формализованных сетапов (Архитектурный шаблон)
-        </div>
-
-        {/* Setup Card 1 */}
-        <div className="bg-surface border border-surface-border rounded-lg p-5 font-mono text-xs space-y-4 shadow-lg">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
-            <div className="flex items-center space-x-3">
-              <span className="text-base font-bold text-white">BTC/USDT</span>
-              <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
-                4h Timeframe
-              </span>
-              <Badge variant="green" size="sm">
-                LONG IDEA DEMO
-              </Badge>
-            </div>
-            <div className="text-[11px] text-slate-500">
-              Strategy: <strong>Momentum + Negative Funding v1.2</strong>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-              <div className="text-[11px] text-slate-400">Диапазон входа</div>
-              <div className="text-sm font-bold text-white mt-0.5">$64,200 – $64,800</div>
-            </div>
-            <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-              <div className="text-[11px] text-slate-400">Уровень отмены (Stop)</div>
-              <div className="text-sm font-bold text-rose-400 mt-0.5">&lt; $62,900 (-2.4%)</div>
-            </div>
-            <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-              <div className="text-[11px] text-slate-400">Целевой ориентир</div>
-              <div className="text-sm font-bold text-brand-green mt-0.5">$68,500 (+6.1%)</div>
-            </div>
-          </div>
-
-          {/* Evidence Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 font-sans text-xs">
-            <div className="p-3 rounded bg-emerald-950/20 border border-emerald-500/20 space-y-1.5">
-              <div className="font-bold text-emerald-400 font-mono flex items-center space-x-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Подтверждающие наблюдения (Supporting Evidence)</span>
+        {setups.map((setup: AnalyticalSetup) => (
+          <div
+            key={setup.id}
+            className="bg-surface border border-surface-border rounded-lg p-5 font-mono text-xs space-y-4 shadow-lg hover:border-slate-700 transition-all"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
+              <div className="flex items-center space-x-3">
+                <span className="text-base font-bold text-white">{setup.symbol}/USDT</span>
+                <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
+                  {setup.timeframe} Timeframe
+                </span>
+                <Badge
+                  variant={
+                    setup.status === 'TARGET_REACHED'
+                      ? 'green'
+                      : setup.status === 'INVALIDATED'
+                      ? 'red'
+                      : 'cyan'
+                  }
+                  size="sm"
+                >
+                  {setup.status === 'TARGET_REACHED'
+                    ? 'TARGET REACHED (+TP)'
+                    : setup.status === 'INVALIDATED'
+                    ? 'INVALIDATED (STOP)'
+                    : `${setup.direction} IDEA`}
+                </Badge>
               </div>
-              <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
-                <li>Открытый интерес (OI) за 1 час вырос на +7.2% на фоне локального пробоя $64.5k.</li>
-                <li>Каскад шорт-ликвидаций на $48.9M создал сильный топливный импульс.</li>
-                <li>Цена закрепилась выше дневной SMA-50.</li>
-              </ul>
-            </div>
 
-            <div className="p-3 rounded bg-rose-950/20 border border-rose-500/20 space-y-1.5">
-              <div className="font-bold text-rose-400 font-mono flex items-center space-x-1.5">
-                <AlertOctagon className="w-3.5 h-3.5" />
-                <span>Опровергающие факторы (Opposing Evidence / Risk)</span>
+              <div className="flex items-center space-x-2 text-[10px] text-slate-500">
+                <Lock className="w-3 h-3 text-brand-green" />
+                <span className="font-mono bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
+                  {setup.auditHash}
+                </span>
+                <span>{new Date(setup.createdAt).toLocaleDateString()}</span>
               </div>
-              <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
-                <li>RSI-14 подошел к верхней границе перекупленности (68.4).</li>
-                <li>Приближение к зоне макро-сопротивления $65,500.</li>
-                <li>Возможный откат спотового спроса после закрытия сессии.</li>
-              </ul>
             </div>
-          </div>
-        </div>
 
-        {/* Setup Card 2 */}
-        <div className="bg-surface border border-surface-border rounded-lg p-5 font-mono text-xs space-y-4 shadow-lg">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
-            <div className="flex items-center space-x-3">
-              <span className="text-base font-bold text-white">SUI/USDT</span>
-              <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
-                1h Timeframe
-              </span>
-              <Badge variant="purple" size="sm">
-                SHORT SQUEEZE ALERT
-              </Badge>
+            {/* Price Targets Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
+                <div className="text-[11px] text-slate-400">Диапазон входа</div>
+                <div className="text-sm font-bold text-white mt-0.5">
+                  ${setup.entryZone[0].toLocaleString()} – ${setup.entryZone[1].toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
+                <div className="text-[11px] text-slate-400">Уровень отмены (Stop)</div>
+                <div className="text-sm font-bold text-rose-400 mt-0.5">
+                  &lt; ${setup.invalidationLevel.toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
+                <div className="text-[11px] text-slate-400">Целевые ориентиры</div>
+                <div className="text-sm font-bold text-brand-green mt-0.5">
+                  {setup.targets.map((t) => `$${t.toLocaleString()}`).join(' / ')}
+                </div>
+              </div>
+              <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
+                <div className="text-[11px] text-slate-400">Risk/Reward (R:R)</div>
+                <div className="text-sm font-bold text-amber-400 mt-0.5">
+                  1 : {setup.riskRewardRatio}
+                </div>
+              </div>
             </div>
-            <div className="text-[11px] text-slate-500">
-              Strategy: <strong>Extreme Negative Funding v2.0</strong>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-              <div className="text-[11px] text-slate-400">Наблюдаемая зона</div>
-              <div className="text-sm font-bold text-white mt-0.5">$1.58 – $1.62</div>
-            </div>
-            <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-              <div className="text-[11px] text-slate-400">Ставка финансирования</div>
-              <div className="text-sm font-bold text-purple-400 mt-0.5">-0.0185% (Отрицательная)</div>
-            </div>
-            <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-              <div className="text-[11px] text-slate-400">Дельта OI за 24h</div>
-              <div className="text-sm font-bold text-brand-green mt-0.5">+24.5% ($540M)</div>
+            {/* Evidence & Invalidation Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-sans text-xs">
+              <div className="p-3 rounded bg-emerald-950/20 border border-emerald-500/20 space-y-1.5">
+                <div className="font-bold text-emerald-400 font-mono flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Подтверждающие наблюдения (Supporting Evidence)</span>
+                </div>
+                <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
+                  {setup.confirmingFactors.map((factor, idx) => (
+                    <li key={idx}>{factor}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="p-3 rounded bg-rose-950/20 border border-rose-500/20 space-y-1.5">
+                <div className="font-bold text-rose-400 font-mono flex items-center space-x-1.5">
+                  <AlertOctagon className="w-3.5 h-3.5" />
+                  <span>Опровергающие факторы (Opposing Evidence / Risk)</span>
+                </div>
+                <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
+                  {setup.invalidationFactors.map((factor, idx) => (
+                    <li key={idx}>{factor}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
+        ))}
       </div>
     </div>
   );

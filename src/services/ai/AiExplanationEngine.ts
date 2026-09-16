@@ -74,9 +74,9 @@ export class AiExplanationEngine {
     if (context.anomalies && context.anomalies.length > 0) {
       for (const a of context.anomalies) {
         if (a.type === 'VOLUME_SPIKE') {
-          drivers.push(`Зафиксирована математическая аномалия: ${a.observation}`);
+          drivers.push(`Зафиксирован скачок объемов ликвидности (${a.metricValue})`);
         } else if (a.type === 'VOLATILITY_EXPANSION') {
-          risks.push(`Зафиксировано расширение волатильности: ${a.observation}`);
+          risks.push(`Зафиксировано расширение диапазона волатильности (${a.metricValue})`);
         }
       }
     }

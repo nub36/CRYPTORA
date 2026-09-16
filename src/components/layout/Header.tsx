@@ -74,7 +74,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="text-[10px] bg-brand-cyan/15 text-brand-cyan px-1.5 py-0.2 rounded font-mono font-semibold">
-                  v0.1
+                  v0.6
                 </span>
               </div>
               <span className="hidden xl:block text-[10px] text-slate-400 -mt-0.5 tracking-tight font-sans">
@@ -82,6 +82,11 @@ export const Header: React.FC = () => {
               </span>
             </div>
           </Link>
+
+          {/* Plan Tier Badge */}
+          <span className="hidden lg:inline-flex items-center text-[10px] font-mono px-2 py-0.5 rounded bg-brand-purple/15 text-brand-purple border border-brand-purple/30 font-bold">
+            PRO ANALYST
+          </span>
 
           {/* Demo/Live Badge Trigger */}
           {dataMode === 'live' ? (

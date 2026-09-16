@@ -69,6 +69,11 @@ export const ScreenerPage: React.FC = () => {
     setMinVolume('1000'); // > 1B
   };
 
+  const applyPresetAiSector = () => {
+    handleReset();
+    setCategory('ai');
+  };
+
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
       {/* Title */}
@@ -110,6 +115,13 @@ export const ScreenerPage: React.FC = () => {
           >
             <Sparkles className="w-3 h-3 text-brand-cyan" />
             <span>High Volume (&gt;$1B)</span>
+          </button>
+          <button
+            onClick={applyPresetAiSector}
+            className="px-2.5 py-1 bg-surface border border-surface-border hover:border-amber-400 text-slate-300 hover:text-white rounded transition-all whitespace-nowrap flex items-center space-x-1"
+          >
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span>AI Sector</span>
           </button>
           <button
             onClick={handleReset}
