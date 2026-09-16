@@ -4,6 +4,25 @@
 
 ---
 
+## [0.7.1] — 2026-09-16
+
+### Развертывание на VPS и Production Infrastructure
+- **Production Server & Gateway (`server/productionServer.js`):**
+  - Автономный легковесный Node.js production-сервер без внешних runtime-зависимостей.
+  - Высокоскоростная раздача статических файлов (`dist/`) с HTTP-кэшированием (1 год immutable для хэшированных ассетов, `no-cache` для `index.html`).
+  - Гарантированный SPA fallback для поддержки прямого перехода по URL React Router (`try_files ... index.html`).
+  - Встроенный минимальный шлюз рыночных данных (`/api/proxy/binance`, `/api/proxy/kucoin`) с 10-секундным in-memory кэшированием и эндпоинтом проверки жизнеспособности `/api/health`.
+  - Защитные заголовки: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection`, `Referrer-Policy`, строгая CSP.
+- **Nginx Configuration (`nginx/cryptora.conf`):**
+  - Шаблон виртуального хоста Nginx для проксирования на порт 3000, rate limiting (30r/s), gzip сжатия и HTTPS Let's Encrypt (Certbot).
+- **Systemd Service Unit (`systemd/cryptora.service`):**
+  - Юнит автозапуска сервиса с ограничением прав (non-root `user`), изоляцией файловой системы и политикой `Restart=always`.
+- **Операционные CLI-скрипты (`scripts/`):**
+  - Скрипты `./scripts/deploy.sh`, `./scripts/status.sh`, `./scripts/restart.sh`, `./scripts/logs.sh`, `./scripts/update.sh` для автоматизации развертывания и мониторинга.
+  - Постоянный патч `scripts/patch-playwright-jsx.cjs` в `package.json:postinstall` для стабильности E2E тестов.
+- **Документация:**
+  - Создано подробное руководство по развертыванию `docs/DEPLOYMENT.md` и обновлены `README.md`, `.env.example`, `.gitignore`.
+
 ## [0.7.0] — 2026-09-16
 
 ### Этап 17: Аналитика портфельного риска, Value at Risk и стресс-тестирование

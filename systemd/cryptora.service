@@ -1,0 +1,31 @@
+[Unit]
+Description=CRYPTORA Crypto Market Intelligence Terminal & Production Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=user
+Group=user
+WorkingDirectory=/home/user/CRYPTORA
+ExecStart=/usr/local/bin/node /home/user/CRYPTORA/server/productionServer.js
+Restart=always
+RestartSec=5s
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOST=0.0.0.0
+Environment=MARKET_DATA_PROXY_ENABLED=true
+Environment=MARKET_DATA_CACHE_TTL_MS=10000
+
+# Security Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/user/CRYPTORA/dist
+
+# Resource Limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -57,9 +57,25 @@ npm test
 # Сборка production-бандла
 npm run build
 
+# Запуск автономного production-сервера (SPA + API Gateway)
+npm run start
+
 # Запуск E2E тестов
 npm run test:e2e
 ```
+
+---
+
+## 🚀 Развертывание на VPS (Production Deployment)
+
+Инструкции по вводу в эксплуатацию, настройке Nginx, Certbot (HTTPS) и Systemd подробно описаны в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+Быстрые операционные команды:
+- `./scripts/deploy.sh` — сборка и валидация
+- `./scripts/status.sh` — мониторинг статуса сервиса и `/api/health`
+- `./scripts/restart.sh` — перезапуск службы
+- `./scripts/logs.sh` — просмотр производственных логов
+- `./scripts/update.sh` — получение обновлений из Git и бесшовный рестарт
 
 ---
 
@@ -67,9 +83,11 @@ npm run test:e2e
 
 Вся инженерная документация расположена в директории `docs/`:
 
+- [DEPLOYMENT.md](docs/DEPLOYMENT.md) — руководство по развертыванию на VPS, Nginx, Systemd и HTTPS
 - [CONCEPT.md](docs/CONCEPT.md) — видение, ценности, позиционирование
 - [MASTER_SPEC.md](docs/MASTER_SPEC.md) — мастер-спецификация платформы
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — системная архитектура и пайплайн данных
+- [SECURITY.md](docs/SECURITY.md) — модель безопасности и аудит
 - [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) — цветовая семантика, типографика, плотность
 - [DATA_SOURCES.md](docs/DATA_SOURCES.md) — аудит и верификация внешних биржевых API
 - [ROADMAP.md](docs/ROADMAP.md) — последовательная дорожная карта проекта
