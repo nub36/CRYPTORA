@@ -22,6 +22,7 @@ import {
   Network,
   Grid,
   BookOpen,
+  Calendar,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -67,6 +68,8 @@ export const Header: React.FC = () => {
     { label: 'Сигналы', path: '/signals', icon: BarChart3 },
     { label: 'Он-чейн', path: '/onchain', icon: Network },
     { label: 'Корреляции', path: '/correlations', icon: Grid },
+    { label: 'Экосистемы', path: '/ecosystem', icon: Layers },
+    { label: 'Календарь', path: '/calendar', icon: Calendar },
     { label: 'Журнал', path: '/journal', icon: BookOpen },
     { label: 'Инструменты', path: '/tools', icon: Wrench },
   ];

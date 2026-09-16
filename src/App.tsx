@@ -22,6 +22,8 @@ import { SignalsPage } from '@/pages/SignalsPage';
 import { CorrelationsPage } from '@/pages/CorrelationsPage';
 import { OnChainPage } from '@/pages/OnChainPage';
 import { JournalPage } from '@/pages/JournalPage';
+import { CalendarPage } from '@/pages/CalendarPage';
+import { EcosystemPage } from '@/pages/EcosystemPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 export const App: React.FC = () => {
@@ -50,6 +52,8 @@ export const App: React.FC = () => {
           <Route path="/correlations" element={<CorrelationsPage />} />
           <Route path="/onchain" element={<OnChainPage />} />
           <Route path="/journal" element={<JournalPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/ecosystem" element={<EcosystemPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

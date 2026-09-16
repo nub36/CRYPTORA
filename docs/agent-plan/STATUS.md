@@ -12,6 +12,12 @@
 ## 1. Что сделано
 
 ### Новые специализированные разделы аналитического терминала
+- **Макро-календарь и катализаторы (`src/pages/CalendarPage.tsx` & `src/services/analytics/CalendarService.ts`):**
+  - Трекинг заседаний ФРС США (FOMC), публикации инфляции CPI и Non-Farm Payrolls (NFP), хардфорков сетей и крупных cliff-разблокировок токенов с прогнозами и предыдущими значениями.
+  - Фильтрация по уровням важности (HIGH/MEDIUM) и категориям с выделением активов в зоне риска волатильности.
+- **Экосистемы и Layer-2 сети (`src/pages/EcosystemPage.tsx` & `src/services/analytics/EcosystemService.ts`):**
+  - Анализ Total Value Locked (TVL), суточных доходов от комиссий сетей, реальной пропускной способности (TPS), активных адресов и объемов стейблкоинов для сетей Ethereum, Solana, Arbitrum, Base, Optimism, Polygon, Avalanche.
+  - Расчет доли L2-сетей в глобальном TVL.
 - **Матрица корреляций и Бета (`src/pages/CorrelationsPage.tsx` & `src/services/analytics/CorrelationEngine.ts`):**
   - Расчет коэффициента корреляции Пирсона между топовыми криптовалютами и макро-бенчмарками (S&P 500, Gold, DXY).
   - Расчет коэффициента Beta относительно Bitcoin ($\beta = \text{Cov}(R_i, R_{\text{BTC}}) / \text{Var}(R_{\text{BTC}})$) для выявления высокобетовых и защитных активов.
@@ -81,7 +87,8 @@
 
 ## 3. Результаты тестов (Все гейты пройдены со 100% успехом)
 - **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (`tsc --noEmit`).
-- **Unit Tests (`npm test`):** PASSED — 21 тестовый люкс, **130 тестов успешно пройдено**:
+- **Unit Tests (`npm test`):** PASSED — 22 тестовых люкса, **134 теста успешно пройдено**:
+  - `tests/unit/calendarAndEcosystem.test.ts` (4 теста: макро-календарь, фильтры событий, метрики экосистем L1/L2)
   - `tests/unit/extendedAnalytics.test.ts` (5 тестов: корреляция Пирсона, бета к BTC, он-чейн метрики, журнал сделок)
   - `tests/unit/calculators.test.ts` (10 тестов: размер позиции, PnL/ROE, цена ликвидации, фандинг, DCA)
   - `tests/unit/liquidations.test.ts` (5 тестов: forceOrder парсинг, 24h агрегаты, кластеры риска)
@@ -104,8 +111,8 @@
   - `tests/unit/formatters.test.ts` (10 тестов)
   - `tests/unit/sorting.test.ts` (3 теста)
 - **Build (`npm run build`):** PASSED — чистая production-сборка (`tsc -b && vite build`).
-- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **34 сквозных теста** (`@playwright/test`):
-  - 17 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
+- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **36 сквозных тестов** (`@playwright/test`):
+  - 19 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
   - 11 тестов пользовательских сценариев (`e2e/flows.spec.tsx`)
   - 6 адаптивных смоук-тестов (`e2e/responsive.spec.tsx` для 390, 768, 1024, 1440, 1920px)
 
