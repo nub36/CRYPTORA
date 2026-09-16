@@ -70,7 +70,8 @@
 
 ## 3. Результаты тестов (Все гейты пройдены со 100% успехом)
 - **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (`tsc --noEmit`).
-- **Unit Tests (`npm test`):** PASSED — 20 тестовых люксов, **121 тест успешно пройден**:
+- **Unit Tests (`npm test`):** PASSED — 20 тестовых люксов, **125 тестов успешно пройдено**:
+  - `tests/unit/calculators.test.ts` (10 тестов: размер позиции, PnL/ROE, цена ликвидации, фандинг, DCA)
   - `tests/unit/liquidations.test.ts` (5 тестов: forceOrder парсинг, 24h агрегаты, кластеры риска)
   - `tests/unit/screener.test.ts` (6 тестов: мультифакторная фильтрация, пресеты)
   - `tests/unit/alerts.test.ts` (4 теста: триггеры, кулдаун, каналы доставки)
@@ -86,7 +87,6 @@
   - `tests/unit/realtimeWs.test.ts` (5 тестов)
   - `tests/unit/eventBus.test.ts` (5 тестов)
   - `tests/unit/anomalyEngine.test.ts` (5 тестов)
-  - `tests/unit/calculators.test.ts` (6 тестов)
   - `tests/unit/dataProvider.test.ts` (9 тестов)
   - `tests/unit/assetRegistry.test.ts` (7 тестов)
   - `tests/unit/formatters.test.ts` (10 тестов)
