@@ -2,14 +2,22 @@
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
 > **Последнее обновление:** 2026-09-16  
-> **Текущая версия:** v0.6.0  
-> **Текущий этап:** Этапы 6, 8, 10, 12, 14, 15, 16 успешно реализованы и верифицированы.  
+> **Текущая версия:** v0.7.0  
+> **Текущий этап:** Этап 17 (Portfolio Risk, VaR & Stress Testing) успешно завершен.  
 > ⚠️ **КЛЮЧЕВОЙ ИНВАРИАНТ:** **CRYPTORA DOES NOT EXECUTE TRADES.**  
 > Терминал спроектирован исключительно для сбора и анализа данных (Crypto Market Intelligence Terminal). Торговый функционал, исполнение ордеров, торговые боты, автотрейдинг, кастоди и торговые API-ключи полностью и бесповоротно исключены из архитектуры и дорожной карты платформы.
 
 ---
 
 ## 1. Что сделано
+
+### Этап 17: Аналитика портфельного риска и стресс-тестирование (`src/services/portfolio/PortfolioRiskEngine.ts`)
+- Математический расчет параметрического **1-Day Value at Risk (VaR 95% и 99%)**:
+  $$\text{VaR}_{95\%} = 1.65 \cdot \sigma_{\text{portfolio}} \cdot V_{\text{portfolio}}$$
+- Расчет взвешенной беты портфеля к Bitcoin: $\beta_{\text{portfolio}} = \sum w_i \beta_i$.
+- Расчет индекса концентрации Херфиндаля-Хиршмана (HHI) с классификацией риска диверсификации.
+- Симулятор исторического стресс-тестирования портфеля по 4 экстремальным сценариям (FTX/Luna Cascade, March 2020 Liquidity Crunch, Fed Hawkish Tightening, Altseason Expansion).
+- Страница `/portfolio` (`src/pages/PortfolioRiskPage.tsx`) с интерактивным аллокатором, пресетами и non-custodial юридическим предупреждением.
 
 ### Новые специализированные разделы аналитического терминала
 - **Макро-календарь и катализаторы (`src/pages/CalendarPage.tsx` & `src/services/analytics/CalendarService.ts`):**
@@ -87,7 +95,8 @@
 
 ## 3. Результаты тестов (Все гейты пройдены со 100% успехом)
 - **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (`tsc --noEmit`).
-- **Unit Tests (`npm test`):** PASSED — 22 тестовых люкса, **134 теста успешно пройдено**:
+- **Unit Tests (`npm test`):** PASSED — 23 тестовых люкса, **139 тестов успешно пройдено**:
+  - `tests/unit/portfolioRisk.test.ts` (5 тестов: расчет беты портфеля, HHI концентрация, 1-day VaR 95/99%, стресс-тесты)
   - `tests/unit/calendarAndEcosystem.test.ts` (4 теста: макро-календарь, фильтры событий, метрики экосистем L1/L2)
   - `tests/unit/extendedAnalytics.test.ts` (5 тестов: корреляция Пирсона, бета к BTC, он-чейн метрики, журнал сделок)
   - `tests/unit/calculators.test.ts` (10 тестов: размер позиции, PnL/ROE, цена ликвидации, фандинг, DCA)
@@ -110,11 +119,21 @@
   - `tests/unit/assetRegistry.test.ts` (7 тестов)
   - `tests/unit/formatters.test.ts` (10 тестов)
   - `tests/unit/sorting.test.ts` (3 теста)
-- **Build (`npm run build`):** PASSED — чистая production-сборка (`tsc -b && vite build`).
-- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **36 сквозных тестов** (`@playwright/test`):
-  - 19 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
+- **Build (`npm run build`):** PASSED — чистая production-сборка (`tsc -b && vite build`):
+  - `dist/index.html` (1.48 kB)
+  - `dist/assets/index-Dbv5YrpL.css` (35.65 kB)
+  - `dist/assets/index-Bq7Q_KVS.js` (733.71 kB)
+- **Playwright E2E Tests (`npm run test:e2e`):** PASSED — **37 сквозных тестов** (`@playwright/test`):
+  - 20 тестов сетевых маршрутов (`e2e/routes.spec.ts`)
   - 11 тестов пользовательских сценариев (`e2e/flows.spec.tsx`)
   - 6 адаптивных смоук-тестов (`e2e/responsive.spec.tsx` для 390, 768, 1024, 1440, 1920px)
+
+---
+
+## 4. Версия и Git состояние
+- **Версия:** `0.7.0`
+- **Ветка:** `arena/01a0a67d-cryptora`
+- **Инвариант концепции:** `CRYPTORA DOES NOT EXECUTE TRADES`
 
 ---
 

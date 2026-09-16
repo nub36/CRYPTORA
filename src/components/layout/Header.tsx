@@ -23,6 +23,7 @@ import {
   Grid,
   BookOpen,
   Calendar,
+  PieChart,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -70,6 +71,7 @@ export const Header: React.FC = () => {
     { label: 'Корреляции', path: '/correlations', icon: Grid },
     { label: 'Экосистемы', path: '/ecosystem', icon: Layers },
     { label: 'Календарь', path: '/calendar', icon: Calendar },
+    { label: 'Портфель', path: '/portfolio', icon: PieChart },
     { label: 'Журнал', path: '/journal', icon: BookOpen },
     { label: 'Инструменты', path: '/tools', icon: Wrench },
   ];
