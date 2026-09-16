@@ -1,6 +1,11 @@
 import { EventBus } from './EventBus';
 import { AnomalyEngine } from './AnomalyEngine';
 import { BinanceWebSocketClient, BinanceWebSocketOptions } from './BinanceWebSocketClient';
+import {
+  BinanceFuturesLiquidationStream,
+  LiquidationStreamOptions,
+} from './BinanceFuturesLiquidationStream';
+import { LiquidationPipeline, LiquidationStreamState } from '../liquidations/LiquidationPipeline';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
 import { RadarEvent } from '@/types/market';
 
@@ -8,6 +13,7 @@ export interface RealtimeFeedManagerOptions {
   throttleIntervalMs?: number;
   anomalyWindowSize?: number;
   wsOptions?: BinanceWebSocketOptions;
+  liquidationStreamOptions?: LiquidationStreamOptions;
 }
 
 export class RealtimeFeedManager {
@@ -16,6 +22,8 @@ export class RealtimeFeedManager {
   public readonly eventBus: EventBus;
   public readonly anomalyEngine: AnomalyEngine;
   public readonly binanceClient: BinanceWebSocketClient;
+  /** Транспорт фактических ликвидаций (Binance USD-M `!forceOrder@arr`). */
+  public readonly liquidationStream: BinanceFuturesLiquidationStream;
 
   private latestPriceMap: Map<string, number> = new Map();
   private isAutoStart = false;
@@ -34,6 +42,13 @@ export class RealtimeFeedManager {
       this.eventBus,
       this.anomalyEngine,
       options.wsOptions
+    );
+
+    // Транспорт фактических ликвидаций пишет напрямую в конвейер ликвидаций.
+    // Никаких синтетических «дозаполнений»: если поток молчит, срез остаётся пустым.
+    this.liquidationStream = new BinanceFuturesLiquidationStream(
+      LiquidationPipeline.getInstance(),
+      options.liquidationStreamOptions
     );
 
     // Track latest prices in memory
@@ -56,11 +71,17 @@ export class RealtimeFeedManager {
   public connect(): void {
     this.isAutoStart = true;
     this.binanceClient.connect();
+    this.liquidationStream.connect();
   }
 
   public disconnect(): void {
     this.isAutoStart = false;
     this.binanceClient.disconnect();
+    this.liquidationStream.disconnect();
+  }
+
+  public getLiquidationStreamState(): LiquidationStreamState {
+    return this.liquidationStream.getState();
   }
 
   public getConnectionState(): RealtimeConnectionState {
@@ -98,6 +119,7 @@ export class RealtimeFeedManager {
 
   public destroy(): void {
     this.disconnect();
+    this.liquidationStream.disconnect();
     this.eventBus.destroy();
     this.anomalyEngine.clear();
     this.latestPriceMap.clear();

@@ -122,11 +122,32 @@ export const LiquidationEventSchema = z.object({
 
 export type LiquidationEvent = z.infer<typeof LiquidationEventSchema>;
 
+/**
+ * Достоверность среза ликвидаций.
+ * Жёсткое требование проекта: агрегаты никогда не подставляются «оценочными
+ * заглушками». Пока фактических событий нет, терминал обязан честно сообщить
+ * об ожидании потока, а не показывать выдуманные миллионы.
+ */
+export const LiquidationDataStatusSchema = z.enum([
+  'LIVE_STREAM', // поток фактических событий биржи подключен и события поступают
+  'AWAITING_STREAM', // поток подключен, но фактических событий ещё не поступало
+  'UNAVAILABLE', // поток недоступен (нет транспорта/сети/биржа недоступна)
+  'DEMO', // демонстрационный детерминированный набор
+]);
+export type LiquidationDataStatus = z.infer<typeof LiquidationDataStatusSchema>;
+
 export const LiquidationDataSchema = z.object({
   totalLong24h: z.number(),
   totalShort24h: z.number(),
   total24h: z.number(),
-  largestEvent: LiquidationEventSchema,
+  /** Крупнейшее фактическое событие за 24ч; null — фактических событий не было. */
+  largestEvent: LiquidationEventSchema.nullable(),
+  /** Количество фактических событий в окне 24ч (0 — данных нет). */
+  eventsCount24h: z.number().default(0),
+  /** Время последнего фактического события (ISO UTC); null — событий не было. */
+  lastEventAt: z.string().nullable().default(null),
+  /** Статус источника фактических ликвидаций. */
+  dataStatus: LiquidationDataStatusSchema.default('DEMO'),
   recentEvents: z.array(LiquidationEventSchema),
   assetBreakdown: z.array(
     z.object({

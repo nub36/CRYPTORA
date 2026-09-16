@@ -717,6 +717,9 @@ export const DEMO_LIQUIDATIONS: LiquidationData = {
   totalLong24h: 38400000,
   totalShort24h: 112800000,
   total24h: 151200000,
+  eventsCount24h: 6,
+  lastEventAt: '2026-09-15T11:58:12Z',
+  dataStatus: 'DEMO',
   largestEvent: {
     id: 'liq-whale-01',
     timestamp: '2026-09-15T10:42:15Z',

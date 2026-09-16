@@ -9,11 +9,23 @@
 
 | Биржа / Провайдер | Рынки | Спот REST/WS | Фьючерсы REST/WS | Open Interest | Funding Rates | Фактические ликвидации | Документация / Статус |
 |---|---|---|---|---|---|---|---|
-| **Binance** | Spot + USDⓈ-M + COIN-M | REST v3: Ticker 24hr, Klines, ExchangeInfo (Подтверждено для Этапа 2) | Futures v1/v2 REST & WS (`REQUIRES VERIFICATION`) | REST / WS (`REQUIRES VERIFICATION`) | 8h интервалы (`REQUIRES VERIFICATION`) | `forceOrder` WS stream (`REQUIRES VERIFICATION`) | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs) |
+| **Binance** | Spot + USDⓈ-M + COIN-M | REST v3: Ticker 24hr, Klines, ExchangeInfo (Подтверждено для Этапа 2) | Futures v1/v2 REST & WS (`REQUIRES VERIFICATION`) | REST / WS (`REQUIRES VERIFICATION`) | 8h интервалы (`REQUIRES VERIFICATION`) | `forceOrder` WS stream — **подключено (v0.8.2):** `wss://fstream.binance.com/ws/!forceOrder@arr`, публичный поток, только чтение | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs) |
 | **KuCoin** | Spot + Margin + Futures | REST v1/v2: Stats 24h, allTickers, Candles, Symbols (Подтверждено для Этапа 2) | Futures REST/WS (`REQUIRES VERIFICATION`) | REST (`REQUIRES VERIFICATION`) | Фьючерсный фандинг (`REQUIRES VERIFICATION`) | WebSocket stream (`REQUIRES VERIFICATION`) | [KuCoin Spot Docs](https://www.kucoin.com/docs-new/rest/spot-trading/market-data/) |
 | **Bybit** | Spot + Linear / Inverse | V5 REST, V5 WS (`REQUIRES VERIFICATION`) | V5 Linear / Inverse (`REQUIRES VERIFICATION`) | V5 Market (`REQUIRES VERIFICATION`) | Текущий и прогноз (`REQUIRES VERIFICATION`) | V5 execution / liquidation streams (`REQUIRES VERIFICATION`) | [Bybit V5 Docs](https://bybit-exchange.github.io/docs/v5/intro) / `REQUIRES VERIFICATION` |
 | **OKX** | Spot + Margin + Futures + Swaps | V5 REST, Public WS (`REQUIRES VERIFICATION`) | V5 Futures / Swap (`REQUIRES VERIFICATION`) | Public Data REST/WS (`REQUIRES VERIFICATION`)| 8h / 4h / 1h по рынкам (`REQUIRES VERIFICATION`) | Public Liquidation Orders (`REQUIRES VERIFICATION`) | [OKX V5 Docs](https://www.okx.com/docs-v5/en/) / `REQUIRES VERIFICATION` |
 | **Coinbase** | Spot + Institutional Futures | Advanced Trade REST/WS (`REQUIRES VERIFICATION`) | Derivatives (ограничено) (`REQUIRES VERIFICATION`) | Ограничено (`REQUIRES VERIFICATION`) | N/A (в основном спот) | N/A | [Coinbase Developer](https://docs.cdp.coinbase.com/) / `REQUIRES VERIFICATION` |
+
+### 1.1. Реализованные потоки фактических данных (v0.8.2)
+
+| Источник | Транспорт | Статус в коде | Примечание |
+| --- | --- | --- | --- |
+| Binance USD-M Futures — фактические ликвидации | WS `wss://fstream.binance.com/ws/!forceOrder@arr` | `src/services/realtime/BinanceFuturesLiquidationStream.ts` | Только чтение публичных рыночных данных, без API-ключей. Публичные market-стримы Binance не требуют торговых прав. |
+| Binance Spot — котировки, сделки, стакан | WS `wss://stream.binance.com:9443/stream` | `src/services/realtime/BinanceWebSocketClient.ts` | Подписки `@ticker`, `@trade`, `@depth20@100ms`. |
+| Binance Futures — метка цены, открытый интерес, фандинг | REST Futures v1/v2 | `src/services/data/adapters/*`, `LiveMarketDataProvider` | Используется как вход расчетной модели кластеров ликвидаций. |
+
+**Не подключено (и не подменяется оценками):** потоки фактических ликвидаций Bybit V5 (`allLiquidation`) и
+OKX (liquidation-orders). До их подключения разбивка ликвидаций по биржам отражает только те источники,
+которые действительно отдали события.
 
 ---
 

@@ -211,11 +211,11 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     fireEvent.click(menuBtn);
   });
 
-  test('Header инвариант: бейдж версии обновлён до v0.8.1', async () => {
+  test('Header инвариант: бейдж версии обновлён до v0.8.2', async () => {
     setWindowDimensions(1920, 1080);
     const { container } = renderApp('/');
     const header = container.querySelector('header') as HTMLElement;
-    expect(header.textContent).toContain('v0.8.1');
+    expect(header.textContent).toContain('v0.8.2');
   });
 
   test('Viewports layout smoke check: 390, 768, 1024, 1280, 1366, 1440, 1920', async () => {

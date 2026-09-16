@@ -6,20 +6,66 @@ import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline
 import { Flame, ShieldAlert, Clock, Layers } from 'lucide-react';
 
 export const LiquidationsPage: React.FC = () => {
-  const { provider, dataMode } = useMarketData();
+  const { provider } = useMarketData();
   const [data, setData] = useState<LiquidationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [clusterInput, setClusterInput] = useState<{
+    markPrice: number;
+    openInterestUsd: number;
+    isDemo: boolean;
+  } | null>(null);
 
   useEffect(() => {
-    provider.getLiquidations().then((res) => {
-      setData(res);
-      setLoading(false);
+    let isActive = true;
+    const load = () => {
+      provider.getLiquidations().then((res) => {
+        if (!isActive) return;
+        setData(res);
+        setLoading(false);
+      });
+    };
+
+    load();
+    // Фактический поток ликвидаций обновляется непрерывно: срез перечитывается,
+    // пока страница открыта, иначе агрегаты «замерзают» на первом рендере.
+    const timer = setInterval(load, 5000);
+
+    return () => {
+      isActive = false;
+      clearInterval(timer);
+    };
+  }, [provider]);
+
+  // Входные метрики расчётной модели берутся из фактического источника (BTC-перпетуал),
+  // а не из зашитых констант. Нет метрик — нет модели: подставлять «примерные» числа нельзя.
+  useEffect(() => {
+    let isActive = true;
+    provider.getFuturesList().then((futures) => {
+      if (!isActive) return;
+      const btc = futures.find((f) => f.symbol.toUpperCase().startsWith('BTC'));
+      if (btc && btc.markPrice > 0 && btc.openInterest > 0) {
+        // Провенанс входных метрик сохраняется: демо-входы нельзя выдавать за фактический рынок.
+        setClusterInput({
+          markPrice: btc.markPrice,
+          openInterestUsd: btc.openInterest,
+          isDemo: btc.isDemo,
+        });
+      } else {
+        setClusterInput(null);
+      }
     });
+    return () => {
+      isActive = false;
+    };
   }, [provider]);
 
   const estimatedClusters = useMemo(() => {
-    return LiquidationPipeline.calculateEstimatedClusters(65000, 15000000000);
-  }, []);
+    if (!clusterInput) return [];
+    return LiquidationPipeline.calculateEstimatedClusters(
+      clusterInput.markPrice,
+      clusterInput.openInterestUsd
+    );
+  }, [clusterInput]);
 
   if (loading || !data) {
     return (
@@ -30,8 +76,10 @@ export const LiquidationsPage: React.FC = () => {
     );
   }
 
-  const longPct = ((data.totalLong24h / data.total24h) * 100).toFixed(1);
-  const shortPct = ((data.totalShort24h / data.total24h) * 100).toFixed(1);
+  const longPct = data.total24h > 0 ? ((data.totalLong24h / data.total24h) * 100).toFixed(1) : '0.0';
+  const shortPct = data.total24h > 0 ? ((data.totalShort24h / data.total24h) * 100).toFixed(1) : '0.0';
+  // Масштаб оси баров выводится из фактических данных, а не из зашитой константы
+  const timelineMax = Math.max(...data.timeline.map((b) => Math.max(b.longUsd, b.shortUsd)), 0);
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5 font-mono">
@@ -42,21 +90,34 @@ export const LiquidationsPage: React.FC = () => {
             <h1 className="text-lg sm:text-xl font-bold text-white tracking-wide">
               КАРТА И ПОТОК ЛИКВИДАЦИЙ (LIQUIDATIONS)
             </h1>
-            {dataMode === 'live' ? (
+            {data.dataStatus === 'LIVE_STREAM' && (
               <span className="text-[10px] font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
                 LIVE STREAM (BINANCE FUTURES)
               </span>
-            ) : (
+            )}
+            {(data.dataStatus === 'AWAITING_STREAM' || data.dataStatus === 'UNAVAILABLE') && (
+              <span className="text-[10px] font-semibold text-slate-300 bg-slate-500/10 px-2.5 py-0.5 rounded-full border border-slate-400/30">
+                {data.dataStatus === 'AWAITING_STREAM'
+                  ? 'ПОТОК ПОДКЛЮЧЕН · ОЖИДАНИЕ СОБЫТИЙ'
+                  : 'ПОТОК ЛИКВИДАЦИЙ НЕДОСТУПЕН'}
+              </span>
+            )}
+            {data.dataStatus === 'DEMO' && (
               <span className="text-[10px] font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 ДЕМОНСТРАЦИОННЫЙ СРЕЗ
               </span>
             )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            {dataMode === 'live'
-              ? 'Мониторинг принудительно закрытых маржинальных позиций по биржам в реальном времени.'
-              : 'Демонстрационный мониторинг принудительно закрытых маржинальных позиций по биржам.'}
+            {data.dataStatus === 'LIVE_STREAM' &&
+              'Фактические принудительно закрытые позиции Binance USD-M Futures по публичному потоку forceOrder.'}
+            {data.dataStatus === 'AWAITING_STREAM' &&
+              'Поток фактических ликвидаций подключен. Агрегаты появятся после первых событий — оценочные числа не подставляются.'}
+            {data.dataStatus === 'UNAVAILABLE' &&
+              'Фактический поток ликвидаций недоступен из текущей сети. Терминал не отображает оценочные суммы вместо реальных данных.'}
+            {data.dataStatus === 'DEMO' &&
+              'Демонстрационный мониторинг принудительно закрытых маржинальных позиций по биржам.'}
           </p>
         </div>
 
@@ -85,7 +146,9 @@ export const LiquidationsPage: React.FC = () => {
           <div className="text-2xl font-black text-emerald-400 mt-1 tabular-nums">
             {formatCurrency(data.totalLong24h, { compact: true })}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">{longPct}% от общего объема</div>
+          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+            {data.total24h > 0 ? `${longPct}% от общего объема` : 'Нет фактических событий за 24ч'}
+          </div>
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
@@ -93,21 +156,33 @@ export const LiquidationsPage: React.FC = () => {
           <div className="text-2xl font-black text-rose-400 mt-1 tabular-nums">
             {formatCurrency(data.totalShort24h, { compact: true })}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">{shortPct}% от общего объема (Шорт-сквиз)</div>
+          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+            {data.total24h > 0 ? `${shortPct}% от общего объема (Шорт-сквиз)` : 'Нет фактических событий за 24ч'}
+          </div>
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
           <div className="text-xs text-slate-400 uppercase tracking-wider">Крупнейшее единичное событие</div>
-          <div className="text-2xl font-black text-white mt-1 tabular-nums">
-            {formatCurrency(data.largestEvent.amountUsd, { compact: true })}
-          </div>
-          <div className="text-[11px] text-rose-300 mt-0.5">
-            {data.largestEvent.symbol} ({data.largestEvent.side}) на {data.largestEvent.exchange}
-          </div>
+          {data.largestEvent ? (
+            <>
+              <div className="text-2xl font-black text-white mt-1 tabular-nums">
+                {formatCurrency(data.largestEvent.amountUsd, { compact: true })}
+              </div>
+              <div className="text-[11px] text-rose-300 mt-0.5">
+                {data.largestEvent.symbol} ({data.largestEvent.side}) на {data.largestEvent.exchange}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-2xl font-black text-slate-500 mt-1 tabular-nums">—</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Фактических событий ещё не поступало</div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Progress Bar */}
+      {/* Progress Bar: только при наличии фактических событий */}
+      {data.total24h > 0 && (
       <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
         <div className="flex justify-between text-xs mb-2">
           <span className="text-emerald-400 font-bold tabular-nums">Longs: {longPct}%</span>
@@ -118,9 +193,10 @@ export const LiquidationsPage: React.FC = () => {
           <div className="bg-rose-500 h-full" style={{ width: `${shortPct}%` }} />
         </div>
       </div>
+      )}
 
       {/* Timeline & Breakdowns Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:items-start">
         {/* Timeline Visualization (8 cols) */}
         <div className="lg:col-span-8 bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3.5 shadow-panel">
           <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
@@ -131,12 +207,18 @@ export const LiquidationsPage: React.FC = () => {
             <span className="text-[10px] text-slate-400">UTC Bars</span>
           </div>
 
-          {/* Bar Chart Simulation */}
-          <div className="h-56 flex items-end justify-between pt-6 px-2 gap-2">
+          {/* Bar Chart: фактическое распределение событий по 3-часовым барам */}
+          {timelineMax === 0 && (
+            <div className="text-xs text-slate-500 font-sans py-2">
+              {data.dataStatus === 'AWAITING_STREAM'
+                ? 'Поток подключен, фактических событий за 24ч пока нет. Хронология заполнится автоматически.'
+                : 'Фактический поток ликвидаций недоступен — выдуманные бары не отображаются.'}
+            </div>
+          )}
+          <div className={`h-56 flex items-end justify-between pt-6 px-2 gap-2 ${timelineMax === 0 ? 'hidden' : ''}`}>
             {data.timeline.map((bar, idx) => {
-              const maxBar = 35000000;
-              const longHeight = (bar.longUsd / maxBar) * 160;
-              const shortHeight = (bar.shortUsd / maxBar) * 160;
+              const longHeight = (bar.longUsd / timelineMax) * 160;
+              const shortHeight = (bar.shortUsd / timelineMax) * 160;
 
               return (
                 <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
@@ -181,6 +263,11 @@ export const LiquidationsPage: React.FC = () => {
             <div className="text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-white/[0.06]">
               Распределение по биржам
             </div>
+            {data.exchangeBreakdown.length === 0 && (
+              <div className="text-xs text-slate-500 font-sans py-2">
+                Разбивка появится после первых фактических событий потока.
+              </div>
+            )}
             <div className="space-y-2.5 text-xs">
               {data.exchangeBreakdown.map((ex) => (
                 <div key={ex.exchange} className="space-y-1">
@@ -206,6 +293,11 @@ export const LiquidationsPage: React.FC = () => {
             <div className="text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-white/[0.06]">
               Топ активов по ликвидациям
             </div>
+            {data.assetBreakdown.length === 0 && (
+              <div className="text-xs text-slate-500 font-sans py-2">
+                Данных по активам пока нет — суммы не подставляются оценочно.
+              </div>
+            )}
             <div className="space-y-1.5 text-xs">
               {data.assetBreakdown.slice(0, 5).map((ab) => (
                 <div
@@ -238,13 +330,23 @@ export const LiquidationsPage: React.FC = () => {
             </span>
           </div>
           <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded-full border border-cyan-500/30">
-            ESTIMATED SIMULATION
+            MODEL / ESTIMATED
           </span>
         </div>
 
         <p className="text-xs text-slate-400 font-sans leading-relaxed">
-          Теоретические ценовые уровни принудительного закрытия позиций с плечами 10x–100x относительно текущей базовой цены $65,000. Не является фактическими ордерами в биржевом стакане.
+          {clusterInput
+            ? clusterInput.isDemo
+              ? `Расчётные ценовые уровни принудительного закрытия позиций с плечами 10x–100x, построенные на демонстрационных входных метриках BTC (метка ${formatCurrency(clusterInput.markPrice)}, открытый интерес ${formatCurrency(clusterInput.openInterestUsd, { compact: true })}) — фактический источник фьючерсных метрик недоступен. Это модель, а не фактический ордер биржевого стакана.`
+              : `Расчётные ценовые уровни принудительного закрытия позиций с плечами 10x–100x, построенные от фактической метки BTC ${formatCurrency(clusterInput.markPrice)} и открытого интереса ${formatCurrency(clusterInput.openInterestUsd, { compact: true })}. Это модель, а не фактический ордер биржевого стакана.`
+            : 'Расчётная модель недоступна: нет входных метрик (метка цены и открытый интерес) по BTC. Модель не строится на приблизительных числах.'}
         </p>
+
+        {!clusterInput && (
+          <div className="text-xs text-slate-500 font-sans py-2">
+            Значения появятся автоматически при получении метрик фьючерсного рынка.
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {estimatedClusters.map((c, idx) => (
@@ -279,18 +381,18 @@ export const LiquidationsPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Flame className="w-4 h-4 text-rose-500" />
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              {dataMode === 'live'
-                ? 'Журнал фактических событий ликвидаций (Live Event Log)'
-                : 'Демонстрационный журнал событий ликвидаций (Demo Event Log)'}
+              {data.dataStatus === 'DEMO'
+                ? 'Демонстрационный журнал событий ликвидаций (Demo Event Log)'
+                : 'Журнал фактических событий ликвидаций (Actual Event Log)'}
             </span>
           </div>
-          {dataMode === 'live' ? (
-            <span className="text-[10px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
-              BINANCE FUTURES LIVE
-            </span>
-          ) : (
+          {data.dataStatus === 'DEMO' ? (
             <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
               DEMO DATASET
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30">
+              BINANCE FUTURES forceOrder@arr
             </span>
           )}
         </div>
@@ -308,6 +410,15 @@ export const LiquidationsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-border">
+              {data.recentEvents.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-slate-500 font-sans">
+                    {data.dataStatus === 'AWAITING_STREAM'
+                      ? 'Журнал пуст: поток подключен, фактические события принудительного закрытия ещё не поступали.'
+                      : 'Журнал пуст: фактический поток ликвидаций недоступен. Плейсхолдеры-события не подставляются.'}
+                  </td>
+                </tr>
+              )}
               {data.recentEvents.map((event) => (
                 <tr key={event.id} className="hover:bg-surface-hover">
                   <td className="py-2 text-slate-400">{formatTimestamp(event.timestamp)}</td>

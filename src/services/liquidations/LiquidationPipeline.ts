@@ -1,28 +1,45 @@
-import { LiquidationData, LiquidationEvent } from '@/types/market';
+import { LiquidationData, LiquidationEvent, LiquidationDataStatus } from '@/types/market';
 import { getAssetByBinanceSymbol } from '../data/registry/assetRegistry';
 
-export interface LiquidationCluster {
-  priceLevel: number;
-  estimatedVolumeUsd: number;
+/** Статус транспорта фактических ликвидаций (отдельно от статуса данных). */
+export type LiquidationStreamState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'unavailable';
+
+const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
+const TIMELINE_BUCKETS = 8;
+const BUCKET_MS = WINDOW_24H_MS / TIMELINE_BUCKETS;
+
+export interface EstimatedLiquidationCluster {
+  leverageTier: number;
   side: 'LONG' | 'SHORT';
-  leverageTier: number; // 10x, 25x, 50x, 100x
+  priceLevel: number;
   distancePct: number;
+  estimatedVolumeUsd: number;
 }
 
+/**
+ * LiquidationPipeline — конвейер ФАКТИЧЕСКИХ событий принудительного закрытия.
+ * ---------------------------------------------------------------------------
+ * ⚠️ Инварианты честности данных (RULES.md §1, §3; AGENTS.md §3.1):
+ *  1. Конвейер не генерирует и не «подставляет» оценочные агрегаты.
+ *     Пока фактических событий нет — итоги равны нулю, `largestEvent === null`,
+ *     разбивки пусты, а `dataStatus` честно сообщает `AWAITING_STREAM`/`UNAVAILABLE`.
+ *  2. Никаких `Math.random()`: идентификатор события детерминированно выводится
+ *     из полей биржевого payload.
+ *  3. Каждое событие помечается источником (`isDemo: false` + exchange) только
+ *     если оно действительно пришло из биржевого WebSocket-потока.
+ *  4. Окно агрегации — скользящие 24 часа от фактического времени событий;
+ *     устаревшие события вычищаются.
+ *
+ * Расчётная модель уровней (`calculateEstimatedClusters`) вынесена отдельно и
+ * обязана маркироваться в UI как `MODEL / ESTIMATED` — она никогда не смешивается
+ * с фактическими событиями.
+ */
 export class LiquidationPipeline {
   private static instance: LiquidationPipeline | null = null;
 
-  private actualEvents: LiquidationEvent[] = [];
-  private maxStoredEvents = 200;
-  private totalLong24h = 0;
-  private totalShort24h = 0;
-  private largestEvent: LiquidationEvent | null = null;
-
-  private assetTotals: Map<string, { longUsd: number; shortUsd: number }> = new Map();
-
-  constructor() {
-    this.seedInitialLiveBuffer();
-  }
+  private events: LiquidationEvent[] = [];
+  private maxStoredEvents = 500;
+  private streamState: LiquidationStreamState = 'idle';
 
   public static getInstance(): LiquidationPipeline {
     if (!LiquidationPipeline.instance) {
@@ -31,76 +48,76 @@ export class LiquidationPipeline {
     return LiquidationPipeline.instance;
   }
 
-  private seedInitialLiveBuffer(): void {
-    // Seed baseline historical events so UI is populated immediately
-    const baselineEvents: LiquidationEvent[] = [
-      {
-        id: 'liq-init-1',
-        timestamp: new Date(Date.now() - 120000).toISOString(),
-        symbol: 'BTC',
-        side: 'LONG',
-        amountUsd: 284500,
-        price: 64920,
-        exchange: 'Binance Futures',
-        isDemo: false,
-      },
-      {
-        id: 'liq-init-2',
-        timestamp: new Date(Date.now() - 360000).toISOString(),
-        symbol: 'ETH',
-        side: 'SHORT',
-        amountUsd: 145000,
-        price: 3495,
-        exchange: 'Binance Futures',
-        isDemo: false,
-      },
-      {
-        id: 'liq-init-3',
-        timestamp: new Date(Date.now() - 720000).toISOString(),
-        symbol: 'SOL',
-        side: 'LONG',
-        amountUsd: 98000,
-        price: 151.2,
-        exchange: 'Binance Futures',
-        isDemo: false,
-      },
-    ];
+  /** Только для тестов: сброс singleton-состояния. */
+  public static resetInstance(): void {
+    LiquidationPipeline.instance = null;
+  }
 
-    for (const ev of baselineEvents) {
-      this.recordEvent(ev);
+  /* ------------------------------------------------------------------ */
+  /* Состояние транспорта                                                */
+  /* ------------------------------------------------------------------ */
+
+  public setStreamState(state: LiquidationStreamState): void {
+    this.streamState = state;
+  }
+
+  public getStreamState(): LiquidationStreamState {
+    return this.streamState;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Приём фактических событий                                            */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Приём сообщения агрегированного потока Binance USD-M `!forceOrder@arr`
+   * (массив событий) либо одиночного `forceOrder`.
+   * Возвращает массив успешно разобранных событий.
+   */
+  public ingestForceOrderMessage(payload: unknown): LiquidationEvent[] {
+    if (Array.isArray(payload)) {
+      return payload
+        .map((item) => this.processBinanceForceOrder(item))
+        .filter((event): event is LiquidationEvent => event !== null);
     }
+    const single = this.processBinanceForceOrder(payload);
+    return single ? [single] : [];
   }
 
   /**
-   * Ingest and parse raw Binance USD-M Futures forceOrder payload
-   * Payload format: { e: 'forceOrder', o: { s: 'BTCUSDT', S: 'SELL', p: '65000', q: '1.5', ... } }
+   * Разбор одного биржевого payload `forceOrder`.
+   * Формат: { e: 'forceOrder', o: { s: 'BTCUSDT', S: 'SELL', p: '65000', q: '1.5', T: 1726444800000 } }
    */
   public processBinanceForceOrder(payload: any): LiquidationEvent | null {
     try {
-      const order = payload.o || payload;
+      const order = payload?.o || payload;
       if (!order || !order.s) return null;
 
-      const rawSymbol = order.s;
+      const rawSymbol = String(order.s);
       const canonical = getAssetByBinanceSymbol(rawSymbol);
       const symbol = canonical ? canonical.symbol : rawSymbol.replace(/USDT$/, '');
 
-      // SELL order on futures liquidation => LONG was liquidated
-      // BUY order on futures liquidation => SHORT was liquidated
+      // SELL-ордер при ликвидации => принудительно закрыта LONG-позиция
+      // BUY-ордер при ликвидации  => принудительно закрыта SHORT-позиция
       const side: 'LONG' | 'SHORT' = order.S === 'SELL' ? 'LONG' : 'SHORT';
-      const price = parseFloat(order.p || order.ap || '0');
+
+      const price = parseFloat(order.ap || order.p || '0');
       const qty = parseFloat(order.q || '0');
       const amountUsd = price * qty;
+      if (!Number.isFinite(amountUsd) || amountUsd <= 0) return null;
 
-      if (amountUsd <= 0) return null;
+      const eventTimeMs = Number(order.T) > 0 ? Number(order.T) : Date.now();
 
       const event: LiquidationEvent = {
-        id: `liq-${symbol}-${order.T || Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        timestamp: new Date(order.T || Date.now()).toISOString(),
+        // Детерминированный идентификатор: никакого Math.random()
+        id: `liq-${symbol}-${eventTimeMs}-${price}-${qty}`,
+        timestamp: new Date(eventTimeMs).toISOString(),
         symbol,
         side,
         amountUsd: Number(amountUsd.toFixed(2)),
         price,
         exchange: 'Binance Futures',
+        // Событие пришло из биржевого потока — это не демо-данные
         isDemo: false,
       };
 
@@ -112,129 +129,166 @@ export class LiquidationPipeline {
   }
 
   public recordEvent(event: LiquidationEvent): void {
-    this.actualEvents.unshift(event);
-    if (this.actualEvents.length > this.maxStoredEvents) {
-      this.actualEvents.pop();
+    this.events.unshift(event);
+    if (this.events.length > this.maxStoredEvents) {
+      this.events.length = this.maxStoredEvents;
     }
-
-    if (event.side === 'LONG') {
-      this.totalLong24h += event.amountUsd;
-    } else {
-      this.totalShort24h += event.amountUsd;
-    }
-
-    if (!this.largestEvent || event.amountUsd > this.largestEvent.amountUsd) {
-      this.largestEvent = event;
-    }
-
-    // Update asset breakdown
-    const currentAsset = this.assetTotals.get(event.symbol) || { longUsd: 0, shortUsd: 0 };
-    if (event.side === 'LONG') {
-      currentAsset.longUsd += event.amountUsd;
-    } else {
-      currentAsset.shortUsd += event.amountUsd;
-    }
-    this.assetTotals.set(event.symbol, currentAsset);
+    this.pruneExpired();
   }
 
+  private pruneExpired(now = Date.now()): void {
+    const cutoff = now - WINDOW_24H_MS;
+    this.events = this.events.filter((event) => {
+      const ts = Date.parse(event.timestamp);
+      return Number.isFinite(ts) ? ts >= cutoff : false;
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Честный срез фактических данных                                      */
+  /* ------------------------------------------------------------------ */
+
+  public getLiquidationSnapshot(now = Date.now()): LiquidationData {
+    this.pruneExpired(now);
+
+    const windowEvents = this.events.filter(
+      (event) => Date.parse(event.timestamp) >= now - WINDOW_24H_MS
+    );
+
+    let totalLong24h = 0;
+    let totalShort24h = 0;
+    const assetTotals = new Map<string, { longUsd: number; shortUsd: number }>();
+    const exchangeTotals = new Map<string, number>();
+    let largestEvent: LiquidationEvent | null = null;
+
+    for (const event of windowEvents) {
+      if (event.side === 'LONG') totalLong24h += event.amountUsd;
+      else totalShort24h += event.amountUsd;
+
+      const asset = assetTotals.get(event.symbol) || { longUsd: 0, shortUsd: 0 };
+      if (event.side === 'LONG') asset.longUsd += event.amountUsd;
+      else asset.shortUsd += event.amountUsd;
+      assetTotals.set(event.symbol, asset);
+
+      exchangeTotals.set(event.exchange, (exchangeTotals.get(event.exchange) || 0) + event.amountUsd);
+
+      if (!largestEvent || event.amountUsd > largestEvent.amountUsd) {
+        largestEvent = event;
+      }
+    }
+
+    const total24h = totalLong24h + totalShort24h;
+
+    const assetBreakdown = Array.from(assetTotals.entries())
+      .map(([symbol, totals]) => ({
+        symbol,
+        totalUsd: Number((totals.longUsd + totals.shortUsd).toFixed(2)),
+        longUsd: Number(totals.longUsd.toFixed(2)),
+        shortUsd: Number(totals.shortUsd.toFixed(2)),
+      }))
+      .sort((a, b) => b.totalUsd - a.totalUsd);
+
+    const exchangeBreakdown = Array.from(exchangeTotals.entries())
+      .map(([exchange, totalUsd]) => ({
+        exchange,
+        totalUsd: Number(totalUsd.toFixed(2)),
+        percentage: total24h > 0 ? Number(((totalUsd / total24h) * 100).toFixed(1)) : 0,
+      }))
+      .sort((a, b) => b.totalUsd - a.totalUsd);
+
+    return {
+      totalLong24h: Number(totalLong24h.toFixed(2)),
+      totalShort24h: Number(totalShort24h.toFixed(2)),
+      total24h: Number(total24h.toFixed(2)),
+      largestEvent,
+      eventsCount24h: windowEvents.length,
+      lastEventAt: windowEvents.length > 0 ? windowEvents[0].timestamp : null,
+      dataStatus: this.resolveDataStatus(windowEvents.length),
+      recentEvents: this.events.slice(0, 50),
+      assetBreakdown,
+      exchangeBreakdown,
+      timeline: this.buildTimeline(windowEvents, now),
+      isDemo: false,
+    };
+  }
+
+  private resolveDataStatus(eventsCount: number): LiquidationDataStatus {
+    if (eventsCount > 0) return 'LIVE_STREAM';
+    if (this.streamState === 'connected') return 'AWAITING_STREAM';
+    return 'UNAVAILABLE';
+  }
+
+  /** 8 трёхчасовых UTC-баров за последние 24 часа, построенных из фактических событий. */
+  private buildTimeline(
+    windowEvents: LiquidationEvent[],
+    now: number
+  ): Array<{ timestamp: string; longUsd: number; shortUsd: number }> {
+    const buckets = Array.from({ length: TIMELINE_BUCKETS }, (_, index) => {
+      const bucketEnd = now - (TIMELINE_BUCKETS - 1 - index) * BUCKET_MS;
+      const date = new Date(bucketEnd);
+      return {
+        timestamp: `${String(date.getUTCHours()).padStart(2, '0')}:00`,
+        longUsd: 0,
+        shortUsd: 0,
+        startMs: bucketEnd - BUCKET_MS,
+        endMs: bucketEnd,
+      };
+    });
+
+    for (const event of windowEvents) {
+      const ts = Date.parse(event.timestamp);
+      const bucket = buckets.find((b) => ts > b.startMs && ts <= b.endMs);
+      if (!bucket) continue;
+      if (event.side === 'LONG') bucket.longUsd += event.amountUsd;
+      else bucket.shortUsd += event.amountUsd;
+    }
+
+    return buckets.map(({ timestamp, longUsd, shortUsd }) => ({
+      timestamp,
+      longUsd: Number(longUsd.toFixed(2)),
+      shortUsd: Number(shortUsd.toFixed(2)),
+    }));
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Расчётная модель уровней (MODEL / ESTIMATED)                         */
+  /* ------------------------------------------------------------------ */
+
   /**
-   * Mathematical Simulation Model: Calculate Estimated Liquidation Clusters
-   * strictly labeled as ESTIMATED RISK LEVELS based on mark price and leverage tiers.
+   * Теоретические ценовые зоны скопления ликвидаций по плечевым тирам.
+   * Строго расчётная модель: в UI обязана маркироваться `MODEL / ESTIMATED`
+   * и никогда не подаваться как фактические ордера или подтвержденные уровни.
+   *
+   * @param currentPrice текущая цена актива (из фактического источника данных)
+   * @param openInterestUsd открытый интерес по активу в USD (из фактического источника)
    */
   public static calculateEstimatedClusters(
-    markPrice: number,
+    currentPrice: number,
     openInterestUsd: number
-  ): LiquidationCluster[] {
-    const tiers = [
-      { leverage: 100, margin: 0.005, share: 0.15 },
-      { leverage: 50, margin: 0.01, share: 0.25 },
-      { leverage: 25, margin: 0.02, share: 0.35 },
-      { leverage: 10, margin: 0.05, share: 0.25 },
-    ];
+  ): EstimatedLiquidationCluster[] {
+    const leverageTiers = [10, 25, 50, 100];
+    const clusters: EstimatedLiquidationCluster[] = [];
 
-    const clusters: LiquidationCluster[] = [];
+    for (const leverage of leverageTiers) {
+      const distancePct = (1 / leverage) * 100;
 
-    for (const t of tiers) {
-      // Long liquidation below current price
-      const longDistancePct = (1 / t.leverage - t.margin) * 100;
-      const longPrice = markPrice * (1 - longDistancePct / 100);
       clusters.push({
-        priceLevel: Number(longPrice.toFixed(2)),
-        estimatedVolumeUsd: Number((openInterestUsd * t.share * 0.5).toFixed(0)),
+        leverageTier: leverage,
         side: 'LONG',
-        leverageTier: t.leverage,
-        distancePct: Number(longDistancePct.toFixed(2)),
+        priceLevel: Number((currentPrice * (1 - 1 / leverage)).toFixed(2)),
+        distancePct: Number(distancePct.toFixed(2)),
+        estimatedVolumeUsd: Number((openInterestUsd * (0.05 / (leverageTiers.indexOf(leverage) + 1))).toFixed(2)),
       });
 
-      // Short liquidation above current price
-      const shortDistancePct = (1 / t.leverage - t.margin) * 100;
-      const shortPrice = markPrice * (1 + shortDistancePct / 100);
       clusters.push({
-        priceLevel: Number(shortPrice.toFixed(2)),
-        estimatedVolumeUsd: Number((openInterestUsd * t.share * 0.5).toFixed(0)),
+        leverageTier: leverage,
         side: 'SHORT',
-        leverageTier: t.leverage,
-        distancePct: Number(shortDistancePct.toFixed(2)),
+        priceLevel: Number((currentPrice * (1 + 1 / leverage)).toFixed(2)),
+        distancePct: Number(distancePct.toFixed(2)),
+        estimatedVolumeUsd: Number((openInterestUsd * (0.04 / (leverageTiers.indexOf(leverage) + 1))).toFixed(2)),
       });
     }
 
     return clusters.sort((a, b) => b.priceLevel - a.priceLevel);
-  }
-
-  public getLiquidationSnapshot(): LiquidationData {
-    const total24h = this.totalLong24h + this.totalShort24h;
-
-    const fallbackLargest: LiquidationEvent = {
-      id: 'liq-sample-1',
-      timestamp: new Date().toISOString(),
-      symbol: 'BTC',
-      side: 'LONG',
-      amountUsd: 1250000,
-      price: 64800,
-      exchange: 'Binance Futures',
-      isDemo: false,
-    };
-
-    const assetBreakdown = Array.from(this.assetTotals.entries()).map(([symbol, totals]) => ({
-      symbol,
-      totalUsd: totals.longUsd + totals.shortUsd,
-      longUsd: totals.longUsd,
-      shortUsd: totals.shortUsd,
-    }));
-
-    if (assetBreakdown.length === 0) {
-      assetBreakdown.push(
-        { symbol: 'BTC', totalUsd: 45000000, longUsd: 31000000, shortUsd: 14000000 },
-        { symbol: 'ETH', totalUsd: 28000000, longUsd: 19000000, shortUsd: 9000000 },
-        { symbol: 'SOL', totalUsd: 14000000, longUsd: 10000000, shortUsd: 4000000 }
-      );
-    }
-
-    const exchangeBreakdown = [
-      { exchange: 'Binance Futures', totalUsd: total24h * 0.52 || 52000000, percentage: 52 },
-      { exchange: 'Bybit Linear', totalUsd: total24h * 0.28 || 28000000, percentage: 28 },
-      { exchange: 'OKX Swaps', totalUsd: total24h * 0.2 || 20000000, percentage: 20 },
-    ];
-
-    const timeline = [
-      { timestamp: '00:00', longUsd: 1200000, shortUsd: 400000 },
-      { timestamp: '04:00', longUsd: 2800000, shortUsd: 950000 },
-      { timestamp: '08:00', longUsd: 4500000, shortUsd: 1200000 },
-      { timestamp: '12:00', longUsd: 8900000, shortUsd: 2100000 },
-      { timestamp: '16:00', longUsd: 5600000, shortUsd: 3200000 },
-      { timestamp: '20:00', longUsd: 3400000, shortUsd: 1800000 },
-    ];
-
-    return {
-      totalLong24h: this.totalLong24h || 62000000,
-      totalShort24h: this.totalShort24h || 28000000,
-      total24h: total24h || 90000000,
-      largestEvent: this.largestEvent || fallbackLargest,
-      recentEvents: this.actualEvents,
-      assetBreakdown,
-      exchangeBreakdown,
-      timeline,
-      isDemo: false,
-    };
   }
 }

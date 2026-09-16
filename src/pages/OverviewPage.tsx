@@ -444,43 +444,58 @@ export const OverviewPage: React.FC = () => {
 
             {liquidations && (
               <div>
-                <div className="flex items-center justify-between mb-2 font-mono text-xs">
-                  <span className="text-emerald-400 font-semibold tabular-nums">
-                    Longs: {formatCurrency(liquidations.totalLong24h, { compact: true })} (25.4%)
-                  </span>
-                  <span className="text-rose-400 font-semibold tabular-nums">
-                    Shorts: {formatCurrency(liquidations.totalShort24h, { compact: true })} (74.6%)
-                  </span>
-                </div>
+                {liquidations.total24h > 0 ? (
+                  <>
+                    <div className="flex items-center justify-between mb-2 font-mono text-xs">
+                      <span className="text-emerald-400 font-semibold tabular-nums">
+                        Longs: {formatCurrency(liquidations.totalLong24h, { compact: true })} (
+                        {((liquidations.totalLong24h / liquidations.total24h) * 100).toFixed(1)}%)
+                      </span>
+                      <span className="text-rose-400 font-semibold tabular-nums">
+                        Shorts: {formatCurrency(liquidations.totalShort24h, { compact: true })} (
+                        {((liquidations.totalShort24h / liquidations.total24h) * 100).toFixed(1)}%)
+                      </span>
+                    </div>
 
-                {/* Progress bar */}
-                <div className="w-full h-2 rounded-full overflow-hidden flex bg-[#111a30] mb-3">
-                  <div
-                    className="bg-emerald-500 h-full"
-                    style={{
-                      width: `${(liquidations.totalLong24h / liquidations.total24h) * 100}%`,
-                    }}
-                  />
-                  <div
-                    className="bg-rose-500 h-full"
-                    style={{
-                      width: `${(liquidations.totalShort24h / liquidations.total24h) * 100}%`,
-                    }}
-                  />
-                </div>
+                    {/* Progress bar */}
+                    <div className="w-full h-2 rounded-full overflow-hidden flex bg-[#111a30] mb-3">
+                      <div
+                        className="bg-emerald-500 h-full"
+                        style={{
+                          width: `${(liquidations.totalLong24h / liquidations.total24h) * 100}%`,
+                        }}
+                      />
+                      <div
+                        className="bg-rose-500 h-full"
+                        style={{
+                          width: `${(liquidations.totalShort24h / liquidations.total24h) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-slate-400 font-sans mb-3 leading-relaxed">
+                    {liquidations.dataStatus === 'AWAITING_STREAM'
+                      ? 'Поток фактических ликвидаций подключен, события ещё не поступали. Оценочные суммы не подставляются.'
+                      : 'Фактический поток ликвидаций недоступен — агрегаты не отображаются.'}
+                  </div>
+                )}
 
                 {/* Largest Whale Event */}
-                <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-xs font-mono flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
-                    <span className="text-slate-300">
-                      Whale Short Liq: <strong className="text-white">{liquidations.largestEvent.symbol}</strong>
+                {liquidations.largestEvent && (
+                  <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-xs font-mono flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
+                      <span className="text-slate-300">
+                        Whale {liquidations.largestEvent.side === 'SHORT' ? 'Short' : 'Long'} Liq:{' '}
+                        <strong className="text-white">{liquidations.largestEvent.symbol}</strong>
+                      </span>
+                    </div>
+                    <span className="font-bold text-rose-400 tabular-nums">
+                      {formatCurrency(liquidations.largestEvent.amountUsd, { compact: true })}
                     </span>
                   </div>
-                  <span className="font-bold text-rose-400 tabular-nums">
-                    {formatCurrency(liquidations.largestEvent.amountUsd, { compact: true })}
-                  </span>
-                </div>
+                )}
               </div>
             )}
           </div>

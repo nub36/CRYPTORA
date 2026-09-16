@@ -180,9 +180,14 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     const futures = await provider.getFuturesList();
     expect(futures.length).toBeGreaterThan(0);
 
+    // Честная контрактная проверка: без фактических событий потока live-провайдер
+    // обязан вернуть нулевые агрегаты, а не оценочные «заглушки» (RULES §1).
     const liquidations = await provider.getLiquidations();
     expect(liquidations.isDemo).toBe(false);
-    expect(liquidations.total24h).toBeGreaterThan(0);
+    expect(liquidations.total24h).toBe(0);
+    expect(liquidations.largestEvent).toBeNull();
+    expect(liquidations.assetBreakdown).toEqual([]);
+    expect(['AWAITING_STREAM', 'UNAVAILABLE']).toContain(liquidations.dataStatus);
 
     const radar = await provider.getRadarEvents();
     expect(radar.length).toBeGreaterThan(0);
