@@ -9,13 +9,40 @@
  */
 
 import type {
-  ResultOrigin, SourceFilePin, SpecResearchDiscrepancy, StrategyDefinition,
+  ReproductionEvidence, ResultOrigin, SourceFilePin, SpecResearchDiscrepancy, StrategyDefinition,
 } from '../../types';
 import { V30_CONSTANTS } from './v30Core';
 import { runV30Series } from './v30Runner';
 import trainMetrics from '../../results/v30/v30-train-metrics.json' with { type: 'json' };
 import validationMetrics from '../../results/v30/v30-validation-metrics.json' with { type: 'json' };
 import portParity from '../../results/v30/v30-port-parity.json' with { type: 'json' };
+import reproTrain from '../../results/v30/cryptora-reproduction/v30-train-reproduction.json' with { type: 'json' };
+import reproValidation from '../../results/v30/cryptora-reproduction/v30-validation-reproduction.json' with { type: 'json' };
+
+/**
+ * Evidence of the REAL re-run inside CRYPTORA (2026-09-16) on dataset c3c1dce via
+ * scripts/strategy-archive/reproduce-v30.mjs. Every source field matched; FIRST_MISMATCH = none.
+ * These figures are DERIVED_BY_CRYPTORA and are stored separately from SOURCE_REPORTED.
+ */
+export const V30_REPRODUCTION_EVIDENCE: readonly ReproductionEvidence[] = Object.freeze(
+  [reproTrain, reproValidation].map((e) => ({
+    slice: e.slice,
+    runAtUtc: e.runAtUtc,
+    datasetCommit: e.dataset.commit,
+    sourceArtifactPath: e.sourceArtifact.path,
+    sourceArtifactSha256: e.sourceArtifact.sha256,
+    deterministicDigest: e.deterministicDigest,
+    tradeCount: e.tradeCount,
+    allMatched: e.comparison.allMatched,
+    firstMismatch: e.comparison.firstMismatch,
+    evidencePath: `src/services/strategyArchive/results/v30/cryptora-reproduction/v30-${e.slice}-reproduction.json`,
+  })),
+);
+export const V30_REPRODUCED_RESULTS = Object.freeze({
+  origin: 'DERIVED_BY_CRYPTORA' as ResultOrigin,
+  train: reproTrain,
+  validation: reproValidation,
+});
 
 export const V30_SOURCE_PINS: readonly SourceFilePin[] = Object.freeze([
   { role: 'SPEC', path: 'docs/strategies/V3_0_HTF_LIQUIDATION_TRAP.md', sha256: '58ff842a4631aeb796b892d44bb7e40f71df9b2b3cce432174a2bfd7c863040e' },
@@ -93,7 +120,7 @@ export const V30_CAVEATS_RU: readonly string[] = Object.freeze([
   'Исследовательский раннер допускал перекрывающиеся позиции (спецификация заявляла «одна позиция за раз») — расхождение D-V30-001; количество сделок завышено относительно строго последовательного движка.',
   'Не сопоставимо напрямую с V2.x: другой таймфрейм (только 1h), другая модель комиссий (3 ноги), другой период и семантика входа.',
   'Slippage, funding, спред и отклонение post-only не моделировались; данные Spot, комиссии Futures.',
-  'Статус в CRYPTORA: SOURCE_CHAIN_VERIFIED / NOT_RERUN — прогон на pinned dataset внутри CRYPTORA не выполнялся.',
+  'Воспроизводимость в CRYPTORA: REPRODUCED — реальный прогон TRAIN и VALIDATION на датасете c3c1dce совпал с артефактами источника по всем полям (digest fnv1a32:8156fe4a:n1585 / fnv1a32:02e59d33:n536). «Воспроизведено» означает только повторяемость чисел, а не успешность стратегии.',
   'CRYPTORA не исполняет сделки: никакого автотрейдинга, сигналов к исполнению или биржевых ключей.',
 ]);
 
@@ -103,7 +130,8 @@ const definition: StrategyDefinition = {
   name: 'HTF Liquidation Trap',
   nameRu: 'Ловушка ликвидности на старшем таймфрейме',
   verdict: 'VALIDATED_FOR_RESEARCH',
-  reproducibility: 'SOURCE_CHAIN_VERIFIED_NOT_RERUN',
+  reproducibility: 'REPRODUCED',
+  reproductionEvidence: V30_REPRODUCTION_EVIDENCE,
   execTimeframe: V30_CONSTANTS.EXEC_TF,
   structuralTimeframe: V30_CONSTANTS.STRUCT_TF,
   symbols: V30_CONSTANTS.SYMBOLS,

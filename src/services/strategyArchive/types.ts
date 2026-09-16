@@ -60,8 +60,28 @@ export type ReproducibilityStatus =
   | 'REPRODUCED'
   /** Re-run attempted and did not match. */
   | 'REPRODUCTION_MISMATCH'
+  /** Re-run is objectively impossible from the preserved artifacts (reason recorded). */
+  | 'REPRODUCTION_BLOCKED'
   /** Chain could not be verified. */
   | 'UNVERIFIED';
+
+/**
+ * Evidence of an actual CRYPTORA re-run against the pinned dataset. REQUIRED whenever
+ * `reproducibility === 'REPRODUCED'` — a status flip without evidence is invalid.
+ */
+export interface ReproductionEvidence {
+  slice: SliceName | string;
+  runAtUtc: string;
+  datasetCommit: string;
+  sourceArtifactPath: string;
+  sourceArtifactSha256: string;
+  deterministicDigest: string;
+  tradeCount: number;
+  allMatched: boolean;
+  firstMismatch: string | null;
+  /** Path (inside CRYPTORA) of the full evidence JSON. */
+  evidencePath: string;
+}
 
 /** Research outcome of the version in the source programme. */
 export type ResearchVerdict =
@@ -203,8 +223,13 @@ export interface StrategyDefinition {
   version: string;
   name: string;
   nameRu: string;
+  /** RESEARCH VERDICT — outcome in the source programme. Independent of reproducibility. */
   verdict: ResearchVerdict;
+  /** REPRODUCTION STATUS — whether CRYPTORA re-ran it. "REPRODUCED" never means "successful strategy". */
   reproducibility: ReproducibilityStatus;
+  /** Present iff reproducibility === 'REPRODUCED' (or MISMATCH/BLOCKED with the reason). */
+  reproductionEvidence?: readonly ReproductionEvidence[];
+  reproductionBlockedReason?: string;
   execTimeframe: ArchiveTimeframe;
   structuralTimeframe: ArchiveTimeframe | null;
   symbols: readonly string[];

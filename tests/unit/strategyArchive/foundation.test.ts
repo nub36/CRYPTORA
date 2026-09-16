@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   ARCHIVE_TF_MS, FROZEN_ENGINE, FROZEN_SETTINGS_SHA256, STRATEGY_ARCHIVE, STRATEGY_ARCHIVE_PLANNED,
-  V30_DEFINITION, V30_SOURCE_PINS, V30_SOURCE_RESULTS, V30_CAVEATS_RU, V30_COMMITS,
+  V30_DEFINITION, V30_REPRODUCED_RESULTS, V30_SOURCE_PINS, V30_SOURCE_RESULTS, V30_CAVEATS_RU, V30_COMMITS,
   ohlcvToArchiveCandles, archiveCandlesToOhlcv, detectTimestampUnit, toMs, validateSeries, splitFor,
 } from '@/services/strategyArchive';
 import { closedHtfCandles, findSwingsV2, atrAt, rvolAt } from '@/services/strategyArchive/shared/primitives';
@@ -160,10 +160,39 @@ describe('provenance & source artifact integrity', () => {
 });
 
 describe('registry & status honesty', () => {
-  it('V3.0 status is SOURCE_CHAIN_VERIFIED_NOT_RERUN — never REPRODUCED from synthetic parity alone', () => {
-    expect(V30_DEFINITION.reproducibility).toBe('SOURCE_CHAIN_VERIFIED_NOT_RERUN');
+  it('V3.0 is REPRODUCED only because real-run evidence exists for BOTH slices and matched', () => {
+    expect(V30_DEFINITION.reproducibility).toBe('REPRODUCED');
     expect(V30_DEFINITION.verdict).toBe('VALIDATED_FOR_RESEARCH');
     expect(V30_DEFINITION.discrepancies.map((d) => d.id)).toContain('D-V30-001');
+    const ev = V30_DEFINITION.reproductionEvidence ?? [];
+    expect(ev.map((e) => e.slice).sort()).toEqual(['train', 'validation']);
+    for (const e of ev) {
+      expect(e.allMatched).toBe(true);
+      expect(e.firstMismatch).toBeNull();
+      expect(e.datasetCommit).toBe('c3c1dcecfe2784a147f591f2b5b4526cbf99df9f');
+      // evidence pins the exact source artifact it was compared against
+      const pin = V30_DEFINITION.sourcePins.find((p) => p.path === e.sourceArtifactPath);
+      expect(pin?.sha256).toBe(e.sourceArtifactSha256);
+    }
+    expect(ev.find((e) => e.slice === 'train')?.tradeCount).toBe(1585);
+    expect(ev.find((e) => e.slice === 'validation')?.tradeCount).toBe(536);
+  });
+  it('REPRODUCED (DERIVED_BY_CRYPTORA) figures equal SOURCE_REPORTED figures but are stored separately', () => {
+    expect(V30_REPRODUCED_RESULTS.origin).toBe('DERIVED_BY_CRYPTORA');
+    expect(V30_SOURCE_RESULTS.origin).toBe('SOURCE_REPORTED');
+    const r = V30_REPRODUCED_RESULTS.validation.metrics;
+    const s = V30_SOURCE_RESULTS.validation;
+    expect(r.n).toBe(s.n);
+    expect(r.grossRPerTrade).toBe(s.grossRPerTrade);
+    expect(r.netRPerTradeHeadline).toBe(s.netRPerTrade.FUT_4);
+    expect(r.profitFactor).toBe(s.profitFactor);
+    expect(r.exits).toEqual(s.exits);
+    expect(V30_REPRODUCED_RESULTS.validation.funnel).toEqual(s.funnel);
+  });
+  it('any definition claiming REPRODUCED must carry evidence', () => {
+    for (const d of STRATEGY_ARCHIVE) {
+      if (d.reproducibility === 'REPRODUCED') expect((d.reproductionEvidence ?? []).length).toBeGreaterThan(0);
+    }
   });
   it('caveats mention the mandatory qualifications and forbid promise wording', () => {
     const all = V30_CAVEATS_RU.join(' ');

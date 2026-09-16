@@ -2,7 +2,7 @@ import React from 'react';
 import { Archive, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import {
-  V30_DEFINITION, V30_SOURCE_RESULTS, V30_CAVEATS_RU, V30_RULES_RU, V30_DISCREPANCIES, V30_COMMITS,
+  V30_DEFINITION, V30_SOURCE_RESULTS, V30_REPRODUCTION_EVIDENCE, V30_CAVEATS_RU, V30_RULES_RU, V30_DISCREPANCIES, V30_COMMITS,
   STRATEGY_ARCHIVE_PLANNED,
 } from '@/services/strategyArchive';
 
@@ -29,15 +29,19 @@ export const StrategyArchiveV30Card: React.FC = () => {
           <Badge variant="cyan" size="xs">Историческое исследование</Badge>
         </div>
         <div className="text-[11px] text-slate-400">
-          Статус в CRYPTORA: <span className="font-mono text-amber-300">VALIDATED SOURCE / NOT RERUN IN CRYPTORA</span>
+          Исследование: <span className="font-mono text-emerald-300">ВАЛИДИРОВАНО ИСТОЧНИКОМ (для исследования)</span>
+          {' · '}Воспроизводимость: <span className="font-mono text-cyan-300">ВОСПРОИЗВЕДЕНО В CRYPTORA</span>
         </div>
       </div>
 
       <p className="text-slate-400 leading-relaxed">
-        {V30_DEFINITION.nameRu}. Импортировано из архива исследований без изменения правил. Все числа ниже —{' '}
-        <span className="font-mono text-slate-300">SOURCE_REPORTED</span> (скопированы из артефактов источника);
-        прогон на закреплённом датасете внутри CRYPTORA ещё не выполнялся. Это не сигнал, не прогноз и не обещание
-        будущей доходности.
+        {V30_DEFINITION.nameRu}. Импортировано из архива исследований без изменения правил. Числа ниже —{' '}
+        <span className="font-mono text-slate-300">SOURCE_REPORTED</span> (артефакты источника); реальный прогон
+        TRAIN и VALIDATION на датасете {V30_COMMITS.dataset.slice(0, 7)} внутри CRYPTORA{' '}
+        <span className="font-mono text-slate-300">(DERIVED_BY_CRYPTORA)</span> совпал по всем полям —{' '}
+        {V30_REPRODUCTION_EVIDENCE.map((e) => `${e.slice}: n=${e.tradeCount}, digest ${e.deterministicDigest}`).join('; ')}.
+        «Воспроизведено» означает повторяемость чисел, а не успешность стратегии. Это не сигнал, не прогноз и не
+        обещание будущей доходности.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

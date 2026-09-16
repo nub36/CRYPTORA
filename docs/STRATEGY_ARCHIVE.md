@@ -41,14 +41,18 @@
 
 ## 4. Статус воспроизведения V3.0
 
+Два независимых измерения: **RESEARCH VERDICT** (исход в программе источника) и **REPRODUCTION STATUS** (повторил ли CRYPTORA числа). «Воспроизведено» ≠ «стратегия успешна».
+
 | Поле | Значение |
 |---|---|
 | Версия | V3.0 HTF Liquidation Trap (1h исполнение, 4h уровни, 6 пар) |
-| Статус | **SOURCE_CHAIN_VERIFIED / NOT_RERUN** — в UI: «VALIDATED SOURCE / NOT RERUN IN CRYPTORA» |
-| Числа в UI | `SOURCE_REPORTED`: TRAIN n=1585, net R=+0.0994 (@2/5 bps), PF 1.354; VALID n=536, net R=+0.0600, PF 1.248 |
-| Синтетический паритет | Порт CRYPTORA даёт побитово те же сделки/воронку, что и оригинальный `research/v30_htf_trap.ts`, на синтетическом ряде 6000 баров (`tests/unit/strategyArchive/fixtures/v30-synthetic-parity.json`, сгенерирован оригинальным модулем, генератор рядом `GENERATOR.*.ts.txt`). |
-| Что НЕ сделано | Реальный прогон на закреплённом датасете внутри CRYPTORA. Статус **не** повышается до `REPRODUCED` по синтетическому паритету. |
-| Как выполнить прогон | Офлайн, оператором: `npx tsx scripts/strategy-archive/reproduce-v30.mjs --dataset=<локальный клон c3c1dce> --slice=train --out=…`. Скрипт не вызывается UI и ничего не скачивает. При совпадении n/gross/net/воронки статус меняется человеком отдельным коммитом. |
+| Research verdict | `VALIDATED_FOR_RESEARCH` (источник; НЕ production-ready) |
+| Reproduction status | **`REPRODUCED`** — реальный прогон в CRYPTORA 2026-09-16 на датасете `c3c1dce` (sparse-клон 1h/4h, вне репозитория) |
+| SOURCE_REPORTED | TRAIN n=1585, gross +0.1726, net@2/5 +0.0994, PF 1.3538; VALID n=536, gross +0.1274, net +0.0600, PF 1.2484 |
+| DERIVED_BY_CRYPTORA (прогон) | TRAIN n=1585, funnel 2015/2015/1585/0/330/100/0, digest `fnv1a32:8156fe4a:n1585`; VALID n=536, funnel 691/691/536/0/130/24/1, digest `fnv1a32:02e59d33:n536` — все сравниваемые поля (n, funnel, gross, net FUT_4/SPOT, feeDrag, PF, maxDD, exits, outlierDependence, byDirection, bySymbol, stopDistance, avgWin/Loss, medianBarsHeld) совпали; FIRST_MISMATCH = none |
+| Evidence | `results/v30/cryptora-reproduction/v30-{train,validation}-reproduction.json` (хранятся отдельно от source-артефактов) |
+| Синтетический паритет | дополнительно: побитовое совпадение с оригинальным `research/v30_htf_trap.ts` на синтетическом ряде (`tests/unit/strategyArchive/fixtures/`) |
+| Как повторить | `npx tsx scripts/strategy-archive/reproduce-v30.mjs --dataset=<клон c3c1dce> --slice=train|validation --out=…` (офлайн, оператор) |
 
 ## 5. Расхождения спецификация ↔ исследовательский код
 
@@ -62,4 +66,4 @@
 - Одна выборка валидации, один прогон; интервалы доверия не оценивались.
 - Комиссии: модель 2 bps maker вход / 5 bps taker выходы; проскальзывание не моделируется.
 - Метрики в R, без капитала, позиционирования и лимитов маржи.
-- В CRYPTORA прогон на полном датасете пока не выполнен (см. §4).
+- Воспроизведение подтверждает повторяемость чисел на том же датасете, а не устойчивость эффекта вне выборки.

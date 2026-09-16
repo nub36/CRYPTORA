@@ -4,6 +4,18 @@
 
 ---
 
+## [0.8.10] — 2026-09-16
+
+### Changed — Архив стратегий C1: V3.0 реально воспроизведена на закреплённом датасете
+- Выполнен реальный прогон V3.0 (TRAIN и VALIDATION) в CRYPTORA на `svechnoy-suslik-binance-data @ c3c1dce`
+  через `scripts/strategy-archive/reproduce-v30.mjs`. Все поля source-артефактов совпали (TRAIN n=1585,
+  net +0.0994; VALID n=536, net +0.0600, PF 1.2484; funnel, exits, bySymbol, outlierDependence…). FIRST_MISMATCH = none.
+- Статус воспроизводимости V3.0: `SOURCE_CHAIN_VERIFIED_NOT_RERUN` → **`REPRODUCED`**; research verdict без
+  изменений (`VALIDATED_FOR_RESEARCH`). Evidence-артефакты `results/v30/cryptora-reproduction/*.json`
+  (`DERIVED_BY_CRYPTORA`) хранятся отдельно от `SOURCE_REPORTED`.
+- Контракт: `ReproductionEvidence` обязателен при `REPRODUCED`; добавлен статус `REPRODUCTION_BLOCKED`.
+- Карточка V3.0 разделяет «Исследование» и «Воспроизводимость». Датасет по-прежнему не коммитится.
+
 ## [0.8.9] — 2026-09-16
 
 ### Added — Архив стратегий, шаг 1: фундамент + V3.0 (историческое исследование, без исполнения)
