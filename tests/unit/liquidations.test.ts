@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline';
 import { BinanceFuturesLiquidationStream } from '@/services/realtime/BinanceFuturesLiquidationStream';
 import { LiquidationPulse } from '@/services/liquidations/LiquidationPulse';
+import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
 
 describe('LiquidationPipeline Unit Tests', () => {
   it('parses raw Binance forceOrder SELL into LONG liquidation event', () => {
@@ -486,6 +487,170 @@ describe('LiquidationPulse — снимок по активу (честност�
       });
       expect(pulse.liquidation.totalUsd).toBe(1_000);
       expect(pulse.symbol).toBe('ETH');
+    }
+  });
+});
+
+describe('LiquidationHeatmapModelBuilder — расчетная карта плотности (цена × время)', () => {
+  const candles = (count: number, base = 3400) =>
+    Array.from({ length: count }, (_, i) => ({
+      time: 1757980800 + i * 14400,
+      open: base + Math.sin(i / 5) * 40,
+      high: base + Math.sin(i / 5) * 40 + 30,
+      low: base + Math.sin(i / 5) * 40 - 30,
+      close: base + Math.sin(i / 5) * 40,
+      volume: 1000 + i * 3,
+    }));
+
+  const build = (overrides: Record<string, unknown> = {}) =>
+    LiquidationHeatmapModelBuilder.build({
+      candles: candles(64) as any,
+      referencePrice: 3450,
+      openInterestUsd: 8_940_000_000,
+      ...overrides,
+    });
+
+  it('строит карту с осями цены и времени из детерминированных входов', () => {
+    const model = build()!;
+
+    expect(model).not.toBeNull();
+    expect(model.rows.length).toBe(28);
+    expect(model.columns).toBeGreaterThan(0);
+    expect(model.rows[0].values).toHaveLength(model.columns);
+    expect(model.priceTicks.length).toBeGreaterThan(2);
+    expect(model.timeTicks.length).toBeGreaterThan(2);
+    expect(model.leverageTiers).toEqual([10, 25, 50, 100]);
+  });
+
+  it('не использует Math.random: две сборки на одинаковых входах совпадают', () => {
+    expect(JSON.stringify(build())).toBe(JSON.stringify(build()));
+  });
+
+  it('нормирует интенсивность в диапазон 0…1 и находит пик плотности', () => {
+    const model = build()!;
+    const all = model.rows.flatMap((row) => row.values);
+
+    expect(Math.min(...all)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...all)).toBeLessThanOrEqual(1);
+    expect(Math.max(...all)).toBeGreaterThan(0);
+    expect(model.peakPrice).toBeGreaterThan(0);
+    expect(model.peakIntensity).toBeGreaterThanOrEqual(0);
+    expect(model.peakIntensity).toBeLessThanOrEqual(1);
+  });
+
+  it('маркирует провенанс входных свечей: DEMO против FACTUAL', () => {
+    expect(build()!.inputSource).toBe('DEMO');
+    const liveLike = build({
+      candles: candles(64).map((c) => ({
+        ...c,
+        provenance: { exchange: 'binance', market: 'spot', symbol: 'BTCUSDT', timestamp: 0 },
+      })),
+    })!;
+    expect(liveLike.inputSource).toBe('FACTUAL');
+    expect(liveLike.methodNote).toContain('Модель');
+  });
+
+  it('честно отказывается строить карту без достаточных входных данных', () => {
+    expect(build({ candles: [] })).toBeNull();
+    expect(build({ candles: candles(3) as any })).toBeNull();
+    expect(build({ referencePrice: 0 })).toBeNull();
+  });
+
+  it('диапазон карты перекрывает уровни самого высокого плеча', () => {
+    const model = build({
+      candles: candles(40, 1000).map((c) => ({ ...c, close: 1000, high: 1010, low: 990 })) as any,
+      referencePrice: 1000,
+    })!;
+    const prices = model.rows.map((r) => r.price);
+    expect(Math.min(...prices)).toBeLessThan(990);
+    expect(Math.max(...prices)).toBeGreaterThan(1010);
+  });
+});
+
+describe('LiquidationHeatmapModelBuilder — границы диапазона и краевые пики', () => {
+  const flatCandles = (count: number, close: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      time: 1757980800 + i * 14400,
+      open: close,
+      high: close * 1.001,
+      low: close * 0.999,
+      close,
+      volume: 1000,
+    }));
+
+  it('диапазон карты покрывает уровни всех плечевых тиров (нет слипания на краях)', () => {
+    const close = 1000;
+    const model = LiquidationHeatmapModelBuilder.build({
+      candles: flatCandles(64, close) as any,
+      referencePrice: close,
+      openInterestUsd: 1_000_000_000,
+    })!;
+
+    const prices = model.rows.map((r) => r.price);
+    // 10x-уровни (−10% / +10%) обязаны попадать внутрь диапазона, а не в крайние строки.
+    expect(Math.min(...prices)).toBeLessThan(close * 0.9);
+    expect(Math.max(...prices)).toBeGreaterThan(close * 1.1);
+
+    // Крайние строки не должны быть ярче «содержательных» уровней:
+    // при равномерных свечах максимум плотности лежит на полосах тиров, а не на границе.
+    const rowTotals = model.rows.map((r) => r.values.reduce((a, b) => a + b, 0));
+    const edge = Math.max(rowTotals[0], rowTotals[rowTotals.length - 1]);
+    expect(edge).toBeLessThan(Math.max(...rowTotals));
+  });
+
+  it('полосы 10x, 25x, 50x, 100x различимы: каждая пара уровней даёт вклад в своей строке', () => {
+    const close = 1000;
+    const model = LiquidationHeatmapModelBuilder.build({
+      candles: flatCandles(64, close) as any,
+      referencePrice: close,
+      openInterestUsd: 1_000_000_000,
+    })!;
+
+    const rowIndexFor = (price: number) => {
+      const top = model.rows[0].price;
+      const bottom = model.rows[model.rows.length - 1].price;
+      return Math.min(
+        model.rows.length - 1,
+        Math.max(0, Math.floor(((top - price) / (top - bottom)) * model.rows.length))
+      );
+    };
+
+    for (const leverage of [10, 25, 50, 100]) {
+      const longRow = rowIndexFor(close * (1 - 1 / leverage));
+      const shortRow = rowIndexFor(close * (1 + 1 / leverage));
+      const longTotal = model.rows[longRow].values.reduce((a, b) => a + b, 0);
+      const shortTotal = model.rows[shortRow].values.reduce((a, b) => a + b, 0);
+      expect(longTotal).toBeGreaterThan(0);
+      expect(shortTotal).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('LiquidationHeatmapModelBuilder — подписи временной оси', () => {
+  const candles = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      time: 1757980800 + i * 14400,
+      open: 3400,
+      high: 3410,
+      low: 3390,
+      close: 3400 + (i % 5),
+      volume: 1000 + i,
+    }));
+
+  it('первая подпись на левом краю, последняя — на правом, подписи не наезжают', () => {
+    const model = LiquidationHeatmapModelBuilder.build({
+      candles: candles(58) as any,
+      referencePrice: 3400,
+      openInterestUsd: 1_000_000_000,
+    })!;
+
+    expect(model.timeTicks.length).toBeLessThanOrEqual(7);
+    expect(model.timeTicks[0].offsetPct).toBe(0);
+    expect(model.timeTicks[model.timeTicks.length - 1].offsetPct).toBe(100);
+
+    const offsets = model.timeTicks.map((t) => t.offsetPct);
+    for (let i = 1; i < offsets.length; i += 1) {
+      expect(offsets[i] - offsets[i - 1]).toBeGreaterThanOrEqual(8);
     }
   });
 });

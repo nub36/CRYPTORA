@@ -164,6 +164,28 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     ).toBeInTheDocument();
   });
 
+  test('Liquidations: 2D liquidation-density heatmap is MODEL/ESTIMATED with explicit provenance', async () => {
+    renderApp('/liquidations');
+
+    // Карта плотности строится поверх расчетной модели и маркируется как ESTIMATED.
+    const card = await screen.findByLabelText(/Расчетная тепловая карта плотности ликвидаций/i);
+    expect(within(card).getByText(/Тепловая карта плотности ликвидаций \(Price × Time\)/i)).toBeInTheDocument();
+    expect(within(card).getByText('MODEL / ESTIMATED')).toBeInTheDocument();
+    expect(within(card).getByText(/ВХОД: DEMO-СВЕЧИ|candles/i)).toBeInTheDocument();
+
+    // Полотно строится из ценовых строк (модель — детерминированная, без случайных значений).
+    const plot = card.querySelector('[role="img"]');
+    expect(plot).not.toBeNull();
+    expect(plot?.children.length).toBe(28);
+
+    // Карта никогда не подменяет фактический журнал событий: разделение уровней сохраняется.
+    expect(
+      screen.getByText(/ACTUAL LIQUIDATION EVENT ≠ ESTIMATED LIQUIDATION LEVEL/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Демонстрационный журнал событий ликвидаций/i)).toBeInTheDocument();
+    expect(screen.getByText(/Расчетные уровни плечевых тиров/i)).toBeInTheDocument();
+  });
+
   test('Screener: working filters and quick presets over demo dataset', async () => {
     renderApp('/screener');
 

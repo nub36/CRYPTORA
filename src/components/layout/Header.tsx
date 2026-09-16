@@ -363,7 +363,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="hidden shrink-0 rounded border border-cyan-500/30 bg-cyan-950/80 px-1.5 font-mono text-[11px] font-semibold tracking-normal text-cyan-400 navxl:inline-block">
-                  v0.8.3
+                  v0.8.4
                 </span>
               </div>
               <span className="hidden whitespace-nowrap font-sans text-[11px] tracking-tight text-slate-400 2xl:block">
@@ -734,7 +734,7 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-mono text-[11px] text-slate-400">
-            <span>CRYPTORA v0.8.3</span>
+            <span>CRYPTORA v0.8.4</span>
             <span>{dataMode === 'live' ? 'LIVE MARKET DATA' : 'DEMO DATASET'}</span>
           </div>
         </div>

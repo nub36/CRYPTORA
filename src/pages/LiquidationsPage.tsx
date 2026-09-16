@@ -3,6 +3,8 @@ import { useMarketData } from '@/context/MarketDataContext';
 import { LiquidationData } from '@/types/market';
 import { formatCurrency, formatTimestamp } from '@/utils/formatters';
 import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline';
+import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
+import { LiquidationHeatmap } from '@/components/market/LiquidationHeatmap';
 import { Flame, ShieldAlert, Clock, Layers } from 'lucide-react';
 
 export const LiquidationsPage: React.FC = () => {
@@ -14,6 +16,7 @@ export const LiquidationsPage: React.FC = () => {
     openInterestUsd: number;
     isDemo: boolean;
   } | null>(null);
+  const [heatmap, setHeatmap] = useState<ReturnType<typeof LiquidationHeatmapModelBuilder.build>>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -40,20 +43,31 @@ export const LiquidationsPage: React.FC = () => {
   // а не из зашитых констант. Нет метрик — нет модели: подставлять «примерные» числа нельзя.
   useEffect(() => {
     let isActive = true;
-    provider.getFuturesList().then((futures) => {
-      if (!isActive) return;
-      const btc = futures.find((f) => f.symbol.toUpperCase().startsWith('BTC'));
-      if (btc && btc.markPrice > 0 && btc.openInterest > 0) {
-        // Провенанс входных метрик сохраняется: демо-входы нельзя выдавать за фактический рынок.
-        setClusterInput({
-          markPrice: btc.markPrice,
-          openInterestUsd: btc.openInterest,
-          isDemo: btc.isDemo,
-        });
-      } else {
-        setClusterInput(null);
+    Promise.all([provider.getFuturesList(), provider.getCandles('BTC', '4h')]).then(
+      ([futures, btcCandles]) => {
+        if (!isActive) return;
+        const btc = futures.find((f) => f.symbol.toUpperCase().startsWith('BTC'));
+        if (btc && btc.markPrice > 0 && btc.openInterest > 0) {
+          // Провенанс входных метрик сохраняется: демо-входы нельзя выдавать за фактический рынок.
+          setClusterInput({
+            markPrice: btc.markPrice,
+            openInterestUsd: btc.openInterest,
+            isDemo: btc.isDemo,
+          });
+          // Карта плотности строится на исторических свечах BTC и тех же метриках модели.
+          setHeatmap(
+            LiquidationHeatmapModelBuilder.build({
+              candles: btcCandles,
+              referencePrice: btc.markPrice,
+              openInterestUsd: btc.openInterest,
+            })
+          );
+        } else {
+          setClusterInput(null);
+          setHeatmap(null);
+        }
       }
-    });
+    );
     return () => {
       isActive = false;
     };
@@ -320,13 +334,21 @@ export const LiquidationsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Тепловая карта плотности (цена × время) — расчетная модель */}
+      <LiquidationHeatmap
+        model={heatmap}
+        unavailableNote={
+          'Исторические свечи BTC недоступны из текущего источника — карта не строится на выдуманных данных.'
+        }
+      />
+
       {/* Estimated Liquidation Clusters (Model Simulation) */}
       <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
         <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
           <div className="flex items-center space-x-2">
             <Layers className="w-4 h-4 text-cyan-400" />
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Расчетная модель кластеров риска (Estimated Liquidation Heatmap Model)
+              Расчетные уровни плечевых тиров (Estimated Liquidation Levels)
             </span>
           </div>
           <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded-full border border-cyan-500/30">
