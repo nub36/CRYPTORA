@@ -22,7 +22,17 @@ import {
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { watchlist, alerts, openDemoModal, openWatchlist, openAlertsModal, dataMode, realtimeStatus } = useMarketData();
+  const {
+    watchlist,
+    alerts,
+    openDemoModal,
+    openWatchlist,
+    openAlertsModal,
+    dataMode,
+    realtimeStatus,
+    userPlan,
+    openPlanModal,
+  } = useMarketData();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -84,9 +94,13 @@ export const Header: React.FC = () => {
           </Link>
 
           {/* Plan Tier Badge */}
-          <span className="hidden lg:inline-flex items-center text-[10px] font-mono px-2 py-0.5 rounded bg-brand-purple/15 text-brand-purple border border-brand-purple/30 font-bold">
-            PRO ANALYST
-          </span>
+          <button
+            onClick={openPlanModal}
+            className="hidden lg:inline-flex items-center text-[10px] font-mono px-2 py-0.5 rounded bg-brand-purple/15 text-brand-purple border border-brand-purple/30 font-bold hover:bg-brand-purple/25 transition-colors cursor-pointer"
+            title="Тарифные планы и права доступа"
+          >
+            {userPlan === 'FREE' ? 'FREE EXPLORER' : userPlan === 'PRO' ? 'PRO ANALYST' : 'ENTERPRISE'}
+          </button>
 
           {/* Demo/Live Badge Trigger */}
           {dataMode === 'live' ? (

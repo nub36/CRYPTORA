@@ -3,6 +3,7 @@ import { MarketDataProvider } from '@/services/data/MarketDataProvider';
 import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { PlanTier, PlanManager } from '@/services/subscription/PlanManager';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
 
 export interface UserAlert {
@@ -38,6 +39,11 @@ interface MarketDataContextType {
   isAlertsModalOpen: boolean;
   openAlertsModal: () => void;
   closeAlertsModal: () => void;
+  userPlan: PlanTier;
+  setUserPlan: (tier: PlanTier) => void;
+  isPlanModalOpen: boolean;
+  openPlanModal: () => void;
+  closePlanModal: () => void;
 }
 
 const MarketDataContext = createContext<MarketDataContextType | null>(null);
@@ -94,6 +100,8 @@ export const MarketDataProviderComponent: React.FC<{
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
+  const [userPlan, setUserPlan] = useState<PlanTier>(() => PlanManager.getCurrentPlan());
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
 
   // Manage Realtime WebSocket Lifecycle
   useEffect(() => {
@@ -215,6 +223,11 @@ export const MarketDataProviderComponent: React.FC<{
         isAlertsModalOpen,
         openAlertsModal: () => setIsAlertsModalOpen(true),
         closeAlertsModal: () => setIsAlertsModalOpen(false),
+        userPlan,
+        setUserPlan,
+        isPlanModalOpen,
+        openPlanModal: () => setIsPlanModalOpen(true),
+        closePlanModal: () => setIsPlanModalOpen(false),
       }}
     >
       {children}

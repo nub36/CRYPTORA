@@ -6,6 +6,7 @@ import { Footer } from '@/components/layout/Footer';
 import { DemoModal } from '@/components/layout/DemoModal';
 import { WatchlistDrawer } from '@/components/layout/WatchlistDrawer';
 import { AlertsModal } from '@/components/layout/AlertsModal';
+import { PlanModal } from '@/components/layout/PlanModal';
 
 import { OverviewPage } from '@/pages/OverviewPage';
 import { MarketPage } from '@/pages/MarketPage';
@@ -54,6 +55,7 @@ export const App: React.FC = () => {
       <DemoModal />
       <WatchlistDrawer />
       <AlertsModal />
+      <PlanModal />
     </div>
   );
 };
