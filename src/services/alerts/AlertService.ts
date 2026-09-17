@@ -41,7 +41,7 @@ export class AlertService {
   constructor(cooldownMs = 300000) {
     // 5 minutes default cooldown
     this.cooldownMs = cooldownMs;
-    this.seedDefaultRules();
+    // Правил по умолчанию нет (v0.8.34): пользовательские правила создаются только явно.
   }
 
   public static getInstance(): AlertService {
@@ -49,33 +49,6 @@ export class AlertService {
       AlertService.instance = new AlertService();
     }
     return AlertService.instance;
-  }
-
-  private seedDefaultRules(): void {
-    const defaultRules: AlertRule[] = [
-      {
-        id: 'rule-btc-high',
-        symbol: 'BTC',
-        condition: 'PRICE_ABOVE',
-        targetValue: 66000,
-        deliveryChannel: 'IN_APP',
-        createdAt: '2026-09-15T08:00:00Z',
-        isActive: true,
-      },
-      {
-        id: 'rule-eth-low',
-        symbol: 'ETH',
-        condition: 'PRICE_BELOW',
-        targetValue: 3300,
-        deliveryChannel: 'TELEGRAM',
-        createdAt: '2026-09-15T08:00:00Z',
-        isActive: true,
-      },
-    ];
-
-    for (const r of defaultRules) {
-      this.rules.set(r.id, r);
-    }
   }
 
   public addRule(
