@@ -78,10 +78,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
   // RSI sub-panel refs
   const rsiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const rsiLevel70Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const rsiLevel50Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const rsiLevel30Ref = useRef<ISeriesApi<'Line'> | null>(null);
   // MACD sub-panel refs
   const macdLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const macdSignalRef = useRef<ISeriesApi<'Line'> | null>(null);
   const macdHistRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const macdZeroRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   const [crosshair, setCrosshair] = useState<CrosshairInfo | null>(null);
 
@@ -136,7 +140,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       },
       rightPriceScale: {
         borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
-        scaleMargins: { top: 0.08, bottom: 0.2 },
+        scaleMargins: { top: 0.08, bottom: 0.40 },
       },
       timeScale: {
         borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
@@ -193,7 +197,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     bbMiddleRef.current = bbMiddle;
     bbLowerRef.current = bbLower;
 
-    // RSI sub-panel — separate price scale at bottom (75%–95% of chart height)
+    // P4: RSI sub-panel — separate price scale (0–100, levels 70/50/30)
+    // Position: 62%–80% of chart height when MACD also shown, else 62%–96%
     const rsiSeries = chart.addLineSeries({
       color: '#a78bfa', // violet-400
       lineWidth: 1,
@@ -204,12 +209,31 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       visible: false,
     });
     chart.priceScale('rsi').applyOptions({
-      scaleMargins: { top: 0.78, bottom: 0.02 },
+      scaleMargins: { top: 0.62, bottom: showMACD ? 0.20 : 0.04 },
       borderVisible: false,
+      entireTextOnly: true,
     });
     rsiSeriesRef.current = rsiSeries;
 
-    // MACD sub-panel — line + signal + histogram
+    // RSI level lines (70 overbought, 50 neutral, 30 oversold)
+    const makeRsiLevel = (color: string) => {
+      const s = chart.addLineSeries({
+        color,
+        lineWidth: 1,
+        lineStyle: 2, // Dashed
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        priceScaleId: 'rsi',
+        visible: false,
+      });
+      return s;
+    };
+    rsiLevel70Ref.current = makeRsiLevel('rgba(244, 63, 94, 0.4)');   // rose
+    rsiLevel50Ref.current = makeRsiLevel('rgba(148, 163, 184, 0.2)'); // slate
+    rsiLevel30Ref.current = makeRsiLevel('rgba(16, 185, 129, 0.4)');  // emerald
+
+    // P5: MACD sub-panel — separate pane with MACD line + signal + histogram + zero
     const macdLineSeries = chart.addLineSeries({
       color: '#3b82f6', // blue-500
       lineWidth: 1,
@@ -234,12 +258,26 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       visible: false,
     });
     chart.priceScale('macd').applyOptions({
-      scaleMargins: { top: 0.78, bottom: 0.02 },
+      scaleMargins: { top: 0.80, bottom: 0.02 },
       borderVisible: false,
+      entireTextOnly: true,
     });
     macdLineRef.current = macdLineSeries;
     macdSignalRef.current = macdSignalSeries;
     macdHistRef.current = macdHistSeries;
+
+    // MACD zero line
+    const macdZeroLine = chart.addLineSeries({
+      color: 'rgba(148, 163, 184, 0.25)',
+      lineWidth: 1,
+      lineStyle: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      priceScaleId: 'macd',
+      visible: false,
+    });
+    macdZeroRef.current = macdZeroLine;
 
     // Crosshair move → OHLCV tooltip
     chart.subscribeCrosshairMove((param) => {
@@ -401,31 +439,47 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     }
   }, [indicators, data]);
 
-  // RSI sub-panel data
+  // RSI sub-panel data + level lines (70/50/30)
   useEffect(() => {
     if (!rsiSeriesRef.current) return;
-    rsiSeriesRef.current.applyOptions({ visible: showRSI });
-    if (!showRSI || !data || data.length < 16) return;
+    const vis = showRSI;
+    rsiSeriesRef.current.applyOptions({ visible: vis });
+    rsiLevel70Ref.current?.applyOptions({ visible: vis });
+    rsiLevel50Ref.current?.applyOptions({ visible: vis });
+    rsiLevel30Ref.current?.applyOptions({ visible: vis });
+    if (!vis || !data || data.length < 16) return;
 
     const closes = data.map((c) => c.close);
     const rsiValues = IndicatorEngine.calculateRSI(closes, 14);
     const times = data.map((c) => c.time as unknown as Time);
-    // RSI series has period offset (first RSI value at index `period`)
     const offset = closes.length - rsiValues.length;
     const rsiLineData = rsiValues
       .map((v, i) => ({ time: times[i + offset], value: v }))
       .filter((d) => Number.isFinite(d.value));
 
     rsiSeriesRef.current.setData(rsiLineData);
+
+    // Level lines: constant values across the same time range as RSI
+    if (rsiLineData.length > 1) {
+      const levelData = (val: number): LineData[] => [
+        { time: rsiLineData[0].time, value: val },
+        { time: rsiLineData[rsiLineData.length - 1].time, value: val },
+      ];
+      rsiLevel70Ref.current?.setData(levelData(70));
+      rsiLevel50Ref.current?.setData(levelData(50));
+      rsiLevel30Ref.current?.setData(levelData(30));
+    }
   }, [data, showRSI]);
 
-  // MACD sub-panel data
+  // MACD sub-panel data + zero line
   useEffect(() => {
     if (!macdLineRef.current || !macdSignalRef.current || !macdHistRef.current) return;
-    macdLineRef.current.applyOptions({ visible: showMACD });
-    macdSignalRef.current.applyOptions({ visible: showMACD });
-    macdHistRef.current.applyOptions({ visible: showMACD });
-    if (!showMACD || !data || data.length < 36) return;
+    const vis = showMACD;
+    macdLineRef.current.applyOptions({ visible: vis });
+    macdSignalRef.current.applyOptions({ visible: vis });
+    macdHistRef.current.applyOptions({ visible: vis });
+    macdZeroRef.current?.applyOptions({ visible: vis });
+    if (!vis || !data || data.length < 36) return;
 
     const closes = data.map((c) => c.close);
     const times = data.map((c) => c.time as unknown as Time);
@@ -449,6 +503,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     macdLineRef.current.setData(lineData);
     macdSignalRef.current.setData(signalData);
     macdHistRef.current.setData(histData);
+
+    // Zero line spanning MACD range
+    if (lineData.length > 1) {
+      macdZeroRef.current?.setData([
+        { time: lineData[0].time, value: 0 },
+        { time: lineData[lineData.length - 1].time, value: 0 },
+      ]);
+    }
   }, [data, showMACD]);
 
   const handleResetView = useCallback(() => {

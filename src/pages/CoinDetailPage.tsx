@@ -67,10 +67,11 @@ export const CoinDetailPage: React.FC = () => {
   const [btcCandles, setBtcCandles] = useState<OHLCV[]>([]);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>('idle');
 
-  // Высота основного графика: доминирующий элемент рабочей области на desktop,
-  // компактнее на мобильных. Значения детерминированы и не зависят от случайности.
+  // P6: Chart height adapts for indicator sub-panels (RSI 130px, MACD 150px)
   const isDesktopWorkspace = useMediaQuery('(min-width: 1280px)');
-  const chartHeight = isDesktopWorkspace ? 460 : 340;
+  const baseHeight = isDesktopWorkspace ? 460 : 340;
+  const indicatorExtra = (showRSI ? 130 : 0) + (showMACD ? 150 : 0);
+  const chartHeight = baseHeight + indicatorExtra;
 
   useEffect(() => {
     if (symbol) {
