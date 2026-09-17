@@ -72,7 +72,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
                 <span className="text-emerald-300">Лонги {liquidation.longSharePct}%</span>
                 <span className="text-rose-300">Шорты {liquidation.shortSharePct}%</span>
               </div>
-              <div className="h-2 rounded-full overflow-hidden flex bg-[#111a30]">
+              <div className="h-2 rounded-full overflow-hidden flex bg-surface-elevated">
                 <div className="bg-emerald-500 h-full" style={{ width: `${liquidation.longSharePct}%` }} />
                 <div className="bg-rose-500 h-full" style={{ width: `${liquidation.shortSharePct}%` }} />
               </div>
@@ -222,7 +222,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             </div>
 
             {/* Двусторонняя шкала: −100 (лонги) … +100 (шорты) */}
-            <div className="relative h-2 rounded-full bg-[#111a30] overflow-hidden">
+            <div className="relative h-2 rounded-full bg-surface-elevated overflow-hidden">
               <div className="absolute inset-y-0 left-1/2 w-px bg-white/20" />
               <div
                 className={`absolute inset-y-0 ${imbalance.score >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}

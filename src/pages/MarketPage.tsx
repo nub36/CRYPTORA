@@ -107,7 +107,7 @@ export const MarketPage: React.FC = () => {
               placeholder="Фильтр по названию или тикеру..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans w-full sm:w-64 min-h-[34px]"
+              className="pl-8 pr-3 py-1.5 bg-surface-elevated border border-white/[0.08] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans w-full sm:w-64 min-h-[34px]"
             />
           </div>
 
@@ -120,7 +120,7 @@ export const MarketPage: React.FC = () => {
                 className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all whitespace-nowrap min-h-[32px] ${
                   selectedCategory === cat.value
                     ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                    : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.08]'
+                    : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.08]'
                 }`}
               >
                 {cat.label}
@@ -131,7 +131,7 @@ export const MarketPage: React.FC = () => {
       </div>
 
       {/* Main High-Density Table */}
-      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
+      <div className="bg-surface border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left font-sans">
             <thead className="bg-surface-elevated/80 text-slate-400 font-sans text-[11px] uppercase border-b border-surface-border select-none sticky top-0 z-10">

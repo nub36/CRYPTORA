@@ -4,6 +4,18 @@
 
 ---
 
+## [0.8.19] — 2026-09-17
+
+### Added — UX-цикл владельца п. 4: темы DARK / LIGHT / SYSTEM
+- Семантические токены темы `--c-*` (`src/index.css`: `:root` DARK, `html.light` LIGHT); Tailwind-палитры `surface/white/slate` и
+  акцентные шкалы переведены на переменные с поддержкой alpha — существующая разметка темизируется без переписывания.
+- `ThemeProvider` + `src/theme/theme.ts`: режимы dark/light/system, `prefers-color-scheme` с live-реакцией, сохранение в
+  `localStorage.cryptora_theme`, анти-FOUC inline-скрипт в `index.html`, переключатель `ThemeToggle` в шапке.
+- Темизация графиков: `CandleChart` читает `--chart-*` токены и перекрашивается при смене темы.
+- 148 произвольных `bg-[#hex]` заменены на токены (`bg-surface*`); тест-охрана `tests/unit/theme.test.ts` (8): парность токенов,
+  неизменность финансовой семантики, запрет hex, логика выбора/хранения, синхронность inline-скрипта.
+- Screenshot QA обеих тем 390/1440 × 6 маршрутов.
+
 ## [0.8.18] — 2026-09-17
 
 ### Changed — UX-цикл владельца п. 3: типографика, контраст, иерархия

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
+import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 import {
   PRIMARY_NAV_ITEMS,
@@ -274,7 +275,7 @@ export const Header: React.FC = () => {
         {isOpen && (
           <div
             role="menu"
-            className="absolute left-0 z-50 mt-1.5 w-72 rounded-lg border border-white/[0.12] bg-[#0a0f1d]/95 py-1.5 text-xs font-sans shadow-2xl shadow-black/80 backdrop-blur-2xl"
+            className="absolute left-0 z-50 mt-1.5 w-72 rounded-lg border border-white/[0.12] bg-surface/95 py-1.5 text-xs font-sans shadow-2xl shadow-black/80 backdrop-blur-2xl"
           >
             <div className="px-3 py-1 font-sans text-[11px] font-bold tracking-wide text-slate-400">
               {menuTitle}
@@ -319,7 +320,7 @@ export const Header: React.FC = () => {
   /* Поиск: автокомплит-результаты (общий для inline и compact варианта) */
   /* ------------------------------------------------------------------ */
   const renderSearchResults = () => (
-    <div className="absolute right-0 z-50 mt-1.5 w-64 rounded-lg border border-white/[0.12] bg-[#0a0f1d]/95 py-1 shadow-2xl backdrop-blur-2xl">
+    <div className="absolute right-0 z-50 mt-1.5 w-64 rounded-lg border border-white/[0.12] bg-surface/95 py-1 shadow-2xl backdrop-blur-2xl">
       <div className="border-b border-white/[0.06] px-3 py-1 font-sans text-[11px] font-bold uppercase text-slate-400">
         Результаты поиска
       </div>
@@ -353,7 +354,7 @@ export const Header: React.FC = () => {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#070b14]/90 shadow-panel backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-surface-inset/90 shadow-panel backdrop-blur-xl">
       <div className="mx-auto flex min-w-0 max-w-[1920px] flex-wrap items-center gap-x-2 px-3 sm:px-4">
         {/* ----------------------------- Brand ----------------------------- */}
         <div className="order-1 flex h-14 min-w-0 shrink items-center gap-x-2 sm:gap-x-3">
@@ -364,7 +365,7 @@ export const Header: React.FC = () => {
           >
             {/* Technological Brand Mark */}
             <div className="relative h-8 w-8 shrink-0 rounded-lg bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 p-[1px] shadow-sm shadow-cyan-500/20 transition-all duration-300 group-hover:shadow-cyan-400/30">
-              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[7px] bg-[#0a0f1d]">
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[7px] bg-surface">
                 <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/15 via-transparent to-violet-500/10 opacity-70 transition-opacity group-hover:opacity-100" />
                 <svg
                   className="relative z-10 h-4 w-4 text-cyan-400 transition-colors group-hover:text-white"
@@ -388,7 +389,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="hidden shrink-0 rounded border border-cyan-500/30 bg-cyan-950/80 px-1.5 font-mono text-[11px] font-semibold tracking-normal text-cyan-400 navxl:inline-block">
-                  v0.8.18
+                  v0.8.19
                 </span>
               </div>
               <span className="hidden whitespace-nowrap font-sans text-[11px] tracking-tight text-slate-400 2xl:block">
@@ -506,7 +507,7 @@ export const Header: React.FC = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-                className="w-36 rounded-md border border-white/[0.08] bg-[#0e1526]/80 py-1 pl-8 pr-2.5 font-mono text-xs text-slate-200 placeholder-slate-500 transition-all focus:border-cyan-400/60 focus:bg-[#111a30] focus:outline-none 2xl:w-40 nav2xl:w-44"
+                className="w-36 rounded-md border border-white/[0.08] bg-surface-2/80 py-1 pl-8 pr-2.5 font-mono text-xs text-slate-200 placeholder-slate-500 transition-all focus:border-cyan-400/60 focus:bg-surface-elevated focus:outline-none 2xl:w-40 nav2xl:w-44"
               />
             </div>
             {isSearchFocused && !compactSearchOpen && searchResults.length > 0 && renderSearchResults()}
@@ -528,6 +529,8 @@ export const Header: React.FC = () => {
               {compactSearchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
             </button>
           </div>
+
+          <ThemeToggle />
 
           {/* Watchlist Drawer Button */}
           <button
@@ -578,7 +581,7 @@ export const Header: React.FC = () => {
       {compactSearchOpen && (
         <div
           role="search"
-          className="border-b border-white/[0.08] bg-[#070b14]/98 px-3 py-2.5 backdrop-blur-2xl sm:px-4 navxl:hidden"
+          className="border-b border-white/[0.08] bg-surface-inset/98 px-3 py-2.5 backdrop-blur-2xl sm:px-4 navxl:hidden"
         >
           <div className="relative mx-auto flex max-w-[1920px] items-center">
             <Search className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
@@ -591,12 +594,12 @@ export const Header: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
               onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-              className="w-full rounded-md border border-white/[0.1] bg-[#0e1526] py-2 pl-9 pr-3 font-mono text-[13px] text-slate-200 placeholder-slate-500 transition-all focus:border-cyan-400/60 focus:bg-[#111a30] focus:outline-none"
+              className="w-full rounded-md border border-white/[0.1] bg-surface-2 py-2 pl-9 pr-3 font-mono text-[13px] text-slate-200 placeholder-slate-500 transition-all focus:border-cyan-400/60 focus:bg-surface-elevated focus:outline-none"
             />
           </div>
 
           {searchQuery.trim() && (
-            <div className="mx-auto mt-2 max-w-[1920px] overflow-hidden rounded-md border border-white/[0.1] bg-[#0a0f1d]/95">
+            <div className="mx-auto mt-2 max-w-[1920px] overflow-hidden rounded-md border border-white/[0.1] bg-surface/95">
               {searchResults.length === 0 ? (
                 <div className="px-3 py-2.5 font-sans text-xs text-slate-400">
                   Совпадений не найдено
@@ -636,7 +639,7 @@ export const Header: React.FC = () => {
 
       {/* Mobile / tablet menu (< 1024px) */}
       {mobileMenuOpen && (
-        <div className="max-h-[85vh] space-y-3 overflow-y-auto border-b border-white/[0.1] bg-[#070b14]/98 px-4 py-4 backdrop-blur-2xl lg:hidden">
+        <div className="max-h-[85vh] space-y-3 overflow-y-auto border-b border-white/[0.1] bg-surface-inset/98 px-4 py-4 backdrop-blur-2xl lg:hidden">
           {/* Status strip: источник данных, realtime, тариф */}
           <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.08] pb-3">
             <span
@@ -752,7 +755,7 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-sans text-[11px] text-slate-400">
-            <span>CRYPTORA v0.8.18</span>
+            <span>CRYPTORA v0.8.19</span>
             <span>{dataMode === 'live' ? 'LIVE-ДАННЫЕ РЫНКА' : 'QA-ДАТАСЕТ'}</span>
           </div>
         </div>

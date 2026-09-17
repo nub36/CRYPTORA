@@ -42,7 +42,7 @@ export const MarketTicker: React.FC = () => {
   const isEmpty = assets.length === 0;
 
   return (
-    <div className="w-full bg-[#060912]/95 backdrop-blur-md border-b border-white/[0.06] text-xs overflow-x-auto select-none shadow-inner">
+    <div className="w-full bg-surface/95 backdrop-blur-md border-b border-white/[0.06] text-xs overflow-x-auto select-none shadow-inner">
       <div className="flex items-center min-w-max px-3.5 py-1.5 space-x-5">
         {/* Метка фактического источника котировок */}
         <div className="flex items-center space-x-2 pr-3.5 border-r border-white/[0.08] flex-shrink-0">

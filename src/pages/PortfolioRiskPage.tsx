@@ -84,19 +84,19 @@ export const PortfolioRiskPage: React.FC = () => {
           <span className="text-slate-400 mr-1 hidden lg:inline font-semibold">Пресеты:</span>
           <button
             onClick={applyPresetConservative}
-            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-emerald-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
+            className="px-3 py-1.5 bg-surface-elevated border border-white/[0.08] hover:border-emerald-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
           >
             Консервативный Core (60% BTC)
           </button>
           <button
             onClick={applyPresetBarbell}
-            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-cyan-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
+            className="px-3 py-1.5 bg-surface-elevated border border-white/[0.08] hover:border-cyan-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
           >
             Barbell (40% BTC / 30% Alts)
           </button>
           <button
             onClick={applyPresetHighBeta}
-            className="px-3 py-1.5 bg-[#111a30] border border-white/[0.08] hover:border-violet-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
+            className="px-3 py-1.5 bg-surface-elevated border border-white/[0.08] hover:border-violet-500/50 text-slate-300 hover:text-white rounded-lg transition-colors whitespace-nowrap min-h-[32px] font-medium"
           >
             High-Beta Altseason
           </button>
@@ -104,7 +104,7 @@ export const PortfolioRiskPage: React.FC = () => {
       </div>
 
       {/* Non-Custodial Invariant Notice */}
-      <div className="p-4 bg-[#0a0f1d] border border-white/[0.08] rounded-xl text-xs font-sans text-slate-300 space-y-2 shadow-panel">
+      <div className="p-4 bg-surface border border-white/[0.08] rounded-xl text-xs font-sans text-slate-300 space-y-2 shadow-panel">
         <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span>Без кастоди: аналитическое моделирование риска</span>
@@ -116,7 +116,7 @@ export const PortfolioRiskPage: React.FC = () => {
 
       {/* Risk Metrics Dashboard */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Стоимость портфеля</div>
           <div className="text-2xl font-bold text-white mt-1.5 tabular-nums font-mono">
             ${report.totalValueUsd.toLocaleString()}
@@ -124,7 +124,7 @@ export const PortfolioRiskPage: React.FC = () => {
           <div className="text-[11px] text-slate-400 mt-0.5">Базовая валюта: USD</div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Бета портфеля к BTC</div>
           <div
             className={`text-2xl font-black mt-1.5 tabular-nums  font-mono${
@@ -140,7 +140,7 @@ export const PortfolioRiskPage: React.FC = () => {
           <div className="text-[11px] text-slate-400 mt-0.5">Чувствительность к рынку</div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">VaR за 1 день (доверие 95%)</div>
           <div className="text-2xl font-bold text-rose-400 mt-1.5 tabular-nums font-mono">
             -${report.dailyVaR95Usd.toLocaleString()}
@@ -150,7 +150,7 @@ export const PortfolioRiskPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Концентрация (индекс HHI)</div>
           <div className="text-2xl font-bold text-amber-400 mt-1.5 tabular-nums font-mono">
             {report.hhiConcentrationIndex}
@@ -172,7 +172,7 @@ export const PortfolioRiskPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Годовая волатильность</div>
           <div className="text-2xl font-bold text-white mt-1.5 tabular-nums font-mono">
             {report.annualizedVolatilityPct}%

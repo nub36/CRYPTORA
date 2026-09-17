@@ -98,7 +98,7 @@ export const ToolsPage: React.FC = () => {
       {/* Row 1: Position Size & PnL / ROE */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Calculator 1: Position Size */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Shield className="w-4 h-4 text-cyan-400" />
             <h2 className="text-sm font-bold font-sans text-white tracking-wide">
@@ -113,7 +113,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={posAccountBalance}
                 onChange={(e) => setPosAccountBalance(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -124,7 +124,7 @@ export const ToolsPage: React.FC = () => {
                 step="0.1"
                 value={posRiskPercentage}
                 onChange={(e) => setPosRiskPercentage(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -134,7 +134,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={posEntryPrice}
                 onChange={(e) => setPosEntryPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -144,13 +144,13 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={posStopLossPrice}
                 onChange={(e) => setPosStopLossPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
           </div>
 
           {/* Result Box */}
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+          <div className="bg-surface-inset rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
             <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Сумма риска (стоп-лосс, $)</span>
               <span className="font-bold text-rose-400">
@@ -189,7 +189,7 @@ export const ToolsPage: React.FC = () => {
         </div>
 
         {/* Calculator 2: PnL & ROE */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Calculator className="w-4 h-4 text-emerald-400" />
             <h2 className="text-sm font-bold font-sans text-white tracking-wide">
@@ -206,7 +206,7 @@ export const ToolsPage: React.FC = () => {
                   className={`flex-1 py-2 rounded-lg border transition-all min-h-[38px] font-bold ${
                     pnlDirection === 'LONG'
                       ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/50 shadow-sm'
-                      : 'bg-[#111a30] text-slate-400 border-white/[0.08] hover:bg-[#162342]'
+                      : 'bg-surface-elevated text-slate-400 border-white/[0.08] hover:bg-surface-hover'
                   }`}
                 >
                   LONG
@@ -216,7 +216,7 @@ export const ToolsPage: React.FC = () => {
                   className={`flex-1 py-2 rounded-lg border transition-all min-h-[38px] font-bold ${
                     pnlDirection === 'SHORT'
                       ? 'bg-rose-950/60 text-rose-300 border-rose-500/50 shadow-sm'
-                      : 'bg-[#111a30] text-slate-400 border-white/[0.08] hover:bg-[#162342]'
+                      : 'bg-surface-elevated text-slate-400 border-white/[0.08] hover:bg-surface-hover'
                   }`}
                 >
                   SHORT
@@ -230,7 +230,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlLeverage}
                 onChange={(e) => setPnlLeverage(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -240,7 +240,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlMargin}
                 onChange={(e) => setPnlMargin(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -250,7 +250,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlEntryPrice}
                 onChange={(e) => setPnlEntryPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -260,13 +260,13 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlExitPrice}
                 onChange={(e) => setPnlExitPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
           </div>
 
           {/* Result Box */}
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+          <div className="bg-surface-inset rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
             <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Номинальный объем позиции</span>
               <span className="font-semibold text-white font-mono tabular-nums">
@@ -315,7 +315,7 @@ export const ToolsPage: React.FC = () => {
       {/* Row 2: Liquidation Price, Funding Fee & DCA */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Calculator 3: Liquidation Price */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Flame className="w-4 h-4 text-rose-400" />
             <h2 className="text-sm font-bold font-sans text-white tracking-wide">
@@ -332,7 +332,7 @@ export const ToolsPage: React.FC = () => {
                   className={`flex-1 py-1.5 rounded-lg border transition-all text-xs min-h-[34px] font-bold ${
                     liqDirection === 'LONG'
                       ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/50'
-                      : 'bg-[#111a30] text-slate-400 border-white/[0.08] hover:bg-[#162342]'
+                      : 'bg-surface-elevated text-slate-400 border-white/[0.08] hover:bg-surface-hover'
                   }`}
                 >
                   LONG
@@ -342,7 +342,7 @@ export const ToolsPage: React.FC = () => {
                   className={`flex-1 py-1.5 rounded-lg border transition-all text-xs min-h-[34px] font-bold ${
                     liqDirection === 'SHORT'
                       ? 'bg-rose-950/60 text-rose-300 border-rose-500/50'
-                      : 'bg-[#111a30] text-slate-400 border-white/[0.08] hover:bg-[#162342]'
+                      : 'bg-surface-elevated text-slate-400 border-white/[0.08] hover:bg-surface-hover'
                   }`}
                 >
                   SHORT
@@ -356,7 +356,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={liqEntryPrice}
                 onChange={(e) => setLiqEntryPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -367,7 +367,7 @@ export const ToolsPage: React.FC = () => {
                   type="number"
                   value={liqLeverage}
                   onChange={(e) => setLiqLeverage(e.target.value)}
-                  className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
+                  className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
                 />
               </div>
               <div>
@@ -377,13 +377,13 @@ export const ToolsPage: React.FC = () => {
                   step="0.1"
                   value={liqMmr}
                   onChange={(e) => setLiqMmr(e.target.value)}
-                  className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
+                  className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+          <div className="bg-surface-inset rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
             <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Расчетная цена ликвидации</span>
               <span className="font-bold text-rose-400 text-sm">
@@ -406,7 +406,7 @@ export const ToolsPage: React.FC = () => {
         </div>
 
         {/* Calculator 4: Funding Fee Estimator */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <DollarSign className="w-4 h-4 text-violet-400" />
             <h2 className="text-sm font-bold font-sans text-white tracking-wide">
@@ -421,7 +421,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={feePosSize}
                 onChange={(e) => setFeePosSize(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -432,7 +432,7 @@ export const ToolsPage: React.FC = () => {
                 step="0.001"
                 value={feeRate8h}
                 onChange={(e) => setFeeRate8h(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -442,12 +442,12 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={feeDays}
                 onChange={(e) => setFeeDays(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
           </div>
 
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+          <div className="bg-surface-inset rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
             <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Начислений фандинга (8h)</span>
               <span className="font-semibold text-white">
@@ -470,7 +470,7 @@ export const ToolsPage: React.FC = () => {
         </div>
 
         {/* Calculator 5: DCA Simulator */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <TrendingUp className="w-4 h-4 text-emerald-400" />
             <h2 className="text-sm font-bold font-sans text-white tracking-wide">
@@ -485,7 +485,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={dcaPeriodic}
                 onChange={(e) => setDcaPeriodic(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -496,12 +496,12 @@ export const ToolsPage: React.FC = () => {
                 value={dcaPricesStr}
                 onChange={(e) => setDcaPricesStr(e.target.value)}
                 placeholder="68000, 62000, 58000, 64000"
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white text-[11px] focus:outline-none focus:border-cyan-400 min-h-[36px]"
+                className="w-full bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-white text-[11px] focus:outline-none focus:border-cyan-400 min-h-[36px]"
               />
             </div>
           </div>
 
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+          <div className="bg-surface-inset rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
             <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Всего инвестировано</span>
               <span className="font-semibold text-white">

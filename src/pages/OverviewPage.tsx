@@ -171,7 +171,7 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* Quick Terminal Intelligence Hub */}
-      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-panel">
+      <div className="bg-surface border border-white/[0.08] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-panel">
         <span className="text-slate-400 font-bold tracking-wide text-[11px] flex items-center space-x-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           <span>Специализированные аналитические разделы:</span>
@@ -179,42 +179,42 @@ export const OverviewPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             to="/portfolio"
-            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <PieChart className="w-3.5 h-3.5 text-cyan-400" />
             <span>Портфель & VaR</span>
           </Link>
           <Link
             to="/correlations"
-            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <Grid className="w-3.5 h-3.5 text-violet-400" />
             <span>Корреляции & Beta</span>
           </Link>
           <Link
             to="/onchain"
-            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-emerald-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-emerald-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <Network className="w-3.5 h-3.5 text-emerald-400" />
             <span>Он-чейн & MVRV</span>
           </Link>
           <Link
             to="/calendar"
-            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-amber-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-amber-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <Calendar className="w-3.5 h-3.5 text-amber-400" />
             <span>Макро-календарь</span>
           </Link>
           <Link
             to="/ecosystem"
-            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <Layers className="w-3.5 h-3.5 text-cyan-400" />
             <span>TVL DeFi и L2</span>
           </Link>
           <Link
             to="/journal"
-            className="px-3 py-1.5 rounded-lg bg-[#111a30] hover:bg-[#162342] border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <BookOpen className="w-3.5 h-3.5 text-violet-400" />
             <span>Журнал трейдера</span>
@@ -225,7 +225,7 @@ export const OverviewPage: React.FC = () => {
       {/* SECTION A: Market Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
         {/* Total Market Cap */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
+        <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
             <span className="tracking-wide">Капитализация рынка</span>
             <span className="flex items-center space-x-1">
@@ -259,7 +259,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* 24h Volume */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
+        <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
             <span className="tracking-wide">24h Спот Объем</span>
             <span className="flex items-center space-x-1">
@@ -291,7 +291,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* BTC Dominance */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
+        <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
             <span className="tracking-wide">Доминация BTC</span>
             <span className="text-[11px] text-cyan-300 font-mono font-bold">ETH: {overview.ethDominance}%</span>
@@ -299,7 +299,7 @@ export const OverviewPage: React.FC = () => {
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {overview.btcDominance}%
           </div>
-          <div className="w-full bg-[#111a30] h-1.5 rounded-full mt-2.5 overflow-hidden flex">
+          <div className="w-full bg-surface-elevated h-1.5 rounded-full mt-2.5 overflow-hidden flex">
             <div
               className="bg-cyan-400 h-full"
               style={{ width: `${overview.btcDominance}%` }}
@@ -312,7 +312,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Fear & Greed Index */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-amber-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
+        <div className="bg-surface border border-white/[0.08] hover:border-amber-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
             <span className="tracking-wide">Индекс жадности</span>
             <span
@@ -344,7 +344,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Market Breadth */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
+        <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
             <span className="tracking-wide">Широта рынка</span>
             <span className="text-[11px] text-emerald-400 font-mono font-semibold">80% РОСТ</span>
@@ -363,7 +363,7 @@ export const OverviewPage: React.FC = () => {
         <div
           data-qa="overview-mode-card"
           className={`border rounded-xl p-3.5 shadow-panel ${
-            dataMode === 'live' ? 'bg-[#0a0f1d] border-white/[0.08]' : 'bg-amber-500/[0.07] border-amber-500/25'
+            dataMode === 'live' ? 'bg-surface border-white/[0.08]' : 'bg-amber-500/[0.07] border-amber-500/25'
           }`}
         >
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between font-bold tracking-wide">
@@ -401,14 +401,14 @@ export const OverviewPage: React.FC = () => {
       {/* SECTION B & C: Main Chart & Futures/Liquidations Row */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Main BTC Chart Column (7 cols) - The Command Center Focal Point */}
-        <div className="lg:col-span-7 bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 sm:p-4 space-y-3.5 shadow-panel relative">
+        <div className="lg:col-span-7 bg-surface border border-white/[0.08] rounded-xl p-3 sm:p-4 space-y-3.5 shadow-panel relative">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.06] gap-2">
             <div className="flex items-center space-x-3">
               <div>
                 <div className="flex items-center space-x-2">
                   <span className="font-mono font-bold text-lg text-white">BTC / USDT</span>
                   <span
-                    className={`text-xs bg-[#111a30] px-2 py-0.5 rounded-full font-mono border font-semibold ${
+                    className={`text-xs bg-surface-elevated px-2 py-0.5 rounded-full font-mono border font-semibold ${
                       dataMode === 'live'
                         ? 'text-brand-green border-brand-green/30'
                         : 'text-cyan-300 border-cyan-500/30'
@@ -439,7 +439,7 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             {/* Timeframe Selector Buttons */}
-            <div className="flex items-center space-x-1 font-sans text-xs bg-[#111a30] p-1 rounded-lg border border-white/[0.06] self-start sm:self-auto">
+            <div className="flex items-center space-x-1 font-sans text-xs bg-surface-elevated p-1 rounded-lg border border-white/[0.06] self-start sm:self-auto">
               {(['15m', '1h', '4h', '1D', '1W'] as Timeframe[]).map((tf) => (
                 <button
                   key={tf}
@@ -493,7 +493,7 @@ export const OverviewPage: React.FC = () => {
         {/* Snapshot Panels Column (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           {/* Futures Snapshot */}
-          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 shadow-panel">
+          <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 shadow-panel">
             <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
                 <Layers className="w-4 h-4 text-violet-400" />
@@ -511,7 +511,7 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div className="bg-[#111a30] p-3 rounded-lg border border-white/[0.06]">
+              <div className="bg-surface-elevated p-3 rounded-lg border border-white/[0.06]">
                 <div className="text-[11px] text-slate-400 font-sans">Агрегированный OI</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalOpenInterest, { compact: true })}
@@ -519,7 +519,7 @@ export const OverviewPage: React.FC = () => {
                 <div className="text-[11px] text-emerald-400 font-mono mt-0.5 font-semibold">+6.8% за 24h</div>
               </div>
 
-              <div className="bg-[#111a30] p-3 rounded-lg border border-white/[0.06]">
+              <div className="bg-surface-elevated p-3 rounded-lg border border-white/[0.06]">
                 <div className="text-[11px] text-slate-400 font-sans">Суточный объём перпов</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalFuturesVolume, { compact: true })}
@@ -533,7 +533,7 @@ export const OverviewPage: React.FC = () => {
               {futures.slice(0, 3).map((f) => (
                 <div
                   key={f.symbol}
-                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/80 hover:bg-[#162342] transition-colors border border-white/[0.04]"
+                  className="flex items-center justify-between p-2 rounded-lg bg-surface-elevated/80 hover:bg-surface-hover transition-colors border border-white/[0.04]"
                 >
                   <span className="font-bold text-white">{f.symbol}</span>
                   <span className="text-slate-300 tabular-nums font-mono">
@@ -559,7 +559,7 @@ export const OverviewPage: React.FC = () => {
           </div>
 
           {/* Liquidations Snapshot */}
-          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 shadow-panel">
+          <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 shadow-panel">
             <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
                 <Flame className="w-4 h-4 text-rose-400" />
@@ -592,7 +592,7 @@ export const OverviewPage: React.FC = () => {
                     </div>
 
                     {/* Progress bar */}
-                    <div className="w-full h-2 rounded-full overflow-hidden flex bg-[#111a30] mb-3">
+                    <div className="w-full h-2 rounded-full overflow-hidden flex bg-surface-elevated mb-3">
                       <div
                         className="bg-emerald-500 h-full"
                         style={{
@@ -642,7 +642,7 @@ export const OverviewPage: React.FC = () => {
       {/* SECTION D: Radar Feed, Top Movers, Signals Preview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Column 1: Market Radar Stream */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col shadow-panel">
           <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
             <div className="flex items-center space-x-2">
               <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
@@ -663,7 +663,7 @@ export const OverviewPage: React.FC = () => {
             {radarEvents.slice(0, 4).map((event) => (
               <div
                 key={event.id}
-                className="p-3 rounded-lg bg-[#111a30]/80 border border-white/[0.06] text-xs space-y-1.5 hover:border-cyan-500/40 transition-colors"
+                className="p-3 rounded-lg bg-surface-elevated/80 border border-white/[0.06] text-xs space-y-1.5 hover:border-cyan-500/40 transition-colors"
               >
                 <div className="flex items-center justify-between font-mono">
                   <div className="flex items-center space-x-2">
@@ -697,7 +697,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Column 2: Top Movers & Funding Extremes */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-4 shadow-panel">
           <div>
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
               <span className="font-bold text-xs text-white font-sans tracking-wide flex items-center space-x-1.5">
@@ -714,7 +714,7 @@ export const OverviewPage: React.FC = () => {
                 <Link
                   key={asset.id}
                   to={`/coin/${asset.symbol}`}
-                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/60 hover:bg-[#162342] transition-colors border border-white/[0.04]"
+                  className="flex items-center justify-between p-2 rounded-lg bg-surface-elevated/60 hover:bg-surface-hover transition-colors border border-white/[0.04]"
                 >
                   <div className="flex items-center space-x-2">
                     <span className="font-bold text-white">{asset.symbol}</span>
@@ -745,7 +745,7 @@ export const OverviewPage: React.FC = () => {
                 <Link
                   key={asset.id}
                   to={`/coin/${asset.symbol}`}
-                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/60 hover:bg-[#162342] transition-colors border border-white/[0.04]"
+                  className="flex items-center justify-between p-2 rounded-lg bg-surface-elevated/60 hover:bg-surface-hover transition-colors border border-white/[0.04]"
                 >
                   <div className="flex items-center space-x-2">
                     <span className="font-bold text-white">{asset.symbol}</span>
@@ -781,7 +781,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Column 3: Signals Architecture Preview */}
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col justify-between shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col justify-between shadow-panel">
           <div>
             <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
@@ -805,7 +805,7 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             {/* Structured Setup Mock Card */}
-            <div className="p-3.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs font-sans space-y-2">
+            <div className="p-3.5 bg-surface-elevated border border-white/[0.08] rounded-lg text-xs font-sans space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-white">BTC/USDT: пробой на 4ч</span>
                 <span className="text-[11px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
@@ -828,7 +828,7 @@ export const OverviewPage: React.FC = () => {
           <div className="pt-3 border-t border-white/[0.06] mt-3">
             <Link
               to="/signals"
-              className="w-full py-2 bg-[#111a30] hover:bg-[#162342] text-cyan-400 hover:text-white text-xs font-sans font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition-colors border border-white/[0.08] hover:border-cyan-500/30 min-h-[36px]"
+              className="w-full py-2 bg-surface-elevated hover:bg-surface-hover text-cyan-400 hover:text-white text-xs font-sans font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition-colors border border-white/[0.08] hover:border-cyan-500/30 min-h-[36px]"
             >
               <span>Спецификация сигналов и бэктестинга</span>
               <ArrowUpRight className="w-3.5 h-3.5" />

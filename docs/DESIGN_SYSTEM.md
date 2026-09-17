@@ -10,6 +10,25 @@
 
 В терминале CRYPTORA цвет — это точный инструмент немедленной передачи статуса, рыночной динамики и риска.
 
+### Темы DARK / LIGHT / SYSTEM (UX-цикл п. 4, v0.8.19)
+- **Источник истины** — CSS-переменные `--c-*` в `src/index.css`: блок `:root` = DARK (значения из таблиц ниже), блок `html.light` = LIGHT.
+  Tailwind-палитры `root`, `surface-*`, `white`, `slate-*` и акцентные шкалы `rose/emerald/cyan/amber/violet/purple/sky/blue`
+  (`tailwind.config.js`) ссылаются на эти переменные как `rgb(var(--c-…) / <alpha-value>)`, поэтому все существующие классы
+  (`bg-surface-elevated/60`, `border-white/[0.08]`, `text-slate-400`, `text-amber-300`) автоматически переключаются.
+- **Инверсия шкал в LIGHT:** `white` → `#0f172a`; `slate-200/300` → тёмный текст, `slate-800/900` → светлые подложки;
+  акцентные оттенки `200/300/400` → `800/700/600` той же тональности (читаемость на светлом), `500` общий, `950` → бледная подложка.
+- **Зафиксировано в обеих темах:** `black` (оверлеи модалок), `slate-950` (текст на цветных кнопках), `brand-*`, `accent-*`,
+  `--positive/--negative/--warning` — финансовая семантика не меняется (охраняется `tests/unit/theme.test.ts`).
+- **Выбор темы:** `ThemeProvider` (`src/context/ThemeContext.tsx`) + чистая логика `src/theme/theme.ts`. Режимы `dark | light | system`;
+  `system` следует за `prefers-color-scheme` и реагирует на смену без перезагрузки. Хранение — `localStorage['cryptora_theme']`;
+  невалидное значение → `system`. Inline-скрипт в `index.html` применяет тему до загрузки бандла (анти-FOUC). Переключатель — `ThemeToggle`
+  в шапке (цикл Тёмная → Светлая → Системная, `data-testid="theme-toggle"`).
+- **Графики:** `CandleChart` читает `--chart-bg/--chart-grid/--chart-text/--chart-border` через `getComputedStyle` и перекрашивается при
+  смене темы; цвета свечей/объёма (emerald/rose/sky) фиксированы. Canvas-тепловые карты используют семантические rgba (cyan/amber/rose) на
+  фоне `bg-surface`.
+- **Запрет:** произвольные hex-фоны `bg-[#…]` в `src/**/*.tsx` (148 вхождений заменены на токены; тест-охрана).
+- **QA:** скриншоты обеих тем 390/1440 на `/`, `/market`, `/liquidations`, `/strategies`, `/tools`, `/coin/BTC` (`screenshots/theme-p4/`, gitignored).
+
 ### Токены фона и поверхностей
 | Токен | CSS Переменная | Hex / RGBA | Назначение |
 | :--- | :--- | :--- | :--- |

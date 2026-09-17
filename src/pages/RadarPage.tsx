@@ -91,7 +91,7 @@ export const RadarPage: React.FC = () => {
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
+            className="bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
           >
             <option value="all">Все типы аномалий</option>
             <option value="VOLUME_SPIKE">Всплеск объёма</option>
@@ -106,7 +106,7 @@ export const RadarPage: React.FC = () => {
           <select
             value={selectedSeverity}
             onChange={(e) => setSelectedSeverity(e.target.value)}
-            className="bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
+            className="bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
           >
             <option value="all">Любая важность</option>
             <option value="HIGH">Только высокая</option>
@@ -118,7 +118,7 @@ export const RadarPage: React.FC = () => {
 
       {/* AI Market Analyst Grounded Briefing Banner */}
       {aiBriefing && (
-        <div className="bg-[#0a0f1d] border border-cyan-500/30 rounded-xl p-4 font-sans text-xs space-y-3 shadow-panel bg-gradient-to-r from-[#0a0f1d] to-cyan-950/20">
+        <div className="bg-surface border border-cyan-500/30 rounded-xl p-4 font-sans text-xs space-y-3 shadow-panel bg-gradient-to-r from-surface to-cyan-950/20">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center space-x-2 font-bold text-white">
               <Sparkles className="w-4 h-4 text-brand-cyan" />

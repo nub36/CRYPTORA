@@ -120,7 +120,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 sm:p-4 shadow-panel">
+    <div className="w-full bg-surface border border-white/[0.08] rounded-xl p-3 sm:p-4 shadow-panel">
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-3 border-b border-white/[0.06] gap-2">
         <div className="flex items-center space-x-2">
@@ -145,7 +145,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
             className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'change24h'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
+                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
             Изм. 24ч
@@ -155,7 +155,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
             className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'volume'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
+                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
             Объём
@@ -165,7 +165,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
             className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'oi'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
+                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
             Открытый интерес
@@ -175,7 +175,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
             className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
               metric === 'funding'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                : 'bg-[#111a30] text-slate-300 hover:bg-[#162342] hover:text-white border border-white/[0.06]'
+                : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
             Фандинг

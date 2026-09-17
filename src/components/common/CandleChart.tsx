@@ -1,3 +1,5 @@
+import { useTheme } from '@/context/ThemeContext';
+import { readThemeToken } from '@/theme/theme';
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { OHLCV } from '@/types/market';
@@ -22,14 +24,35 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
+  const { resolved: theme } = useTheme();
+
+  // Темизация графика: цвета читаются из CSS-токенов (src/index.css), пересчитываются при смене темы.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const bg = readThemeToken('--chart-bg', '#090e1a');
+    const grid = readThemeToken('--chart-grid', 'rgba(255, 255, 255, 0.04)');
+    const border = readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)');
+    chart.applyOptions({
+      layout: { background: { type: ColorType.Solid, color: bg }, textColor: readThemeToken('--chart-text', '#94a3b8') },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      rightPriceScale: { borderColor: border },
+      timeScale: { borderColor: border },
+      crosshair: {
+        vertLine: { labelBackgroundColor: theme === 'light' ? '#e2e8f0' : '#131c33' },
+        horzLine: { labelBackgroundColor: theme === 'light' ? '#e2e8f0' : '#131c33' },
+      },
+    });
+  }, [theme]);
+
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Create chart instance with modern dark terminal styling
+    // Create chart instance; palette from theme tokens (see effect above for live re-theming)
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#090e1a' },
-        textColor: '#94a3b8',
+        background: { type: ColorType.Solid, color: readThemeToken('--chart-bg', '#090e1a') },
+        textColor: readThemeToken('--chart-text', '#94a3b8'),
         fontFamily: "'JetBrains Mono', 'SFMono-Regular', monospace",
         fontSize: 11,
       },
@@ -40,8 +63,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         locale: 'en-US',
       },
       grid: {
-        vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
-        horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
+        vertLines: { color: readThemeToken('--chart-grid', 'rgba(255, 255, 255, 0.04)') },
+        horzLines: { color: readThemeToken('--chart-grid', 'rgba(255, 255, 255, 0.04)') },
       },
       crosshair: {
         vertLine: {
@@ -58,14 +81,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         },
       },
       rightPriceScale: {
-        borderColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
         scaleMargins: {
           top: 0.1,
           bottom: 0.22,
         },
       },
       timeScale: {
-        borderColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
         timeVisible: true,
         secondsVisible: false,
       },
@@ -157,7 +180,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   }, [data]);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-xl border border-white/[0.08] bg-[#090e1a] shadow-panel-elevated group">
+    <div className="relative w-full overflow-hidden rounded-xl border border-white/[0.08] bg-surface shadow-panel-elevated group">
       {/* Subtle Ambient Radial Glow */}
       <div className="absolute top-0 left-1/4 w-96 h-36 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
 

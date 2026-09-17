@@ -188,7 +188,7 @@ export const LiquidationsPage: React.FC = () => {
 
       {/* Aggregate Long/Short Ratio Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 shadow-panel">
           <div className="text-xs text-slate-400 tracking-wide">Ликвидировано лонгов (24ч)</div>
           <div className="text-2xl font-black text-emerald-400 mt-1 tabular-nums font-mono">
             {formatCurrency(data.totalLong24h, { compact: true })}
@@ -198,7 +198,7 @@ export const LiquidationsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 shadow-panel">
           <div className="text-xs text-slate-400 tracking-wide">Ликвидировано шортов (24ч)</div>
           <div className="text-2xl font-black text-rose-400 mt-1 tabular-nums font-mono">
             {formatCurrency(data.totalShort24h, { compact: true })}
@@ -208,7 +208,7 @@ export const LiquidationsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 shadow-panel">
           <div className="text-xs text-slate-400 tracking-wide">Крупнейшее единичное событие</div>
           {data.largestEvent ? (
             <>
@@ -230,12 +230,12 @@ export const LiquidationsPage: React.FC = () => {
 
       {/* Progress Bar: только при наличии фактических событий */}
       {data.total24h > 0 && (
-      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+      <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
         <div className="flex justify-between text-xs mb-2">
           <span className="text-emerald-400 font-bold tabular-nums font-mono">Лонги: {longPct}%</span>
           <span className="text-rose-400 font-bold tabular-nums font-mono">Шорты: {shortPct}%</span>
         </div>
-        <div className="w-full h-3 rounded-full overflow-hidden flex bg-[#111a30]">
+        <div className="w-full h-3 rounded-full overflow-hidden flex bg-surface-elevated">
           <div className="bg-emerald-500 h-full" style={{ width: `${longPct}%` }} />
           <div className="bg-rose-500 h-full" style={{ width: `${shortPct}%` }} />
         </div>
@@ -245,7 +245,7 @@ export const LiquidationsPage: React.FC = () => {
       {/* Timeline & Breakdowns Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:items-start">
         {/* Timeline Visualization (8 cols) */}
-        <div className="lg:col-span-8 bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3.5 shadow-panel">
+        <div className="lg:col-span-8 bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3.5 shadow-panel">
           <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
             <span className="text-xs font-bold text-white tracking-wide flex items-center space-x-1.5">
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
@@ -306,7 +306,7 @@ export const LiquidationsPage: React.FC = () => {
         {/* Exchange & Asset Breakdowns (4 cols) */}
         <div className="lg:col-span-4 space-y-4">
           {/* Exchange Breakdown */}
-          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
+          <div className="bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
             <div className="text-xs font-bold text-white tracking-wide pb-2 border-b border-white/[0.06]">
               Распределение по биржам
             </div>
@@ -324,7 +324,7 @@ export const LiquidationsPage: React.FC = () => {
                       {formatCurrency(ex.totalUsd, { compact: true })} ({ex.percentage}%)
                     </span>
                   </div>
-                  <div className="w-full h-1.5 rounded-full bg-[#111a30] overflow-hidden">
+                  <div className="w-full h-1.5 rounded-full bg-surface-elevated overflow-hidden">
                     <div
                       className="bg-cyan-400 h-full rounded-full"
                       style={{ width: `${ex.percentage}%` }}
@@ -336,7 +336,7 @@ export const LiquidationsPage: React.FC = () => {
           </div>
 
           {/* Top Asset Liquidation Totals */}
-          <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
+          <div className="bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
             <div className="text-xs font-bold text-white tracking-wide pb-2 border-b border-white/[0.06]">
               Топ активов по ликвидациям
             </div>
@@ -349,7 +349,7 @@ export const LiquidationsPage: React.FC = () => {
               {data.assetBreakdown.slice(0, 5).map((ab) => (
                 <div
                   key={ab.symbol}
-                  className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/60 hover:bg-[#162342] transition-colors border border-white/[0.04]"
+                  className="flex items-center justify-between p-2 rounded-lg bg-surface-elevated/60 hover:bg-surface-hover transition-colors border border-white/[0.04]"
                 >
                   <span className="font-bold text-white">{ab.symbol}</span>
                   <div className="text-right tabular-nums font-mono">
@@ -376,7 +376,7 @@ export const LiquidationsPage: React.FC = () => {
       />
 
       {/* Estimated Liquidation Clusters (Model Simulation) */}
-      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
+      <div className="bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
         <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
           <div className="flex items-center space-x-2">
             <Layers className="w-4 h-4 text-cyan-400" />

@@ -106,7 +106,7 @@ export const LiquidationHeatmap: React.FC<LiquidationHeatmapProps> = ({ model, u
             {/* Полотно карты: одна строка цены = один градиент по времени */}
             <div className="relative flex-1 min-w-0">
               <div
-                className="h-[260px] sm:h-[300px] rounded border border-white/[0.06] bg-[#0a0f1d] overflow-hidden"
+                className="h-[260px] sm:h-[300px] rounded border border-white/[0.06] bg-surface overflow-hidden"
                 role="img"
                 aria-label={`Тепловая карта плотности ликвидаций: ${model.columns} временных колонок, ${model.rows.length} ценовых уровней, максимальная плотность вблизи ${formatCurrency(
                   model.peakPrice

@@ -95,7 +95,7 @@ export const FuturesPage: React.FC = () => {
             className={`px-3 py-1.5 rounded-lg transition-all font-semibold whitespace-nowrap min-h-[32px] ${
               filterFunding === 'all'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                : 'bg-[#111a30] border border-white/[0.08] text-slate-300 hover:bg-[#162342] hover:text-white'
+                : 'bg-surface-elevated border border-white/[0.08] text-slate-300 hover:bg-surface-hover hover:text-white'
             }`}
           >
             Все
@@ -105,7 +105,7 @@ export const FuturesPage: React.FC = () => {
             className={`px-3 py-1.5 rounded-lg transition-all font-semibold whitespace-nowrap min-h-[32px] ${
               filterFunding === 'positive'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                : 'bg-[#111a30] border border-white/[0.08] text-slate-300 hover:bg-[#162342] hover:text-white'
+                : 'bg-surface-elevated border border-white/[0.08] text-slate-300 hover:bg-surface-hover hover:text-white'
             }`}
           >
             Лонг &gt; 0
@@ -115,7 +115,7 @@ export const FuturesPage: React.FC = () => {
             className={`px-3 py-1.5 rounded-lg transition-all font-semibold whitespace-nowrap min-h-[32px] ${
               filterFunding === 'negative'
                 ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
-                : 'bg-[#111a30] border border-white/[0.08] text-slate-300 hover:bg-[#162342] hover:text-white'
+                : 'bg-surface-elevated border border-white/[0.08] text-slate-300 hover:bg-surface-hover hover:text-white'
             }`}
           >
             Шорт &lt; 0 (риск сквиза)
@@ -125,7 +125,7 @@ export const FuturesPage: React.FC = () => {
 
       {/* Aggregate Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-sans">
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Суммарный Открытый Интерес (OI)</div>
           <div className="text-xl font-bold text-white mt-1 tabular-nums font-mono">
             {formatCurrency(overview.totalOpenInterestUsd, { compact: true })}
@@ -133,7 +133,7 @@ export const FuturesPage: React.FC = () => {
           <div className="text-[11px] text-emerald-400 mt-0.5 font-semibold">25 ключевых перп-контрактов</div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Суточный объем деривативов</div>
           <div className="text-xl font-bold text-white mt-1 tabular-nums font-mono">
             {formatCurrency(overview.totalVolume24hUsd, { compact: true })}
@@ -141,7 +141,7 @@ export const FuturesPage: React.FC = () => {
           <div className="text-[11px] text-slate-400 mt-0.5">Публичные данные Binance Futures</div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Средний фандинг (8h / APR)</div>
           <div
             className={`text-xl font-bold mt-1 tabular-nums  font-mono${
@@ -156,7 +156,7 @@ export const FuturesPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Рыночный режим (Базис)</div>
           <div
             className={`text-xl font-bold mt-1 tabular-nums  font-mono${
@@ -176,7 +176,7 @@ export const FuturesPage: React.FC = () => {
       </div>
 
       {/* Dense Derivatives Table */}
-      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
+      <div className="bg-surface border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left font-mono">
             <thead className="bg-surface-elevated/80 text-slate-400 text-[11px] uppercase border-b border-surface-border select-none sticky top-0 z-10">
