@@ -1,7 +1,7 @@
 # SITE REPORT — сводный отчёт по состоянию терминала CRYPTORA
 
-> **Версия:** v0.8.26 · ветка `arena/01a0aaeb-cryptora` · дата 2026-09-17  
-> **Production VPS (`89.125.24.50`):** v0.8.4 `6a01ce1` — **22 версии позади**, деплой только по команде владельца.  
+> **Версия:** v0.8.27 · ветка `arena/01a0aaeb-cryptora` · дата 2026-09-17  
+> **Production VPS (`89.125.24.50`):** v0.8.4 `6a01ce1` — **23 версии позади**, деплой только по команде владельца.  
 > **Инвариант:** CRYPTORA не исполняет сделки, не хранит ключи бирж, не содержит ботов. `EXECUTION_CODE_PORTED = NONE`.
 
 Этот документ — честная карта того, что на сайте **фактическое (LIVE)**, что **расчётное (MODEL / DERIVED)**, что **статический
@@ -31,7 +31,7 @@
 
 | Маршрут | Назначение | Источник | Маркировка в UI | Проверка |
 |---|---|---|---|---|
-| `/` Обзор | капитализация, объём, доминация, F&G, breadth, BTC-график | LIVE (Binance/KuCoin REST → агрегация); 24h-дельты и F&G — **MODEL / ESTIMATED** (внешний индекс не подключён) | `EST.`, `MODEL / ESTIMATED` | e2e LIVE-first, screenshot QA |
+| `/` Обзор | капитализация, объём, доминация, F&G, breadth, BTC-график | LIVE (Binance/KuCoin REST → агрегация); F&G — LIVE Alternative.me (v0.8.27, при отказе «НЕДОСТУПЕН»); 24h-дельты капитализации/объёма — **MODEL / ESTIMATED** | `EST.`, `LIVE · ALTERNATIVE.ME` | e2e LIVE-first, unit fearGreed |
 | `/market` | таблица 30 активов, спарклайны, watchlist | LIVE REST + WS-тикер | `LIVE-ТИКЕР` / честная деградация | e2e, unit adapters |
 | `/coin/:symbol` | свечи 15m–1W, стакан, индикаторы, Pulse, workspace | LIVE (klines, depth WS); индикаторы DERIVED; Pulse: ликвидации 24ч — **ESTIMATED**, перекос — DERIVED | подписи `LIVE-СВЕЧИ`/`MODEL` на карточках | e2e, `typography`, workspace tests |
 | `/futures` | OI, фандинг, базис, squeeze watch | LIVE Binance `premiumIndex` + `24hr` + `openInterestHist` (Δ OI ACTUAL, v0.8.25); **ликвидации 24ч — оценочные**; Δ OI без ряда → `EST.` | бейдж `EST.` у оценочных Δ OI | unit derivatives + openInterestHistory |
@@ -62,7 +62,7 @@
 на текущих ключах API (проверялись только на фикстурах формата и моках). Всё это требует прогона на VPS или в браузере владельца.
 
 **Осознанно не реализовано:** LLM-объяснения (AI-брифинг — шаблоны), биллинг, News/Articles и рекламные слоты (scope владельца),
-внешний индекс Fear & Greed, он-чейн/TVL/календарь-провайдеры.
+он-чейн/TVL/календарь-провайдеры.
 
 ---
 
@@ -82,5 +82,5 @@
 
 1. Деплой v0.8.24 на VPS + живая проверка Bybit/OKX, Telegram/webhook (по команде владельца).
 2. Ликвидации 24ч по инструменту — из фактического потока вместо эвристики.
-3. Fear & Greed от Alternative.me — снять `MODEL / ESTIMATED` с Обзора.
+3. 24h-дельты капитализации/объёма на Обзоре — хранить предыдущий снимок агрегата (localStorage/сервер) вместо констант.
 5. Scope News/Ads от владельца.

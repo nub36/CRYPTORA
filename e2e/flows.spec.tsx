@@ -120,7 +120,11 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     await screen.findByText(/Капитализация рынка/i);
     expect(screen.getByText(/24h Спот Объем/i)).toBeInTheDocument();
     expect(screen.getByText(/Доминация BTC/i)).toBeInTheDocument();
-    expect(screen.getByText(/Индекс жадности/i)).toBeInTheDocument();
+    expect(screen.getByText(/Индекс страха и жадности/i)).toBeInTheDocument();
+    // QA-фикстура помечает индекс как QA, не как LIVE-источник
+    const fng = document.querySelector('[data-qa="fear-greed-card"]') as HTMLElement;
+    expect(fng.dataset.source).toBe('qa-fixture');
+    expect(fng.textContent).not.toMatch(/ALTERNATIVE\.ME/);
     expect(screen.getByText(/^Широта рынка$/i)).toBeInTheDocument();
 
     // Main Chart

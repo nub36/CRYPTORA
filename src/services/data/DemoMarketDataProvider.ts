@@ -508,6 +508,7 @@ export const DEMO_OVERVIEW: MarketOverviewData = {
   fearAndGreed: {
     value: 64,
     sentiment: 'Greed',
+    source: 'qa-fixture',
   },
   marketBreadth: {
     advancing: 24,

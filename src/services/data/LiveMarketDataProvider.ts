@@ -26,6 +26,7 @@ import {
 import { AnomalyEngine } from '../realtime/AnomalyEngine';
 import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
 import { AdapterNetworkError } from './adapters/errors';
+import { AlternativeMeAdapter, type FearGreedReading } from './adapters/AlternativeMeAdapter';
 import type { BinanceFuturesOpenInterestHistItem } from './adapters/derivativesSchemas';
 import { LiquidationPipeline } from '../liquidations/LiquidationPipeline';
 import { DerivativesEngine } from '../derivatives/DerivativesEngine';
@@ -34,6 +35,7 @@ export interface LiveMarketDataProviderConfig {
   binanceAdapter?: BinanceSpotAdapter;
   kucoinAdapter?: KuCoinSpotAdapter;
   futuresAdapter?: BinanceFuturesAdapter;
+  fearGreedAdapter?: AlternativeMeAdapter;
   cacheTtlMs?: number;
   anomalyEngine?: AnomalyEngine;
 }
@@ -44,6 +46,9 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   private readonly binance: BinanceSpotAdapter;
   private readonly kucoin: KuCoinSpotAdapter;
   private readonly futuresAdapter: BinanceFuturesAdapter;
+  private readonly fearGreedAdapter: AlternativeMeAdapter;
+  private fearGreedCache: { data: FearGreedReading; timestamp: number } | null = null;
+  private readonly fearGreedTtlMs = 10 * 60 * 1000;
   private readonly cacheTtlMs: number;
   private readonly anomalyEngine?: AnomalyEngine;
 
@@ -59,6 +64,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     this.binance = config.binanceAdapter ?? new BinanceSpotAdapter();
     this.kucoin = config.kucoinAdapter ?? new KuCoinSpotAdapter();
     this.futuresAdapter = config.futuresAdapter ?? new BinanceFuturesAdapter();
+    this.fearGreedAdapter = config.fearGreedAdapter ?? new AlternativeMeAdapter();
     this.cacheTtlMs = config.cacheTtlMs ?? 10000; // 10s default TTL
     this.anomalyEngine = config.anomalyEngine;
   }
@@ -258,8 +264,20 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     throw new Error(`Candle data unavailable from live exchanges for ${symbol}`);
   }
 
+  /** Индекс страха/жадности; при отказе источника — null, без подстановки. */
+  private async getFearGreed(now: number): Promise<FearGreedReading | null> {
+    if (this.fearGreedCache && now - this.fearGreedCache.timestamp < this.fearGreedTtlMs) return this.fearGreedCache.data;
+    try {
+      const data = await this.fearGreedAdapter.fetchLatest();
+      this.fearGreedCache = { data, timestamp: now };
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
   public async getMarketOverview(): Promise<MarketOverviewData> {
-    const assets = await this.getAssets();
+    const [assets, fng] = await Promise.all([this.getAssets(), this.getFearGreed(Date.now())]);
     const totalVolume = assets.reduce((sum, a) => sum + a.volume24h, 0);
     const totalMarketCap = assets.reduce((sum, a) => sum + a.marketCap, 0);
     const btc = assets.find((a) => a.symbol === 'BTC');
@@ -279,10 +297,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       volumeChange24h: 4.2,
       btcDominance,
       ethDominance,
-      fearAndGreed: {
-        value: 62,
-        sentiment: 'Greed',
-      },
+      fearAndGreed: fng ? { value: fng.value, sentiment: fng.sentiment, source: fng.source, timestamp: fng.timestamp } : null,
       marketBreadth: {
         advancing,
         declining,

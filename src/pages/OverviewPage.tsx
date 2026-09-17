@@ -35,6 +35,15 @@ import {
   BookOpen,
 } from 'lucide-react';
 
+const FEAR_GREED_RU: Record<string, string> = {
+  'Extreme Fear': 'Экстремальный страх',
+  Fear: 'Страх',
+  Neutral: 'Нейтрально',
+  Greed: 'Жадность',
+  'Extreme Greed': 'Экстремальная жадность',
+};
+const fearGreedLabelRu = (s: string): string => FEAR_GREED_RU[s] ?? s;
+
 export const OverviewPage: React.FC = () => {
   const { provider, dataMode, realtimeStatus } = useMarketData();
 
@@ -314,35 +323,45 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         {/* Fear & Greed Index */}
-        <div className="bg-surface border border-white/[0.08] hover:border-amber-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
+        <div
+          data-qa="fear-greed-card"
+          data-source={overview.fearAndGreed?.source ?? 'unavailable'}
+          className="bg-surface border border-white/[0.08] hover:border-amber-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group"
+        >
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
-            <span className="tracking-wide">Индекс жадности</span>
-            <span
-              title={
-                dataMode === 'live'
-                  ? 'MODEL / ESTIMATED: внешний источник индекса (Alternative.me) не подключён'
-                  : undefined
-              }
-              className={`text-[11px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                dataMode === 'live'
-                  ? 'text-slate-400 bg-white/[0.06] border border-white/[0.12]'
-                  : 'text-amber-300 bg-amber-500/15'
-              }`}
-            >
-              {dataMode === 'live' ? 'MODEL / ESTIMATED' : 'QA'}
-            </span>
+            <span className="tracking-wide">Индекс страха и жадности</span>
+            {overview.fearAndGreed?.source === 'alternative.me' ? (
+              <span
+                title={`Alternative.me Crypto Fear & Greed Index · рассчитан ${new Date(overview.fearAndGreed.timestamp ?? 0).toLocaleString('ru-RU')}`}
+                className="text-[11px] font-mono font-bold px-1.5 py-0.2 rounded text-emerald-300 bg-emerald-500/10 border border-emerald-500/30"
+              >
+                LIVE · ALTERNATIVE.ME
+              </span>
+            ) : overview.fearAndGreed ? (
+              <span className="text-[11px] font-mono font-bold px-1.5 py-0.2 rounded text-amber-300 bg-amber-500/15">QA</span>
+            ) : (
+              <span
+                title="Внешний источник индекса (Alternative.me) не ответил — значение не подставляется"
+                className="text-[11px] font-mono font-bold px-1.5 py-0.2 rounded text-slate-400 bg-white/[0.06] border border-white/[0.12]"
+              >
+                НЕДОСТУПЕН
+              </span>
+            )}
           </div>
-          <div className="flex items-baseline space-x-2 mt-1.5">
-            <span className="text-xl sm:text-2xl font-bold font-mono text-amber-400 tabular-nums">
-              {overview.fearAndGreed.value}
-            </span>
-            <span className="text-xs text-slate-300 font-medium">
-              {overview.fearAndGreed.sentiment}
-            </span>
-          </div>
-          <div className="text-[11px] text-slate-400 font-sans mt-1">
-            Умеренный оптимизм
-          </div>
+          {overview.fearAndGreed ? (
+            <>
+              <div className="flex items-baseline space-x-2 mt-1.5">
+                <span className="text-xl sm:text-2xl font-bold font-mono text-amber-400 tabular-nums">{overview.fearAndGreed.value}</span>
+                <span className="text-xs text-slate-300 font-medium">{fearGreedLabelRu(overview.fearAndGreed.sentiment)}</span>
+              </div>
+              <div className="text-[11px] text-slate-400 font-sans mt-1">Шкала 0–100 · обновляется источником раз в сутки</div>
+            </>
+          ) : (
+            <>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-slate-500 mt-1.5 tabular-nums">—</div>
+              <div className="text-[11px] text-slate-400 font-sans mt-1">Источник индекса не ответил</div>
+            </>
+          )}
         </div>
 
         {/* Market Breadth */}

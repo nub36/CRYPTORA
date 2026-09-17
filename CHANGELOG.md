@@ -4,6 +4,19 @@
 
 ---
 
+## [0.8.27] — 2026-09-17
+
+### Added — Fear & Greed из фактического источника (Alternative.me)
+- `AlternativeMeAdapter` (`GET https://api.alternative.me/fng/?limit=1`, zod-схема, timeout 8 с, классификация по официальным
+  порогам 0–24/25–44/45–55/56–75/76–100). `AdapterSource` расширен на `'alternative.me'`.
+- `MarketOverviewData.fearAndGreed` стал `nullable` с `source: 'alternative.me' | 'qa-fixture'` и `timestamp`; `LiveMarketDataProvider`
+  кэширует индекс 10 мин и при отказе источника возвращает `null` — **фиксированное 62/Greed удалено**.
+- Обзор: карточка «Индекс страха и жадности» (`data-qa=fear-greed-card`, `data-source`) — `LIVE · ALTERNATIVE.ME` с временем расчёта,
+  `QA` в фикстуре, `НЕДОСТУПЕН` и «—» при отказе. Русские подписи классов. Снята пометка `MODEL / ESTIMATED` с этой карточки.
+- Тесты: `fearGreed.test.ts` (3: пороги, адаптер/ошибки, провайдер+кэш+null); e2e проверяет, что QA-фикстура не помечена как LIVE.
+
+---
+
 ## [0.8.26] — 2026-09-17
 
 ### Changed — `/correlations` считается по фактическим свечам

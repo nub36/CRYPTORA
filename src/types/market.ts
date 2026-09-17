@@ -214,10 +214,18 @@ export const MarketOverviewDataSchema = z.object({
   volumeChange24h: z.number(),
   btcDominance: z.number(),
   ethDominance: z.number(),
-  fearAndGreed: z.object({
-    value: z.number(),
-    sentiment: z.enum(['Extreme Fear', 'Fear', 'Neutral', 'Greed', 'Extreme Greed']),
-  }),
+  /**
+   * Индекс страха и жадности. В LIVE — из Alternative.me (`source: 'alternative.me'`); если внешний источник
+   * не ответил — `null` (значение не подставляется). В QA-фикстуре — `source: 'qa-fixture'`.
+   */
+  fearAndGreed: z
+    .object({
+      value: z.number(),
+      sentiment: z.enum(['Extreme Fear', 'Fear', 'Neutral', 'Greed', 'Extreme Greed']),
+      source: z.enum(['alternative.me', 'qa-fixture']).optional(),
+      timestamp: z.number().optional(),
+    })
+    .nullable(),
   marketBreadth: z.object({
     advancing: z.number(),
     declining: z.number(),
