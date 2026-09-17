@@ -262,6 +262,11 @@ export const JournalPage: React.FC = () => {
 
       {/* Entries List */}
       <div className="space-y-4">
+        {entries.length === 0 && (
+          <div data-qa="journal-empty" className="py-8 text-center text-slate-500 text-xs font-sans">
+            Журнал пуст. Записи хранятся только в этом браузере (localStorage) и добавляются вручную.
+          </div>
+        )}
         {entries.map((entry) => (
           <div
             key={entry.id}

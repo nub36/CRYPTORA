@@ -46,7 +46,7 @@
 | `/onchain` | Сеть Bitcoin: хешрейт/сложность/мемпул/комиссии (mempool.space, v0.8.31) | **LIVE** (UNVERIFIED в песочнице) | `LIVE · MEMPOOL.SPACE` / «ИСТОЧНИК НЕДОСТУПЕН» | unit mocked fetch |
 | `/calendar` | Фандинг/экспирации Binance Futures (v0.8.32) | **LIVE** (UNVERIFIED в песочнице) | `LIVE · BINANCE` / «ИСТОЧНИК НЕДОСТУПЕН» | unit builder + e2e |
 | `/ecosystem` | TVL L1/L2 (DeFiLlama, v0.8.30) | **LIVE** (UNVERIFIED в песочнице) | `LIVE · DEFILLAMA` / «ИСТОЧНИК НЕДОСТУПЕН» | unit mocked fetch |
-| `/journal` | дневник сделок пользователя | LOCAL | — | unit journal |
+| `/journal` | дневник сделок пользователя (пуст по умолчанию, v0.8.34) | LOCAL | «Журнал пуст» | unit journal |
 | `/portfolio` | VaR, HHI, стресс-сценарии | DERIVED из ввода пользователя; стресс-сценарии — исторические проценты падений, зашитые в код | подпись «аналитическое моделирование» | unit portfolio |
 | Шапка: Алерты | правила, история, каналы | LIVE WS-тик + REST фандинг → оценка; доставка In-app / Browser / Telegram Bot API / Webhook | статусы доставки DELIVERED / SENT_UNCONFIRMED / FAILED | unit 12, e2e; **живая доставка UNVERIFIED** |
 | Шапка: Тариф | FREE / PRO / ENTERPRISE | LOCAL (без биллинга) | — | unit |

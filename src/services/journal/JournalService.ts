@@ -50,57 +50,10 @@ export class JournalService {
         }
       }
     } catch {
-      // fallback to seed
+      // повреждённое хранилище — начинаем с пустого журнала
     }
-
-    // Default Seed Entries (Realistic analytical paper trades)
-    this.entries = [
-      {
-        id: 'journal-1',
-        date: '2026-09-14T14:30:00Z',
-        symbol: 'BTC',
-        direction: 'LONG',
-        entryPrice: 63850,
-        exitPrice: 65400,
-        positionSizeUsd: 5000,
-        pnlUsd: 121.38,
-        pnlPct: 2.43,
-        setupReason: 'Тест 4h уровня поддержки с бычьей дивергенцией RSI и всплеском спотового объема Z-Score +2.8σ.',
-        reflection: 'Дисциплина соблюдена. Выход точно по первому расчетному тейк-профиту.',
-        disciplineScore: 5,
-        tags: ['RSI Divergence', 'Volume Spike', 'Take Profit'],
-      },
-      {
-        id: 'journal-2',
-        date: '2026-09-13T09:15:00Z',
-        symbol: 'SOL',
-        direction: 'SHORT',
-        entryPrice: 157.2,
-        exitPrice: 161.0,
-        positionSizeUsd: 3000,
-        pnlUsd: -72.52,
-        pnlPct: -2.42,
-        setupReason: 'Попытка зашортить локальный хай при отрицательном фандинге.',
-        reflection: 'Ошибка: торговля против агрессивного притока открытого интереса (Short Squeeze). Стоп-лосс сработал четко по правилам.',
-        disciplineScore: 4,
-        tags: ['Stop Loss', 'Short Squeeze', 'Lesson'],
-      },
-      {
-        id: 'journal-3',
-        date: '2026-09-11T18:00:00Z',
-        symbol: 'ETH',
-        direction: 'LONG',
-        entryPrice: 3390,
-        exitPrice: 3510,
-        positionSizeUsd: 4000,
-        pnlUsd: 141.6,
-        pnlPct: 3.54,
-        setupReason: 'Пробой 200 SMA на часовом графике с ростом деривативного открытого интереса.',
-        reflection: 'Отличный сетап. Не поддался соблазну закрыть позицию раньше времени.',
-        disciplineScore: 5,
-        tags: ['Breakout', 'SMA-200', 'Trend'],
-      },
-    ];
+    // Журнал личный и пуст по умолчанию (v0.8.34): выдуманные «бумажные сделки» в него не подставляются.
+    this.entries = [];
   }
 
   private save(): void {

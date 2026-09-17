@@ -110,13 +110,11 @@ describe('JournalService Unit Tests (Trade Journal / Manual Reflection Log)', ()
   it('manages journal entries and calculates transparent discipline and performance stats', () => {
     const journal = JournalService.getInstance();
     const initialEntries = journal.getEntries();
-    expect(initialEntries.length).toBeGreaterThan(0);
+    expect(initialEntries.length).toBe(0); // без выдуманных «бумажных сделок»
 
     const summary = journal.getSummary();
-    expect(summary.totalTrades).toBe(initialEntries.length);
-    expect(summary.winRatePct).toBeGreaterThan(0);
-    expect(summary.avgDisciplineScore).toBeGreaterThanOrEqual(1);
-    expect(summary.avgDisciplineScore).toBeLessThanOrEqual(5);
+    expect(summary.totalTrades).toBe(0);
+    expect(summary.winRatePct).toBe(0);
 
     // Add entry
     const newEntry = journal.addEntry({
