@@ -1,28 +1,41 @@
 import { describe, it, expect } from 'vitest';
-import { CalendarService } from '@/services/analytics/CalendarService';
+import { CalendarService, buildCalendarReport } from '@/services/analytics/CalendarService';
+import type { BinanceFuturesAdapter } from '@/services/data/adapters/BinanceFuturesAdapter';
 import { EcosystemService, tvlChange7dFromHistory } from '@/services/analytics/EcosystemService';
 import { DefiLlamaAdapter } from '@/services/data/adapters/DefiLlamaAdapter';
 import { AdapterNetworkError } from '@/services/data/adapters/errors';
 
-describe('CalendarService Unit Tests', () => {
-  it('retrieves calendar events with impact and category filtering', () => {
-    const allEvents = CalendarService.getEvents();
-    expect(allEvents.length).toBeGreaterThan(3);
+describe('CalendarService (Binance schedule, pure builder)', () => {
+  const now = 1_800_000_000_000;
+  const H = 3_600_000;
+  const premium = [
+    { symbol: 'BTCUSDT', nextFundingTime: now + 3 * H, lastFundingRate: '0.0001' },
+    { symbol: 'ETHUSDT', nextFundingTime: now + 3 * H, lastFundingRate: '-0.0002' },
+    { symbol: 'DOGEUSDT', nextFundingTime: now + 1 * H, lastFundingRate: '0.0001' }, // не отслеживается
+    { symbol: 'SOLUSDT', nextFundingTime: now - H, lastFundingRate: '0.0001' }, // в прошлом
+  ];
+  const exchangeInfo = {
+    symbols: [
+      { symbol: 'BTCUSDT', pair: 'BTCUSDT', contractType: 'PERPETUAL', deliveryDate: 4133404800000, status: 'TRADING' },
+      { symbol: 'BTCUSDT_261226', pair: 'BTCUSDT', contractType: 'CURRENT_QUARTER', deliveryDate: now + 90 * 24 * H, status: 'TRADING' },
+      { symbol: 'ETHUSDT_261226', pair: 'ETHUSDT', contractType: 'CURRENT_QUARTER', deliveryDate: now + 90 * 24 * H, status: 'TRADING' },
+      { symbol: 'OLD_250926', pair: 'BTCUSDT', contractType: 'CURRENT_QUARTER', deliveryDate: now - 24 * H, status: 'SETTLING' },
+    ],
+  };
 
-    const highImpact = CalendarService.getEvents(undefined, 'HIGH');
-    expect(highImpact.length).toBeGreaterThan(0);
-    expect(highImpact.every((e) => e.impact === 'HIGH')).toBe(true);
-
-    const macroEvents = CalendarService.getEvents('MACRO_ECONOMICS');
-    expect(macroEvents.length).toBeGreaterThan(0);
-    expect(macroEvents.every((e) => e.category === 'MACRO_ECONOMICS')).toBe(true);
+  it('builds funding + expiry events from exchange schedule, sorted by time', () => {
+    const r = buildCalendarReport({ premium, exchangeInfo }, now);
+    expect(r.source).toBe('binance');
+    expect(r.events.map((e) => e.kind)).toEqual(['FUNDING', 'EXPIRY']);
+    expect(r.events[0].symbols).toEqual(['BTCUSDT', 'ETHUSDT']);
+    expect(r.events[0].detail).toContain('ETH -0.0200%');
+    expect(r.events[1].symbols).toEqual(['BTCUSDT_261226', 'ETHUSDT_261226']);
   });
 
-  it('retrieves next major event for terminal headline banner', () => {
-    const next = CalendarService.getNextMajorEvent();
-    expect(next).toBeDefined();
-    expect(next?.impact).toBe('HIGH');
-    expect(next?.title).toContain('FOMC');
+  it('fetchReport throws when adapter fails (no static fallback)', async () => {
+    CalendarService.resetCache();
+    const failing = { fetchPremiumIndexes: async () => { throw new AdapterNetworkError('binance'); }, fetchExchangeInfo: async () => exchangeInfo };
+    await expect(CalendarService.fetchReport(failing as unknown as BinanceFuturesAdapter, now)).rejects.toBeInstanceOf(AdapterNetworkError);
   });
 });
 

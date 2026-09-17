@@ -224,7 +224,7 @@ export const OverviewPage: React.FC = () => {
             className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-emerald-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
           >
             <Network className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Он-чейн & MVRV</span>
+            <span>Он-чейн BTC</span>
           </Link>
           <Link
             to="/calendar"

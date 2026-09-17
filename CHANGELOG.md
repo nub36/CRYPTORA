@@ -4,6 +4,20 @@
 
 ---
 
+## [0.8.32] — 2026-09-17
+
+### Changed — /calendar: статический макро-календарь заменён расписанием деривативов Binance
+- `BinanceFuturesAdapter.fetchExchangeInfo()` (`/fapi/v1/exchangeInfo`, zod-схема `BinanceFuturesExchangeInfoSchema`).
+- `CalendarService.fetchReport()` — события двух видов: начисления фандинга (premiumIndex.nextFundingTime по BTC/ETH/SOL/BNB/XRP,
+  с текущей ставкой источника) и экспирации срочных контрактов (exchangeInfo.deliveryDate, status TRADING, горизонт ≤2 лет). Кэш 5 мин.
+  Отказ источника → `DataSourceUnavailable`, без статического fallback.
+- Удалены выдуманные FOMC/CPI/NFP/разблокировки с «прогнозами рынка» и «предыдущими значениями» — источника не было.
+- Навигация/Обзор: подписи «Он-чейн & MVRV», «MVRV Z-Score, NUPL…», «FOMC, отчеты CPI…» заменены на фактическое содержание страниц.
+- Тесты: unit чистого билдера (фильтр перпов/прошлого/группировка/сортировка) и отказ без fallback; e2e состояние источника.
+- UNVERIFIED: живой ответ exchangeInfo в песочнице не проверен.
+
+---
+
 ## [0.8.31] — 2026-09-17
 
 ### Changed — /onchain: статический набор заменён фактическими метриками сети Bitcoin (mempool.space)

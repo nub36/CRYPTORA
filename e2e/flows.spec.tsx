@@ -487,13 +487,30 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('Справочные страницы явно маркированы «СТАТИЧЕСКИЙ НАБОР» и не выдают данные за LIVE', async () => {
-    for (const route of ['/calendar', '/signals']) {
+    for (const route of ['/signals']) {
       cleanup();
       renderApp(route);
       const notice = document.querySelector('[data-qa="static-dataset-notice"]');
       expect(notice, route).not.toBeNull();
       expect(notice!.textContent).toContain('СТАТИЧЕСКИЙ НАБОР');
     }
+  });
+
+  test('/calendar без доступа к Binance показывает «ИСТОЧНИК НЕДОСТУПЕН», без статических FOMC/CPI', async () => {
+    cleanup();
+    renderApp('/calendar');
+    await waitFor(() => {
+      const badge = document.querySelector('[data-qa="calendar-source"]');
+      expect(badge).not.toBeNull();
+      expect(badge!.getAttribute('data-state')).not.toBe('loading');
+    });
+    const badge = document.querySelector('[data-qa="calendar-source"]')!;
+    expect(['live', 'unavailable']).toContain(badge.getAttribute('data-state'));
+    if (badge.getAttribute('data-state') === 'unavailable') {
+      expect(document.querySelectorAll('[data-qa="calendar-event"]').length).toBe(0);
+    }
+    expect(document.body.textContent).not.toContain('Решение ФРС');
+    expect(document.querySelector('[data-qa="static-dataset-notice"]')).toBeNull();
   });
 
   test('/onchain без доступа к mempool.space показывает «ИСТОЧНИК НЕДОСТУПЕН», без статических метрик', async () => {

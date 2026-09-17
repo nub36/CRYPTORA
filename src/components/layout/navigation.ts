@@ -53,9 +53,9 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
 export const ANALYTICS_NAV_ITEMS: SubNavItem[] = [
   { label: 'Карта рынка', sublabel: 'Визуализация секторов и доходностей', path: '/heatmaps', icon: Grid3X3 },
   { label: 'Корреляции', sublabel: 'Матрица Пирсона и Beta к BTC', path: '/correlations', icon: Grid },
-  { label: 'Он-чейн', sublabel: 'MVRV Z-Score, NUPL и биржевые потоки', path: '/onchain', icon: Network },
+  { label: 'Он-чейн', sublabel: 'Хешрейт, сложность, мемпул, комиссии BTC', path: '/onchain', icon: Network },
   { label: 'Экосистемы', sublabel: 'DeFi TVL, комиссии и TPS сетей', path: '/ecosystem', icon: Layers },
-  { label: 'Календарь', sublabel: 'FOMC, отчеты CPI и cliff-разблокировки', path: '/calendar', icon: Calendar },
+  { label: 'Календарь', sublabel: 'Фандинг и экспирации деривативов', path: '/calendar', icon: Calendar },
 ];
 
 export const TOOLS_NAV_ITEMS: SubNavItem[] = [

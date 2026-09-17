@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   BinanceFuturesPremiumIndex,
   BinanceFuturesPremiumIndexSchema,
+  BinanceFuturesExchangeInfoSchema,
+  type BinanceFuturesExchangeInfo,
   BinanceFuturesOpenInterest,
   BinanceFuturesOpenInterestSchema,
   BinanceFuturesTicker24hr,
@@ -86,6 +88,10 @@ export class BinanceFuturesAdapter {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  public async fetchExchangeInfo(): Promise<BinanceFuturesExchangeInfo> {
+    return this.request('/fapi/v1/exchangeInfo', BinanceFuturesExchangeInfoSchema);
   }
 
   public async fetchPremiumIndexes(): Promise<BinanceFuturesPremiumIndex[]> {

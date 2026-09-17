@@ -42,3 +42,19 @@ export const BinanceFuturesOpenInterestHistItemSchema = z.object({
 });
 export const BinanceFuturesOpenInterestHistSchema = z.array(BinanceFuturesOpenInterestHistItemSchema);
 export type BinanceFuturesOpenInterestHistItem = z.infer<typeof BinanceFuturesOpenInterestHistItemSchema>;
+
+export const BinanceFuturesExchangeInfoSchema = z.object({
+  serverTime: z.number(),
+  symbols: z.array(
+    z.object({
+      symbol: z.string(),
+      pair: z.string(),
+      contractType: z.string(),
+      deliveryDate: z.number(),
+      onboardDate: z.number(),
+      status: z.string(),
+      quoteAsset: z.string(),
+    }),
+  ),
+});
+export type BinanceFuturesExchangeInfo = z.infer<typeof BinanceFuturesExchangeInfoSchema>;
