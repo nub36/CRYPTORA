@@ -7,6 +7,7 @@ import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { sortData, SortConfig } from '@/utils/sorting';
 import { DerivativesEngine } from '@/services/derivatives/DerivativesEngine';
 import { useNavigate } from 'react-router-dom';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 
 export const FuturesPage: React.FC = () => {
@@ -275,6 +276,7 @@ export const FuturesPage: React.FC = () => {
                   >
                     <td className="py-2.5 px-3">
                       <div className="flex items-center space-x-1.5">
+                        <CoinIcon symbol={baseSymbol} size={20} />
                         <span className="font-bold text-white group-hover:text-brand-cyan transition-colors">
                           {f.symbol}
                         </span>

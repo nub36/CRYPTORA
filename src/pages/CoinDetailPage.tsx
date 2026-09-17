@@ -8,6 +8,7 @@ import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters'
 import { radarEventTypeLabel, radarSeverityLabel } from '@/utils/labels';
 import { CandleChart } from '@/components/common/CandleChart';
 import type { ChartIndicatorData } from '@/components/common/CandleChart';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { Badge } from '@/components/common/Badge';
 import { OrderBookL2 } from '@/components/market/OrderBookL2';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
@@ -304,9 +305,7 @@ export const CoinDetailPage: React.FC = () => {
       {/* Asset Header Card */}
       <div className="bg-surface border border-surface-border rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-lg bg-surface-elevated border border-surface-border flex items-center justify-center font-sans font-bold text-lg text-brand-cyan shadow-md">
-            {asset.symbol.slice(0, 3)}
-          </div>
+          <CoinIcon symbol={asset.symbol} size={48} className="shadow-md" />
 
           <div>
             <div className="flex items-center space-x-2.5">
