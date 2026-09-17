@@ -3,6 +3,7 @@ import { MarketDataProvider } from '@/services/data/MarketDataProvider';
 import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { LiveSignalEngine } from '@/services/signals/live/LiveSignalEngine';
 import { PlanTier, PlanManager } from '@/services/subscription/PlanManager';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
 
@@ -173,9 +174,16 @@ export const MarketDataProviderComponent: React.FC<{
       for (const sym of watchlist) {
         feedManager.subscribeSymbol(sym);
       }
+
+      // Start live signal engine (V3.0 strategy on 6 symbols)
+      try {
+        const signalEngine = LiveSignalEngine.getInstance({ provider: singletonLiveProvider });
+        signalEngine?.start();
+      } catch { /* non-fatal */ }
     } else {
       feedManager.disconnect();
       setRealtimeStatus('idle');
+      LiveSignalEngine.resetInstance();
     }
 
     return () => {
