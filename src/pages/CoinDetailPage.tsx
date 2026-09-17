@@ -34,6 +34,15 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+/** «через 3ч 12м» до момента ts; при прошедшем моменте — «скоро». */
+const formatUntil = (ts: number): string => {
+  const diff = ts - Date.now();
+  if (diff <= 0) return 'скоро';
+  const h = Math.floor(diff / 3_600_000);
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  return h > 0 ? `через ${h}ч ${m}м` : `через ${m}м`;
+};
+
 export const CoinDetailPage: React.FC = () => {
   const { symbol } = useParams<{ symbol: string }>();
   const { provider, watchlist, toggleWatchlist, livePrices, subscribeSymbol } = useMarketData();
@@ -462,7 +471,7 @@ export const CoinDetailPage: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Прогноз фандинга (8h)</span>
+                <span className="text-slate-400">Ставка к следующему начислению{futuresData.nextFundingTime ? ` · ${formatUntil(futuresData.nextFundingTime)}` : ''}</span>
                 <span
                   className={`font-bold tabular-nums  font-mono${
                     futuresData.predictedFundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'

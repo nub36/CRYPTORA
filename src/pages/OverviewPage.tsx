@@ -44,6 +44,23 @@ const FEAR_GREED_RU: Record<string, string> = {
 };
 const fearGreedLabelRu = (s: string): string => FEAR_GREED_RU[s] ?? s;
 
+/** Чип 24h-дельты; null — «база отсутствует», без подстановки числа. */
+const DeltaChip: React.FC<{ value: number | null; qa: string; title: string }> = ({ value, qa, title }) =>
+  value === null ? (
+    <span data-qa={qa} data-state="unavailable" title={title} className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded text-slate-500 border border-white/[0.12]">
+      Δ24ч —
+    </span>
+  ) : (
+    <span
+      data-qa={qa}
+      data-state="actual"
+      title={title}
+      className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded font-mono ${value >= 0 ? 'text-emerald-400 bg-emerald-950/40' : 'text-rose-400 bg-rose-950/40'}`}
+    >
+      {formatPercent(value)}
+    </span>
+  );
+
 export const OverviewPage: React.FC = () => {
   const { provider, dataMode, realtimeStatus } = useMarketData();
 
@@ -239,33 +256,13 @@ export const OverviewPage: React.FC = () => {
         <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
             <span className="tracking-wide">Капитализация рынка</span>
-            <span className="flex items-center space-x-1">
-              {dataMode === 'live' && (
-                <span
-                  title="MODEL / ESTIMATED: точная 24h-дельта капитализации из источника не поступает"
-                  className="text-[11px] font-sans font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
-                >
-                  EST.
-                </span>
-              )}
-              <span
-                className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded  font-mono${
-                  overview.marketCapChange24h >= 0
-                    ? 'text-emerald-400 bg-emerald-950/40'
-                    : 'text-rose-400 bg-rose-950/40'
-                }`}
-              >
-                {formatPercent(overview.marketCapChange24h)}
-              </span>
-            </span>
+            <DeltaChip value={overview.marketCapChange24h} qa="mcap-delta" title="Производная из 24h-изменения цены каждого актива источника (капитализация = цена × оборотное предложение)" />
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalMarketCap, { compact: true })}
           </div>
           <div className="text-[11px] text-slate-400 font-sans mt-1">
-            {dataMode === 'live'
-              ? 'MODEL / ESTIMATED: абсолютная 24h-дельта источником не отдаётся'
-              : 'Оценка 24h-дельты по QA-датасету'}
+            {dataMode === 'live' ? 'Сумма по каталогу активов; Δ24ч — из изменения цен источника' : 'Капитализация QA-датасета'}
           </div>
         </div>
 
@@ -273,31 +270,17 @@ export const OverviewPage: React.FC = () => {
         <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
             <span className="tracking-wide">24h Спот Объем</span>
-            <span className="flex items-center space-x-1">
-              {dataMode === 'live' && (
-                <span
-                  title="MODEL / ESTIMATED: точная 24h-дельта объёма из источника не поступает"
-                  className="text-[11px] font-sans font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
-                >
-                  EST.
-                </span>
-              )}
-              <span
-                className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded  font-mono${
-                  overview.volumeChange24h >= 0
-                    ? 'text-emerald-400 bg-emerald-950/40'
-                    : 'text-rose-400 bg-rose-950/40'
-                }`}
-              >
-                {formatPercent(overview.volumeChange24h)}
-              </span>
-            </span>
+            <DeltaChip value={overview.volumeChange24h} qa="volume-delta" title="Против собственного снимка объёма ≥24ч давности (накапливается в этом браузере)" />
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalVolume24h, { compact: true })}
           </div>
           <div className="text-[11px] text-slate-400 font-sans mt-1">
-            {dataMode === 'live' ? 'Суммарный объём доступных источников' : 'Суммарный объём QA-датасета'}
+            {dataMode !== 'live'
+              ? 'Суммарный объём QA-датасета'
+              : overview.volumeChange24h === null
+                ? 'Δ24ч появится после 24ч наблюдений в этом браузере'
+                : 'Суммарный объём доступных источников'}
           </div>
         </div>
 

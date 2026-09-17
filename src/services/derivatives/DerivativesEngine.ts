@@ -121,7 +121,8 @@ export class DerivativesEngine {
       markPrice,
       indexPrice,
       fundingRate: Number(fundingRate8h.toFixed(4)),
-      predictedFundingRate: Number((fundingRate8h * 1.05).toFixed(4)),
+      predictedFundingRate: Number(fundingRate8h.toFixed(4)), // источник не отдаёт отдельный прогноз — см. FuturesAssetSchema
+      nextFundingTime: premium.nextFundingTime || undefined,
       annualizedFundingRate: annualizedFunding,
       openInterest: oiUsd,
       openInterestChange1h,

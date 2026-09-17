@@ -27,6 +27,7 @@ import { AnomalyEngine } from '../realtime/AnomalyEngine';
 import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
 import { AdapterNetworkError } from './adapters/errors';
 import { AlternativeMeAdapter, type FearGreedReading } from './adapters/AlternativeMeAdapter';
+import { AGGREGATE_HISTORY_KEY, appendPoint, marketCapChange24hFromAssets, parseHistory, volumeChange24h } from '../analytics/aggregateHistory';
 import type { BinanceFuturesOpenInterestHistItem } from './adapters/derivativesSchemas';
 import { LiquidationPipeline } from '../liquidations/LiquidationPipeline';
 import { DerivativesEngine } from '../derivatives/DerivativesEngine';
@@ -283,8 +284,21 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     const btc = assets.find((a) => a.symbol === 'BTC');
     const eth = assets.find((a) => a.symbol === 'ETH');
 
-    const btcDominance = btc && totalMarketCap > 0 ? Number(((btc.marketCap / totalMarketCap) * 100).toFixed(1)) : 56.4;
-    const ethDominance = eth && totalMarketCap > 0 ? Number(((eth.marketCap / totalMarketCap) * 100).toFixed(1)) : 14.8;
+    // Нет актива в ответе источника → доминация 0, а не «типичное» число.
+    const btcDominance = btc && totalMarketCap > 0 ? Number(((btc.marketCap / totalMarketCap) * 100).toFixed(1)) : 0;
+    const ethDominance = eth && totalMarketCap > 0 ? Number(((eth.marketCap / totalMarketCap) * 100).toFixed(1)) : 0;
+
+    const now = Date.now();
+    const marketCapChange24h = marketCapChange24hFromAssets(assets);
+    let volumeDelta: number | null = null;
+    try {
+      const storage = typeof localStorage !== 'undefined' ? localStorage : null;
+      const history = parseHistory(storage?.getItem(AGGREGATE_HISTORY_KEY));
+      volumeDelta = volumeChange24h(history, totalVolume, now);
+      storage?.setItem(AGGREGATE_HISTORY_KEY, JSON.stringify(appendPoint(history, { t: now, volume24h: totalVolume })));
+    } catch {
+      volumeDelta = null;
+    }
 
     const advancing = assets.filter((a) => a.change24h > 0).length;
     const declining = assets.filter((a) => a.change24h < 0).length;
@@ -292,9 +306,9 @@ export class LiveMarketDataProvider implements MarketDataProvider {
 
     return {
       totalMarketCap,
-      marketCapChange24h: 1.85,
+      marketCapChange24h,
       totalVolume24h: totalVolume,
-      volumeChange24h: 4.2,
+      volumeChange24h: volumeDelta,
       btcDominance,
       ethDominance,
       fearAndGreed: fng ? { value: fng.value, sentiment: fng.sentiment, source: fng.source, timestamp: fng.timestamp } : null,

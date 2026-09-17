@@ -94,7 +94,13 @@ export const FuturesAssetSchema = z.object({
   markPrice: z.number(),
   indexPrice: z.number(),
   fundingRate: z.number(), // in % (e.g. 0.01%)
+  /**
+   * Ставка к ближайшему начислению. Binance отдаёт одну текущую ставку (`premiumIndex.lastFundingRate`), которая и будет применена
+   * при `nextFundingTime`; отдельного «прогноза» источник не публикует — поле равно текущей ставке. Ранее сюда писалась выдуманная ×1.05.
+   */
   predictedFundingRate: z.number(),
+  /** Unix ms ближайшего начисления фандинга (из источника). */
+  nextFundingTime: z.number().optional(),
   annualizedFundingRate: z.number(),
   openInterest: z.number(), // USD
   openInterestChange1h: z.number(), // %
@@ -214,9 +220,11 @@ export type RadarEvent = z.infer<typeof RadarEventSchema>;
 
 export const MarketOverviewDataSchema = z.object({
   totalMarketCap: z.number(),
-  marketCapChange24h: z.number(),
+  /** 24h-дельта капитализации, % — производная из change24h активов источника; null, если посчитать нельзя. */
+  marketCapChange24h: z.number().nullable(),
   totalVolume24h: z.number(),
-  volumeChange24h: z.number(),
+  /** 24h-дельта объёма, % — против собственного снимка ≥24ч давности; null, пока базы нет. */
+  volumeChange24h: z.number().nullable(),
   btcDominance: z.number(),
   ethDominance: z.number(),
   /**
