@@ -1,0 +1,5 @@
+{
+  "$schema": "./sponsor-slots.schema.json",
+  "_comment": "Партнёрские слоты (ROADMAP п. 7). Пустой массив placements = слоты не отображаются вовсе. Каждый слот получает бейдж «Sponsored / Partner» (docs/MONETIZATION.md). Внешних ad-сетей и трекеров нет: только статичная карточка со ссылкой rel=sponsored.",
+  "placements": []
+}

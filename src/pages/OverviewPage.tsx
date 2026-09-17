@@ -18,6 +18,7 @@ import { HeatmapGrid } from '@/components/common/HeatmapGrid';
 import { Badge } from '@/components/common/Badge';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 import { Link } from 'react-router-dom';
+import { SponsorSlot } from '@/components/ads/SponsorSlot';
 import {
   TrendingUp,
   Activity,
@@ -841,6 +842,8 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <SponsorSlot slot="overview-sidebar" />
     </div>
   );
 };

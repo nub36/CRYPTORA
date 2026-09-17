@@ -498,6 +498,29 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(text).not.toMatch(/Оформить|Купить|Оплатить/);
   });
 
+  test('/articles: список статей владельца и открытие статьи, без raw-HTML', async () => {
+    cleanup();
+    renderApp('/articles');
+    const cards = document.querySelectorAll('[data-qa="article-card"]');
+    expect(cards.length).toBeGreaterThan(0);
+    const href = cards[0].getAttribute('href')!;
+    cleanup();
+    renderApp(href);
+    await waitFor(() => expect(document.querySelector('[data-qa="article"]')).not.toBeNull());
+    expect(document.querySelector('[data-qa="article"] h1')!.textContent!.length).toBeGreaterThan(5);
+    expect(document.body.textContent).toContain('не является инвестиционной рекомендацией');
+    cleanup();
+    renderApp('/articles/net-takoy');
+    expect(document.querySelector('[data-qa="article-not-found"]')).not.toBeNull();
+  });
+
+  test('Партнёрские слоты: при пустом конфиге не рендерятся вовсе', async () => {
+    cleanup();
+    renderApp('/');
+    expect(document.querySelectorAll('[data-qa="sponsor-slot"]').length).toBe(0);
+    expect(document.body.textContent).not.toContain('Sponsored / Partner');
+  });
+
   test('/signals: реестр пуст, без иллюстративных сетапов и без плашки «СТАТИЧЕСКИЙ НАБОР»', async () => {
     cleanup();
     renderApp('/signals');

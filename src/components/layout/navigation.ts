@@ -64,6 +64,7 @@ export const TOOLS_NAV_ITEMS: SubNavItem[] = [
   { label: 'Журнал', sublabel: 'Ручной дневник сделок и самодисциплина', path: '/journal', icon: BookOpen },
   { label: 'Стратегии', sublabel: 'Лаборатория формализованных правил', path: '/strategies', icon: Cpu },
   { label: 'Сигналы', sublabel: 'Журнал сетапов (append-only, пуст)', path: '/signals', icon: BarChart3 },
+  { label: 'Статьи', sublabel: 'Методология и заметки владельца', path: '/articles', icon: BookOpen },
 ];
 
 /** Максимально допустимое число пунктов прямой навигации (см. бюджет ёмкости выше). */

@@ -25,6 +25,7 @@ import { CalendarPage } from '@/pages/CalendarPage';
 import { EcosystemPage } from '@/pages/EcosystemPage';
 import { PortfolioRiskPage } from '@/pages/PortfolioRiskPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { ArticlesPage } from '@/pages/ArticlesPage';
 
 export const App: React.FC = () => {
   return (
@@ -55,6 +56,8 @@ export const App: React.FC = () => {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/ecosystem" element={<EcosystemPage />} />
           <Route path="/portfolio" element={<PortfolioRiskPage />} />
+          <Route path="/articles" element={<ArticlesPage />} />
+          <Route path="/articles/:slug" element={<ArticlesPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

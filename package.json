@@ -1,11 +1,13 @@
 {
   "name": "cryptora",
-  "version": "0.8.38",
+  "version": "0.8.39",
   "private": true,
   "type": "module",
   "description": "CRYPTORA — Crypto Market Intelligence Terminal («Рынок. Данные. Решения.»)",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
+    "articles:index": "node scripts/build-articles-index.mjs",
+    "prebuild": "node scripts/build-articles-index.mjs",
     "build": "tsc -b && vite build",
     "start": "node server/productionServer.js",
     "preview": "vite preview --host 0.0.0.0 --port 5173",

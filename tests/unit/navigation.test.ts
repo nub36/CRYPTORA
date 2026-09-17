@@ -46,6 +46,7 @@ describe('Навигационная модель терминала CRYPTORA', 
       'Журнал',
       'Стратегии',
       'Сигналы',
+      'Статьи',
     ]);
 
     for (const item of [...analytics, ...tools]) {
@@ -80,6 +81,7 @@ describe('Навигационная модель терминала CRYPTORA', 
       '/calendar',
       '/ecosystem',
       '/portfolio',
+      '/articles',
     ];
 
     for (const route of STATIC_APP_ROUTES) {

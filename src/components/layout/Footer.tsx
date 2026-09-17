@@ -1,3 +1,4 @@
+import { SponsorSlot } from '@/components/ads/SponsorSlot';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
@@ -18,6 +19,7 @@ export const Footer: React.FC = () => {
   return (
     <footer className="mt-6 border-t border-white/[0.08] bg-surface-inset/90 px-4 py-6 font-sans text-xs text-slate-400 backdrop-blur-md">
       <div className="mx-auto max-w-[1920px] space-y-5">
+        <SponsorSlot slot="footer-banner" />
         {/* Top Disclaimer Banner */}
         <div className="p-3.5 bg-amber-500/[0.06] border border-amber-500/25 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center space-x-2.5">
@@ -110,7 +112,7 @@ export const Footer: React.FC = () => {
         {/* Bottom bar */}
         <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-sans">
           <div>
-            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.38.
+            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.39.
           </div>
           <div className="mt-2 sm:mt-0 flex items-center space-x-3">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
