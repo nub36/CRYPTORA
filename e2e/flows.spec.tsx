@@ -487,13 +487,31 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('Справочные страницы явно маркированы «СТАТИЧЕСКИЙ НАБОР» и не выдают данные за LIVE', async () => {
-    for (const route of ['/onchain', '/calendar', '/signals']) {
+    for (const route of ['/calendar', '/signals']) {
       cleanup();
       renderApp(route);
       const notice = document.querySelector('[data-qa="static-dataset-notice"]');
       expect(notice, route).not.toBeNull();
       expect(notice!.textContent).toContain('СТАТИЧЕСКИЙ НАБОР');
     }
+  });
+
+  test('/onchain без доступа к mempool.space показывает «ИСТОЧНИК НЕДОСТУПЕН», без статических метрик', async () => {
+    cleanup();
+    renderApp('/onchain');
+    await waitFor(() => {
+      const badge = document.querySelector('[data-qa="onchain-source"]');
+      expect(badge).not.toBeNull();
+      expect(badge!.getAttribute('data-state')).not.toBe('loading');
+    });
+    const badge = document.querySelector('[data-qa="onchain-source"]')!;
+    expect(['live', 'unavailable']).toContain(badge.getAttribute('data-state'));
+    if (badge.getAttribute('data-state') === 'unavailable') {
+      expect(document.querySelectorAll('[data-qa="onchain-metric"]').length).toBe(0);
+    }
+    expect(document.body.textContent).not.toContain('MVRV Z-Score');
+    expect(document.body.textContent).not.toContain('674 EH/s');
+    expect(document.querySelector('[data-qa="static-dataset-notice"]')).toBeNull();
   });
 
   test('/ecosystem без доступа к DeFiLlama показывает «ИСТОЧНИК НЕДОСТУПЕН», а не статические числа', async () => {

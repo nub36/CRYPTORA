@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { CorrelationEngine, buildCorrelationReport, toLogReturns } from '@/services/analytics/CorrelationEngine';
-import { OnChainService } from '@/services/analytics/OnChainService';
+import { OnChainService, hashrateChangePct } from '@/services/analytics/OnChainService';
+import { MempoolSpaceAdapter } from '@/services/data/adapters/MempoolSpaceAdapter';
+import { AdapterNetworkError } from '@/services/data/adapters/errors';
 import { JournalService } from '@/services/journal/JournalService';
 
 describe('CorrelationEngine Unit Tests', () => {
@@ -55,19 +57,52 @@ describe('CorrelationEngine Unit Tests', () => {
   });
 });
 
-describe('OnChainService Unit Tests', () => {
-  it('retrieves on-chain valuation metrics and exchange flows', () => {
-    const metrics = OnChainService.getMacroMetrics();
-    expect(metrics.length).toBeGreaterThan(4);
+describe('OnChainService (mempool.space, mocked fetch)', () => {
+  const now = 1_800_000_000_000;
+  const body: Record<string, unknown> = {
+    '/api/v1/mining/hashrate/3d': {
+      hashrates: [
+        { timestamp: 1, avgHashrate: 600e18 },
+        { timestamp: 2, avgHashrate: 630e18 },
+      ],
+      currentHashrate: 650e18,
+      currentDifficulty: 120e12,
+    },
+    '/api/v1/difficulty-adjustment': { progressPercent: 40, difficultyChange: 2.345, remainingBlocks: 1200, estimatedRetargetDate: now + 8 * 86400000 },
+    '/api/v1/fees/recommended': { fastestFee: 12, halfHourFee: 10, hourFee: 8, economyFee: 4, minimumFee: 1 },
+    '/api/mempool': { count: 25000, vsize: 12_500_000, total_fee: 25_000_000 },
+    '/api/blocks/tip/height': 915000,
+  };
+  const mockFetch = (failPath?: string): typeof fetch =>
+    (async (url: RequestInfo | URL) => {
+      const path = new URL(String(url)).pathname;
+      if (path === failPath) return new Response('x', { status: 503 });
+      return new Response(JSON.stringify(body[path]), { status: 200 });
+    }) as typeof fetch;
 
-    const mvrv = metrics.find((m) => m.id === 'btc-mvrv');
-    expect(mvrv).toBeDefined();
-    expect(mvrv?.numericValue).toBeGreaterThan(0);
+  it('builds report from five endpoints; hashrate Δ from 3d series', async () => {
+    OnChainService.resetCache();
+    const r = await OnChainService.fetchReport(new MempoolSpaceAdapter({ fetchFn: mockFetch() }), now);
+    expect(r.source).toBe('mempool.space');
+    expect(r.tipHeight).toBe(915000);
+    const hr = r.metrics.find((m) => m.id === 'btc-hashrate')!;
+    expect(hr.value).toBe('650 EH/s');
+    expect(hr.change).toBe(5);
+    const diff = r.metrics.find((m) => m.id === 'btc-difficulty')!;
+    expect(diff.value).toBe('120.00 T');
+    expect(diff.change).toBe(2.35);
+    expect(r.metrics.some((m) => /MVRV|NUPL/.test(m.name))).toBe(false);
+  });
 
-    const flows = OnChainService.getExchangeFlows();
-    expect(flows.length).toBeGreaterThan(0);
-    expect(flows[0].exchange).toBe('Binance');
-    expect(flows[0].netflowBtc).toBeLessThan(0); // net outflow
+  it('fails as a whole if any endpoint fails (no static fallback)', async () => {
+    OnChainService.resetCache();
+    await expect(OnChainService.fetchReport(new MempoolSpaceAdapter({ fetchFn: mockFetch('/api/mempool') }), now)).rejects.toBeInstanceOf(
+      AdapterNetworkError,
+    );
+  });
+
+  it('hashrateChangePct is null for short series', () => {
+    expect(hashrateChangePct({ hashrates: [{ timestamp: 1, avgHashrate: 1 }], currentHashrate: 1, currentDifficulty: 1 })).toBeNull();
   });
 });
 
