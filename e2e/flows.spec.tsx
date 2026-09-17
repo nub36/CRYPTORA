@@ -487,13 +487,29 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('Справочные страницы явно маркированы «СТАТИЧЕСКИЙ НАБОР» и не выдают данные за LIVE', async () => {
-    for (const route of ['/onchain', '/calendar', '/ecosystem', '/signals']) {
+    for (const route of ['/onchain', '/calendar', '/signals']) {
       cleanup();
       renderApp(route);
       const notice = document.querySelector('[data-qa="static-dataset-notice"]');
       expect(notice, route).not.toBeNull();
       expect(notice!.textContent).toContain('СТАТИЧЕСКИЙ НАБОР');
     }
+  });
+
+  test('/ecosystem без доступа к DeFiLlama показывает «ИСТОЧНИК НЕДОСТУПЕН», а не статические числа', async () => {
+    cleanup();
+    renderApp('/ecosystem');
+    await waitFor(() => {
+      const badge = document.querySelector('[data-qa="ecosystem-source"]');
+      expect(badge).not.toBeNull();
+      expect(badge!.getAttribute('data-state')).not.toBe('loading');
+    });
+    const badge = document.querySelector('[data-qa="ecosystem-source"]')!;
+    expect(['live', 'unavailable']).toContain(badge.getAttribute('data-state'));
+    if (badge.getAttribute('data-state') === 'unavailable') {
+      expect(document.querySelectorAll('[data-qa="ecosystem-row"]').length).toBe(0);
+    }
+    expect(document.querySelector('[data-qa="static-dataset-notice"]')).toBeNull();
   });
 
   test('Статус источника и WebSocket: только индикация, переключение режима недоступно', async () => {

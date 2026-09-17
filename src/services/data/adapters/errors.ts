@@ -1,4 +1,4 @@
-export type AdapterSource = 'binance' | 'kucoin' | 'alternative.me';
+export type AdapterSource = 'binance' | 'kucoin' | 'alternative.me' | 'defillama';
 
 export class AdapterError extends Error {
   constructor(
