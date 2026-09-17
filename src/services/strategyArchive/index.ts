@@ -51,3 +51,8 @@ export {
   V26_DEFINITION, V26_SOURCE_RESULTS, V26_REPRODUCTION_EVIDENCE, V26_REPRODUCED_RESULTS, V26_CAVEATS_RU, V26_RULES_RU, V26_DISCREPANCIES, V26_COMMITS, V26_SOURCE_PINS, V26_VARIANTS, V26_CONSTANTS,
 } from './definitions/v2_6-sniper-trailing/definition';
 export { LEGACY_V2_PROVENANCE } from './legacy/v2';
+export {
+  buildArchiveCards, filterCounts, filterMatches, comparabilityWarnings, fmtSigned, verdictTone,
+  ARCHIVE_FILTERS, VERDICT_LABEL_RU, REPRO_LABEL_RU, COMPARABILITY_GROUP_RU,
+} from './presentation';
+export type { ArchiveCardModel, ArchiveFilterId, ComparabilityGroup, HeadlineFigures, AssumptionRow, VerdictTone } from './presentation';

@@ -7,7 +7,7 @@ import { BacktestEngine, BacktestResult, StrategyRule } from '@/services/backtes
 import { OHLCV, Timeframe } from '@/types/market';
 import { formatPercent } from '@/utils/formatters';
 import { sideLabel } from '@/utils/labels';
-import { StrategyArchiveV30Card } from '@/components/strategies/StrategyArchiveV30Card';
+import { StrategyArchivePanel } from '@/components/strategies/StrategyArchivePanel';
 
 export const StrategiesPage: React.FC = () => {
   const { provider } = useMarketData();
@@ -116,8 +116,8 @@ export const StrategiesPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Strategy Archive (read-only, historical research; step 1 = V3.0) */}
-      <StrategyArchiveV30Card />
+      {/* Strategy Research Archive (read-only; all 13 historical versions from the registry) */}
+      <StrategyArchivePanel />
 
       {/* Interactive Controls & Parameters */}
       <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-4 font-mono text-xs">

@@ -308,6 +308,24 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/^ЛАБОРАТОРИЯ СТРАТЕГИЙ$/i)).toBeInTheDocument();
     expect(screen.getByText(/АРХИТЕКТУРНЫЙ ПРОТОТИП/i)).toBeInTheDocument();
 
+    // Strategy Research Archive: 13 versions from the registry, verdict ≠ reproducibility, filters, comparability warning
+    const archive = screen.getByTestId('strategy-archive');
+    expect(within(archive).getByTestId('strategy-archive-count').textContent).toBe('13 версий');
+    expect(archive.querySelectorAll('[data-testid^="archive-card-"]').length).toBe(13);
+    const v31 = within(archive).getByTestId('archive-card-V3_1_HTF_TREND_PULLBACK');
+    expect(v31.textContent).toContain('ФАЛЬСИФИЦИРОВАНО НА TRAIN');
+    expect(v31.textContent).toContain('ВОСПРОИЗВЕДЕНО В CRYPTORA');
+    const v21a = within(archive).getByTestId('archive-card-V2_1A_STRUCTURAL_LIMIT_ENTRY');
+    expect(v21a.textContent).toContain('ОТКЛОНЕНО НА TRAIN');
+    expect(v21a.textContent).toContain('НЕ ПЕРЕЗАПУСКАЛОСЬ');
+    expect(archive.textContent).not.toMatch(/BUY|SELL|Execute|Исполнить ордер|прибыльная стратегия|ожидаемая доходность/);
+    fireEvent.click(within(archive).getByTestId('archive-filter-FALSIFIED'));
+    expect(archive.querySelectorAll('[data-testid^="archive-card-"]').length).toBe(2);
+    fireEvent.click(within(archive).getByTestId('archive-filter-ALL'));
+    fireEvent.click(within(within(archive).getByTestId('archive-card-V2_8_ZERO_FEE_SNIPER_TRAILING')).getByText(/сравнить допущения/));
+    fireEvent.click(within(within(archive).getByTestId('archive-card-V3_0_HTF_LIQUIDATION_TRAP')).getByText(/сравнить допущения/));
+    expect(within(archive).getByTestId('archive-compare-warning').textContent).toMatch(/fees=0/);
+
     renderApp('/signals');
     expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ И СИГНАЛЫ/i)).toBeInTheDocument();
     expect(screen.getByText(/НЕ ЯВЛЯЕТСЯ ФИНАНСОВОЙ РЕКОМЕНДАЦИЕЙ/i)).toBeInTheDocument();
