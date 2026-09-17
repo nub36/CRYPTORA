@@ -92,8 +92,8 @@ describe('V2.8 — zero-fee sniper + trailing: VALIDATED_GROSS_ONLY, never compa
     expect(all).toMatch(/НЕ сопоставимо с net-результатами V3\.x/); expect(all).toMatch(/ОДНОЙ сделки/);
     expect(all).not.toMatch(/прибыльная стратегия|лучший сигнал|ожидаемая доходность/i);
   });
-  it('registry: 11 imported + 2 planned = 13; V2.7/V2.8 no longer planned', () => {
-    expect(STRATEGY_ARCHIVE.length).toBe(11); expect(STRATEGY_ARCHIVE_PLANNED.length).toBe(2);
+  it('registry: imported + planned = 13; V2.7/V2.8 no longer planned', () => {
+    expect(STRATEGY_ARCHIVE.length + STRATEGY_ARCHIVE_PLANNED.length).toBe(13);
     expect(STRATEGY_ARCHIVE_TOTAL_ROWS).toBe(13);
     expect(STRATEGY_ARCHIVE_PLANNED.some((p) => p.version === '2.7' || p.version === '2.8')).toBe(false);
   });

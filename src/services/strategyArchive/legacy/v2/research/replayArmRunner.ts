@@ -45,6 +45,10 @@ export interface ReplayArmArgs {
   tagFields?: readonly string[];
   /** Fail loudly if a VALIDATION window would touch TEST (v24-validate.ts TEST-SAFETY guard). */
   testSafety?: boolean;
+  /** Timeframe scope; defaults to V2X_SCOPE (15m/30m/1h/4h). V2.1a/b iterated ALL 42 frozen splits (1m…1d). */
+  scope?: readonly ArchiveTimeframe[];
+  /** Treat MISSED as its own funnel bucket instead of `cancelled` (V2.1 semantics: TP1 reached before fill). */
+  terminalMap?: (terminal: string) => 'expired' | 'cancelled' | 'rejected' | 'filled';
   replay(args: {
     symbol: string; timeframe: Timeframe; candles: readonly Candle[]; settings: Settings;
     htfCandles: Partial<Record<Timeframe, readonly Candle[]>>; from: number; to: number;
@@ -57,7 +61,7 @@ export function runReplayArm(a: ReplayArmArgs): { trades: ArchiveTrade[]; funnel
   const funnel: FunnelCounts = { signals: 0, pendingCreated: 0, filled: 0, expired: 0, cancelled: 0, rejected: 0, unresolved: 0 };
   let maxRead = 0;
 
-  for (const tf of V2X_SCOPE) {
+  for (const tf of a.scope ?? V2X_SCOPE) {
     const series = a.input.bySeries[tf];
     if (!series) continue;
     const split = splitFor(a.input.symbol, tf);
@@ -82,9 +86,9 @@ export function runReplayArm(a: ReplayArmArgs): { trades: ArchiveTrade[]; funnel
       if (c.openTime <= to) { if (c.openTime > maxRead) maxRead = c.openTime; break; }
     }
     for (const t of r.trades) {
-      if (t.terminal === 'EXPIRED') { funnel.expired++; continue; }
-      if (t.terminal === 'CANCELLED' || t.terminal === 'MISSED') { funnel.cancelled++; continue; }
-      if (t.terminal !== 'FILLED') { funnel.rejected++; continue; }
+      const bucket = a.terminalMap ? a.terminalMap(t.terminal)
+        : t.terminal === 'EXPIRED' ? 'expired' : (t.terminal === 'CANCELLED' || t.terminal === 'MISSED') ? 'cancelled' : t.terminal !== 'FILLED' ? 'rejected' : 'filled';
+      if (bucket !== 'filled') { funnel[bucket]++; continue; }
       if (t.result === undefined || t.result === 'OPEN') { funnel.unresolved++; continue; }
       const e = t.entryPrice!, risk = t.riskPerUnit!, exit = t.exitPrice ?? e;
       const g = (t.rMultiple ?? 0) + (FROZEN_FEE_PCT / 100) * e / risk;

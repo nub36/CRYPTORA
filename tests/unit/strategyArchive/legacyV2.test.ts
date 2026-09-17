@@ -332,16 +332,17 @@ describe('V2.7 / V2.8 — REPRODUCED through the legacy engine port', () => {
 });
 
 describe('registry after C6', () => {
-  it('11 imported + 2 planned (V2.1a/b) = 13; V2.2–V2.6 no longer planned; every entry keeps verdict and reproducibility separate', () => {
-    expect(STRATEGY_ARCHIVE.length).toBe(11); expect(STRATEGY_ARCHIVE_PLANNED.length).toBe(2); expect(STRATEGY_ARCHIVE_TOTAL_ROWS).toBe(13);
-    expect(STRATEGY_ARCHIVE_PLANNED.map((p) => p.version)).toEqual(['2.1a', '2.1b']);
+  it('C6 slice of the registry: V2.2–V2.8 + V3.x present; total rows always 13; verdict and reproducibility separate', () => {
+    expect(STRATEGY_ARCHIVE.length + STRATEGY_ARCHIVE_PLANNED.length).toBe(13); expect(STRATEGY_ARCHIVE_TOTAL_ROWS).toBe(13);
+    expect(STRATEGY_ARCHIVE_PLANNED.some((p) => p.version >= '2.2')).toBe(false);
     for (const d of STRATEGY_ARCHIVE) {
       if (d.reproducibility === 'REPRODUCED') expect(d.reproductionEvidence?.length, d.id).toBeGreaterThan(0);
       else expect(d.reproductionBlockedReason, d.id).toBeTruthy();
     }
-    expect(STRATEGY_ARCHIVE.every((d) => d.reproducibility === 'REPRODUCED')).toBe(true);
+    const c6 = STRATEGY_ARCHIVE.filter((d) => !d.version.startsWith('2.1'));
+    expect(c6.every((d) => d.reproducibility === 'REPRODUCED')).toBe(true);
     // research verdicts are NOT touched by reproduction: negatives stay negative
-    const verdicts = Object.fromEntries(STRATEGY_ARCHIVE.map((d) => [d.version, d.verdict]));
+    const verdicts = Object.fromEntries(c6.map((d) => [d.version, d.verdict]));
     expect(verdicts).toEqual({
       '2.2': 'REJECTED_ON_TRAIN', '2.3': 'REJECTED_ON_TRAIN', '2.4': 'FAILED_VALIDATION', '2.5': 'TRAIN_ONLY_NOT_VALIDATED', '2.6': 'REJECTED_ON_TRAIN',
       '2.7': 'REJECTED_ON_TRAIN', '2.8': 'VALIDATED_GROSS_ONLY', '3.0': 'VALIDATED_FOR_RESEARCH', '3.1': 'FALSIFIED_ON_TRAIN', '3.2': 'FALSIFIED_ON_TRAIN', '3.3': 'TRAIN_ONLY_NOT_VALIDATED',

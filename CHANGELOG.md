@@ -4,6 +4,22 @@
 
 ---
 
+## [0.8.16] — 2026-09-17
+
+### Added — Архив стратегий C7: V2.1a + V2.1b (архив источника перенесён полностью: 13/13)
+- `definitions/v2_1a-structural-limit-entry/` (REJECTED_ON_TRAIN, pin `4b25bbb`; prereg `e3750fc`): модели B/C/D через
+  `legacy/v2/research/limitEntryReplay.ts` (дословный порт `limit-entry-replay.ts`); модель A (baseline windowed-replay) —
+  SOURCE_REPORTED, не портирована. Артефакты `results/v21a/` (metrics, gross, model-A fidelity, structural audit) с sha256.
+- `definitions/v2_1b-corridor-entry/` (REJECTED_ON_TRAIN, pin `374b335`; prereg `5ce3761`; tf-cost `dccf751`): 7 веток
+  A/E/F/C/EF/EFC/FULL через `legacy/v2/research/corridorReplay.ts` + `legacy/v2/corridorEntry.ts`; `results/v21b/`.
+- Расхождения D-V21A-001…006 / D-V21B-001…006: lump-комиссия 0.1 % источника vs per-leg колонки архива (DERIVED),
+  метрика «gross на исходный setup» vs gross/filled, поля «gross…» в metrics-артефакте = нетто после lump (D-V21A-006).
+- Оба статуса **SOURCE_CHAIN_VERIFIED_NOT_RERUN**: пины sha256 сверены, раннеры перенесены, но перезапуск 42 рядов
+  1m…1d × 6 пар не выполнен (OOM при 4 GB; причина записана в `reproductionBlockedReason`). Не помечены REPRODUCED.
+- `reproduce.mjs`: посимвольная потоковая загрузка для `1m`-scope; сравнение gross/счётчиков/byTimeframe для lump-артефактов.
+- Реестр: 13 импортировано, `STRATEGY_ARCHIVE_PLANNED = []`. Тесты `v21.test.ts` (15): пины, вердикты, инверсия gross↔net,
+  примитивы зоны/коридора/fee-guard, окно без look-ahead, полнота реестра (9 отрицательных вердиктов из 13).
+
 ## [0.8.15] — 2026-09-16
 
 ### Added — Архив стратегий C6: замороженный движок V2 `4839074` (изолированно) + V2.2…V2.6 + перезапуски V2.2–V2.8

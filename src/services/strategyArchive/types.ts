@@ -135,7 +135,8 @@ export interface SpecResearchDiscrepancy {
 export interface SourceFilePin {
   path: string;
   sha256: string;
-  role: 'SPEC' | 'PREREGISTRATION' | 'RESEARCH_IMPLEMENTATION' | 'RUNNER' | 'ARTIFACT' | 'SETTINGS' | 'SPLITS' | 'DATASET_MANIFEST' | 'RESULTS_DOC' | 'PRODUCTION_PORT' | 'SHARED_PRIMITIVE';
+  role: 'SPEC' | 'PREREGISTRATION' | 'RESEARCH_IMPLEMENTATION' | 'RUNNER' | 'ARTIFACT' | 'SETTINGS' | 'SPLITS' | 'DATASET_MANIFEST' | 'RESULTS_DOC' | 'PRODUCTION_PORT' | 'SHARED_PRIMITIVE'
+    | 'DESIGN' | 'DECISION' | 'DIAGNOSTIC_DOC' | 'BASELINE_RUNNER';
 }
 
 /** Split window in ms (inclusive openTime bounds), copied from the source splits.json. */

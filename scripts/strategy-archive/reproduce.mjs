@@ -64,14 +64,39 @@ const tfs = def.scopeTimeframes
   ? [...new Set([...def.scopeTimeframes, '1h', '4h', '1d'])]
   : [def.execTimeframe, def.structuralTimeframe].filter(Boolean);
 
-const series = [];
-for (const s of def.symbols) {
-  console.error(`loading ${s} ${tfs.join('/')} …`);
-  const bySeries = {};
-  for (const tf of tfs) bySeries[tf] = loadSeries(s, tf);
-  series.push({ symbol: s, bySeries });
+// Memory: 1m-scope studies (V2.1a/b: 7 intervals × 6 symbols ≈ 16.7 M candles) do not fit in RAM at once. Since
+// `reproduce()` processes symbols independently (splits.json order; only maxDrawdownR depends on trade order, which
+// is preserved), stream one symbol at a time and merge — identical output to a single call.
+let report;
+if (tfs.includes('1m')) {
+  const parts = [];
+  for (const s of def.symbols) {
+    console.error(`loading ${s} ${tfs.join('/')} …`);
+    const bySeries = {};
+    for (const tf of tfs) bySeries[tf] = loadSeries(s, tf);
+    parts.push(archive.reproduce(def, [{ symbol: s, bySeries }], slice, undefined, variantId));
+    for (const tf of tfs) bySeries[tf] = null;
+    if (global.gc) global.gc();
+  }
+  const trades = parts.flatMap((p) => p.trades);
+  const funnel = { ...parts[0].funnel };
+  for (const k of Object.keys(funnel)) funnel[k] = parts.reduce((a, p) => a + p.funnel[k], 0);
+  report = {
+    ...parts[0], funnel, trades,
+    metrics: archive.computeRMetrics(trades),
+    maxCandleOpenTimeRead: Math.max(...parts.map((p) => p.maxCandleOpenTimeRead)),
+    deterministicDigest: archive.tradesDigest(trades),
+  };
+} else {
+  const series = [];
+  for (const s of def.symbols) {
+    console.error(`loading ${s} ${tfs.join('/')} …`);
+    const bySeries = {};
+    for (const tf of tfs) bySeries[tf] = loadSeries(s, tf);
+    series.push({ symbol: s, bySeries });
+  }
+  report = archive.reproduce(def, series, slice, undefined, variantId);
 }
-const report = archive.reproduce(def, series, slice, undefined, variantId);
 
 const v = def.variants?.find((x) => x.id === variantId);
 // Prefer the ARTIFACT pin whose file name carries the slice (v28-train-… vs v28-validation-…); fall back to the
@@ -83,6 +108,10 @@ const localArtifact = join(process.cwd(), 'src/services/strategyArchive/results'
 const artifactFile = JSON.parse(readFileSync(localArtifact, 'utf8'));
 // V2.7/V2.8 artifacts hold several `arms`; the variant is one arm. Normalise to the flat V3.x shape.
 let target = artifactFile;
+// V2.1a artifact keys models (A/B/C/D) under `models`; the shape matches the V2.x object-arm layout.
+if (artifactFile.models && !artifactFile.arms) artifactFile.arms = artifactFile.models;
+// V2.1a/V2.1b (frozen 0.1 % lump, bps round-trip sensitivity, no per-leg env): compare GROSS + counts only.
+const lumpFeeArtifact = artifactFile.feePct === 0.1 || (artifactFile.models !== undefined);
 // V2.2–V2.6 artifacts: `arms` is an OBJECT keyed by arm name with the v2x-train.ts field names.
 if (artifactFile.arms && !Array.isArray(artifactFile.arms)) {
   const a = artifactFile.arms[variantId];
@@ -91,15 +120,21 @@ if (artifactFile.arms && !Array.isArray(artifactFile.arms)) {
     : a.netByFeeEnv?.FUT_4 && !a.netByFeeEnv?.FUT_7 ? 'FUT_4'
       : (artifactFile.headlineLabel ? 'FUT_4' : 'FUT_7');
   const exits = a.exitReasons ?? (a.tp !== undefined ? { TP: a.tp, SL: a.sl, TIMEOUT: a.timeout } : undefined);
+  // V2.1: byTimeframe rows are {n, expectancy} (v21a) or {filled, closed, grossExpectancy} (v21b); net has no per-leg env.
+  const byTf21 = lumpFeeArtifact && a.byTimeframe
+    ? Object.fromEntries(Object.entries(a.byTimeframe).filter(([, v]) => (v.n ?? v.closed) > 0)
+        .map(([k, v]) => [k, { n: v.n ?? v.closed, grossExpectancy: v.expectancy ?? v.grossExpectancy }]))
+    : undefined;
   target = {
     n: a.closed,
     grossRPerTrade: a.grossExpectancyPerFilled ?? a.grossExpectancyPerTrade,
-    netRPerTrade: { [head === 'FUT_7' ? 'FUT_4' : 'FUT_4']: a.netByFeeEnv[head].perFilled, SPOT: a.netByFeeEnv.SPOT?.perFilled },
-    feeDragR: { FUT_4: a.netByFeeEnv[head].meanFeeDragR },
+    netRPerTrade: lumpFeeArtifact ? undefined : { FUT_4: a.netByFeeEnv[head].perFilled, SPOT: a.netByFeeEnv.SPOT?.perFilled },
+    feeDragR: lumpFeeArtifact ? undefined : { FUT_4: a.netByFeeEnv[head].meanFeeDragR },
+    ...(byTf21 ? { byTimeframe21: byTf21 } : {}),
     profitFactor: a.grossPF,
     maxDrawdownR: a.maxDrawdownR,
     exits,
-    bySymbol: a.bySymbol, byDirection: a.byDirection, byTimeframe: a.byTimeframe,
+    bySymbol: a.bySymbol, byDirection: a.byDirection, byTimeframe: lumpFeeArtifact ? undefined : a.byTimeframe,
     outlierDependence: a.outlierDependence,
     medianBarsHeld: a.medianBarsHeld,
     avgWinR: a.avgWin, avgLossR: a.avgLoss !== undefined ? -Math.abs(a.avgLoss) : undefined,
@@ -122,6 +157,20 @@ if (Array.isArray(artifactFile.arms)) {
     profitFactor: a.profitFactor ?? a.grossPF,
     stopDistancePct: undefined, tp1HitRatePct: undefined,
   };
+}
+// V2.1a: limit-entry-train-metrics.json aggregates the STORED (net-of-0.1 %-lump) R under gross-sounding names
+// (D-V21A-006); the true GROSS aggregates live in limit-entry-train-gross.json. Compare gross figures from there and
+// drop the net-derived splits (byDirection / byTimeframe expectancies are net in that file).
+if (versionId === 'V2_1A_STRUCTURAL_LIMIT_ENTRY') {
+  const g = JSON.parse(readFileSync(join(process.cwd(), 'src/services/strategyArchive/results/v21a/limit-entry-train-gross.json'), 'utf8'))[variantId];
+  if (!g) throw new Error(`model ${variantId} not in gross artifact`);
+  target = {
+    ...target,
+    n: g.n, grossRPerTrade: +g.grossExp.toFixed(4), profitFactor: +g.grossPF.toFixed(4), maxDrawdownR: +g.maxDD.toFixed(2),
+    positiveRRatePct: +g.posRate.toFixed(2), grossMedianR: +g.grossMed.toFixed(4),
+    byDirection: undefined, byTimeframe21: undefined, bySymbol: undefined, outlierDependence: undefined,
+  };
+  for (const k of Object.keys(target)) if (target[k] === undefined) delete target[k];
 }
 const sha = execFileSync('sha256sum', [localArtifact]).toString().split(' ')[0];
 
@@ -177,6 +226,13 @@ if (target.byTimeframe !== undefined) {
   const got = Object.fromEntries([...g].map(([k, v]) => [k, { n: v.n, grossExpectancy: +(v.sum / v.n).toFixed(4) }]));
   checks.byTimeframe = cmp(target.byTimeframe, got);
 }
+if (target.byTimeframe21 !== undefined) {
+  const g = new Map();
+  for (const t of report.trades) { const k = t.tags?.timeframe; const e = g.get(k) ?? { n: 0, sum: 0 }; e.n++; e.sum += t.grossR; g.set(k, e); }
+  const got = Object.fromEntries([...g].map(([k, v]) => [k, { n: v.n, grossExpectancy: +(v.sum / v.n).toFixed(4) }]));
+  checks.byTimeframe = cmp(target.byTimeframe21, got);
+}
+if (lumpFeeArtifact) { checks.netRPerTrade = null; checks.netRPerTradeSpot = null; checks.feeDragR = null; }
 if (target.winRatePct !== undefined || target.winRateTargetPct !== undefined) {
   const n = report.trades.length;
   const hit = report.trades.filter((t) => t.tags?.hitTp === true || t.tags?.hitTarget === true).length;
