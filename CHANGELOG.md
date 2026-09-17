@@ -4,6 +4,19 @@
 
 ---
 
+## [0.8.28] — 2026-09-17
+
+### Changed — ликвидации 24ч по инструменту на `/futures` из фактического потока
+- `FuturesAsset.liquidationsSource: 'ACTUAL' | 'ESTIMATED' | 'UNAVAILABLE'`. `LiveMarketDataProvider.applyFactualLiquidations`: при
+  подключённом потоке (`LIVE_STREAM` / `AWAITING_STREAM`) суммы long/short берутся **только** из `LiquidationPipeline.assetBreakdown`
+  (окно 24ч, Binance + Bybit + OKX); нет событий по инструменту → `UNAVAILABLE` и нули. Эвристика 0.5% оборота остаётся лишь при
+  недоступном потоке и помечена `ESTIMATED`.
+- `/futures`: колонка «Ликв. шортов (24ч)» — `EST.` при эвристике, «—» с подсказкой при отсутствии событий, чистое значение при ACTUAL
+  (`data-qa=liq-short-24h`, `data-source`). Pulse на странице монеты уже был source-aware — теперь источники согласованы.
+- Тесты: `futuresLiquidationsSource.test.ts` (2). Всего: vitest 377, playwright 60, typecheck 0.
+
+---
+
 ## [0.8.27] — 2026-09-17
 
 ### Added — Fear & Greed из фактического источника (Alternative.me)

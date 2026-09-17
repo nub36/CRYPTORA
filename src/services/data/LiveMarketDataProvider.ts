@@ -328,6 +328,26 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     return map;
   }
 
+  /**
+   * Ликвидации 24ч по инструменту: если поток фактических событий подключён — только его суммы
+   * (ACTUAL, либо UNAVAILABLE с нулями, когда событий по инструменту нет). Эвристика движка остаётся
+   * лишь при недоступном потоке и помечается ESTIMATED.
+   */
+  private applyFactualLiquidations(list: FuturesAsset[], now: number): FuturesAsset[] {
+    const snapshot = LiquidationPipeline.getInstance().getLiquidationSnapshot(now);
+    if (snapshot.dataStatus !== 'LIVE_STREAM' && snapshot.dataStatus !== 'AWAITING_STREAM') {
+      return list.map((f) => ({ ...f, liquidationsSource: 'ESTIMATED' as const }));
+    }
+    const byAsset = new Map(snapshot.assetBreakdown.map((a) => [a.symbol.toUpperCase(), a]));
+    return list.map((f) => {
+      const bucket = byAsset.get(f.symbol.split('/')[0].toUpperCase());
+      if (bucket && bucket.totalUsd > 0) {
+        return { ...f, longLiquidations24h: bucket.longUsd, shortLiquidations24h: bucket.shortUsd, liquidationsSource: 'ACTUAL' as const };
+      }
+      return { ...f, longLiquidations24h: 0, shortLiquidations24h: 0, liquidationsSource: 'UNAVAILABLE' as const };
+    });
+  }
+
   public async getFuturesList(): Promise<FuturesAsset[]> {
     const now = Date.now();
     if (this.futuresCache && now - this.futuresCache.timestamp < this.cacheTtlMs) {
@@ -361,8 +381,9 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       }
 
       if (results.length > 0) {
-        this.futuresCache = { data: results, timestamp: now };
-        return results;
+        const withLiq = this.applyFactualLiquidations(results, now);
+        this.futuresCache = { data: withLiq, timestamp: now };
+        return withLiq;
       }
     } catch (error) {
       // LIVE-FIRST: источник не ответил — честная ошибка, без подстановки демо-датасета.

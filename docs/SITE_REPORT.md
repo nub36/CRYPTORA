@@ -1,7 +1,7 @@
 # SITE REPORT — сводный отчёт по состоянию терминала CRYPTORA
 
-> **Версия:** v0.8.27 · ветка `arena/01a0aaeb-cryptora` · дата 2026-09-17  
-> **Production VPS (`89.125.24.50`):** v0.8.4 `6a01ce1` — **23 версии позади**, деплой только по команде владельца.  
+> **Версия:** v0.8.28 · ветка `arena/01a0aaeb-cryptora` · дата 2026-09-17  
+> **Production VPS (`89.125.24.50`):** v0.8.4 `6a01ce1` — **24 версии позади**, деплой только по команде владельца.  
 > **Инвариант:** CRYPTORA не исполняет сделки, не хранит ключи бирж, не содержит ботов. `EXECUTION_CODE_PORTED = NONE`.
 
 Этот документ — честная карта того, что на сайте **фактическое (LIVE)**, что **расчётное (MODEL / DERIVED)**, что **статический
@@ -34,7 +34,7 @@
 | `/` Обзор | капитализация, объём, доминация, F&G, breadth, BTC-график | LIVE (Binance/KuCoin REST → агрегация); F&G — LIVE Alternative.me (v0.8.27, при отказе «НЕДОСТУПЕН»); 24h-дельты капитализации/объёма — **MODEL / ESTIMATED** | `EST.`, `LIVE · ALTERNATIVE.ME` | e2e LIVE-first, unit fearGreed |
 | `/market` | таблица 30 активов, спарклайны, watchlist | LIVE REST + WS-тикер | `LIVE-ТИКЕР` / честная деградация | e2e, unit adapters |
 | `/coin/:symbol` | свечи 15m–1W, стакан, индикаторы, Pulse, workspace | LIVE (klines, depth WS); индикаторы DERIVED; Pulse: ликвидации 24ч — **ESTIMATED**, перекос — DERIVED | подписи `LIVE-СВЕЧИ`/`MODEL` на карточках | e2e, `typography`, workspace tests |
-| `/futures` | OI, фандинг, базис, squeeze watch | LIVE Binance `premiumIndex` + `24hr` + `openInterestHist` (Δ OI ACTUAL, v0.8.25); **ликвидации 24ч — оценочные**; Δ OI без ряда → `EST.` | бейдж `EST.` у оценочных Δ OI | unit derivatives + openInterestHistory |
+| `/futures` | OI, фандинг, базис, squeeze watch, ликвидации 24ч | LIVE Binance `premiumIndex` + `24hr` + `openInterestHist` (Δ OI ACTUAL, v0.8.25); ликвидации 24ч — ACTUAL из потока 3 бирж (v0.8.28), `—` без событий, `EST.` только при недоступном потоке | бейджи `EST.` | unit derivatives, openInterestHistory, futuresLiquidationsSource |
 | `/liquidations` | поток ликвидаций, агрегаты, тепловая карта | LIVE WS Binance `!forceOrder@arr`, Bybit V5 `allLiquidation`, OKX `liquidation-orders` (по-биржевые чипы состояния); тепловая карта — **MODEL / ESTIMATED** | чипы `data-qa=liq-source-*`, `MODEL` | unit 13+, e2e; **Bybit/OKX живой приём UNVERIFIED в проде** |
 | `/screener` | многофакторный фильтр | LIVE REST + DERIVED (RSI и т. д.) | — | unit screener |
 | `/radar` | аномалии (volume/OI/funding/liq) | DERIVED из LIVE-тикеров (`AnomalyEngine`); AI-брифинг — шаблонный текст поверх фактов, **не LLM** | `LIVE-ДЕТЕКТОР АНОМАЛИЙ` | e2e, unit |
@@ -69,8 +69,8 @@
 ## 4. Известные долги и риски
 
 1. **Разрыв с production** — 20 версий недеплоено; UX-цикл A–E, архив стратегий, темы, алерты, Bybit/OKX пользователи не видят.
-2. `DerivativesEngine`: ликвидации 24ч по инструменту — эвристика от объёма (Δ OI с v0.8.25 фактический). Колонка «Ликв. шортов (24ч)»
-   на `/futures` — следующий кандидат на замену фактическим агрегатом из `LiquidationPipeline`.
+2. `DerivativesEngine`: остаточные эвристики — ликвидации 24ч при недоступном потоке и `predictedFundingRate = ×1.05` (оценка, не
+   отдаётся источником). Обе помечены; `predictedFundingRate` — кандидат на замену Binance `premiumIndex.interestRate`/`predictedFundingRate`.
 3. Статические страницы (§2: signals/onchain/calendar/ecosystem) — честно маркированы с v0.8.24, но ценность для пользователя ограничена, пока нет провайдеров.
 4. `AlertService.ts` (v0.6.0) — автономный движок с собственными типами; UI использует `alertEvaluator`. Дубликат стоит удалить или объединить.
 5. `package-lock.json` хранит `version 0.8.8` (исторически не обновлялся) — косметика.
@@ -81,6 +81,6 @@
 ## 5. Рекомендуемый порядок дальнейших работ
 
 1. Деплой v0.8.24 на VPS + живая проверка Bybit/OKX, Telegram/webhook (по команде владельца).
-2. Ликвидации 24ч по инструменту — из фактического потока вместо эвристики.
+2. Прогноз фандинга — фактическое поле источника вместо ×1.05.
 3. 24h-дельты капитализации/объёма на Обзоре — хранить предыдущий снимок агрегата (localStorage/сервер) вместо констант.
 5. Scope News/Ads от владельца.

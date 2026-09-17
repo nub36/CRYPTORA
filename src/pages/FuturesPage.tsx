@@ -341,8 +341,29 @@ export const FuturesPage: React.FC = () => {
                       {formatPercent(f.basisPct)}
                     </td>
 
-                    <td className="py-2.5 px-3 text-right text-rose-400 hidden md:table-cell font-mono tabular-nums">
-                      {formatCurrency(f.shortLiquidations24h, { compact: true })}
+                    <td
+                      className="py-2.5 px-3 text-right text-rose-400 hidden md:table-cell font-mono tabular-nums"
+                      data-qa="liq-short-24h"
+                      data-source={f.liquidationsSource ?? 'ESTIMATED'}
+                    >
+                      {f.liquidationsSource === 'UNAVAILABLE' ? (
+                        <span className="text-slate-500" title="Поток фактических ликвидаций подключён; событий по инструменту за 24ч не поступало">
+                          —
+                        </span>
+                      ) : (
+                        <>
+                          {formatCurrency(f.shortLiquidations24h, { compact: true })}
+                          {f.liquidationsSource !== 'ACTUAL' && (
+                            <span
+                              data-qa="liq-estimated"
+                              title="MODEL / ESTIMATED: поток фактических ликвидаций недоступен — эвристика 0.5% оборота"
+                              className="ml-1 rounded border border-white/[0.12] bg-white/[0.06] px-1 py-px text-[11px] font-semibold text-slate-400"
+                            >
+                              EST.
+                            </span>
+                          )}
+                        </>
+                      )}
                     </td>
                   </tr>
                 );

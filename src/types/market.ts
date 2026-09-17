@@ -104,6 +104,11 @@ export const FuturesAssetSchema = z.object({
   futuresVolume24h: z.number(), // USD
   longLiquidations24h: z.number(), // USD
   shortLiquidations24h: z.number(), // USD
+  /**
+   * Происхождение ликвидаций 24ч: ACTUAL — сумма фактических событий потока (окно 24ч конвейера);
+   * ESTIMATED — эвристика движка деривативов; UNAVAILABLE — поток подключён, событий по инструменту нет (суммы = 0).
+   */
+  liquidationsSource: z.enum(['ACTUAL', 'ESTIMATED', 'UNAVAILABLE']).optional(),
   basisPct: z.number(), // %
   isDemo: z.boolean().default(true),
   provenance: DataProvenanceSchema.optional(),
