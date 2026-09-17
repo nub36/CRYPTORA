@@ -15,22 +15,28 @@
 | **OKX** | Spot + Margin + Futures + Swaps | V5 REST, Public WS (`REQUIRES VERIFICATION`) | V5 Futures / Swap (`REQUIRES VERIFICATION`) | Public Data REST/WS (`REQUIRES VERIFICATION`)| 8h / 4h / 1h по рынкам (`REQUIRES VERIFICATION`) | Public Liquidation Orders (`REQUIRES VERIFICATION`) | [OKX V5 Docs](https://www.okx.com/docs-v5/en/) / `REQUIRES VERIFICATION` |
 | **Coinbase** | Spot + Institutional Futures | Advanced Trade REST/WS (`REQUIRES VERIFICATION`) | Derivatives (ограничено) (`REQUIRES VERIFICATION`) | Ограничено (`REQUIRES VERIFICATION`) | N/A (в основном спот) | N/A | [Coinbase Developer](https://docs.cdp.coinbase.com/) / `REQUIRES VERIFICATION` |
 
-### 1.1. Реализованные потоки фактических данных (v0.8.2)
+### 1.1. Реализованные потоки фактических данных (v0.8.2 → v0.8.34)
 
 | Источник | Транспорт | Статус в коде | Примечание |
 | --- | --- | --- | --- |
 | Binance USD-M Futures — фактические ликвидации | WS `wss://fstream.binance.com/ws/!forceOrder@arr` | `src/services/realtime/BinanceFuturesLiquidationStream.ts` | Только чтение публичных рыночных данных, без API-ключей. Публичные market-стримы Binance не требуют торговых прав. |
 | Binance Spot — котировки, сделки, стакан | WS `wss://stream.binance.com:9443/stream` | `src/services/realtime/BinanceWebSocketClient.ts` | Подписки `@ticker`, `@trade`, `@depth20@100ms`. |
 | Binance Futures — метка цены, открытый интерес, фандинг | REST Futures v1/v2 | `src/services/data/adapters/*`, `LiveMarketDataProvider` | Используется как вход расчетной модели кластеров ликвидаций. |
+| Bybit V5 — фактические ликвидации | WS `wss://stream.bybit.com/v5/public/linear`, `allLiquidation.{symbol}` | `src/services/realtime/liquidations/BybitLiquidationStream.ts` (v0.8.22) | `S=Buy` ⇒ ликвидирован лонг (инверсно Binance). |
+| OKX — фактические ликвидации | WS `wss://ws.okx.com:8443/ws/v5/public`, `liquidation-orders` SWAP | `src/services/realtime/liquidations/OkxLiquidationStream.ts` (v0.8.22) | USD = bkPx × sz × ctVal. |
+| Alternative.me — Fear & Greed | REST `api.alternative.me/fng/?limit=1` | `AlternativeMeAdapter.ts` (v0.8.27) | Публичный, без ключа. |
+| DeFiLlama — TVL по сетям | REST `api.llama.fi/v2/chains`, `/v2/historicalChainTvl/{chain}` | `DefiLlamaAdapter.ts` (v0.8.30) | Публичный, без ключа. UNVERIFIED из песочницы. |
+| mempool.space — сеть Bitcoin | REST `/api/v1/mining/hashrate/3d`, `/api/v1/difficulty-adjustment`, `/api/v1/fees/recommended`, `/api/mempool`, `/api/blocks/tip/height` | `MempoolSpaceAdapter.ts` (v0.8.31) | Публичный, без ключа. UNVERIFIED из песочницы. |
+| Binance Futures — расписание (экспирации) | REST `/fapi/v1/exchangeInfo` | `BinanceFuturesAdapter.fetchExchangeInfo` (v0.8.32) | Для /calendar вместе с `premiumIndex.nextFundingTime`. |
 
 **QA-стенд LIVE-режима:** поскольку в изолированной среде нет исходящей сети, LIVE-ветка интерфейса
 проверяется стендом `/tmp/qa-live-fixture.mjs` — он подменяет ответы Binance REST детерминированными
 фикстурами ТОЛЬКО в браузере проверки (`page.route`), не меняя продакшн-код. Это проверка вёрстки и
 контракта отображения, а не подтверждение фактического соединения с биржей.
 
-**Не подключено (и не подменяется оценками):** потоки фактических ликвидаций Bybit V5 (`allLiquidation`) и
-OKX (liquidation-orders). До их подключения разбивка ликвидаций по биржам отражает только те источники,
-которые действительно отдали события.
+**Не подключено (и не подменяется оценками):** макроэкономический календарь (FOMC/CPI/NFP), он-чейн оценочные
+индикаторы (MVRV/NUPL/SOPR), биржевые притоки/оттоки, комиссии/TPS/адреса сетей — публичных источников без ключа
+нет; соответствующие разделы этого не показывают.
 
 ---
 
