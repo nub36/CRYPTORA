@@ -1,0 +1,163 @@
+{
+  "kind": "CRYPTORA_REPRODUCTION_EVIDENCE",
+  "origin": "DERIVED_BY_CRYPTORA",
+  "versionId": "V3_3_HTF_ZONE_MITIGATION",
+  "variantId": "first-protective-displacement",
+  "slice": "train",
+  "runAtUtc": "2026-09-16T17:55:02.340Z",
+  "runner": "scripts/strategy-archive/reproduce.mjs",
+  "dataset": {
+    "repo": "https://github.com/nub36/svechnoy-suslik-binance-data.git",
+    "commit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f",
+    "intervalsRead": [
+      "1h",
+      "4h"
+    ],
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "loader": "monthly ZIP → CSV, openTime µs→ms normalised, closeTime=open+span−1, isClosed=true"
+  },
+  "sourceArtifact": {
+    "path": "artifacts/research/v33/v33-train-metrics-first-protective-displacement.json",
+    "sha256": "de794663ffede558daf051fdca564bce6d9210b1dcfd1c0e3ea2fd70fa3375d2"
+  },
+  "deterministicDigest": "fnv1a32:b964c4c8:n600",
+  "tradeCount": 600,
+  "funnel": {
+    "signals": 1761,
+    "pendingCreated": 1761,
+    "filled": 600,
+    "expired": 0,
+    "cancelled": 81,
+    "rejected": 1079,
+    "unresolved": 1
+  },
+  "maxCandleOpenTimeRead": 1716728400000,
+  "metrics": {
+    "n": 600,
+    "grossRPerTrade": 0.0166,
+    "feeDragRHeadline": 0.0419,
+    "netRPerTradeHeadline": -0.0253,
+    "feeDragRStress": 0.0598,
+    "netRPerTradeStress": -0.0432,
+    "profitFactor": 1.0586,
+    "maxDrawdownR": -15.27,
+    "positiveRRatePct": 70.67,
+    "grossMedianR": 0.0908,
+    "avgWinR": 0.4247,
+    "avgLossR": -0.9664,
+    "medianBarsHeld": 7,
+    "stopDistancePct": {
+      "p25": 1.3328,
+      "median": 2.077,
+      "p75": 3.2024
+    },
+    "exits": {
+      "SL": 169,
+      "TP1_THEN_TIMEOUT": 40,
+      "TP1_THEN_BE": 307,
+      "TP2": 71,
+      "TIMEOUT": 13
+    },
+    "outlierDependence": {
+      "grossExpectancy": 0.0166,
+      "exTop1": 0.0112,
+      "exTop5": -0.0072,
+      "exTop1Pct": -0.011,
+      "removedForTop1Pct": 6
+    },
+    "byDirection": {
+      "LONG": {
+        "n": 295,
+        "grossExpectancy": 0.0377
+      },
+      "SHORT": {
+        "n": 305,
+        "grossExpectancy": -0.0038
+      }
+    },
+    "bySymbol": {
+      "BTCUSDT": {
+        "n": 90,
+        "grossExpectancy": -0.0665
+      },
+      "ETHUSDT": {
+        "n": 91,
+        "grossExpectancy": 0.1217
+      },
+      "BNBUSDT": {
+        "n": 79,
+        "grossExpectancy": -0.0306
+      },
+      "SOLUSDT": {
+        "n": 93,
+        "grossExpectancy": 0.0308
+      },
+      "XRPUSDT": {
+        "n": 116,
+        "grossExpectancy": 0.0405
+      },
+      "DOGEUSDT": {
+        "n": 131,
+        "grossExpectancy": -0.0021
+      }
+    }
+  },
+  "comparison": {
+    "checks": {
+      "n": true,
+      "funnel": true,
+      "grossRPerTrade": true,
+      "netRPerTrade": true,
+      "netRPerTradeSpot": true,
+      "feeDragR": true,
+      "profitFactor": true,
+      "maxDrawdownR": true,
+      "exits": true,
+      "bySymbol": true,
+      "byDirection": true,
+      "outlierDependence": true,
+      "stopDistancePct": true,
+      "medianBarsHeld": true,
+      "avgWinR": true,
+      "avgLossR": true,
+      "grossMedianR": true,
+      "positiveRRatePct": true,
+      "tp1HitRatePct": true,
+      "tp2HitRatePct": true
+    },
+    "allMatched": true,
+    "firstMismatch": null,
+    "source": {
+      "n": 600,
+      "grossRPerTrade": 0.0166,
+      "netRPerTrade": {
+        "FUT_4": -0.0253,
+        "SPOT": -0.0432
+      },
+      "profitFactor": 1.0586,
+      "funnel": {
+        "zonesTotal": 10665,
+        "zonesMitigated": 8627,
+        "zonesDead": 8238,
+        "zonesSkippedByWarmup": 0,
+        "skippedNoSwingLeg": 0,
+        "triggersInZone": 1761,
+        "multiZoneBars": 338,
+        "pendingCreated": 1761,
+        "filled": 600,
+        "expired": 0,
+        "cancelled": 81,
+        "rejected": 1079,
+        "unresolved": 1,
+        "triggersWithTp1BehindClose": 1050
+      }
+    }
+  }
+}

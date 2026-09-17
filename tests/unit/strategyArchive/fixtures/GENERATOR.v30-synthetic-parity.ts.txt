@@ -1,0 +1,116 @@
+// REFERENCE ONLY — this generator was executed inside svechnoy-suslik-v2@292050c (imports the ORIGINAL research module)
+// to produce v30-synthetic-parity.json. It is kept as .txt so it is never compiled here.
+import { writeFileSync } from 'node:fs';
+import { Settings } from '../src/core/settings';
+import { buildAtrContext, buildVolumeContext } from '../src/strategy/v2/indicators';
+import { confirmedLevels, detectTrap, manageTrade, CORRIDOR_ATR_FRAC, STOP_BUFFER_ATR,
+  CORRIDOR_EXPIRY_BARS, TIMEOUT_BARS, MAKER_BPS, TAKER_BPS } from './v30_htf_trap';
+import type { Candle } from '../src/core/types';
+function mulberry32(a: number) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const H = 3_600_000;
+function synth(seed: number, n: number, t0: number) {
+  const rnd = mulberry32(seed);
+  const h1: Candle[] = []; let px = 100;
+  // running 4h-ish extremes tracked to aim sweeps at them
+  let recentHi = 102, recentLo = 98;
+  for (let i = 0; i < n; i++) {
+    const center = 100 + 8 * Math.sin(i / 250) + 3 * Math.sin(i / 61);
+    const o = px;
+    let c = o + (center - o) * 0.06 + (rnd() - 0.5) * 1.4;
+    const event = rnd();
+    let hi = Math.max(o, c) + rnd() * 0.3;
+    let lo = Math.min(o, c) - rnd() * 0.3;
+    let vol = 1000 * (0.7 + rnd() * 0.6);
+    if (event < 0.05) {           // upside sweep of recent high & reject
+      hi = Math.max(hi, recentHi + 0.05 + rnd() * 0.8); c = o - (0.4 + rnd() * 1.4); lo = Math.min(lo, c - rnd() * 0.15); vol *= 2 + rnd() * 2;
+    } else if (event < 0.10) {    // downside sweep & reclaim
+      lo = Math.min(lo, recentLo - 0.05 - rnd() * 0.8); c = o + (0.4 + rnd() * 1.4); hi = Math.max(hi, c + rnd() * 0.15); vol *= 2 + rnd() * 2;
+    } else if (event < 0.13) {    // impulsive bar, thin wick, big vol (may or may not be near level)
+      c = o + (rnd() < 0.5 ? -1 : 1) * (1 + rnd() * 2); vol *= 1.5 + rnd();
+      hi = Math.max(o, c) + rnd() * 0.1; lo = Math.min(o, c) - rnd() * 0.1;
+    }
+    c = Math.max(1, c); hi = Math.max(hi, o, c); lo = Math.min(lo, o, c);
+    const openTime = t0 + i * H;
+    h1.push({ openTime, open: o, high: hi, low: lo, close: c, volume: vol, closeTime: openTime + H - 1, quoteVolume: 0, trades: 0, isClosed: true });
+    px = c;
+    if (i % 24 === 0) { const w = h1.slice(Math.max(0, i - 48), i + 1); recentHi = Math.max(...w.map(x => x.high)); recentLo = Math.min(...w.map(x => x.low)); }
+  }
+  const h4: Candle[] = [];
+  for (let i = 0; i + 4 <= n; i += 4) {
+    const w = h1.slice(i, i + 4); const openTime = w[0]!.openTime;
+    h4.push({ openTime, open: w[0]!.open, high: Math.max(...w.map(x => x.high)), low: Math.min(...w.map(x => x.low)), close: w[3]!.close, volume: w.reduce((s, x) => s + x.volume, 0), closeTime: openTime + 4 * H - 1, quoteVolume: 0, trades: 0, isClosed: true });
+  }
+  return { h1, h4 };
+}
+const t0 = Date.UTC(2022, 0, 1); const N = 6000;
+const { h1, h4 } = synth(20260916, N, t0);
+const trainFromMs = t0 + 100 * H, trainToMs = t0 + (N - 60) * H;
+const settings = Settings.fromDefaults();
+const strength = Math.floor(settings.num('engine.swing_lookback'));
+const atrPeriod = Math.floor(settings.num('risk.atr_period'));
+const volPeriod = Math.floor(settings.num('v2.volume_period'));
+type Direction = 'LONG' | 'SHORT';
+interface Pending { dir: Direction; zoneLow: number; zoneHigh: number; stop: number; tp1: number; tp2: number; setupIndex: number; }
+let pend: Pending | null = null; let busy = false;
+let signals = 0, pending = 0, expired = 0, cancelled = 0, rejected = 0, unresolved = 0;
+const trades: any[] = [];
+for (let i = 60; i < h1.length; i++) {
+  const c = h1[i]!;
+  if (c.openTime < trainFromMs) continue;
+  if (c.openTime > trainToMs) break;
+  if (pend && !busy) {
+    const p = pend; const long = p.dir === 'LONG'; const waited = i - p.setupIndex;
+    const touches = long ? c.low <= p.zoneHigh : c.high >= p.zoneLow;
+    const hitStop = long ? c.low <= p.stop : c.high >= p.stop;
+    if (touches && hitStop) { cancelled++; pend = null; }
+    else if (touches) {
+      const fill = long ? Math.min(c.open, p.zoneHigh) : Math.max(c.open, p.zoneLow);
+      const risk = Math.abs(fill - p.stop);
+      const geomOk = risk > 0 && (long ? p.stop < fill : p.stop > fill) && (long ? p.tp1 > fill && p.tp2 > p.tp1 : p.tp1 < fill && p.tp2 < p.tp1);
+      if (!geomOk) { rejected++; pend = null; }
+      else {
+        const bars = h1.slice(i, Math.min(h1.length, i + TIMEOUT_BARS + 2));
+        const r = manageTrade(p.dir, fill, p.stop, p.tp1, p.tp2, bars);
+        if (!r) { unresolved++; pend = null; }
+        else {
+          trades.push({ direction: p.dir, setupOpenTime: h1[p.setupIndex]!.openTime, fillOpenTime: c.openTime, entry: fill, stop: p.stop, tp1: p.tp1, tp2: p.tp2, exitReason: r.exit, barsHeld: r.barsHeld, grossR: r.grossR, feeR25: r.feeR(MAKER_BPS, TAKER_BPS), feeR55: r.feeR(5, 5), stopDistancePct: (risk / fill) * 100 });
+          pend = null;
+        }
+      }
+    } else if (hitStop) { cancelled++; pend = null; }
+    else if (waited >= CORRIDOR_EXPIRY_BARS) { expired++; pend = null; }
+  }
+  if (pend === null) {
+    const levels = confirmedLevels(h4, c.closeTime, strength);
+    if (levels.swingHigh === null && levels.swingLow === null) continue;
+    const vol = buildVolumeContext(h1.slice(0, i + 1), i, volPeriod);
+    const sig = detectTrap(c, levels, vol.rvol);
+    if (!sig) continue;
+    const atr = buildAtrContext(h1.slice(0, i + 1), i, atrPeriod).atr;
+    if (atr === null || !(atr > 0)) continue;
+    if (levels.swingHigh === null || levels.swingLow === null) continue;
+    signals++;
+    const long = sig.direction === 'LONG'; const half = CORRIDOR_ATR_FRAC * atr;
+    const eq = (levels.swingHigh + levels.swingLow) / 2;
+    const stop = long ? sig.sweepExtreme - STOP_BUFFER_ATR * atr : sig.sweepExtreme + STOP_BUFFER_ATR * atr;
+    const tp2 = long ? levels.swingHigh : levels.swingLow;
+    pend = { dir: sig.direction, zoneLow: c.close - half, zoneHigh: c.close + half, stop, tp1: eq, tp2, setupIndex: i };
+    pending++;
+  }
+  void busy;
+}
+let overlaps = 0;
+for (let k = 1; k < trades.length; k++) { const prev = trades[k - 1]; const prevExit = prev.fillOpenTime + (prev.barsHeld - 1) * H; if (trades[k].fillOpenTime <= prevExit) overlaps++; }
+const exits: Record<string, number> = {}; for (const t of trades) exits[t.exitReason] = (exits[t.exitReason] ?? 0) + 1;
+const out = {
+  generator: 'svechnoy-suslik-v2@292050c research/v30_htf_trap.ts functions + verbatim main loop; synthetic mulberry32 seed 20260916 (mean-reverting range with targeted wick sweeps)',
+  seed: 20260916, n: N, t0, trainFromMs, trainToMs,
+  candles1h: h1.map(c => [c.openTime, c.open, c.high, c.low, c.close, c.volume]),
+  candles4h: h4.map(c => [c.openTime, c.open, c.high, c.low, c.close, c.volume]),
+  funnel: { signals, pendingCreated: pending, filled: trades.length, expired, cancelled, rejected, unresolved },
+  overlappingTrades: overlaps, exits,
+  grossRSum: trades.reduce((s, t) => s + t.grossR, 0),
+  trades,
+};
+writeFileSync(process.argv[2]!, JSON.stringify(out));
+console.log(out.funnel, 'overlaps', overlaps, exits, out.grossRSum);
