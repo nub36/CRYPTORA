@@ -21,6 +21,14 @@ const __dirname = path.dirname(__filename);
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const DIST_DIR = path.resolve(__dirname, '../dist');
+// Версия — из package.json, чтобы /api/health не отставал от релиза.
+const APP_VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')).version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
 const CACHE_TTL_MS = parseInt(process.env.MARKET_DATA_CACHE_TTL_MS || '10000', 10);
 
 // In-memory cache for market-data proxy
@@ -163,7 +171,7 @@ const server = http.createServer((req, res) => {
       JSON.stringify({
         status: 'ok',
         app: 'CRYPTORA Market Intelligence Terminal',
-        version: '0.8.8',
+        version: APP_VERSION,
         uptimeSeconds: Math.floor(process.uptime()),
         timestamp: new Date().toISOString(),
       })
