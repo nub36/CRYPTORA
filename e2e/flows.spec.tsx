@@ -486,14 +486,12 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getAllByText('BTC').length).toBeGreaterThan(0);
   });
 
-  test('Справочные страницы явно маркированы «СТАТИЧЕСКИЙ НАБОР» и не выдают данные за LIVE', async () => {
-    for (const route of ['/signals']) {
-      cleanup();
-      renderApp(route);
-      const notice = document.querySelector('[data-qa="static-dataset-notice"]');
-      expect(notice, route).not.toBeNull();
-      expect(notice!.textContent).toContain('СТАТИЧЕСКИЙ НАБОР');
-    }
+  test('/signals: реестр пуст, без иллюстративных сетапов и без плашки «СТАТИЧЕСКИЙ НАБОР»', async () => {
+    cleanup();
+    renderApp('/signals');
+    expect(document.querySelector('[data-qa="signals-empty"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain('Цель достигнута:');
+    expect(document.querySelector('[data-qa="static-dataset-notice"]')).toBeNull();
   });
 
   test('/calendar без доступа к Binance показывает «ИСТОЧНИК НЕДОСТУПЕН», без статических FOMC/CPI', async () => {

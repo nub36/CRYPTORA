@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
-import { StaticDatasetNotice } from '@/components/common/StaticDatasetNotice';
 import { sideLabel } from '@/utils/labels';
 import { SignalsAuditLedger, AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 
@@ -29,7 +28,7 @@ export const SignalsPage: React.FC = () => {
               Аналитические сетапы и сигналы
             </h1>
             <Badge variant="amber" size="sm">
-              Прототип методологии
+              Методология журнала
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -42,7 +41,18 @@ export const SignalsPage: React.FC = () => {
         </div>
       </div>
 
-      <StaticDatasetNotice what="Сетапы в реестре и их итоги — иллюстрация методологии журнала аудита, а не фактический трек-рекорд" source="фактических сетапов нет" />
+      {summary.totalSetups === 0 && (
+        <div
+          data-qa="signals-empty"
+          className="p-4 bg-surface border border-amber-500/30 rounded-lg text-xs font-sans text-slate-300 space-y-1"
+        >
+          <div className="text-white font-bold">Реестр пуст: фактических сетапов нет</div>
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            CRYPTORA не публикует аналитические сетапы и не имеет трек-рекорда. Здесь показана только методология журнала (append-only,
+            цепочка SHA-256). Никаких иллюстративных или демонстрационных записей в реестр не подставляется.
+          </p>
+        </div>
+      )}
 
       {/* Transparent Performance Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -144,6 +154,9 @@ export const SignalsPage: React.FC = () => {
 
       {/* Setups Cards */}
       <div className="space-y-4">
+        {setups.length === 0 && (
+          <div className="py-8 text-center text-slate-500 text-xs font-sans">Записей нет.</div>
+        )}
         {setups.map((setup: AnalyticalSetup) => (
           <div
             key={setup.id}

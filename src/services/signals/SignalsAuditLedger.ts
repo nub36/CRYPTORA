@@ -1,4 +1,5 @@
 import { Timeframe } from '@/types/market';
+import { sha256Hex } from '@/utils/sha256';
 
 export interface AnalyticalSetup {
   id: string;
@@ -32,8 +33,12 @@ export class SignalsAuditLedger {
   private static instance: SignalsAuditLedger | null = null;
   private setups: AnalyticalSetup[] = [];
 
-  constructor() {
-    this.seedAuditedSetups();
+  /**
+   * Реестр пуст по умолчанию: фактических аналитических сетапов у CRYPTORA нет, а выдуманные записи с «результатами»
+   * недопустимы (v0.8.33). Записи добавляются только через append() — например, тестами.
+   */
+  constructor(initial: ReadonlyArray<Omit<AnalyticalSetup, 'auditHash'>> = []) {
+    for (const raw of initial) this.append(raw);
   }
 
   public static getInstance(): SignalsAuditLedger {
@@ -43,103 +48,17 @@ export class SignalsAuditLedger {
     return SignalsAuditLedger.instance;
   }
 
+  /** Настоящий SHA-256 от канонической сериализации записи + хэша предыдущей (цепочка). */
   private computeHash(setupData: Omit<AnalyticalSetup, 'auditHash'>, prevHash = 'GENESIS'): string {
-    const serialized = JSON.stringify({ ...setupData, prevHash });
-    // Simple deterministic hash calculation
-    let hash = 0;
-    for (let i = 0; i < serialized.length; i++) {
-      const char = serialized.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash |= 0;
-    }
-    return `sha256-${Math.abs(hash).toString(16).padStart(8, '0')}`;
+    return `sha256-${sha256Hex(JSON.stringify({ ...setupData, prevHash }))}`;
   }
 
-  private seedAuditedSetups(): void {
-    const rawSetups: Omit<AnalyticalSetup, 'auditHash'>[] = [
-      {
-        id: 'setup-btc-01',
-        symbol: 'BTC',
-        direction: 'LONG',
-        timeframe: '4h',
-        entryZone: [63800, 64200],
-        invalidationLevel: 62900,
-        targets: [65500, 67200],
-        riskRewardRatio: 2.8,
-        confirmingFactors: [
-          'Бычья дивергенция RSI (14) на 4h таймфрейме',
-          'Положительный базис и нормализация фандинга',
-          'Тест верхней границы Value Area (VAH)',
-        ],
-        invalidationFactors: ['Пробой и закрепление ниже $62,900 на объеме'],
-        createdAt: '2026-09-14T10:00:00Z',
-        status: 'TARGET_REACHED',
-        closedAt: '2026-09-15T04:30:00Z',
-        pnlResultPct: 4.8,
-      },
-      {
-        id: 'setup-eth-02',
-        symbol: 'ETH',
-        direction: 'LONG',
-        timeframe: '1h',
-        entryZone: [3420, 3450],
-        invalidationLevel: 3370,
-        targets: [3560, 3680],
-        riskRewardRatio: 2.5,
-        confirmingFactors: [
-          'Отскок от 200 SMA с аномальным Z-Score объема +2.4σ',
-          'Резкое сокращение шорт-позиций в деривативах',
-        ],
-        invalidationFactors: ['Потеря уровня поддержки $3,370'],
-        createdAt: '2026-09-14T16:00:00Z',
-        status: 'ACTIVE',
-      },
-      {
-        id: 'setup-sol-03',
-        symbol: 'SOL',
-        direction: 'SHORT',
-        timeframe: '4h',
-        entryZone: [156, 158],
-        invalidationLevel: 161.5,
-        targets: [148, 142],
-        riskRewardRatio: 2.3,
-        confirmingFactors: [
-          'Экстремальный фандинг +0.06% (лонг-сквиз)',
-          'Касание верхней полосы Bollinger Bands с затуханием импульса',
-        ],
-        invalidationFactors: ['Выход выше $161.50'],
-        createdAt: '2026-09-13T12:00:00Z',
-        status: 'INVALIDATED',
-        closedAt: '2026-09-13T22:00:00Z',
-        pnlResultPct: -2.2,
-      },
-      {
-        id: 'setup-near-04',
-        symbol: 'NEAR',
-        direction: 'LONG',
-        timeframe: '1D',
-        entryZone: [4.8, 5.0],
-        invalidationLevel: 4.5,
-        targets: [5.6, 6.2],
-        riskRewardRatio: 3.1,
-        confirmingFactors: [
-          'Бычье пересечение MACD на дневном графике',
-          'Рост открытого интереса на +12% за 24 часа',
-        ],
-        invalidationFactors: ['Закрытие дневной свечи ниже $4.50'],
-        createdAt: '2026-09-12T00:00:00Z',
-        status: 'TARGET_REACHED',
-        closedAt: '2026-09-14T18:00:00Z',
-        pnlResultPct: 15.4,
-      },
-    ];
-
-    let prevHash = 'GENESIS';
-    for (const raw of rawSetups) {
-      const hash = this.computeHash(raw, prevHash);
-      this.setups.push({ ...raw, auditHash: hash });
-      prevHash = hash;
-    }
+  /** Append-only: запись получает хэш, связанный с предыдущей; редактирование задним числом ломает verifyIntegrity(). */
+  public append(raw: Omit<AnalyticalSetup, 'auditHash'>): AnalyticalSetup {
+    const prev = this.setups.length ? this.setups[this.setups.length - 1].auditHash : 'GENESIS';
+    const entry: AnalyticalSetup = { ...raw, auditHash: this.computeHash(raw, prev) };
+    this.setups.push(entry);
+    return entry;
   }
 
   public getSetups(): AnalyticalSetup[] {

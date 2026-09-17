@@ -54,7 +54,7 @@ export const ANALYTICS_NAV_ITEMS: SubNavItem[] = [
   { label: 'Карта рынка', sublabel: 'Визуализация секторов и доходностей', path: '/heatmaps', icon: Grid3X3 },
   { label: 'Корреляции', sublabel: 'Матрица Пирсона и Beta к BTC', path: '/correlations', icon: Grid },
   { label: 'Он-чейн', sublabel: 'Хешрейт, сложность, мемпул, комиссии BTC', path: '/onchain', icon: Network },
-  { label: 'Экосистемы', sublabel: 'DeFi TVL, комиссии и TPS сетей', path: '/ecosystem', icon: Layers },
+  { label: 'Экосистемы', sublabel: 'DeFi TVL сетей L1 и L2', path: '/ecosystem', icon: Layers },
   { label: 'Календарь', sublabel: 'Фандинг и экспирации деривативов', path: '/calendar', icon: Calendar },
 ];
 
@@ -63,7 +63,7 @@ export const TOOLS_NAV_ITEMS: SubNavItem[] = [
   { label: 'Портфель', sublabel: 'Value at Risk (VaR) и стресс-тесты', path: '/portfolio', icon: PieChart },
   { label: 'Журнал', sublabel: 'Ручной дневник сделок и самодисциплина', path: '/journal', icon: BookOpen },
   { label: 'Стратегии', sublabel: 'Лаборатория формализованных правил', path: '/strategies', icon: Cpu },
-  { label: 'Сигналы', sublabel: 'Неизменяемый криптографический аудит', path: '/signals', icon: BarChart3 },
+  { label: 'Сигналы', sublabel: 'Журнал сетапов (append-only, пуст)', path: '/signals', icon: BarChart3 },
 ];
 
 /** Максимально допустимое число пунктов прямой навигации (см. бюджет ёмкости выше). */
