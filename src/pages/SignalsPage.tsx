@@ -82,7 +82,7 @@ export const SignalsPage: React.FC = () => {
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
           <div className="text-[11px] font-sans text-slate-400">Прозрачная доля успешных</div>
-          <div className="text-lg font-bold font-mono text-amber-400 mt-1">{summary.accuracyRatePct}%</div>
+          <div className="text-lg font-bold font-mono text-amber-400 mt-1">{summary.totalSetups === 0 ? "—" : `${summary.accuracyRatePct}%`}</div>
           <div className="text-[11px] text-slate-500 mt-0.5">Без ошибки выжившего</div>
         </div>
 
