@@ -99,6 +99,8 @@ export const FuturesAssetSchema = z.object({
   openInterest: z.number(), // USD
   openInterestChange1h: z.number(), // %
   openInterestChange24h: z.number(), // %
+  /** Происхождение Δ OI: ACTUAL — из исторического ряда OI биржи; ESTIMATED — эвристика от изменения цены. */
+  openInterestChangeSource: z.enum(['ACTUAL', 'ESTIMATED']).optional(),
   futuresVolume24h: z.number(), // USD
   longLiquidations24h: z.number(), // USD
   shortLiquidations24h: z.number(), // USD

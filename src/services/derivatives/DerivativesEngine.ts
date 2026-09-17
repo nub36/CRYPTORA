@@ -3,6 +3,7 @@ import {
   BinanceFuturesPremiumIndex,
   BinanceFuturesOpenInterest,
   BinanceFuturesTicker24hr,
+  BinanceFuturesOpenInterestHistItem,
 } from '../data/adapters/derivativesSchemas';
 import { CanonicalAsset } from '../data/registry/assetRegistry';
 
@@ -45,13 +46,40 @@ export class DerivativesEngine {
   }
 
   /**
+   * Δ OI по фактическому историческому ряду (шаг 1h, по возрастанию timestamp).
+   * Δ1ч = последняя точка против предыдущей; Δ24ч = против точки на 24 шага назад
+   * (если ряд короче — против самой ранней доступной точки, что честно указано длиной ряда).
+   * Возвращает null, если ряд пуст или содержит < 2 точек.
+   */
+  public static calculateOpenInterestChanges(
+    hist?: BinanceFuturesOpenInterestHistItem[]
+  ): { change1hPct: number; change24hPct: number; latestValueUsd: number; points: number } | null {
+    if (!hist || hist.length < 2) return null;
+    const sorted = [...hist].sort((a, b) => a.timestamp - b.timestamp);
+    const values = sorted.map((h) => parseFloat(h.sumOpenInterest));
+    if (values.some((v) => !Number.isFinite(v) || v <= 0)) return null;
+    const last = values[values.length - 1];
+    const prev1h = values[values.length - 2];
+    const idx24 = Math.max(0, values.length - 1 - 24);
+    const prev24h = values[idx24];
+    const pct = (a: number, b: number) => Number((((a - b) / b) * 100).toFixed(2));
+    return {
+      change1hPct: pct(last, prev1h),
+      change24hPct: pct(last, prev24h),
+      latestValueUsd: Number(parseFloat(sorted[sorted.length - 1].sumOpenInterestValue).toFixed(2)),
+      points: values.length,
+    };
+  }
+
+  /**
    * Normalize raw Binance Futures DTOs into a unified FuturesAsset domain model
    */
   public static normalizeFuturesAsset(
     asset: CanonicalAsset,
     premium: BinanceFuturesPremiumIndex,
     ticker?: BinanceFuturesTicker24hr,
-    openInterest?: BinanceFuturesOpenInterest
+    openInterest?: BinanceFuturesOpenInterest,
+    openInterestHist?: BinanceFuturesOpenInterestHistItem[]
   ): FuturesAsset {
     const markPrice = parseFloat(premium.markPrice);
     const indexPrice = parseFloat(premium.indexPrice);
@@ -73,6 +101,15 @@ export class DerivativesEngine {
     const volume24hUsd = ticker ? parseFloat(ticker.quoteVolume) : 0;
     const priceChange24h = ticker ? parseFloat(ticker.priceChangePercent) : 0;
 
+    // Δ OI: фактический ряд openInterestHist (1h), если он есть; иначе — эвристика, помеченная ESTIMATED.
+    const oiDelta = this.calculateOpenInterestChanges(openInterestHist);
+    const openInterestChange1h = oiDelta ? oiDelta.change1hPct : Number((priceChange24h * 0.1).toFixed(2));
+    const openInterestChange24h = oiDelta ? oiDelta.change24hPct : Number((priceChange24h * 0.4).toFixed(2));
+    if (oiDelta && !openInterest) {
+      // Последняя точка ряда — фактический OI в USD (sumOpenInterestValue), точнее эвристики от объёма.
+      oiUsd = oiDelta.latestValueUsd;
+    }
+
     // Estimated liquidation breakdown based on volume and directional price move
     const estimatedTotalLiq = volume24hUsd * 0.005; // ~0.5% turnover liquidation heuristic
     const longRatio = priceChange24h < 0 ? 0.7 : 0.3;
@@ -87,8 +124,9 @@ export class DerivativesEngine {
       predictedFundingRate: Number((fundingRate8h * 1.05).toFixed(4)),
       annualizedFundingRate: annualizedFunding,
       openInterest: oiUsd,
-      openInterestChange1h: Number((priceChange24h * 0.1).toFixed(2)),
-      openInterestChange24h: Number((priceChange24h * 0.4).toFixed(2)),
+      openInterestChange1h,
+      openInterestChange24h,
+      openInterestChangeSource: oiDelta ? 'ACTUAL' : 'ESTIMATED',
       futuresVolume24h: volume24hUsd,
       longLiquidations24h: Number(longLiquidations24h.toFixed(0)),
       shortLiquidations24h: Number(shortLiquidations24h.toFixed(0)),

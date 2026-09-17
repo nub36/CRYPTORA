@@ -23,9 +23,10 @@ import {
   normalizeBinanceKlines,
   normalizeKuCoinCandles,
 } from './adapters/normalization';
-import { DemoMarketDataProvider } from './DemoMarketDataProvider';
 import { AnomalyEngine } from '../realtime/AnomalyEngine';
 import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
+import { AdapterNetworkError } from './adapters/errors';
+import type { BinanceFuturesOpenInterestHistItem } from './adapters/derivativesSchemas';
 import { LiquidationPipeline } from '../liquidations/LiquidationPipeline';
 import { DerivativesEngine } from '../derivatives/DerivativesEngine';
 
@@ -44,20 +45,21 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   private readonly kucoin: KuCoinSpotAdapter;
   private readonly futuresAdapter: BinanceFuturesAdapter;
   private readonly cacheTtlMs: number;
-  private readonly demoFallback: DemoMarketDataProvider;
   private readonly anomalyEngine?: AnomalyEngine;
 
   // In-memory cache for rate-limiting protection
   private assetCache: { data: AssetSummary[]; timestamp: number } | null = null;
   private candleCache = new Map<string, { data: OHLCV[]; timestamp: number }>();
   private futuresCache: { data: FuturesAsset[]; timestamp: number } | null = null;
+  /** Исторический OI обновляется на бирже раз в 5 мин — кэшируем отдельно, чтобы не грузить 25 запросов каждые 10 с. */
+  private oiHistCache: { data: Map<string, BinanceFuturesOpenInterestHistItem[]>; timestamp: number } | null = null;
+  private readonly oiHistTtlMs = 5 * 60 * 1000;
 
   constructor(config: LiveMarketDataProviderConfig = {}) {
     this.binance = config.binanceAdapter ?? new BinanceSpotAdapter();
     this.kucoin = config.kucoinAdapter ?? new KuCoinSpotAdapter();
     this.futuresAdapter = config.futuresAdapter ?? new BinanceFuturesAdapter();
     this.cacheTtlMs = config.cacheTtlMs ?? 10000; // 10s default TTL
-    this.demoFallback = new DemoMarketDataProvider();
     this.anomalyEngine = config.anomalyEngine;
   }
 
@@ -296,6 +298,21 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   // Explicitly return demo-labeled data with clear metadata marking
   // =========================================================================
 
+  /**
+   * Фактические ряды OI по символам. Любой отказ по символу → символ без ряда (его Δ OI останется ESTIMATED),
+   * общий отказ не роняет getFuturesList.
+   */
+  private async fetchOpenInterestHistory(symbols: string[], now: number): Promise<Map<string, BinanceFuturesOpenInterestHistItem[]>> {
+    if (this.oiHistCache && now - this.oiHistCache.timestamp < this.oiHistTtlMs) return this.oiHistCache.data;
+    const map = new Map<string, BinanceFuturesOpenInterestHistItem[]>();
+    const settled = await Promise.allSettled(symbols.map((sym) => this.futuresAdapter.fetchOpenInterestHist(sym, 25)));
+    settled.forEach((r, i) => {
+      if (r.status === 'fulfilled' && r.value.length >= 2) map.set(symbols[i], r.value);
+    });
+    if (map.size > 0) this.oiHistCache = { data: map, timestamp: now };
+    return map;
+  }
+
   public async getFuturesList(): Promise<FuturesAsset[]> {
     const now = Date.now();
     if (this.futuresCache && now - this.futuresCache.timestamp < this.cacheTtlMs) {
@@ -309,15 +326,21 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       ]);
 
       const tickerMap = new Map(tickers.map((t) => [t.symbol.toUpperCase(), t]));
-      const canonicalList = getCanonicalAssets();
+      const canonicalList = getCanonicalAssets().filter((a) => a.binanceSymbol);
+      const oiHistMap = await this.fetchOpenInterestHistory(canonicalList.map((a) => a.binanceSymbol as string), now);
       const results: FuturesAsset[] = [];
 
       for (const asset of canonicalList) {
-        if (!asset.binanceSymbol) continue;
         const premium = premiums.find((p) => p.symbol.toUpperCase() === asset.binanceSymbol);
         if (premium) {
-          const ticker = tickerMap.get(asset.binanceSymbol);
-          const futuresAsset = DerivativesEngine.normalizeFuturesAsset(asset, premium, ticker);
+          const ticker = tickerMap.get(asset.binanceSymbol as string);
+          const futuresAsset = DerivativesEngine.normalizeFuturesAsset(
+            asset,
+            premium,
+            ticker,
+            undefined,
+            oiHistMap.get(asset.binanceSymbol as string)
+          );
           results.push(futuresAsset);
         }
       }
@@ -326,11 +349,11 @@ export class LiveMarketDataProvider implements MarketDataProvider {
         this.futuresCache = { data: results, timestamp: now };
         return results;
       }
-    } catch {
-      // In case futures network endpoint fails, safely return demo fallback with demo marking
+    } catch (error) {
+      // LIVE-FIRST: источник не ответил — честная ошибка, без подстановки демо-датасета.
+      throw new AdapterNetworkError('binance', error instanceof Error ? error : new Error(String(error)));
     }
-
-    return this.demoFallback.getFuturesList();
+    throw new AdapterNetworkError('binance', new Error('Futures source returned no instruments'));
   }
 
   public async getLiquidations(): Promise<LiquidationData> {
@@ -344,8 +367,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
         return liveEvents;
       }
     }
-    // Return baseline events if no realtime ticks triggered an anomaly yet
-    return this.demoFallback.getRadarEvents(symbol);
+    // Нет фактических аномалий — пустой список. Демо-события за фактические не выдаются.
+    return [];
   }
 
   public async getScreenerResults(filters: ScreenerFilters): Promise<AssetSummary[]> {

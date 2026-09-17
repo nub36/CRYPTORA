@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useParams, Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
@@ -77,13 +78,20 @@ export const CoinDetailPage: React.FC = () => {
 
     async function fetchData() {
       try {
-        const [detail, candleList, ftrs, rdr, liqs] = await Promise.all([
+        // Ядро страницы — актив и свечи. Деривативы/радар/ликвидации — вспомогательные:
+        // их отказ не должен прятать страницу, а подставлять демо-значения нельзя.
+        const [detail, candleList] = await Promise.all([
           provider.getAssetDetail(symbol || 'BTC'),
           provider.getCandles(symbol || 'BTC', timeframe),
+        ]);
+        const [ftrsR, rdrR, liqsR] = await Promise.allSettled([
           provider.getFuturesList(),
           provider.getRadarEvents(symbol || 'BTC'),
           provider.getLiquidations(),
         ]);
+        const ftrs = ftrsR.status === 'fulfilled' ? ftrsR.value : [];
+        const rdr = rdrR.status === 'fulfilled' ? rdrR.value : [];
+        const liqs = liqsR.status === 'fulfilled' ? liqsR.value : null;
 
         setAsset(detail);
         setCandles(candleList);
@@ -473,11 +481,12 @@ export const CoinDetailPage: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-slate-400">OI Δ за 1 час</span>
                 <span
-                  className={`font-bold tabular-nums  font-mono${
+                  className={`font-bold tabular-nums font-mono ${
                     futuresData.openInterestChange1h >= 0 ? 'text-brand-green' : 'text-brand-red'
                   }`}
                 >
                   {formatPercent(futuresData.openInterestChange1h)}
+                  <OiDeltaBadge source={futuresData.openInterestChangeSource} />
                 </span>
               </div>
               <div className="flex justify-between">

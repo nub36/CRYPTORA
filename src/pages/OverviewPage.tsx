@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import {
@@ -52,18 +53,19 @@ export const OverviewPage: React.FC = () => {
       setLoading(true);
       setSourceUnavailable(false);
       try {
-        const [ov, assts, ftrs, liqs, rdr] = await Promise.all([
-          provider.getMarketOverview(),
-          provider.getAssets(),
+        const [ov, assts] = await Promise.all([provider.getMarketOverview(), provider.getAssets()]);
+        // Вспомогательные блоки: отказ источника деривативов не должен прятать Обзор целиком;
+        // демо-значения вместо фактических не подставляются — блок остаётся пустым.
+        const [ftrsR, liqsR, rdrR] = await Promise.allSettled([
           provider.getFuturesList(),
           provider.getLiquidations(),
           provider.getRadarEvents(),
         ]);
         setOverview(ov);
         setAssets(assts);
-        setFutures(ftrs);
-        setLiquidations(liqs);
-        setRadarEvents(rdr);
+        setFutures(ftrsR.status === 'fulfilled' ? ftrsR.value : []);
+        if (liqsR.status === 'fulfilled') setLiquidations(liqsR.value);
+        setRadarEvents(rdrR.status === 'fulfilled' ? rdrR.value : []);
 
         const candles = await provider.getCandles('BTC', selectedTimeframe);
         setBtcCandles(candles);
@@ -547,11 +549,12 @@ export const OverviewPage: React.FC = () => {
                     F: {f.fundingRate.toFixed(4)}%
                   </span>
                   <span
-                    className={`text-[11px] font-semibold tabular-nums  font-mono${
+                    className={`text-[11px] font-semibold tabular-nums font-mono ${
                       f.openInterestChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
                     {formatPercent(f.openInterestChange24h)}
+                    <OiDeltaBadge source={f.openInterestChangeSource} />
                   </span>
                 </div>
               ))}

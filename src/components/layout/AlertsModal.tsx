@@ -119,7 +119,7 @@ export const AlertsModal: React.FC = () => {
       const f = liveFunding[a.symbol];
       return f !== undefined ? `сейчас ${f}%` : 'фандинг ещё не получен';
     }
-    return 'OI: источник Δ1ч в реальном времени не подключён';
+    return 'оценивается по фактическому ряду OI (Binance openInterestHist, опрос 60 с)';
   };
 
   const tabBtn = (id: Tab, label: string, badge?: number) => (
@@ -210,7 +210,7 @@ export const AlertsModal: React.FC = () => {
                     <option value="ABOVE">Цена ≥ порога (USD)</option>
                     <option value="BELOW">Цена ≤ порога (USD)</option>
                     <option value="FUNDING_EXTREME">|Фандинг 8ч| ≥ порога (%)</option>
-                    <option value="OI_SPIKE">OI Δ1ч ≥ порога (%) — источник не подключён</option>
+                    <option value="OI_SPIKE">OI Δ1ч ≥ порога (%) — только фактический ряд OI</option>
                   </select>
                 </div>
               </div>

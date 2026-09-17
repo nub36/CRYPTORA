@@ -46,6 +46,7 @@ export interface AssetPulse {
     openInterestUsd: number;
     openInterestChange1h: number;
     openInterestChange24h: number;
+    openInterestChangeSource?: 'ACTUAL' | 'ESTIMATED';
     fundingRate8h: number;
     annualizedFundingRate: number;
     basisPct: number;
@@ -102,6 +103,7 @@ export class LiquidationPulse {
           openInterestUsd: futures.openInterest,
           openInterestChange1h: futures.openInterestChange1h,
           openInterestChange24h: futures.openInterestChange24h,
+          openInterestChangeSource: futures.openInterestChangeSource,
           fundingRate8h: futures.fundingRate,
           annualizedFundingRate: futures.annualizedFundingRate,
           basisPct: futures.basisPct,

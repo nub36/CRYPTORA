@@ -6,6 +6,8 @@ import {
   BinanceFuturesOpenInterestSchema,
   BinanceFuturesTicker24hr,
   BinanceFuturesTicker24hrSchema,
+  BinanceFuturesOpenInterestHistSchema,
+  type BinanceFuturesOpenInterestHistItem,
 } from './derivativesSchemas';
 import {
   AdapterNetworkError,
@@ -104,6 +106,17 @@ export class BinanceFuturesAdapter {
     return this.request(
       `/fapi/v1/openInterest?symbol=${symbol.toUpperCase()}`,
       BinanceFuturesOpenInterestSchema
+    );
+  }
+
+  /**
+   * Исторический OI (агрегированный по бирже) с шагом 1h. limit=25 покрывает Δ1ч и Δ24ч.
+   * Endpoint публичный, но не под /fapi — отдельный путь /futures/data.
+   */
+  public async fetchOpenInterestHist(symbol: string, limit = 25): Promise<BinanceFuturesOpenInterestHistItem[]> {
+    return this.request(
+      `/futures/data/openInterestHist?symbol=${symbol.toUpperCase()}&period=1h&limit=${limit}`,
+      BinanceFuturesOpenInterestHistSchema
     );
   }
 

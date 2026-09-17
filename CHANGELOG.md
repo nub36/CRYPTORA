@@ -4,6 +4,27 @@
 
 ---
 
+## [0.8.25] — 2026-09-17
+
+### Added — фактический Δ OI (Binance openInterestHist)
+- `BinanceFuturesAdapter.fetchOpenInterestHist` (`/futures/data/openInterestHist`, period 1h, limit 25) + zod-схема.
+- `DerivativesEngine.calculateOpenInterestChanges`: Δ1ч и Δ24ч по историческому ряду; `FuturesAsset.openInterestChangeSource = 'ACTUAL' | 'ESTIMATED'`.
+  Без ряда прежняя эвристика сохраняется, но помечается ESTIMATED. OI в USD берётся из `sumOpenInterestValue`, когда ряд есть.
+- `LiveMarketDataProvider`: ряды OI по 25 символам с отдельным кэшем 5 мин (биржа обновляет их раз в 5 мин); отказ по символу → ESTIMATED
+  только у него.
+- UI: бейдж `EST.` (`OiDeltaBadge`, `data-qa=oi-delta-estimated`) у оценочных Δ OI на `/futures`, `/coin/:symbol`, Обзоре и в Pulse;
+  при ACTUAL бейджа нет. Попутно исправлен класс `font-mono${…}` без пробела в трёх местах.
+- Алерт `OI_SPIKE` теперь оценивается — **только** по ACTUAL-ряду (ESTIMATED в алерты не подаётся); текст в модалке обновлён.
+
+### Fixed — LIVE-first: убран скрытый демо-фолбэк деривативов и радара
+- `LiveMarketDataProvider.getFuturesList()` при отказе Binance Futures возвращал **демо-датасет под бейджем «LIVE-ДЕРИВАТИВЫ · BINANCE FUTURES»**
+  (обнаружено скриншотом в песочнице). Теперь — `AdapterNetworkError`, страницы показывают «Фактический источник недоступен».
+- `getRadarEvents()` без фактических аномалий возвращал демо-события; теперь пустой список.
+- Обзор и Coin Detail: вспомогательные запросы (деривативы/радар/ликвидации) через `Promise.allSettled` — их отказ не прячет страницу и
+  не подставляет значения. Unit-контракт обновлён (`liveDataProvider.test.ts`), +5 тестов `openInterestHistory.test.ts`.
+
+---
+
 ## [0.8.24] — 2026-09-17
 
 ### Changed — документация и честная маркировка справочных страниц

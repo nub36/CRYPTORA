@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { FuturesAsset } from '@/types/market';
@@ -316,6 +317,7 @@ export const FuturesPage: React.FC = () => {
                       }`}
                     >
                       {formatPercent(f.openInterestChange1h)}
+                      <OiDeltaBadge source={f.openInterestChangeSource} />
                     </td>
 
                     <td
@@ -324,6 +326,7 @@ export const FuturesPage: React.FC = () => {
                       }`}
                     >
                       {formatPercent(f.openInterestChange24h)}
+                      <OiDeltaBadge source={f.openInterestChangeSource} />
                     </td>
 
                     <td className="py-2.5 px-3 text-right text-slate-300 hidden sm:table-cell font-mono tabular-nums">

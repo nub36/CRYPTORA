@@ -259,8 +259,8 @@ export const MarketDataProviderComponent: React.FC<{
     }
   }, [alerts, dataMode]);
 
-  // Фандинг: REST-опрос только при наличии FUNDING_EXTREME-алертов; демо-фолбэк провайдера игнорируется.
-  const hasFundingAlerts = alerts.some((a) => a.condition === 'FUNDING_EXTREME' && !a.paused);
+  // Фандинг / OI: REST-опрос только при наличии FUNDING_EXTREME- или OI_SPIKE-алертов; демо-фолбэк провайдера игнорируется.
+  const hasFundingAlerts = alerts.some((a) => (a.condition === 'FUNDING_EXTREME' || a.condition === 'OI_SPIKE') && !a.paused);
   useEffect(() => {
     if (dataMode !== 'live' || !hasFundingAlerts) return;
     let cancelled = false;
@@ -275,7 +275,12 @@ export const MarketDataProviderComponent: React.FC<{
           if (f.isDemo) continue;
           const sym = f.symbol.split('/')[0].toUpperCase();
           funding[sym] = f.fundingRate;
-          inputs[sym] = { fundingRatePct: f.fundingRate, source: `${f.provenance?.exchange ?? 'binance'} futures premiumIndex (REST)` };
+          inputs[sym] = {
+            fundingRatePct: f.fundingRate,
+            // OI_SPIKE оценивается ТОЛЬКО по фактическому ряду OI; эвристика ESTIMATED в алерты не подаётся.
+            oiChange1hPct: f.openInterestChangeSource === 'ACTUAL' ? f.openInterestChange1h : undefined,
+            source: `${f.provenance?.exchange ?? 'binance'} futures premiumIndex + openInterestHist (REST)`,
+          };
         }
         setLiveFunding(funding);
         runEvaluation(inputs);

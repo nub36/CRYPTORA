@@ -177,8 +177,8 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
   it('provides live liquidation data and manages subsystem states', async () => {
     const provider = new LiveMarketDataProvider();
 
-    const futures = await provider.getFuturesList();
-    expect(futures.length).toBeGreaterThan(0);
+    // LIVE-FIRST: без фактического источника деривативов — честная ошибка, а не демо-датасет.
+    await expect(provider.getFuturesList()).rejects.toThrow(AdapterNetworkError);
 
     // Честная контрактная проверка: без фактических событий потока live-провайдер
     // обязан вернуть нулевые агрегаты, а не оценочные «заглушки» (RULES §1).
@@ -189,7 +189,8 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     expect(liquidations.assetBreakdown).toEqual([]);
     expect(['AWAITING_STREAM', 'UNAVAILABLE']).toContain(liquidations.dataStatus);
 
+    // Без фактических аномалий радар пуст — демо-события за фактические не выдаются.
     const radar = await provider.getRadarEvents();
-    expect(radar.length).toBeGreaterThan(0);
+    expect(radar).toEqual([]);
   });
 });

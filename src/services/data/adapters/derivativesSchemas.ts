@@ -32,3 +32,13 @@ export const BinanceFuturesTicker24hrSchema = z.object({
 });
 
 export type BinanceFuturesTicker24hr = z.infer<typeof BinanceFuturesTicker24hrSchema>;
+
+/** /futures/data/openInterestHist — фактические исторические значения OI (публичный endpoint). */
+export const BinanceFuturesOpenInterestHistItemSchema = z.object({
+  symbol: z.string(),
+  sumOpenInterest: z.string(),
+  sumOpenInterestValue: z.string(),
+  timestamp: z.number(),
+});
+export const BinanceFuturesOpenInterestHistSchema = z.array(BinanceFuturesOpenInterestHistItemSchema);
+export type BinanceFuturesOpenInterestHistItem = z.infer<typeof BinanceFuturesOpenInterestHistItemSchema>;

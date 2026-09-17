@@ -1,4 +1,5 @@
 import React from 'react';
+import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { Link } from 'react-router-dom';
 import { Flame, Layers, Gauge, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import { AssetPulse, AssetLiquidationSource } from '@/services/liquidations/LiquidationPulse';
@@ -150,11 +151,12 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             <div className="flex justify-between">
               <span className="text-slate-400">OI Δ за 24ч</span>
               <span
-                className={`font-bold tabular-nums  font-mono${
+                className={`font-bold tabular-nums font-mono ${
                   derivatives.openInterestChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'
                 }`}
               >
                 {formatPercent(derivatives.openInterestChange24h)}
+                <OiDeltaBadge source={derivatives.openInterestChangeSource} />
               </span>
             </div>
             <div className="flex justify-between">

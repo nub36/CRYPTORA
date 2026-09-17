@@ -1,7 +1,7 @@
 # SITE REPORT — сводный отчёт по состоянию терминала CRYPTORA
 
-> **Версия:** v0.8.24 · ветка `arena/01a0aaeb-cryptora` · дата 2026-09-17  
-> **Production VPS (`89.125.24.50`):** v0.8.4 `6a01ce1` — **20 версий позади**, деплой только по команде владельца.  
+> **Версия:** v0.8.25 · ветка `arena/01a0aaeb-cryptora` · дата 2026-09-17  
+> **Production VPS (`89.125.24.50`):** v0.8.4 `6a01ce1` — **21 версия позади**, деплой только по команде владельца.  
 > **Инвариант:** CRYPTORA не исполняет сделки, не хранит ключи бирж, не содержит ботов. `EXECUTION_CODE_PORTED = NONE`.
 
 Этот документ — честная карта того, что на сайте **фактическое (LIVE)**, что **расчётное (MODEL / DERIVED)**, что **статический
@@ -34,7 +34,7 @@
 | `/` Обзор | капитализация, объём, доминация, F&G, breadth, BTC-график | LIVE (Binance/KuCoin REST → агрегация); 24h-дельты и F&G — **MODEL / ESTIMATED** (внешний индекс не подключён) | `EST.`, `MODEL / ESTIMATED` | e2e LIVE-first, screenshot QA |
 | `/market` | таблица 30 активов, спарклайны, watchlist | LIVE REST + WS-тикер | `LIVE-ТИКЕР` / честная деградация | e2e, unit adapters |
 | `/coin/:symbol` | свечи 15m–1W, стакан, индикаторы, Pulse, workspace | LIVE (klines, depth WS); индикаторы DERIVED; Pulse: ликвидации 24ч — **ESTIMATED**, перекос — DERIVED | подписи `LIVE-СВЕЧИ`/`MODEL` на карточках | e2e, `typography`, workspace tests |
-| `/futures` | OI, фандинг, базис, squeeze watch | LIVE Binance `premiumIndex` + `24hr`; **OI Δ1ч/24ч и ликвидации 24ч — оценочные** (`DerivativesEngine`) | подписи у колонок | unit derivatives |
+| `/futures` | OI, фандинг, базис, squeeze watch | LIVE Binance `premiumIndex` + `24hr` + `openInterestHist` (Δ OI ACTUAL, v0.8.25); **ликвидации 24ч — оценочные**; Δ OI без ряда → `EST.` | бейдж `EST.` у оценочных Δ OI | unit derivatives + openInterestHistory |
 | `/liquidations` | поток ликвидаций, агрегаты, тепловая карта | LIVE WS Binance `!forceOrder@arr`, Bybit V5 `allLiquidation`, OKX `liquidation-orders` (по-биржевые чипы состояния); тепловая карта — **MODEL / ESTIMATED** | чипы `data-qa=liq-source-*`, `MODEL` | unit 13+, e2e; **Bybit/OKX живой приём UNVERIFIED в проде** |
 | `/screener` | многофакторный фильтр | LIVE REST + DERIVED (RSI и т. д.) | — | unit screener |
 | `/radar` | аномалии (volume/OI/funding/liq) | DERIVED из LIVE-тикеров (`AnomalyEngine`); AI-брифинг — шаблонный текст поверх фактов, **не LLM** | `LIVE-ДЕТЕКТОР АНОМАЛИЙ` | e2e, unit |
@@ -62,15 +62,15 @@
 на текущих ключах API (проверялись только на фикстурах формата и моках). Всё это требует прогона на VPS или в браузере владельца.
 
 **Осознанно не реализовано:** LLM-объяснения (AI-брифинг — шаблоны), биллинг, News/Articles и рекламные слоты (scope владельца),
-OI Δ1ч в реальном времени (поэтому алерт `OI_SPIKE` не оценивается — указано в UI), внешний индекс Fear & Greed, он-чейн/TVL/календарь-провайдеры.
+внешний индекс Fear & Greed, он-чейн/TVL/календарь-провайдеры.
 
 ---
 
 ## 4. Известные долги и риски
 
 1. **Разрыв с production** — 20 версий недеплоено; UX-цикл A–E, архив стратегий, темы, алерты, Bybit/OKX пользователи не видят.
-2. `DerivativesEngine`: OI Δ1ч/24ч и ликвидации 24ч — эвристики от изменения цены/объёма, а не исторические ряды OI. Подписаны как оценочные,
-   но это самое слабое место «фактичности» страниц `/futures` и Pulse.
+2. `DerivativesEngine`: ликвидации 24ч по инструменту — эвристика от объёма (Δ OI с v0.8.25 фактический). Колонка «Ликв. шортов (24ч)»
+   на `/futures` — следующий кандидат на замену фактическим агрегатом из `LiquidationPipeline`.
 3. Статические страницы (§2) — честно маркированы с v0.8.24, но ценность для пользователя ограничена, пока нет провайдеров.
 4. `AlertService.ts` (v0.6.0) — автономный движок с собственными типами; UI использует `alertEvaluator`. Дубликат стоит удалить или объединить.
 5. `package-lock.json` хранит `version 0.8.8` (исторически не обновлялся) — косметика.
@@ -81,7 +81,7 @@ OI Δ1ч в реальном времени (поэтому алерт `OI_SPIKE
 ## 5. Рекомендуемый порядок дальнейших работ
 
 1. Деплой v0.8.24 на VPS + живая проверка Bybit/OKX, Telegram/webhook (по команде владельца).
-2. Реальные ряды OI (Binance `openInterestHist`) → честный OI Δ1ч на `/futures`, в Pulse и для алерта `OI_SPIKE`.
+2. Ликвидации 24ч по инструменту — из фактического потока вместо эвристики.
 3. Корреляции по фактическим свечам (Binance klines уже подключены) — снять «СТАТИЧЕСКИЙ НАБОР» с `/correlations`.
 4. Fear & Greed от Alternative.me — снять `MODEL / ESTIMATED` с Обзора.
 5. Scope News/Ads от владельца.
