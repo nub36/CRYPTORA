@@ -31,6 +31,10 @@ describe('production CSP connect-src covers all external origins used in src/', 
       }
     }
     const missing = [...origins].filter((o) => !allowed.has(o));
+    // nginx выставляет собственный CSP; браузер применяет пересечение, поэтому он обязан содержать те же origin.
+    const nginx = readFileSync('nginx/cryptora.conf', 'utf8');
+    const nginxMissing = [...allowed].filter((o) => !nginx.includes(o));
+    expect(nginxMissing, `нет в nginx/cryptora.conf: ${nginxMissing.join(', ')}`).toEqual([]);
     expect(missing, `не разрешены в CSP: ${missing.join(', ')}`).toEqual([]);
     expect(origins.size).toBeGreaterThanOrEqual(10);
   });
