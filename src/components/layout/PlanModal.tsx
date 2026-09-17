@@ -106,11 +106,20 @@ export const PlanModal: React.FC = () => {
                       : 'bg-surface-elevated hover:bg-surface-hover text-white border border-surface-border'
                   }`}
                 >
-                  {isCurrent ? 'Текущий план' : 'Переключить на ' + plan.name}
+                  {isCurrent ? 'Текущий план' : 'Предпросмотр: ' + plan.name}
                 </button>
               </div>
             );
           })}
+        </div>
+
+        {/* Billing status — честно: оплаты нет */}
+        <div
+          data-qa="plan-billing-notice"
+          className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/30 text-xs font-sans text-amber-200"
+        >
+          <span className="font-bold">Биллинг не подключён.</span> Цены — предварительная сетка (Этап 8 ROADMAP); оплата, подписка и
+          выставление счетов не реализованы. Переключение плана ниже действует только в этом браузере, это предпросмотр ограничений, а не покупка.
         </div>
 
         {/* Disclaimer Footer */}

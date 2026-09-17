@@ -486,6 +486,18 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getAllByText('BTC').length).toBeGreaterThan(0);
   });
 
+  test('Модал тарифов честно сообщает, что биллинг не подключён, и не предлагает «купить»', async () => {
+    cleanup();
+    renderApp('/');
+    const trigger = document.querySelector('button[title^="Тарифный план"]') as HTMLButtonElement | null;
+    expect(trigger).not.toBeNull();
+    fireEvent.click(trigger!);
+    await waitFor(() => expect(document.querySelector('[data-qa="plan-billing-notice"]')).not.toBeNull());
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('Биллинг не подключён');
+    expect(text).not.toMatch(/Оформить|Купить|Оплатить/);
+  });
+
   test('/signals: реестр пуст, без иллюстративных сетапов и без плашки «СТАТИЧЕСКИЙ НАБОР»', async () => {
     cleanup();
     renderApp('/signals');

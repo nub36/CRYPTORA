@@ -1,6 +1,6 @@
 {
   "name": "cryptora",
-  "version": "0.8.36",
+  "version": "0.8.37",
   "private": true,
   "type": "module",
   "description": "CRYPTORA — Crypto Market Intelligence Terminal («Рынок. Данные. Решения.»)",
