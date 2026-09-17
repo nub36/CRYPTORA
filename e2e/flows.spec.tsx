@@ -289,6 +289,22 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     ).toBeInTheDocument();
   });
 
+  test('Liquidations LIVE-first: три потока бирж показаны по отдельности и честно недоступны без сети; доли не оцениваются', async () => {
+    window.localStorage.removeItem('cryptora_qa_fixture');
+    renderApp('/liquidations');
+    await screen.findByText(/Карта и поток ликвидаций/i);
+    await screen.findAllByText(/ПОТОК ЛИКВИДАЦИЙ НЕДОСТУПЕН/i);
+
+    for (const id of ['binance', 'bybit', 'okx']) {
+      const chip = document.querySelector(`[data-qa="liq-source-${id}"]`) as HTMLElement;
+      expect(chip, id).not.toBeNull();
+      expect(chip.getAttribute('data-state')).not.toBe('connected');
+      expect(chip.textContent).toMatch(/недоступен|подключение|переподключение/);
+    }
+    expect(screen.getByText(/Доли неподключённых бирж не оцениваются/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Bybit.*\d+%/)).toBeNull();
+  });
+
   test('Liquidations: 2D liquidation-density heatmap is MODEL/ESTIMATED with explicit provenance', async () => {
     renderApp('/liquidations');
 

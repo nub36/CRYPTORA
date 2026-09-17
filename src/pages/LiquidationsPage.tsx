@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { LiquidationPipeline, LIQUIDATION_SOURCE_LABELS, type LiquidationSourceId, type LiquidationStreamState } from '@/services/liquidations/LiquidationPipeline';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { LiquidationData } from '@/types/market';
 import { formatCurrency, formatTimestamp } from '@/utils/formatters';
 import { sideLabel } from '@/utils/labels';
-import { LiquidationPipeline } from '@/services/liquidations/LiquidationPipeline';
 import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
 import { LiquidationHeatmap } from '@/components/market/LiquidationHeatmap';
 import { Flame, ShieldAlert, Clock, Layers } from 'lucide-react';
@@ -20,6 +20,10 @@ export const LiquidationsPage: React.FC = () => {
     isDemo: boolean;
   } | null>(null);
   const [heatmap, setHeatmap] = useState<ReturnType<typeof LiquidationHeatmapModelBuilder.build>>(null);
+  const [streamStates, setStreamStates] = useState<Partial<Record<LiquidationSourceId, LiquidationStreamState>>>({});
+  const connectedSources = (Object.keys(LIQUIDATION_SOURCE_LABELS) as LiquidationSourceId[]).filter(
+    (id) => streamStates[id] === 'connected',
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -29,6 +33,7 @@ export const LiquidationsPage: React.FC = () => {
         .then((res) => {
           if (!isActive) return;
           setData(res);
+          setStreamStates(LiquidationPipeline.getInstance().getStreamStates());
           setSourceUnavailable(false);
           setLoading(false);
         })
@@ -132,7 +137,7 @@ export const LiquidationsPage: React.FC = () => {
             {data.dataStatus === 'LIVE_STREAM' && (
               <span className="text-[11px] font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
-                LIVE-ПОТОК · BINANCE FUTURES
+                LIVE-ПОТОК · {connectedSources.length > 0 ? connectedSources.map((id) => LIQUIDATION_SOURCE_LABELS[id].toUpperCase()).join(' · ') : 'БИРЖИ'}
               </span>
             )}
             {(data.dataStatus === 'AWAITING_STREAM' || data.dataStatus === 'UNAVAILABLE') && (
@@ -150,7 +155,7 @@ export const LiquidationsPage: React.FC = () => {
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
             {data.dataStatus === 'LIVE_STREAM' &&
-              'Фактические принудительно закрытые позиции Binance USD-M Futures по публичному потоку forceOrder.'}
+              'Фактические принудительно закрытые позиции по публичным потокам бирж (Binance USD-M forceOrder, Bybit V5 allLiquidation, OKX liquidation-orders). Доли бирж считаются только по подключённым потокам.'}
             {data.dataStatus === 'AWAITING_STREAM' &&
               'Поток фактических ликвидаций подключен. Агрегаты появятся после первых событий — оценочные числа не подставляются.'}
             {data.dataStatus === 'UNAVAILABLE' &&
@@ -310,9 +315,29 @@ export const LiquidationsPage: React.FC = () => {
             <div className="text-xs font-bold text-white tracking-wide pb-2 border-b border-white/[0.06]">
               Распределение по биржам
             </div>
+            {data.dataStatus !== 'DEMO' && (
+              <ul className="flex flex-wrap gap-1.5 text-[11px] font-sans" aria-label="Состояние потоков ликвидаций по биржам">
+                {(Object.keys(LIQUIDATION_SOURCE_LABELS) as LiquidationSourceId[]).map((id) => {
+                  const st = streamStates[id] ?? 'idle';
+                  const cls =
+                    st === 'connected'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : st === 'connecting' || st === 'reconnecting'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                        : 'border-surface-border bg-surface-elevated text-slate-400';
+                  const label =
+                    st === 'connected' ? 'поток' : st === 'connecting' ? 'подключение' : st === 'reconnecting' ? 'переподключение' : 'недоступен';
+                  return (
+                    <li key={id} className={`rounded border px-1.5 py-0.5 ${cls}`} data-qa={`liq-source-${id}`} data-state={st}>
+                      <span className="font-mono">{LIQUIDATION_SOURCE_LABELS[id]}</span> · {label}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             {data.exchangeBreakdown.length === 0 && (
               <div className="text-xs text-slate-500 font-sans py-2">
-                Разбивка появится после первых фактических событий потока.
+                Разбивка появится после первых фактических событий потока. Доли неподключённых бирж не оцениваются.
               </div>
             )}
             <div className="space-y-2.5 text-xs">
@@ -447,7 +472,7 @@ export const LiquidationsPage: React.FC = () => {
             </span>
           ) : (
             <span className="text-[11px] font-mono text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30">
-              BINANCE FUTURES · forceOrder@arr
+              {connectedSources.length > 0 ? connectedSources.map((id) => LIQUIDATION_SOURCE_LABELS[id].toUpperCase()).join(' · ') : 'ПОТОКИ БИРЖ'}
             </span>
           )}
         </div>

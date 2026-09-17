@@ -4,6 +4,22 @@
 
 ---
 
+## [0.8.22] — 2026-09-17
+
+### Added — Этап 6: фактические потоки ликвидаций Bybit и OKX
+- Общий транспорт `LiquidationStreamTransport` (переподключение, keep-alive, честная деградация); Binance-поток переведён на него без
+  изменения поведения (URL `!forceOrder@arr`, тесты зелёные).
+- `BybitLiquidationStream`: Bybit V5 `allLiquidation.{symbol}` (linear USDT-перпы каталога), подписка пачками ≤10 топиков, `{"op":"ping"}`
+  каждые 20 с. Семантика по документации Bybit: `S=Buy` ⇒ ликвидирован лонг, `S=Sell` ⇒ шорт; USD = bankruptcy price × размер.
+- `OkxLiquidationStream`: OKX `liquidation-orders` (instType SWAP), `ping`/`pong` каждые 25 с. `sz` в контрактах ⇒ USD = bkPx × sz × ctVal,
+  ctVal из публичного `/api/v5/public/instruments?instType=SWAP`; без каталога поток остаётся `unavailable` — события не оцениваются.
+  Только `*-USDT-SWAP`; инверсные контракты отбрасываются.
+- Конвейер: состояние транспорта по каждой бирже (`getStreamStates`), агрегированный статус (connected, если жив хотя бы один),
+  идемпотентность по id события (повторный snapshot не удваивает агрегаты).
+- UI `/liquidations`: чипы состояния по биржам (Binance Futures / Bybit / OKX · поток / подключение / переподключение / недоступен),
+  бейдж LIVE перечисляет только подключённые биржи; «Доли неподключённых бирж не оцениваются».
+- Тесты: `liquidationsMultiExchange.test.ts` (9), e2e LIVE-first сценарий для трёх потоков. Никаких ключей, никакого исполнения.
+
 ## [0.8.21] — 2026-09-17
 
 ### Changed — UX-цикл E: визуальная полировка (контраст, overflow, скриншот-QA обеих тем)

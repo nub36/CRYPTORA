@@ -4,6 +4,14 @@ import { getAssetByBinanceSymbol } from '../data/registry/assetRegistry';
 /** Статус транспорта фактических ликвидаций (отдельно от статуса данных). */
 export type LiquidationStreamState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'unavailable';
 
+/** Идентификаторы подключаемых бирж (Этап 6: Binance → Bybit → OKX). */
+export type LiquidationSourceId = 'binance' | 'bybit' | 'okx';
+export const LIQUIDATION_SOURCE_LABELS: Record<LiquidationSourceId, string> = {
+  binance: 'Binance Futures',
+  bybit: 'Bybit',
+  okx: 'OKX',
+};
+
 const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
 const TIMELINE_BUCKETS = 8;
 const BUCKET_MS = WINDOW_24H_MS / TIMELINE_BUCKETS;
@@ -39,7 +47,9 @@ export class LiquidationPipeline {
 
   private events: LiquidationEvent[] = [];
   private maxStoredEvents = 500;
-  private streamState: LiquidationStreamState = 'idle';
+  /** Состояние транспорта по каждой бирже; агрегированный статус выводится из них. */
+  private streamStates: Partial<Record<LiquidationSourceId, LiquidationStreamState>> = {};
+  private legacyStreamState: LiquidationStreamState = 'idle';
 
   public static getInstance(): LiquidationPipeline {
     if (!LiquidationPipeline.instance) {
@@ -57,12 +67,126 @@ export class LiquidationPipeline {
   /* Состояние транспорта                                                */
   /* ------------------------------------------------------------------ */
 
-  public setStreamState(state: LiquidationStreamState): void {
-    this.streamState = state;
+  public setStreamState(state: LiquidationStreamState, source: LiquidationSourceId = 'binance'): void {
+    this.streamStates[source] = state;
+    this.legacyStreamState = state;
   }
 
+  /**
+   * Агрегированное состояние: connected, если подключена хотя бы одна биржа;
+   * connecting/reconnecting — если кто-то ещё пытается; unavailable — если все недоступны; idle — иначе.
+   */
   public getStreamState(): LiquidationStreamState {
-    return this.streamState;
+    const states = Object.values(this.streamStates);
+    if (states.length === 0) return this.legacyStreamState;
+    if (states.includes('connected')) return 'connected';
+    if (states.includes('connecting')) return 'connecting';
+    if (states.includes('reconnecting')) return 'reconnecting';
+    if (states.every((s) => s === 'unavailable')) return 'unavailable';
+    return 'idle';
+  }
+
+  public getStreamStates(): Partial<Record<LiquidationSourceId, LiquidationStreamState>> {
+    return { ...this.streamStates };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Приём фактических событий: Bybit V5 / OKX                            */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Bybit V5 `allLiquidation.{symbol}`: { topic, data:[{ T, s, S, v, p }] }.
+   * Семантика `S` по документации Bybit: Buy ⇒ ликвидирован ЛОНГ, Sell ⇒ ликвидирован ШОРТ
+   * (обратна Binance, где смотрят на сторону ордера закрытия). `p` — bankruptcy price, `v` — размер в монете.
+   */
+  public ingestBybitAllLiquidation(payload: unknown): LiquidationEvent[] {
+    const msg = payload as { topic?: string; data?: unknown };
+    if (!msg || typeof msg.topic !== 'string' || !msg.topic.startsWith('allLiquidation.')) return [];
+    const rows = Array.isArray(msg.data) ? msg.data : msg.data ? [msg.data] : [];
+    const out: LiquidationEvent[] = [];
+    for (const row of rows as Array<{ T?: unknown; s?: unknown; S?: unknown; v?: unknown; p?: unknown }>) {
+      try {
+        if (!row || typeof row.s !== 'string') continue;
+        const symbol = this.canonicalFromUsdtSymbol(row.s);
+        const side: 'LONG' | 'SHORT' = row.S === 'Buy' ? 'LONG' : row.S === 'Sell' ? 'SHORT' : (null as never);
+        if (!side) continue;
+        const price = parseFloat(String(row.p ?? '0'));
+        const qty = parseFloat(String(row.v ?? '0'));
+        const amountUsd = price * qty;
+        if (!Number.isFinite(amountUsd) || amountUsd <= 0) continue;
+        const eventTimeMs = Number(row.T) > 0 ? Number(row.T) : Date.now();
+        const event: LiquidationEvent = {
+          id: `liq-bybit-${symbol}-${eventTimeMs}-${price}-${qty}`,
+          timestamp: new Date(eventTimeMs).toISOString(),
+          symbol,
+          side,
+          amountUsd: Number(amountUsd.toFixed(2)),
+          price,
+          exchange: LIQUIDATION_SOURCE_LABELS.bybit,
+          isDemo: false,
+        };
+        this.recordEvent(event);
+        out.push(event);
+      } catch {
+        /* пропускаем битую строку */
+      }
+    }
+    return out;
+  }
+
+  /**
+   * OKX `liquidation-orders` (SWAP): { arg, data:[{ instId, details:[{ bkPx, sz, side, posSide, ts }] }] }.
+   * `sz` — в контрактах: USD = bkPx × sz × ctVal(instId). Без известного ctVal событие ОТБРАСЫВАЕТСЯ
+   * (не оценивается). Сторона — `posSide` (long/short); при её отсутствии — по `side` ордера закрытия
+   * (sell ⇒ закрыт лонг). Только USDT-линейные свопы (`*-USDT-SWAP`).
+   */
+  public ingestOkxLiquidationOrders(payload: unknown, contractValues: Record<string, number>): LiquidationEvent[] {
+    const msg = payload as { arg?: { channel?: string }; data?: unknown };
+    if (!msg || msg.arg?.channel !== 'liquidation-orders' || !Array.isArray(msg.data)) return [];
+    const out: LiquidationEvent[] = [];
+    for (const inst of msg.data as Array<{ instId?: unknown; details?: unknown }>) {
+      if (!inst || typeof inst.instId !== 'string' || !inst.instId.endsWith('-USDT-SWAP')) continue;
+      const ctVal = contractValues[inst.instId];
+      if (!Number.isFinite(ctVal) || ctVal <= 0) continue;
+      const symbol = this.canonicalFromUsdtSymbol(inst.instId.replace('-USDT-SWAP', 'USDT'));
+      const details = Array.isArray(inst.details) ? inst.details : [];
+      for (const d of details as Array<{ bkPx?: unknown; sz?: unknown; side?: unknown; posSide?: unknown; ts?: unknown }>) {
+        try {
+          const price = parseFloat(String(d.bkPx ?? '0'));
+          const contracts = parseFloat(String(d.sz ?? '0'));
+          const qty = contracts * ctVal;
+          const amountUsd = price * qty;
+          if (!Number.isFinite(amountUsd) || amountUsd <= 0) continue;
+          let side: 'LONG' | 'SHORT' | null = null;
+          if (d.posSide === 'long') side = 'LONG';
+          else if (d.posSide === 'short') side = 'SHORT';
+          else if (d.side === 'sell') side = 'LONG';
+          else if (d.side === 'buy') side = 'SHORT';
+          if (!side) continue;
+          const eventTimeMs = Number(d.ts) > 0 ? Number(d.ts) : Date.now();
+          const event: LiquidationEvent = {
+            id: `liq-okx-${symbol}-${eventTimeMs}-${price}-${contracts}`,
+            timestamp: new Date(eventTimeMs).toISOString(),
+            symbol,
+            side,
+            amountUsd: Number(amountUsd.toFixed(2)),
+            price,
+            exchange: LIQUIDATION_SOURCE_LABELS.okx,
+            isDemo: false,
+          };
+          this.recordEvent(event);
+          out.push(event);
+        } catch {
+          /* пропускаем битую запись */
+        }
+      }
+    }
+    return out;
+  }
+
+  private canonicalFromUsdtSymbol(raw: string): string {
+    const canonical = getAssetByBinanceSymbol(raw);
+    return canonical ? canonical.symbol : raw.replace(/USDT$/, '');
   }
 
   /* ------------------------------------------------------------------ */
@@ -129,6 +253,8 @@ export class LiquidationPipeline {
   }
 
   public recordEvent(event: LiquidationEvent): void {
+    // Идемпотентность: повторный кадр (переподключение, snapshot) не удваивает агрегаты.
+    if (this.events.some((e) => e.id === event.id)) return;
     this.events.unshift(event);
     if (this.events.length > this.maxStoredEvents) {
       this.events.length = this.maxStoredEvents;
@@ -214,7 +340,7 @@ export class LiquidationPipeline {
 
   private resolveDataStatus(eventsCount: number): LiquidationDataStatus {
     if (eventsCount > 0) return 'LIVE_STREAM';
-    if (this.streamState === 'connected') return 'AWAITING_STREAM';
+    if (this.getStreamState() === 'connected') return 'AWAITING_STREAM';
     return 'UNAVAILABLE';
   }
 

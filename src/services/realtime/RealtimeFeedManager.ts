@@ -5,7 +5,9 @@ import {
   BinanceFuturesLiquidationStream,
   LiquidationStreamOptions,
 } from './BinanceFuturesLiquidationStream';
-import { LiquidationPipeline, LiquidationStreamState } from '../liquidations/LiquidationPipeline';
+import { LiquidationPipeline, LiquidationSourceId, LiquidationStreamState } from '../liquidations/LiquidationPipeline';
+import { BybitLiquidationStream } from './liquidations/BybitLiquidationStream';
+import { OkxLiquidationStream, OkxLiquidationStreamOptions } from './liquidations/OkxLiquidationStream';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
 import { RadarEvent } from '@/types/market';
 
@@ -14,6 +16,8 @@ export interface RealtimeFeedManagerOptions {
   anomalyWindowSize?: number;
   wsOptions?: BinanceWebSocketOptions;
   liquidationStreamOptions?: LiquidationStreamOptions;
+  bybitLiquidationStreamOptions?: LiquidationStreamOptions;
+  okxLiquidationStreamOptions?: OkxLiquidationStreamOptions;
 }
 
 export class RealtimeFeedManager {
@@ -24,6 +28,9 @@ export class RealtimeFeedManager {
   public readonly binanceClient: BinanceWebSocketClient;
   /** Транспорт фактических ликвидаций (Binance USD-M `!forceOrder@arr`). */
   public readonly liquidationStream: BinanceFuturesLiquidationStream;
+  /** Транспорты фактических ликвидаций Bybit V5 `allLiquidation` и OKX `liquidation-orders`. */
+  public readonly bybitLiquidationStream: BybitLiquidationStream;
+  public readonly okxLiquidationStream: OkxLiquidationStream;
 
   private latestPriceMap: Map<string, number> = new Map();
   private isAutoStart = false;
@@ -50,6 +57,14 @@ export class RealtimeFeedManager {
       LiquidationPipeline.getInstance(),
       options.liquidationStreamOptions
     );
+    this.bybitLiquidationStream = new BybitLiquidationStream(
+      LiquidationPipeline.getInstance(),
+      options.bybitLiquidationStreamOptions
+    );
+    this.okxLiquidationStream = new OkxLiquidationStream(
+      LiquidationPipeline.getInstance(),
+      options.okxLiquidationStreamOptions
+    );
 
     // Track latest prices in memory
     this.eventBus.subscribe<TickerTick>('ticker:*', (tick) => {
@@ -72,16 +87,25 @@ export class RealtimeFeedManager {
     this.isAutoStart = true;
     this.binanceClient.connect();
     this.liquidationStream.connect();
+    this.bybitLiquidationStream.connect();
+    this.okxLiquidationStream.connect();
   }
 
   public disconnect(): void {
     this.isAutoStart = false;
     this.binanceClient.disconnect();
     this.liquidationStream.disconnect();
+    this.bybitLiquidationStream.disconnect();
+    this.okxLiquidationStream.disconnect();
   }
 
+  /** Агрегированное состояние потоков ликвидаций (connected, если жив хотя бы один). */
   public getLiquidationStreamState(): LiquidationStreamState {
-    return this.liquidationStream.getState();
+    return LiquidationPipeline.getInstance().getStreamState();
+  }
+
+  public getLiquidationStreamStates(): Partial<Record<LiquidationSourceId, LiquidationStreamState>> {
+    return LiquidationPipeline.getInstance().getStreamStates();
   }
 
   public getConnectionState(): RealtimeConnectionState {
@@ -119,7 +143,6 @@ export class RealtimeFeedManager {
 
   public destroy(): void {
     this.disconnect();
-    this.liquidationStream.disconnect();
     this.eventBus.destroy();
     this.anomalyEngine.clear();
     this.latestPriceMap.clear();

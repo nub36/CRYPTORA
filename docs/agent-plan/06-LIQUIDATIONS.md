@@ -71,6 +71,6 @@
 ---
 
 ## 3. Что осталось по этапу
-- [ ] Фактические потоки ликвидаций других бирж (Bybit V5 `allLiquidation`, OKX liquidation-orders) — сейчас разбивка по биржам отражает только Binance Futures, поскольку иные источники не подключены. Оценочные доли бирж не подставляются.
+- [x] Фактические потоки ликвидаций Bybit V5 `allLiquidation.{symbol}` и OKX `liquidation-orders` (v0.8.22): `src/services/realtime/liquidations/*`. Разбивка по биржам — только по подключённым потокам; статус каждого транспорта показан отдельно. OKX: USD = bkPx × sz × ctVal (публичный каталог инструментов), без каталога — `unavailable`.
 - [x] Полноценная аналитическая тепловая карта плотности (2D-визуализация цены и времени), а не только таблица плечевых тиров — v0.8.4: `LiquidationHeatmapModelBuilder` (`src/services/liquidations/LiquidationHeatmap.ts`) + секция «Тепловая карта плотности ликвидаций (Price × Time)» на `/liquidations`; маркировка `MODEL / ESTIMATED`, провенанс входных свечей (DEMO / ФАКТИЧЕСКИЕ), честный отказ без входных данных.
 - [ ] Расширенная система алертов (Telegram, Webhook) — см. `10-ALERTS.md`.
