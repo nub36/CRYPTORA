@@ -208,7 +208,11 @@ npm run build
 2. **Zero Secrets:** Исходный код и бандл фронтенда не содержат приватных ключей или API-токенов.
 3. **CSP (Content Security Policy):**
    ```http
-   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.binance.com https://fapi.binance.com https://api.kucoin.com wss://stream.binance.com:9443; frame-ancestors 'self';
+   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.binance.com https://fapi.binance.com https://api.kucoin.com wss://stream.binance.com:9443 wss://fstream.binance.com wss://stream.bybit.com wss://ws.okx.com:8443 https://www.okx.com https://api.alternative.me https://api.llama.fi https://mempool.space https://api.telegram.org; frame-ancestors 'self';
+   ```
+   Источник истины — массив `CONNECT_SRC` в `server/productionServer.js` (v0.8.35); тест `tests/unit/cspConnectSrc.test.ts`
+   сверяет его со всеми внешними origin в `src/`. Если nginx тоже выставляет CSP, его значение должно совпадать.
+   ```
    ```
 4. **Запрет Directory Listing:** Опция `autoindex off` отключена на уровне Nginx и серверного обработчика.
 5. **Отсутствие Source Maps в Production:** В `vite.config.ts` жестко зафиксировано `build: { sourcemap: false }`.

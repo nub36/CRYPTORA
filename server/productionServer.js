@@ -45,16 +45,35 @@ const MIME_TYPES = {
   '.webp': 'image/webp',
 };
 
+// Внешние источники, к которым обращается браузер (см. docs/DATA_SOURCES.md §1.1).
+// Каждый новый адаптер/поток ОБЯЗАН быть добавлен сюда, иначе CSP молча заблокирует его в production.
+// Список проверяется тестом tests/unit/cspConnectSrc.test.ts против URL в src/.
+const CONNECT_SRC = [
+  "'self'",
+  'https://api.binance.com',
+  'https://fapi.binance.com',
+  'https://api.kucoin.com',
+  'wss://stream.binance.com:9443',
+  'wss://fstream.binance.com', // фактические ликвидации Binance USD-M
+  'wss://stream.bybit.com', // ликвидации Bybit V5
+  'wss://ws.okx.com:8443', // ликвидации OKX
+  'https://www.okx.com', // инструменты OKX (ctVal)
+  'https://api.alternative.me', // Fear & Greed
+  'https://api.llama.fi', // DeFiLlama TVL
+  'https://mempool.space', // сеть Bitcoin
+  'https://api.telegram.org', // доставка алертов Telegram Bot (по настройке пользователя)
+];
+const CONTENT_SECURITY_POLICY =
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; " +
+  `connect-src ${CONNECT_SRC.join(' ')}; frame-ancestors 'self';`;
+
 // Standard production security headers
 function applySecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.binance.com https://fapi.binance.com https://api.kucoin.com wss://stream.binance.com:9443; frame-ancestors 'self';"
-  );
+  res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
 }
 
 // Minimal server-side proxy forwarder

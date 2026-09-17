@@ -4,6 +4,18 @@
 
 ---
 
+## [0.8.35] — 2026-09-17
+
+### Fixed — Production CSP: разрешены все фактические источники фронтенда
+- `server/productionServer.js` `connect-src` содержал только Binance/KuCoin REST и spot-WS. На VPS это молча блокировало бы
+  потоки ликвидаций (`wss://fstream.binance.com`, `wss://stream.bybit.com`, `wss://ws.okx.com:8443`, `https://www.okx.com`),
+  Fear & Greed (`api.alternative.me`), DeFiLlama (`api.llama.fi`), mempool.space и доставку Telegram (`api.telegram.org`) —
+  соответствующие разделы показывали бы «ИСТОЧНИК НЕДОСТУПЕН» при живой сети. Список вынесен в `CONNECT_SRC` с комментариями.
+- Новый тест `tests/unit/cspConnectSrc.test.ts`: каждый https/wss origin из `src/` обязан присутствовать в `CONNECT_SRC`
+  (защита от повторения при добавлении адаптеров).
+
+---
+
 ## [0.8.34] — 2026-09-17
 
 ### Changed — Журнал сделок: без выдуманных «бумажных сделок»
