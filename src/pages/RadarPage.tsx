@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { Radio, ArrowUpRight, Sparkles, AlertCircle } from 'lucide-react';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { AiExplanationEngine, AiMarketBriefing, MarketContextFact } from '@/services/ai/AiExplanationEngine';
+import { requestLlmExplanation, type LlmExplainResult } from '@/services/ai/LlmExplainClient';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 
 export const RadarPage: React.FC = () => {
@@ -90,6 +91,23 @@ export const RadarPage: React.FC = () => {
     () => (briefingFacts ? AiExplanationEngine.generateBriefing(briefingFacts) : null),
     [briefingFacts],
   );
+
+  // LLM-слой (Этап 7): запрашивается у сервера по тем же фактам; показывается только заземлённый ответ.
+  const [llm, setLlm] = useState<LlmExplainResult | null>(null);
+  useEffect(() => {
+    if (!briefingFacts) {
+      setLlm(null);
+      return;
+    }
+    let active = true;
+    setLlm(null);
+    requestLlmExplanation(briefingFacts).then((r) => {
+      if (active) setLlm(r);
+    });
+    return () => {
+      active = false;
+    };
+  }, [briefingFacts]);
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
@@ -187,6 +205,24 @@ export const RadarPage: React.FC = () => {
               </ul>
             </div>
           </div>
+
+          {llm?.status === 'OK' && (
+            <div data-qa="llm-explanation" className="p-3 rounded bg-surface-elevated/60 border border-brand-cyan/20 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold text-brand-cyan">Пояснение LLM по тем же фактам</span>
+                <span className="text-slate-500 font-mono">{llm.model} · проверено стражем заземления</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">{llm.text}</p>
+              <p className="text-[11px] text-slate-500">
+                Текст сгенерирован языковой моделью на сервере; все числа сверены с фактами движка, торговые формулировки отклоняются.
+              </p>
+            </div>
+          )}
+          {llm?.status === 'REJECTED' && (
+            <div data-qa="llm-rejected" className="text-[11px] text-amber-300/90">
+              Ответ LLM отклонён стражем заземления ({llm.reason}) и не показан.
+            </div>
+          )}
 
           <div className="text-[11px] text-slate-500 font-sans flex items-center space-x-1.5 pt-1">
             <AlertCircle className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />

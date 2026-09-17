@@ -14,6 +14,7 @@ import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { handleAiExplain } from './ai/explain.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -177,6 +178,12 @@ const server = http.createServer((req, res) => {
       })
     );
     console.log(`[${new Date().toISOString()}] GET /api/health 200 ${Date.now() - startTime}ms`);
+    return;
+  }
+
+  // Endpoint: LLM-объяснение поверх фактов (Этап 7). Ключ только в env сервера.
+  if (pathname === '/api/ai/explain') {
+    handleAiExplain(req, res);
     return;
   }
 
