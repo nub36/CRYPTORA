@@ -124,22 +124,22 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-3 border-b border-white/[0.06] gap-2">
         <div className="flex items-center space-x-2">
-          <span className="font-mono font-bold text-sm text-white tracking-wider uppercase">
-            ТЕПЛОВАЯ КАРТА
+          <span className="font-sans font-bold text-sm text-white tracking-wider uppercase">
+            Тепловая карта
           </span>
           {isAnyLive ? (
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
+            <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
               LIVE-ПЛИТКИ
             </span>
           ) : (
-            <span className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold">
+            <span className="text-[11px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold">
               QA-СЕТКА
             </span>
           )}
         </div>
 
         {/* Metric Selector Buttons */}
-        <div className="flex items-center space-x-1.5 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex items-center space-x-1.5 font-sans text-xs overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setMetric('change24h')}
             className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap font-medium min-h-[32px] ${
@@ -203,7 +203,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 <span className="font-extrabold text-sm font-mono tracking-tight group-hover:text-cyan-300 transition-colors">
                   {asset.symbol}
                 </span>
-                <span className="text-[10px] opacity-70 font-mono">
+                <span className="text-[11px] opacity-70 font-mono">
                   #{asset.rank}
                 </span>
               </div>
@@ -211,7 +211,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 <div className="text-xs font-bold font-mono tracking-tight tabular-nums">
                   {tile.label}
                 </div>
-                <div className="text-[10px] opacity-80 font-mono truncate tabular-nums">
+                <div className="text-[11px] opacity-80 font-mono truncate tabular-nums">
                   {tile.sublabel}
                 </div>
               </div>
@@ -221,52 +221,52 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
       </div>
 
       {/* Legend Scale */}
-      <div className="mt-3.5 pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 gap-2">
+      <div className="mt-3.5 pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between text-[11px] font-sans text-slate-400 gap-2">
         <div className="flex items-center space-x-1.5">
           <span className="text-slate-400 font-semibold">Шкала:</span>
           {metric === 'change24h' && (
             <div className="flex items-center space-x-1">
               <span className="w-3.5 h-3 rounded bg-rose-900 border border-rose-500/30 inline-block"></span>
-              <span className="text-[10px]">&lt;-5%</span>
+              <span className="text-[11px]">&lt;-5%</span>
               <span className="w-3.5 h-3 rounded bg-slate-800 border border-slate-600/30 inline-block"></span>
-              <span className="text-[10px]">0%</span>
+              <span className="text-[11px]">0%</span>
               <span className="w-3.5 h-3 rounded bg-emerald-900 border border-emerald-500/30 inline-block"></span>
-              <span className="text-[10px]">&gt;+5%</span>
+              <span className="text-[11px]">&gt;+5%</span>
             </div>
           )}
           {metric === 'volume' && (
             <div className="flex items-center space-x-1">
               <span className="w-3.5 h-3 rounded bg-sky-950 border border-sky-800 inline-block"></span>
-              <span className="text-[10px]">&lt;$300M</span>
+              <span className="text-[11px]">&lt;$300M</span>
               <span className="w-3.5 h-3 rounded bg-sky-800 border border-sky-500 inline-block"></span>
-              <span className="text-[10px]">&gt;$1B</span>
+              <span className="text-[11px]">&gt;$1B</span>
               <span className="w-3.5 h-3 rounded bg-cyan-700 border border-cyan-400 inline-block"></span>
-              <span className="text-[10px]">&gt;$10B</span>
+              <span className="text-[11px]">&gt;$10B</span>
             </div>
           )}
           {metric === 'oi' && (
             <div className="flex items-center space-x-1">
               <span className="w-3.5 h-3 rounded bg-slate-900 border border-slate-700 inline-block"></span>
-              <span className="text-[10px]">Базовый</span>
+              <span className="text-[11px]">Базовый</span>
               <span className="w-3.5 h-3 rounded bg-violet-950 border border-violet-700 inline-block"></span>
-              <span className="text-[10px]">Рост OI</span>
+              <span className="text-[11px]">Рост OI</span>
               <span className="w-3.5 h-3 rounded bg-violet-800 border border-violet-500 inline-block"></span>
-              <span className="text-[10px]">&gt;+5% Всплеск</span>
+              <span className="text-[11px]">&gt;+5% Всплеск</span>
             </div>
           )}
           {metric === 'funding' && (
             <div className="flex items-center space-x-1">
               <span className="w-3.5 h-3 rounded bg-violet-900 inline-block"></span>
-              <span className="text-[10px]">&lt;-0.01%</span>
+              <span className="text-[11px]">&lt;-0.01%</span>
               <span className="w-3.5 h-3 rounded bg-emerald-900 inline-block"></span>
-              <span className="text-[10px]">~0.01%</span>
+              <span className="text-[11px]">~0.01%</span>
               <span className="w-3.5 h-3 rounded bg-amber-800 inline-block"></span>
-              <span className="text-[10px]">&gt;0.02%</span>
+              <span className="text-[11px]">&gt;0.02%</span>
             </div>
           )}
         </div>
 
-        <span className="text-[10px] text-slate-400">
+        <span className="text-[11px] text-slate-400">
           Клик на плитку открывает страницу монеты
         </span>
       </div>

@@ -64,16 +64,16 @@ export const RadarPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              РЫНОЧНЫЙ РАДАР: ДЕТЕКТОР АНОМАЛИЙ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Рыночный радар: детектор аномалий
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
+              <span className="text-[11px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
-                LIVE-ДЕТЕКТОР АНОМАЛИЙ
+                LIVE-детектор аномалий
               </span>
             ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+              <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 QA-СТРИМ
               </span>
             )}
@@ -86,7 +86,7 @@ export const RadarPage: React.FC = () => {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center space-x-2 font-mono text-xs">
+        <div className="flex items-center space-x-2 font-sans text-xs">
           {/* Type filter */}
           <select
             value={selectedType}
@@ -118,13 +118,13 @@ export const RadarPage: React.FC = () => {
 
       {/* AI Market Analyst Grounded Briefing Banner */}
       {aiBriefing && (
-        <div className="bg-[#0a0f1d] border border-cyan-500/30 rounded-xl p-4 font-mono text-xs space-y-3 shadow-panel bg-gradient-to-r from-[#0a0f1d] to-cyan-950/20">
+        <div className="bg-[#0a0f1d] border border-cyan-500/30 rounded-xl p-4 font-sans text-xs space-y-3 shadow-panel bg-gradient-to-r from-[#0a0f1d] to-cyan-950/20">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center space-x-2 font-bold text-white">
               <Sparkles className="w-4 h-4 text-brand-cyan" />
               <span>БРИФИНГ AI-АНАЛИТИКА: {aiBriefing.headline}</span>
             </div>
-            <span className="text-[10px] text-slate-400 bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
+            <span className="text-[11px] text-slate-400 bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
               Основано на детерминированных фактах
             </span>
           </div>
@@ -135,7 +135,7 @@ export const RadarPage: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-sans text-[11px]">
             <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/20 space-y-1">
-              <span className="font-bold text-emerald-400 font-mono block">Ключевые драйверы:</span>
+              <span className="font-bold text-emerald-400 font-sans block">Ключевые драйверы:</span>
               <ul className="list-disc list-inside text-slate-300 space-y-0.5">
                 {aiBriefing.keyDrivers.map((d, i) => (
                   <li key={i}>{d}</li>
@@ -144,7 +144,7 @@ export const RadarPage: React.FC = () => {
             </div>
 
             <div className="p-2.5 rounded bg-rose-950/20 border border-rose-500/20 space-y-1">
-              <span className="font-bold text-rose-400 font-mono block">Факторы риска:</span>
+              <span className="font-bold text-rose-400 font-sans block">Факторы риска:</span>
               <ul className="list-disc list-inside text-slate-300 space-y-0.5">
                 {aiBriefing.riskObservations.map((r, i) => (
                   <li key={i}>{r}</li>
@@ -153,7 +153,7 @@ export const RadarPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-[10px] text-slate-500 font-sans flex items-center space-x-1.5 pt-1">
+          <div className="text-[11px] text-slate-500 font-sans flex items-center space-x-1.5 pt-1">
             <AlertCircle className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
             <span>{aiBriefing.disclaimer}</span>
           </div>
@@ -161,7 +161,7 @@ export const RadarPage: React.FC = () => {
       )}
 
       {/* Events Stream List */}
-      <div className="space-y-3 font-mono">
+      <div className="space-y-3 font-sans">
         {filteredEvents.length === 0 ? (
           <div className="bg-surface border border-surface-border rounded-lg p-12 text-center text-slate-500 text-xs font-sans">
             Нет событий, удовлетворяющих заданным критериям фильтрации радара.
@@ -203,7 +203,7 @@ export const RadarPage: React.FC = () => {
                   </span>
 
                   {!event.isDemo && (
-                    <span className="text-[10px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
+                    <span className="text-[11px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
                       LIVE-ДЕТЕКЦИЯ
                     </span>
                   )}

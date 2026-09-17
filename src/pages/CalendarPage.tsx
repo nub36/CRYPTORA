@@ -23,11 +23,11 @@ export const CalendarPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <Calendar className="w-5 h-5 text-brand-cyan" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              МАКРО-КАЛЕНДАРЬ И СОБЫТИЯ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Макро-календарь и события
             </h1>
             <Badge variant="cyan" size="sm">
-              ТРЕКЕР КАТАЛИЗАТОРОВ
+              Трекер катализаторов
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -42,15 +42,15 @@ export const CalendarPage: React.FC = () => {
 
       {/* Next Major Catalyst Card */}
       {nextMajor && (
-        <div className="bg-gradient-to-r from-surface to-brand-cyan/10 border border-brand-cyan/40 rounded-lg p-5 font-mono text-xs space-y-3 shadow-lg">
+        <div className="bg-gradient-to-r from-surface to-brand-cyan/10 border border-brand-cyan/40 rounded-lg p-5 font-sans text-xs space-y-3 shadow-lg">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
-              <span className="font-bold text-white uppercase tracking-wider">
+              <span className="font-bold text-white tracking-wide">
                 Ближайший ключевой макро-катализатор
               </span>
               <Badge variant="red" size="xs">
-                РИСК ВЫСОКОЙ ВОЛАТИЛЬНОСТИ
+                Риск высокой волатильности
               </Badge>
             </div>
             <div className="text-slate-400 text-[11px] flex items-center space-x-1">
@@ -60,7 +60,7 @@ export const CalendarPage: React.FC = () => {
           </div>
 
           <div className="space-y-1">
-            <h3 className="text-base font-bold text-white font-mono">{nextMajor.title}</h3>
+            <h3 className="text-base font-bold text-white font-sans">{nextMajor.title}</h3>
             <p className="text-xs text-slate-300 font-sans leading-relaxed max-w-4xl">
               {nextMajor.description}
             </p>
@@ -69,23 +69,23 @@ export const CalendarPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-4 pt-1 font-mono text-xs">
             {nextMajor.forecast && (
               <div className="bg-surface-elevated px-3 py-1.5 rounded border border-surface-border">
-                <span className="text-slate-400 block text-[10px]">Прогноз рынка:</span>
+                <span className="text-slate-400 block text-[11px]">Прогноз рынка:</span>
                 <span className="font-bold text-brand-cyan">{nextMajor.forecast}</span>
               </div>
             )}
             {nextMajor.previous && (
               <div className="bg-surface-elevated px-3 py-1.5 rounded border border-surface-border">
-                <span className="text-slate-400 block text-[10px]">Предыдущее значение:</span>
+                <span className="text-slate-400 block text-[11px]">Предыдущее значение:</span>
                 <span className="text-slate-300">{nextMajor.previous}</span>
               </div>
             )}
             <div className="bg-surface-elevated px-3 py-1.5 rounded border border-surface-border flex items-center space-x-1.5">
-              <span className="text-slate-400 text-[10px]">Активы в фокусе:</span>
+              <span className="text-slate-400 text-[11px]">Активы в фокусе:</span>
               <div className="flex space-x-1">
                 {nextMajor.affectedAssets.map((asset) => (
                   <span
                     key={asset}
-                    className="text-white font-bold bg-slate-800 px-1.5 py-0.5 rounded text-[10px]"
+                    className="text-white font-bold bg-slate-800 px-1.5 py-0.5 rounded text-[11px]"
                   >
                     {asset}
                   </span>
@@ -98,7 +98,7 @@ export const CalendarPage: React.FC = () => {
 
       {/* Non-Execution Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <ShieldCheck className="w-4 h-4 text-brand-green" />
           <span>Учет событийного риска и всплесков волатильности</span>
         </div>
@@ -150,13 +150,13 @@ export const CalendarPage: React.FC = () => {
           )}
         </div>
 
-        <div className="text-[11px] font-mono text-slate-500">
+        <div className="text-[11px] font-sans text-slate-500">
           Событий: {events.length}
         </div>
       </div>
 
       {/* Events List */}
-      <div className="space-y-3 font-mono">
+      <div className="space-y-3 font-sans">
         {events.map((event) => (
           <div
             key={event.id}
@@ -173,7 +173,7 @@ export const CalendarPage: React.FC = () => {
                 >
                   {impactLabel(event.impact).toUpperCase()} ВЛИЯНИЕ
                 </Badge>
-                <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                <span className="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
                   {event.category}
                 </span>
               </div>
@@ -183,7 +183,7 @@ export const CalendarPage: React.FC = () => {
                 {event.affectedAssets.map((asset) => (
                   <span
                     key={asset}
-                    className="font-bold text-white bg-surface-elevated px-1.5 py-0.5 rounded border border-surface-border text-[10px]"
+                    className="font-bold text-white bg-surface-elevated px-1.5 py-0.5 rounded border border-surface-border text-[11px]"
                   >
                     {asset}
                   </span>

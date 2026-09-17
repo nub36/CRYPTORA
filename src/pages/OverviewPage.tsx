@@ -96,7 +96,7 @@ export const OverviewPage: React.FC = () => {
 
   if (loading || !overview) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[55vh] text-slate-400 font-mono text-sm space-y-3">
+      <div className="flex flex-col items-center justify-center min-h-[55vh] text-slate-400 font-sans text-sm space-y-3">
         <div className="relative">
           <div className="w-10 h-10 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin" />
           <Activity className="w-5 h-5 text-cyan-400 absolute inset-0 m-auto" />
@@ -171,8 +171,8 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* Quick Terminal Intelligence Hub */}
-      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs font-mono shadow-panel">
-        <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-panel">
+        <span className="text-slate-400 font-bold tracking-wide text-[11px] flex items-center space-x-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           <span>Специализированные аналитические разделы:</span>
         </span>
@@ -226,19 +226,19 @@ export const OverviewPage: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
         {/* Total Market Cap */}
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
-          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span className="uppercase tracking-wider">Капитализация рынка</span>
+          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
+            <span className="tracking-wide">Капитализация рынка</span>
             <span className="flex items-center space-x-1">
               {dataMode === 'live' && (
                 <span
                   title="MODEL / ESTIMATED: точная 24h-дельта капитализации из источника не поступает"
-                  className="text-[10px] font-mono font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
+                  className="text-[11px] font-sans font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
                 >
                   EST.
                 </span>
               )}
               <span
-                className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded  font-mono${
                   overview.marketCapChange24h >= 0
                     ? 'text-emerald-400 bg-emerald-950/40'
                     : 'text-rose-400 bg-rose-950/40'
@@ -251,7 +251,7 @@ export const OverviewPage: React.FC = () => {
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalMarketCap, { compact: true })}
           </div>
-          <div className="text-[10px] text-slate-400 font-mono mt-1">
+          <div className="text-[11px] text-slate-400 font-sans mt-1">
             {dataMode === 'live'
               ? 'MODEL / ESTIMATED: абсолютная 24h-дельта источником не отдаётся'
               : 'Оценка 24h-дельты по QA-датасету'}
@@ -260,19 +260,19 @@ export const OverviewPage: React.FC = () => {
 
         {/* 24h Volume */}
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
-          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span className="uppercase tracking-wider">24h Спот Объем</span>
+          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
+            <span className="tracking-wide">24h Спот Объем</span>
             <span className="flex items-center space-x-1">
               {dataMode === 'live' && (
                 <span
                   title="MODEL / ESTIMATED: точная 24h-дельта объёма из источника не поступает"
-                  className="text-[10px] font-mono font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
+                  className="text-[11px] font-sans font-bold text-slate-500 border border-white/[0.12] rounded px-1 py-0.5"
                 >
                   EST.
                 </span>
               )}
               <span
-                className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                className={`text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded  font-mono${
                   overview.volumeChange24h >= 0
                     ? 'text-emerald-400 bg-emerald-950/40'
                     : 'text-rose-400 bg-rose-950/40'
@@ -285,16 +285,16 @@ export const OverviewPage: React.FC = () => {
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {formatCurrency(overview.totalVolume24h, { compact: true })}
           </div>
-          <div className="text-[10px] text-slate-400 font-mono mt-1">
+          <div className="text-[11px] text-slate-400 font-sans mt-1">
             {dataMode === 'live' ? 'Суммарный объём доступных источников' : 'Суммарный объём QA-датасета'}
           </div>
         </div>
 
         {/* BTC Dominance */}
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
-          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span className="uppercase tracking-wider">Доминация BTC</span>
-            <span className="text-[10px] text-cyan-300 font-mono font-bold">ETH: {overview.ethDominance}%</span>
+          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
+            <span className="tracking-wide">Доминация BTC</span>
+            <span className="text-[11px] text-cyan-300 font-mono font-bold">ETH: {overview.ethDominance}%</span>
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 tabular-nums tracking-tight">
             {overview.btcDominance}%
@@ -313,15 +313,15 @@ export const OverviewPage: React.FC = () => {
 
         {/* Fear & Greed Index */}
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-amber-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
-          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span className="uppercase tracking-wider">Индекс жадности</span>
+          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
+            <span className="tracking-wide">Индекс жадности</span>
             <span
               title={
                 dataMode === 'live'
                   ? 'MODEL / ESTIMATED: внешний источник индекса (Alternative.me) не подключён'
                   : undefined
               }
-              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
+              className={`text-[11px] font-mono font-bold px-1.5 py-0.2 rounded ${
                 dataMode === 'live'
                   ? 'text-slate-400 bg-white/[0.06] border border-white/[0.12]'
                   : 'text-amber-300 bg-amber-500/15'
@@ -338,23 +338,23 @@ export const OverviewPage: React.FC = () => {
               {overview.fearAndGreed.sentiment}
             </span>
           </div>
-          <div className="text-[10px] text-slate-400 font-mono mt-1">
+          <div className="text-[11px] text-slate-400 font-sans mt-1">
             Умеренный оптимизм
           </div>
         </div>
 
         {/* Market Breadth */}
         <div className="bg-[#0a0f1d] border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 transition-all duration-200 shadow-panel group">
-          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
-            <span className="uppercase tracking-wider">Широта рынка</span>
-            <span className="text-[10px] text-emerald-400 font-mono font-semibold">80% РОСТ</span>
+          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
+            <span className="tracking-wide">Широта рынка</span>
+            <span className="text-[11px] text-emerald-400 font-mono font-semibold">80% РОСТ</span>
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 flex items-center space-x-2 tabular-nums">
             <span className="text-emerald-400">{overview.marketBreadth.advancing}▲</span>
             <span className="text-slate-600">/</span>
             <span className="text-rose-400">{overview.marketBreadth.declining}▼</span>
           </div>
-          <div className="text-[10px] text-slate-400 font-mono mt-1">
+          <div className="text-[11px] text-slate-400 font-sans mt-1">
             Преобладание покупок
           </div>
         </div>
@@ -366,14 +366,14 @@ export const OverviewPage: React.FC = () => {
             dataMode === 'live' ? 'bg-[#0a0f1d] border-white/[0.08]' : 'bg-amber-500/[0.07] border-amber-500/25'
           }`}
         >
-          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between font-bold uppercase tracking-wider">
-            <span>РЕЖИМ ДАННЫХ</span>
+          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between font-bold tracking-wide">
+            <span>Режим данных</span>
             <Zap className={`w-3.5 h-3.5 ${dataMode === 'live' ? 'text-cyan-400' : 'text-amber-400'}`} />
           </div>
           <div className={`text-sm font-bold font-mono mt-1.5 ${dataMode === 'live' ? 'text-white' : 'text-amber-200'}`}>
             {dataMode === 'live' ? 'LIVE спот (Binance / KuCoin)' : 'Внутренний датасет QA'}
           </div>
-          <div className="text-[10px] text-slate-400 font-mono mt-1 flex items-center space-x-1.5">
+          <div className="text-[11px] text-slate-400 font-sans mt-1 flex items-center space-x-1.5">
             <span
               className={`inline-block h-1.5 w-1.5 rounded-full ${
                 realtimeStatus === 'connected'
@@ -419,13 +419,13 @@ export const OverviewPage: React.FC = () => {
                       : 'Спот и перп · QA-датасет'}
                   </span>
                 </div>
-                <div className="flex items-center space-x-2 mt-0.5 font-mono">
-                  <span className="text-xl font-bold text-white tabular-nums">
+                <div className="flex items-center space-x-2 mt-0.5 font-sans">
+                  <span className="text-xl font-bold text-white tabular-nums font-mono">
                     {btcPrice !== null ? formatCurrency(btcPrice) : 'НЕТ ДАННЫХ'}
                   </span>
                   {btcChange24h !== null ? (
                     <span
-                      className={`text-xs font-semibold tabular-nums ${
+                      className={`text-xs font-semibold tabular-nums  font-mono${
                         btcChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
                       }`}
                     >
@@ -439,7 +439,7 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             {/* Timeframe Selector Buttons */}
-            <div className="flex items-center space-x-1 font-mono text-xs bg-[#111a30] p-1 rounded-lg border border-white/[0.06] self-start sm:self-auto">
+            <div className="flex items-center space-x-1 font-sans text-xs bg-[#111a30] p-1 rounded-lg border border-white/[0.06] self-start sm:self-auto">
               {(['15m', '1h', '4h', '1D', '1W'] as Timeframe[]).map((tf) => (
                 <button
                   key={tf}
@@ -459,23 +459,23 @@ export const OverviewPage: React.FC = () => {
           {/* Candle Chart with ambient glow */}
           <CandleChart data={btcCandles} symbol="BTC/USDT" height={340} />
 
-          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-white/[0.04]">
+          <div className="flex items-center justify-between text-[11px] font-sans text-slate-400 pt-1 border-t border-white/[0.04]">
             <div className="flex items-center space-x-3">
               <span>
                 SMA20:{' '}
-                <strong className="text-slate-200 tabular-nums">
+                <strong className="text-slate-200 tabular-nums font-mono">
                   {btcIndicators ? formatCurrency(btcIndicators.sma20, { decimals: 0 }) : '—'}
                 </strong>
               </span>
               <span>
                 SMA50:{' '}
-                <strong className="text-slate-200 tabular-nums">
+                <strong className="text-slate-200 tabular-nums font-mono">
                   {btcIndicators ? formatCurrency(btcIndicators.sma50, { decimals: 0 }) : '—'}
                 </strong>
               </span>
               <span>
                 RSI-14:{' '}
-                <strong className="text-emerald-400 tabular-nums">
+                <strong className="text-emerald-400 tabular-nums font-mono">
                   {btcIndicators && Number.isFinite(btcIndicators.rsi14) ? btcIndicators.rsi14.toFixed(1) : '—'}
                 </strong>
               </span>
@@ -497,13 +497,13 @@ export const OverviewPage: React.FC = () => {
             <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
                 <Layers className="w-4 h-4 text-violet-400" />
-                <span className="font-bold text-sm text-white font-mono tracking-wide">
-                  ФЬЮЧЕРСНЫЙ СРЕЗ
+                <span className="font-bold text-sm text-white font-sans tracking-wide">
+                  Фьючерсный срез
                 </span>
               </div>
               <Link
                 to="/futures"
-                className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-mono font-medium"
+                className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-sans font-medium"
               >
                 <span>Все деривативы</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
@@ -512,42 +512,42 @@ export const OverviewPage: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div className="bg-[#111a30] p-3 rounded-lg border border-white/[0.06]">
-                <div className="text-[11px] text-slate-400 font-mono">Агрегированный OI</div>
+                <div className="text-[11px] text-slate-400 font-sans">Агрегированный OI</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalOpenInterest, { compact: true })}
                 </div>
-                <div className="text-[10px] text-emerald-400 font-mono mt-0.5 font-semibold">+6.8% за 24h</div>
+                <div className="text-[11px] text-emerald-400 font-mono mt-0.5 font-semibold">+6.8% за 24h</div>
               </div>
 
               <div className="bg-[#111a30] p-3 rounded-lg border border-white/[0.06]">
-                <div className="text-[11px] text-slate-400 font-mono">Суточный объём перпов</div>
+                <div className="text-[11px] text-slate-400 font-sans">Суточный объём перпов</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalFuturesVolume, { compact: true })}
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5">Базис BTC: +0.048%</div>
+                <div className="text-[11px] text-slate-400 font-mono mt-0.5">Базис BTC: +0.048%</div>
               </div>
             </div>
 
             {/* Key Futures Assets snippet */}
-            <div className="space-y-1.5 font-mono text-xs">
+            <div className="space-y-1.5 font-sans text-xs">
               {futures.slice(0, 3).map((f) => (
                 <div
                   key={f.symbol}
                   className="flex items-center justify-between p-2 rounded-lg bg-[#111a30]/80 hover:bg-[#162342] transition-colors border border-white/[0.04]"
                 >
                   <span className="font-bold text-white">{f.symbol}</span>
-                  <span className="text-slate-300 tabular-nums">
+                  <span className="text-slate-300 tabular-nums font-mono">
                     OI: {formatCurrency(f.openInterest, { compact: true })}
                   </span>
                   <span
-                    className={`font-semibold tabular-nums ${
+                    className={`font-semibold tabular-nums  font-mono${
                       f.fundingRate >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
                     F: {f.fundingRate.toFixed(4)}%
                   </span>
                   <span
-                    className={`text-[11px] font-semibold tabular-nums ${
+                    className={`text-[11px] font-semibold tabular-nums  font-mono${
                       f.openInterestChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
@@ -563,13 +563,13 @@ export const OverviewPage: React.FC = () => {
             <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
                 <Flame className="w-4 h-4 text-rose-400" />
-                <span className="font-bold text-sm text-white font-mono tracking-wide">
-                  ЛИКВИДАЦИИ ЗА 24H
+                <span className="font-bold text-sm text-white font-sans tracking-wide">
+                  Ликвидации за 24h
                 </span>
               </div>
               <Link
                 to="/liquidations"
-                className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-mono font-medium"
+                className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-sans font-medium"
               >
                 <span>Детализация</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
@@ -581,11 +581,11 @@ export const OverviewPage: React.FC = () => {
                 {liquidations.total24h > 0 ? (
                   <>
                     <div className="flex items-center justify-between mb-2 font-mono text-xs">
-                      <span className="text-emerald-400 font-semibold tabular-nums">
+                      <span className="text-emerald-400 font-semibold tabular-nums font-mono">
                         Лонги: {formatCurrency(liquidations.totalLong24h, { compact: true })} (
                         {((liquidations.totalLong24h / liquidations.total24h) * 100).toFixed(1)}%)
                       </span>
-                      <span className="text-rose-400 font-semibold tabular-nums">
+                      <span className="text-rose-400 font-semibold tabular-nums font-mono">
                         Шорты: {formatCurrency(liquidations.totalShort24h, { compact: true })} (
                         {((liquidations.totalShort24h / liquidations.total24h) * 100).toFixed(1)}%)
                       </span>
@@ -617,7 +617,7 @@ export const OverviewPage: React.FC = () => {
 
                 {/* Largest Whale Event */}
                 {liquidations.largestEvent && (
-                  <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-xs font-mono flex items-center justify-between">
+                  <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-xs font-sans flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
                       <span className="text-slate-300">
@@ -625,7 +625,7 @@ export const OverviewPage: React.FC = () => {
                         <strong className="text-white">{liquidations.largestEvent.symbol}</strong>
                       </span>
                     </div>
-                    <span className="font-bold text-rose-400 tabular-nums">
+                    <span className="font-bold text-rose-400 tabular-nums font-mono">
                       {formatCurrency(liquidations.largestEvent.amountUsd, { compact: true })}
                     </span>
                   </div>
@@ -646,13 +646,13 @@ export const OverviewPage: React.FC = () => {
           <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
             <div className="flex items-center space-x-2">
               <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
-              <span className="font-bold text-sm text-white font-mono tracking-wide">
-                РЫНОЧНЫЙ РАДАР: ПОСЛЕДНЕЕ
+              <span className="font-bold text-sm text-white font-sans tracking-wide">
+                Рыночный радар: последнее
               </span>
             </div>
             <Link
               to="/radar"
-              className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-mono font-medium"
+              className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-sans font-medium"
             >
               <span>Все события</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -681,7 +681,7 @@ export const OverviewPage: React.FC = () => {
                       {radarEventTypeLabel(event.type)}
                     </Badge>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono tabular-nums">
+                  <span className="text-[11px] text-slate-400 font-mono tabular-nums">
                     {formatTimestamp(event.timestamp)}
                   </span>
                 </div>
@@ -700,16 +700,16 @@ export const OverviewPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-4 shadow-panel">
           <div>
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
-              <span className="font-bold text-xs text-white font-mono uppercase tracking-wider flex items-center space-x-1.5">
+              <span className="font-bold text-xs text-white font-sans tracking-wide flex items-center space-x-1.5">
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Лидеры роста (24h)</span>
               </span>
-              <Link to="/market" className="text-[11px] text-cyan-400 hover:underline font-mono font-medium">
+              <Link to="/market" className="text-[11px] text-cyan-400 hover:underline font-sans font-medium">
                 Рынок →
               </Link>
             </div>
 
-            <div className="space-y-1.5 font-mono text-xs">
+            <div className="space-y-1.5 font-sans text-xs">
               {topGainers.map((asset) => (
                 <Link
                   key={asset.id}
@@ -720,10 +720,10 @@ export const OverviewPage: React.FC = () => {
                     <span className="font-bold text-white">{asset.symbol}</span>
                     <span className="text-slate-400 text-[11px]">{asset.name}</span>
                   </div>
-                  <div className="flex items-center space-x-3 tabular-nums">
-                    <span className="text-slate-200">{formatCurrency(asset.price)}</span>
+                  <div className="flex items-center space-x-3 tabular-nums font-mono">
+                    <span className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.price)}</span>
                     <span className="font-semibold text-emerald-400 flex items-center">
-                      <ArrowUpRight className="w-3 h-3 mr-0.5" />
+                      <ArrowUpRight className="w-3 h-3 mr-0.5 font-mono tabular-nums" />
                       {formatPercent(asset.change24h)}
                     </span>
                   </div>
@@ -734,13 +734,13 @@ export const OverviewPage: React.FC = () => {
 
           <div>
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
-              <span className="font-bold text-xs text-white font-mono uppercase tracking-wider flex items-center space-x-1.5">
+              <span className="font-bold text-xs text-white font-sans tracking-wide flex items-center space-x-1.5">
                 <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />
                 <span>Лидеры падения (24h)</span>
               </span>
             </div>
 
-            <div className="space-y-1.5 font-mono text-xs">
+            <div className="space-y-1.5 font-sans text-xs">
               {topLosers.map((asset) => (
                 <Link
                   key={asset.id}
@@ -751,10 +751,10 @@ export const OverviewPage: React.FC = () => {
                     <span className="font-bold text-white">{asset.symbol}</span>
                     <span className="text-slate-400 text-[11px]">{asset.name}</span>
                   </div>
-                  <div className="flex items-center space-x-3 tabular-nums">
-                    <span className="text-slate-200">{formatCurrency(asset.price)}</span>
+                  <div className="flex items-center space-x-3 tabular-nums font-mono">
+                    <span className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.price)}</span>
                     <span className="font-semibold text-rose-400 flex items-center">
-                      <ArrowDownRight className="w-3 h-3 mr-0.5" />
+                      <ArrowDownRight className="w-3 h-3 mr-0.5 font-mono tabular-nums" />
                       {formatPercent(asset.change24h)}
                     </span>
                   </div>
@@ -765,16 +765,16 @@ export const OverviewPage: React.FC = () => {
 
           {/* Funding Extremes widget */}
           {highestFunding && lowestFunding && (
-            <div className="pt-2 border-t border-white/[0.06] grid grid-cols-2 gap-2 text-xs font-mono">
+            <div className="pt-2 border-t border-white/[0.06] grid grid-cols-2 gap-2 text-xs font-sans">
               <div className="bg-emerald-950/40 border border-emerald-500/30 p-2.5 rounded-lg">
-                <div className="text-[10px] text-emerald-400 uppercase font-semibold">Макс фандинг:</div>
+                <div className="text-[11px] text-emerald-400 uppercase font-semibold">Макс фандинг:</div>
                 <div className="font-bold text-white mt-0.5">{highestFunding.symbol}</div>
-                <div className="text-emerald-300 font-bold tabular-nums">+{highestFunding.fundingRate.toFixed(4)}%</div>
+                <div className="text-emerald-300 font-bold tabular-nums font-mono">+{highestFunding.fundingRate.toFixed(4)}%</div>
               </div>
               <div className="bg-violet-950/40 border border-violet-500/30 p-2.5 rounded-lg">
-                <div className="text-[10px] text-violet-400 uppercase font-semibold">Мин. фандинг (платят шорты):</div>
+                <div className="text-[11px] text-violet-400 uppercase font-semibold">Мин. фандинг (платят шорты):</div>
                 <div className="font-bold text-white mt-0.5">{lowestFunding.symbol}</div>
-                <div className="text-violet-300 font-bold tabular-nums">{lowestFunding.fundingRate.toFixed(4)}%</div>
+                <div className="text-violet-300 font-bold tabular-nums font-mono">{lowestFunding.fundingRate.toFixed(4)}%</div>
               </div>
             </div>
           )}
@@ -786,8 +786,8 @@ export const OverviewPage: React.FC = () => {
             <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                <span className="font-bold text-sm text-white font-mono tracking-wide">
-                  АНАЛИТИЧЕСКИЕ СЕТАПЫ (ПРЕВЬЮ)
+                <span className="font-bold text-sm text-white font-sans tracking-wide">
+                  Аналитические сетапы (превью)
                 </span>
               </div>
               <Badge variant="amber" size="xs">
@@ -805,11 +805,11 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             {/* Structured Setup Mock Card */}
-            <div className="p-3.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs font-mono space-y-2">
+            <div className="p-3.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs font-sans space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-white">BTC/USDT: пробой на 4ч</span>
-                <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
-                  ПРИМЕР СЕТАПА (НЕ СИГНАЛ)
+                <span className="text-[11px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
+                  Пример сетапа (не сигнал)
                 </span>
               </div>
 
@@ -819,8 +819,8 @@ export const OverviewPage: React.FC = () => {
               </div>
 
               <div className="text-[11px] text-slate-400 space-y-1 pt-1.5 border-t border-white/[0.06]">
-                <div className="text-emerald-400 text-[10px]">✓ Подтверждение: рост OI +7.2%, фандинг &gt; 0</div>
-                <div className="text-rose-400 text-[10px]">⚠ Опровергающие: RSI-14 перегрет (68.4)</div>
+                <div className="text-emerald-400 text-[11px]">✓ Подтверждение: рост OI +7.2%, фандинг &gt; 0</div>
+                <div className="text-rose-400 text-[11px]">⚠ Опровергающие: RSI-14 перегрет (68.4)</div>
               </div>
             </div>
           </div>
@@ -828,7 +828,7 @@ export const OverviewPage: React.FC = () => {
           <div className="pt-3 border-t border-white/[0.06] mt-3">
             <Link
               to="/signals"
-              className="w-full py-2 bg-[#111a30] hover:bg-[#162342] text-cyan-400 hover:text-white text-xs font-mono font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition-colors border border-white/[0.08] hover:border-cyan-500/30 min-h-[36px]"
+              className="w-full py-2 bg-[#111a30] hover:bg-[#162342] text-cyan-400 hover:text-white text-xs font-sans font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition-colors border border-white/[0.08] hover:border-cyan-500/30 min-h-[36px]"
             >
               <span>Спецификация сигналов и бэктестинга</span>
               <ArrowUpRight className="w-3.5 h-3.5" />

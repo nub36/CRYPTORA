@@ -162,7 +162,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       <div className="absolute top-0 left-1/4 w-96 h-36 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Chart Header Badge */}
-      <div className="absolute top-3 left-3.5 z-10 flex items-center space-x-2 text-xs font-mono text-slate-300">
+      <div className="absolute top-3 left-3.5 z-10 flex items-center space-x-2 text-xs font-sans text-slate-300">
         <span className="font-bold text-white tracking-tight text-sm drop-shadow-sm">
           {symbol}
         </span>

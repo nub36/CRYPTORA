@@ -177,7 +177,7 @@ const ArchiveCard: React.FC<{ card: ArchiveCardModel; selected: boolean; compare
           <div className="font-mono tabular-nums">
             net R/сделку {h.netRPerTrade === null ? <span className="text-amber-300">{h.netFeeModel}</span> : <>{fmtSigned(h.netRPerTrade)} <span className="text-slate-500">@{h.netFeeModel}</span></>}
           </div>
-          <div className="text-[10px] text-slate-500 font-mono">{h.origin}</div>
+          <div className="text-[11px] text-slate-500 font-mono">{h.origin}</div>
         </div>
       ))}
     </div>

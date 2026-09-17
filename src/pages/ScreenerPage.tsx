@@ -86,15 +86,15 @@ export const ScreenerPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              КРИПТО-СКРИНЕР
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Крипто-скринер
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
+              <span className="text-[11px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
                 LIVE СПОТ · BINANCE / KUCOIN
               </span>
             ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+              <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 QA-ДАТАСЕТ
               </span>
             )}
@@ -148,7 +148,7 @@ export const ScreenerPage: React.FC = () => {
       </div>
 
       {/* Filter Parameters Form */}
-      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-3 font-mono text-xs shadow-panel">
+      <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-3 font-sans text-xs shadow-panel">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Query search */}
           <div>
@@ -242,7 +242,7 @@ export const ScreenerPage: React.FC = () => {
       </div>
 
       {/* Results Table */}
-      <div className="bg-surface border border-surface-border rounded-lg overflow-hidden shadow-xl font-mono text-xs">
+      <div className="bg-surface border border-surface-border rounded-lg overflow-hidden shadow-xl font-sans text-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-surface-elevated/80 text-slate-400 text-[11px] uppercase border-b border-surface-border">
@@ -302,12 +302,12 @@ export const ScreenerPage: React.FC = () => {
 
                       <td className="py-2.5 px-3 text-slate-300 font-sans">
                         {asset.name}
-                        <span className="text-[10px] text-slate-500 uppercase font-mono ml-2 px-1 py-0.2 bg-slate-800 rounded">
+                        <span className="text-[11px] text-slate-500 uppercase font-sans ml-2 px-1 py-0.2 bg-slate-800 rounded">
                           {asset.category}
                         </span>
                       </td>
 
-                      <td className="py-2.5 px-3 text-right text-white font-semibold">
+                      <td className="py-2.5 px-3 text-right text-white font-semibold font-mono tabular-nums">
                         {formatCurrency(asset.price, { decimals: asset.price > 10 ? 2 : 4 })}
                       </td>
 
@@ -335,11 +335,11 @@ export const ScreenerPage: React.FC = () => {
                         {formatPercent(asset.change7d)}
                       </td>
 
-                      <td className="py-2.5 px-3 text-right text-slate-300">
+                      <td className="py-2.5 px-3 text-right text-slate-300 font-mono tabular-nums">
                         {formatCurrency(asset.volume24h, { compact: true })}
                       </td>
 
-                      <td className="py-2.5 px-3 text-right text-slate-300">
+                      <td className="py-2.5 px-3 text-right text-slate-300 font-mono tabular-nums">
                         {formatCurrency(asset.marketCap, { compact: true })}
                       </td>
                     </tr>

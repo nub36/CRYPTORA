@@ -14,11 +14,11 @@ export const OnChainPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <Network className="w-5 h-5 text-brand-cyan" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ОН-ЧЕЙН И МАКРО-МЕТРИКИ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Он-чейн и макро-метрики
             </h1>
             <Badge variant="green" size="sm">
-              ФУНДАМЕНТАЛЬНАЯ ОЦЕНКА
+              Фундаментальная оценка
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -27,13 +27,13 @@ export const OnChainPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/30">
-          СЕТЕВОЙ СЛОЙ (МАКРО L1)
+          Сетевой слой (макро L1)
         </div>
       </div>
 
       {/* Analytical Invariant Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <ShieldCheck className="w-4 h-4 text-brand-green" />
           <span>Он-чейн аналитика vs Краткосрочный шум</span>
         </div>
@@ -47,11 +47,11 @@ export const OnChainPage: React.FC = () => {
         {metrics.map((m) => (
           <div
             key={m.id}
-            className="bg-surface border border-surface-border rounded-lg p-5 font-mono text-xs space-y-3 shadow-md hover:border-slate-700 transition-all flex flex-col justify-between"
+            className="bg-surface border border-surface-border rounded-lg p-5 font-sans text-xs space-y-3 shadow-md hover:border-slate-700 transition-all flex flex-col justify-between"
           >
             <div>
               <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-                <span className="font-bold text-white uppercase tracking-wider">{m.name}</span>
+                <span className="font-bold text-white tracking-wide">{m.name}</span>
                 <Badge variant={m.symbol === 'BTC' ? 'amber' : 'purple'} size="xs">
                   {m.symbol}
                 </Badge>
@@ -78,7 +78,7 @@ export const OnChainPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="pt-2 border-t border-surface-border/50 flex items-center justify-between text-[10px] text-slate-500">
+            <div className="pt-2 border-t border-surface-border/50 flex items-center justify-between text-[11px] text-slate-500">
               <span>Сигнал модели:</span>
               <span
                 className={`font-bold font-mono px-2 py-0.5 rounded ${
@@ -95,11 +95,11 @@ export const OnChainPage: React.FC = () => {
       </div>
 
       {/* Exchange Netflows Table */}
-      <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-mono text-xs">
+      <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-sans text-xs">
         <div className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2">
             <Database className="w-4 h-4 text-brand-cyan" />
-            <span className="font-bold text-white uppercase tracking-wider">
+            <span className="font-bold text-white tracking-wide">
               Суточные потоки биткоинов на биржах
             </span>
           </div>

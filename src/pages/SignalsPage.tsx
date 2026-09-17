@@ -24,11 +24,11 @@ export const SignalsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <BarChart3 className="w-5 h-5 text-brand-cyan" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              АНАЛИТИЧЕСКИЕ СЕТАПЫ И СИГНАЛЫ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Аналитические сетапы и сигналы
             </h1>
             <Badge variant="amber" size="sm">
-              ПРОТОТИП МЕТОДОЛОГИИ
+              Прототип методологии
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -37,61 +37,61 @@ export const SignalsPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded border border-rose-500/30">
-          НЕ ЯВЛЯЕТСЯ ФИНАНСОВОЙ РЕКОМЕНДАЦИЕЙ
+          Не является финансовой рекомендацией
         </div>
       </div>
 
       {/* Transparent Performance Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Всего сетапов в реестре</div>
+          <div className="text-[11px] font-sans text-slate-400">Всего сетапов в реестре</div>
           <div className="text-lg font-bold font-mono text-white mt-1">{summary.totalSetups}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">100% зафиксировано</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">100% зафиксировано</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Активные наблюдения</div>
+          <div className="text-[11px] font-sans text-slate-400">Активные наблюдения</div>
           <div className="text-lg font-bold font-mono text-brand-cyan mt-1">{summary.activeCount}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">В процессе отработки</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">В процессе отработки</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Достигли целей (TP)</div>
+          <div className="text-[11px] font-sans text-slate-400">Достигли целей (TP)</div>
           <div className="text-lg font-bold font-mono text-brand-green mt-1">{summary.targetReachedCount}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Полное исполнение</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Полное исполнение</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Инвалидация (стоп)</div>
+          <div className="text-[11px] font-sans text-slate-400">Инвалидация (стоп)</div>
           <div className="text-lg font-bold font-mono text-rose-400 mt-1">{summary.invalidatedCount}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Отмена гипотезы</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Отмена гипотезы</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Прозрачная доля успешных</div>
+          <div className="text-[11px] font-sans text-slate-400">Прозрачная доля успешных</div>
           <div className="text-lg font-bold font-mono text-amber-400 mt-1">{summary.accuracyRatePct}%</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Без ошибки выжившего</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Без ошибки выжившего</div>
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-mono text-slate-400">Целостность реестра</div>
-          <div className="text-sm font-bold font-mono text-brand-green mt-1.5 flex items-center space-x-1">
+          <div className="text-[11px] font-sans text-slate-400">Целостность реестра</div>
+          <div className="text-sm font-bold font-sans text-brand-green mt-1.5 flex items-center space-x-1">
             {isIntegrityVerified ? (
               <>
                 <Check className="w-4 h-4 text-brand-green" />
                 <span>SHA-256 OK</span>
               </>
             ) : (
-              <span className="text-rose-400">ОШИБКА ХЭША</span>
+              <span className="text-rose-400">Ошибка хэша</span>
             )}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Реестр только на добавление</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Реестр только на добавление</div>
         </div>
       </div>
 
       {/* Ethical Code Banner */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <Shield className="w-4 h-4 text-brand-green" />
           <span>Кодекс прозрачности сигналов CRYPTORA</span>
         </div>
@@ -113,7 +113,7 @@ export const SignalsPage: React.FC = () => {
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
-        <div className="flex items-center space-x-2 font-mono text-xs">
+        <div className="flex items-center space-x-2 font-sans text-xs">
           <Filter className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-400 text-xs">Статус:</span>
           {(['ALL', 'ACTIVE', 'TARGET_REACHED', 'INVALIDATED'] as const).map((tab) => (
@@ -134,7 +134,7 @@ export const SignalsPage: React.FC = () => {
           ))}
         </div>
 
-        <div className="text-[11px] font-mono text-slate-500">
+        <div className="text-[11px] font-sans text-slate-500">
           Найдено: {setups.length} из {summary.totalSetups}
         </div>
       </div>
@@ -144,7 +144,7 @@ export const SignalsPage: React.FC = () => {
         {setups.map((setup: AnalyticalSetup) => (
           <div
             key={setup.id}
-            className="bg-surface border border-surface-border rounded-lg p-5 font-mono text-xs space-y-4 shadow-lg hover:border-slate-700 transition-all"
+            className="bg-surface border border-surface-border rounded-lg p-5 font-sans text-xs space-y-4 shadow-lg hover:border-slate-700 transition-all"
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
               <div className="flex items-center space-x-3">
@@ -170,7 +170,7 @@ export const SignalsPage: React.FC = () => {
                 </Badge>
               </div>
 
-              <div className="flex items-center space-x-2 text-[10px] text-slate-500">
+              <div className="flex items-center space-x-2 text-[11px] text-slate-500">
                 <Lock className="w-3 h-3 text-brand-green" />
                 <span className="font-mono bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
                   {setup.auditHash}
@@ -210,7 +210,7 @@ export const SignalsPage: React.FC = () => {
             {/* Evidence & Invalidation Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-sans text-xs">
               <div className="p-3 rounded bg-emerald-950/20 border border-emerald-500/20 space-y-1.5">
-                <div className="font-bold text-emerald-400 font-mono flex items-center space-x-1.5">
+                <div className="font-bold text-emerald-400 font-sans flex items-center space-x-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Подтверждающие наблюдения</span>
                 </div>
@@ -222,7 +222,7 @@ export const SignalsPage: React.FC = () => {
               </div>
 
               <div className="p-3 rounded bg-rose-950/20 border border-rose-500/20 space-y-1.5">
-                <div className="font-bold text-rose-400 font-mono flex items-center space-x-1.5">
+                <div className="font-bold text-rose-400 font-sans flex items-center space-x-1.5">
                   <AlertOctagon className="w-3.5 h-3.5" />
                   <span>Опровергающие факторы и риски</span>
                 </div>

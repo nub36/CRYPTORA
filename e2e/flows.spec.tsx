@@ -129,8 +129,8 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     // Snapshots
     expect(screen.getByText(/ФЬЮЧЕРСНЫЙ СРЕЗ/i)).toBeInTheDocument();
     expect(screen.getByText(/ЛИКВИДАЦИИ ЗА 24H/i)).toBeInTheDocument();
-    expect(screen.getByText('ТЕПЛОВАЯ КАРТА')).toBeInTheDocument();
-    expect(screen.getByText('РЫНОЧНЫЙ РАДАР: ПОСЛЕДНЕЕ')).toBeInTheDocument();
+    expect(screen.getByText(/^Тепловая карта$/i)).toBeInTheDocument();
+    expect(screen.getByText(/РЫНОЧНЫЙ РАДАР: ПОСЛЕДНЕЕ/i)).toBeInTheDocument();
     expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ \(ПРЕВЬЮ\)/i)).toBeInTheDocument();
   });
 

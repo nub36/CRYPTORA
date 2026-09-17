@@ -28,15 +28,15 @@ export const HeatmapsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <Grid3X3 className="w-5 h-5 text-brand-cyan" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ТЕПЛОВАЯ КАРТА РЫНКА
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Тепловая карта рынка
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2 py-0.5 rounded border border-brand-green/30">
+              <span className="text-[11px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2 py-0.5 rounded border border-brand-green/30">
                 LIVE-ПЛИТКИ · BINANCE / KUCOIN
               </span>
             ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+              <span className="text-[11px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
                 QA-ДАТАСЕТ
               </span>
             )}
@@ -54,7 +54,7 @@ export const HeatmapsPage: React.FC = () => {
 
       {/* Explanatory Guide Box */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <Info className="w-4 h-4 text-brand-cyan" />
           <span>Как интерпретировать тепловые карты CRYPTORA</span>
         </div>

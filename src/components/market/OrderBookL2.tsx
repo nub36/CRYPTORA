@@ -74,11 +74,11 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
     }, [depthData, currentPrice]);
 
   return (
-    <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 font-mono text-xs flex flex-col justify-between h-full">
+    <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 font-sans text-xs flex flex-col justify-between h-full">
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-surface-border">
         <div className="flex items-center space-x-2">
-          <span className="font-bold text-white tracking-wide">СТАКАН ЗАЯВОК (L2)</span>
+          <span className="font-bold text-white tracking-wide">Стакан заявок (L2)</span>
           <span className="text-[11px] text-slate-400">SPOT {symbol}/USDT</span>
         </div>
         <span
@@ -116,7 +116,7 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
                   className="absolute right-0 top-0 bottom-0 bg-brand-red/15 rounded-sm transition-all pointer-events-none"
                   style={{ width: `${depthWidth}%` }}
                 />
-                <span className="text-brand-red font-semibold z-10">
+                <span className="text-brand-red font-semibold z-10 font-mono tabular-nums">
                   {formatCurrency(item.price, { decimals: item.price > 10 ? 2 : 4 })}
                 </span>
                 <span className="text-right text-slate-300 z-10">
@@ -133,12 +133,12 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
       {/* Mid Price & Spread Bar */}
       <div className="my-1 py-1.5 px-2 bg-surface-elevated/70 border-y border-surface-border rounded flex items-center justify-between text-xs font-bold">
         <div className="flex items-center space-x-2">
-          <span className="text-white text-sm">
+          <span className="text-white text-sm font-mono tabular-nums">
             {formatCurrency(currentPrice, { decimals: currentPrice > 10 ? 2 : 4 })}
           </span>
-          <span className="text-[11px] text-slate-400 font-normal">СРЕДНЯЯ ЦЕНА</span>
+          <span className="text-[11px] text-slate-400 font-normal">Средняя цена</span>
         </div>
-        <div className="text-[11px] text-slate-400 font-mono">
+        <div className="text-[11px] text-slate-400 font-sans">
           СПРЕД: <span className="text-slate-200 font-bold">${spreadUsd.toFixed(2)}</span>{' '}
           <span className="text-brand-cyan">({spreadBps.toFixed(1)} bps)</span>
         </div>
@@ -158,7 +158,7 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
                 className="absolute right-0 top-0 bottom-0 bg-brand-green/15 rounded-sm transition-all pointer-events-none"
                 style={{ width: `${depthWidth}%` }}
               />
-              <span className="text-brand-green font-semibold z-10">
+              <span className="text-brand-green font-semibold z-10 font-mono tabular-nums">
                 {formatCurrency(item.price, { decimals: item.price > 10 ? 2 : 4 })}
               </span>
               <span className="text-right text-slate-300 z-10">

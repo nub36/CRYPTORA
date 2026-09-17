@@ -71,11 +71,11 @@ export const JournalPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <BookOpen className="w-5 h-5 text-brand-purple" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ЖУРНАЛ СДЕЛОК И РЕФЛЕКСИИ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Журнал сделок и рефлексии
             </h1>
             <Badge variant="purple" size="sm">
-              ИССЛЕДОВАНИЯ И ДИСЦИПЛИНА
+              Исследования и дисциплина
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -85,7 +85,7 @@ export const JournalPage: React.FC = () => {
 
         <button
           onClick={() => setIsFormOpen(!isFormOpen)}
-          className="px-3.5 py-1.5 bg-brand-cyan hover:bg-sky-500 text-slate-950 font-mono font-bold text-xs rounded flex items-center space-x-1.5 transition-colors self-start sm:self-auto cursor-pointer"
+          className="px-3.5 py-1.5 bg-brand-cyan hover:bg-sky-500 text-slate-950 font-sans font-bold text-xs rounded flex items-center space-x-1.5 transition-colors self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>{isFormOpen ? 'Скрыть форму' : 'Записать сделку в журнал'}</span>
@@ -94,7 +94,7 @@ export const JournalPage: React.FC = () => {
 
       {/* Non-Execution Transparency Banner */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <ShieldCheck className="w-4 h-4 text-brand-green" />
           <span>Принцип ручного журнала самодисциплины</span>
         </div>
@@ -105,21 +105,21 @@ export const JournalPage: React.FC = () => {
 
       {/* Performance Summary Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-4 font-sans">
           <div className="text-[11px] text-slate-400">Всего сделок в журнале</div>
           <div className="text-2xl font-bold text-white mt-1">{summary.totalTrades}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">
+          <div className="text-[11px] text-slate-500 mt-0.5">
             {summary.profitableTrades} прибыльных / {summary.losingTrades} убыточных
           </div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-4 font-sans">
           <div className="text-[11px] text-slate-400">Доля прибыльных</div>
           <div className="text-2xl font-bold text-amber-400 mt-1">{summary.winRatePct}%</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">По закрытым сделкам</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">По закрытым сделкам</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-4 font-sans">
           <div className="text-[11px] text-slate-400">Совокупный результат (PnL)</div>
           <div
             className={`text-2xl font-bold mt-1 ${
@@ -128,16 +128,16 @@ export const JournalPage: React.FC = () => {
           >
             {summary.netPnlUsd >= 0 ? '+' : ''}${summary.netPnlUsd.toLocaleString()}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Сумма всех записей</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Сумма всех записей</div>
         </div>
 
-        <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-4 font-sans">
           <div className="text-[11px] text-slate-400">Средняя оценка дисциплины</div>
           <div className="text-2xl font-bold text-brand-cyan mt-1 flex items-center space-x-1">
             <Award className="w-5 h-5 text-brand-cyan" />
             <span>{summary.avgDisciplineScore} / 5.0</span>
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Контроль эмоций и правил</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">Контроль эмоций и правил</div>
         </div>
       </div>
 
@@ -145,10 +145,10 @@ export const JournalPage: React.FC = () => {
       {isFormOpen && (
         <form
           onSubmit={handleAddTrade}
-          className="bg-surface border border-brand-cyan/40 rounded-lg p-5 font-mono text-xs space-y-4 shadow-xl"
+          className="bg-surface border border-brand-cyan/40 rounded-lg p-5 font-sans text-xs space-y-4 shadow-xl"
         >
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-            <span className="font-bold text-white uppercase tracking-wider">
+            <span className="font-bold text-white tracking-wide">
               Новая запись в аналитический журнал
             </span>
             <span className="text-[11px] text-slate-500">Локальное хранилище журнала</span>
@@ -265,13 +265,13 @@ export const JournalPage: React.FC = () => {
         {entries.map((entry) => (
           <div
             key={entry.id}
-            className="bg-surface border border-surface-border rounded-lg p-5 font-mono text-xs space-y-3 hover:border-slate-700 transition-all shadow-md"
+            className="bg-surface border border-surface-border rounded-lg p-5 font-sans text-xs space-y-3 hover:border-slate-700 transition-all shadow-md"
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
               <div className="flex items-center space-x-3">
                 <span className="font-bold text-base text-white">{entry.symbol}</span>
                 <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                     entry.direction === 'LONG'
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                       : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'

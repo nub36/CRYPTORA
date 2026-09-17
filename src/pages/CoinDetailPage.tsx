@@ -123,7 +123,7 @@ export const CoinDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-mono text-sm">
+      <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-sans text-sm">
         <Activity className="w-5 h-5 animate-spin mr-2 text-brand-cyan" />
         Загрузка аналитики монеты {symbol}...
       </div>
@@ -141,13 +141,13 @@ export const CoinDetailPage: React.FC = () => {
   if (!asset) {
     return (
       <div className="max-w-xl mx-auto my-12 p-6 bg-surface border border-surface-border rounded-lg text-center space-y-3">
-        <h2 className="text-lg font-bold text-white font-mono">Актив не найден</h2>
+        <h2 className="text-lg font-bold text-white font-sans">Актив не найден</h2>
         <p className="text-[13px] text-slate-400">
           Инструмент «{symbol}» отсутствует в реестре инструментов терминала.
         </p>
         <Link
           to="/market"
-          className="inline-flex items-center space-x-1 text-xs text-brand-cyan hover:underline font-mono"
+          className="inline-flex items-center space-x-1 text-xs text-brand-cyan hover:underline font-sans"
         >
           <ChevronLeft className="w-4 h-4" />
           <span>Вернуться к списку рынка</span>
@@ -199,22 +199,22 @@ export const CoinDetailPage: React.FC = () => {
       {/* Asset Header Card */}
       <div className="bg-surface border border-surface-border rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-lg bg-surface-elevated border border-surface-border flex items-center justify-center font-mono font-bold text-lg text-brand-cyan shadow-md">
+          <div className="w-12 h-12 rounded-lg bg-surface-elevated border border-surface-border flex items-center justify-center font-sans font-bold text-lg text-brand-cyan shadow-md">
             {asset.symbol.slice(0, 3)}
           </div>
 
           <div>
             <div className="flex items-center space-x-2.5">
-              <h1 className="text-xl sm:text-2xl font-bold font-mono text-white">
+              <h1 className="text-xl sm:text-2xl font-bold font-sans text-white">
                 {asset.name}
               </h1>
               <span className="text-sm font-mono text-slate-400 font-semibold">
                 {asset.symbol}
               </span>
-              <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">
+              <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-sans">
                 Ранг #{asset.rank}
               </span>
-              <span className="text-xs bg-brand-cyan/10 text-brand-cyan px-2 py-0.5 rounded font-mono uppercase">
+              <span className="text-xs bg-brand-cyan/10 text-brand-cyan px-2 py-0.5 rounded font-sans uppercase">
                 {asset.category}
               </span>
             </div>
@@ -300,17 +300,17 @@ export const CoinDetailPage: React.FC = () => {
       <div data-qa="coin-chart-card" className="space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
           <div className="flex items-center space-x-3">
-            <span className="font-mono font-bold text-sm text-white">
+            <span className="font-sans font-bold text-sm text-white">
               {asset.symbol}/USDT Свечной график
             </span>
-            <div className="hidden sm:flex items-center space-x-2 text-xs font-mono text-slate-400">
-              <span>Макс. 24ч: <strong className="text-slate-200">{formatCurrency(asset.high24h)}</strong></span>
-              <span>Мин. 24ч: <strong className="text-slate-200">{formatCurrency(asset.low24h)}</strong></span>
+            <div className="hidden sm:flex items-center space-x-2 text-xs font-sans text-slate-400">
+              <span>Макс. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.high24h)}</strong></span>
+              <span>Мин. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.low24h)}</strong></span>
             </div>
           </div>
 
           {/* Timeframe buttons */}
-          <div className="flex items-center space-x-1 font-mono text-xs bg-surface-elevated p-1 rounded border border-surface-border self-start sm:self-auto">
+          <div className="flex items-center space-x-1 font-sans text-xs bg-surface-elevated p-1 rounded border border-surface-border self-start sm:self-auto">
             {(['15m', '1h', '4h', '1D', '1W'] as Timeframe[]).map((tf) => (
               <button
                 key={tf}
@@ -339,10 +339,10 @@ export const CoinDetailPage: React.FC = () => {
       {/* Stats Grid: Market Metrics, Derivatives, Technical Indicators */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Card 1: Key Market Stats */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <Activity className="w-4 h-4 text-brand-cyan" />
-            <span className="text-[13px] font-bold uppercase tracking-wider text-white">
+            <span className="text-[13px] font-bold tracking-wide text-white">
               Рыночная статистика
             </span>
           </div>
@@ -350,27 +350,27 @@ export const CoinDetailPage: React.FC = () => {
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span className="text-slate-400">Капитализация</span>
-              <span className="font-bold text-white">{formatCurrency(asset.marketCap)}</span>
+              <span className="font-bold text-white font-mono tabular-nums">{formatCurrency(asset.marketCap)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Объём торгов 24ч</span>
-              <span className="font-bold text-white">{formatCurrency(asset.volume24h)}</span>
+              <span className="font-bold text-white font-mono tabular-nums">{formatCurrency(asset.volume24h)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">В обращении</span>
-              <span className="text-slate-200">
+              <span className="text-slate-200 font-mono tabular-nums">
                 {formatNumber(asset.circulatingSupply, { compact: true })} {asset.symbol}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Исторический максимум (ATH)</span>
-              <span className="text-slate-200">
+              <span className="text-slate-200 font-mono tabular-nums">
                 {formatCurrency(asset.ath)} ({asset.athDate})
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Исторический минимум (ATL)</span>
-              <span className="text-slate-200">
+              <span className="text-slate-200 font-mono tabular-nums">
                 {formatCurrency(asset.atl)} ({asset.atlDate})
               </span>
             </div>
@@ -388,10 +388,10 @@ export const CoinDetailPage: React.FC = () => {
         </div>
 
         {/* Card 2: Futures & Derivatives Snapshot */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <Layers className="w-4 h-4 text-brand-purple" />
-            <span className="text-[13px] font-bold uppercase tracking-wider text-white">
+            <span className="text-[13px] font-bold tracking-wide text-white">
               Деривативы: детали контракта
             </span>
           </div>
@@ -402,14 +402,14 @@ export const CoinDetailPage: React.FC = () => {
                   здесь — остальные метрики контракта и производные показатели. */}
               <div className="flex justify-between">
                 <span className="text-slate-400">Метка / индексная цена</span>
-                <span className="font-bold text-white">
+                <span className="font-bold text-white font-mono tabular-nums">
                   {formatCurrency(futuresData.markPrice, { decimals: futuresData.markPrice > 10 ? 2 : 4 })} /{' '}
                   {formatCurrency(futuresData.indexPrice, { decimals: futuresData.indexPrice > 10 ? 2 : 4 })}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Спред метки к индексу</span>
-                <span className="text-slate-200 tabular-nums">
+                <span className="text-slate-200 tabular-nums font-mono">
                   {formatCurrency(futuresData.markPrice - futuresData.indexPrice, {
                     decimals: futuresData.markPrice > 10 ? 2 : 4,
                   })}
@@ -418,7 +418,7 @@ export const CoinDetailPage: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-slate-400">Прогноз фандинга (8h)</span>
                 <span
-                  className={`font-bold tabular-nums ${
+                  className={`font-bold tabular-nums  font-mono${
                     futuresData.predictedFundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'
                   }`}
                 >
@@ -428,14 +428,14 @@ export const CoinDetailPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Годовой фандинг (APR)</span>
-                <span className="text-slate-200 font-semibold tabular-nums">
+                <span className="text-slate-200 font-semibold tabular-nums font-mono">
                   {formatPercent(futuresData.annualizedFundingRate)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">OI Δ за 1 час</span>
                 <span
-                  className={`font-bold tabular-nums ${
+                  className={`font-bold tabular-nums  font-mono${
                     futuresData.openInterestChange1h >= 0 ? 'text-brand-green' : 'text-brand-red'
                   }`}
                 >
@@ -444,7 +444,7 @@ export const CoinDetailPage: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Суточный фьючерсный объем</span>
-                <span className="text-slate-200 tabular-nums">
+                <span className="text-slate-200 tabular-nums font-mono">
                   {formatCurrency(futuresData.futuresVolume24h, { compact: true })}
                 </span>
               </div>
@@ -464,10 +464,10 @@ export const CoinDetailPage: React.FC = () => {
         </div>
 
         {/* Card 3: Technical Indicators Snapshot */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-mono">
+        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
           <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
             <SlidersHorizontal className="w-4 h-4 text-brand-sky" />
-            <span className="text-[13px] font-bold uppercase tracking-wider text-white">
+            <span className="text-[13px] font-bold tracking-wide text-white">
               Технические индикаторы
             </span>
           </div>
@@ -506,7 +506,7 @@ export const CoinDetailPage: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">SMA (20 / 50 / 200)</span>
-              <span className="text-slate-200">
+              <span className="text-slate-200 font-mono tabular-nums">
                 {formatCurrency(dynamicIndicators?.sma20 ?? 0, { compact: true })} /{' '}
                 {formatCurrency(dynamicIndicators?.sma50 ?? 0, { compact: true })} /{' '}
                 {formatCurrency(dynamicIndicators?.sma200 ?? 0, { compact: true })}
@@ -514,7 +514,7 @@ export const CoinDetailPage: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Полосы Боллинджера (верх / низ)</span>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-slate-400 font-mono tabular-nums">
                 {formatCurrency(dynamicIndicators?.bollinger?.upper ?? 0, { compact: true })} /{' '}
                 {formatCurrency(dynamicIndicators?.bollinger?.lower ?? 0, { compact: true })}
               </span>
@@ -548,10 +548,10 @@ export const CoinDetailPage: React.FC = () => {
           {/* Trading Pairs Table */}
           <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-              <span className="font-mono text-[13px] font-bold uppercase tracking-wider text-white">
+              <span className="font-sans text-[13px] font-bold tracking-wide text-white">
                 {asset.isDemo ? 'Пары на ведущих биржах (QA-датасет)' : 'Пары на ведущих биржах (Spot Market)'}
               </span>
-              <span className="text-[11px] font-mono text-slate-400">Биржевая глубина</span>
+              <span className="text-[11px] font-sans text-slate-400">Биржевая глубина</span>
             </div>
 
             <div className="overflow-x-auto">
@@ -570,8 +570,8 @@ export const CoinDetailPage: React.FC = () => {
                     <tr key={idx} className="hover:bg-surface-hover">
                       <td className="py-2 text-white font-semibold">{p.exchange}</td>
                       <td className="py-2 text-brand-cyan">{p.pair}</td>
-                      <td className="py-2 text-right">{formatCurrency(p.price)}</td>
-                      <td className="py-2 text-right text-slate-400">
+                      <td className="py-2 text-right font-mono tabular-nums">{formatCurrency(p.price)}</td>
+                      <td className="py-2 text-right text-slate-400 font-mono tabular-nums">
                         {formatCurrency(p.volume24h, { compact: true })}
                       </td>
                       <td className="py-2 text-right text-slate-400">{p.spreadPct}%</td>
@@ -587,13 +587,13 @@ export const CoinDetailPage: React.FC = () => {
             <div className="flex items-center justify-between pb-2 border-b border-surface-border">
               <div className="flex items-center space-x-2">
                 <Radio className="w-4 h-4 text-brand-cyan" />
-                <span className="font-mono text-[13px] font-bold uppercase tracking-wider text-white">
+                <span className="font-sans text-[13px] font-bold tracking-wide text-white">
                   События Market Radar по {asset.symbol}
                 </span>
               </div>
               <Link
                 to="/radar"
-                className="flex items-center space-x-1 font-mono text-xs text-brand-cyan hover:underline"
+                className="flex items-center space-x-1 font-sans text-xs text-brand-cyan hover:underline"
               >
                 <span>Все аномалии</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
@@ -601,11 +601,11 @@ export const CoinDetailPage: React.FC = () => {
             </div>
 
             {radarEvents.length === 0 ? (
-              <div className="py-6 text-center font-mono text-[13px] text-slate-500">
+              <div className="py-6 text-center font-sans text-[13px] text-slate-500">
                 По инструменту {asset.symbol} активных аномалий не зафиксировано.
               </div>
             ) : (
-              <div className="space-y-2 font-mono">
+              <div className="space-y-2 font-sans">
                 {radarEvents.map((re) => (
                   <div
                     key={re.id}

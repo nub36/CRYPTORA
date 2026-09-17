@@ -276,7 +276,7 @@ export const Header: React.FC = () => {
             role="menu"
             className="absolute left-0 z-50 mt-1.5 w-72 rounded-lg border border-white/[0.12] bg-[#0a0f1d]/95 py-1.5 text-xs font-sans shadow-2xl shadow-black/80 backdrop-blur-2xl"
           >
-            <div className="px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="px-3 py-1 font-sans text-[11px] font-bold tracking-wide text-slate-400">
               {menuTitle}
             </div>
             <div className="py-1">
@@ -320,7 +320,7 @@ export const Header: React.FC = () => {
   /* ------------------------------------------------------------------ */
   const renderSearchResults = () => (
     <div className="absolute right-0 z-50 mt-1.5 w-64 rounded-lg border border-white/[0.12] bg-[#0a0f1d]/95 py-1 shadow-2xl backdrop-blur-2xl">
-      <div className="border-b border-white/[0.06] px-3 py-1 font-mono text-[11px] font-bold uppercase text-slate-400">
+      <div className="border-b border-white/[0.06] px-3 py-1 font-sans text-[11px] font-bold uppercase text-slate-400">
         Результаты поиска
       </div>
       {searchResults.map((asset) => {
@@ -388,7 +388,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="hidden shrink-0 rounded border border-cyan-500/30 bg-cyan-950/80 px-1.5 font-mono text-[11px] font-semibold tracking-normal text-cyan-400 navxl:inline-block">
-                  v0.8.17
+                  v0.8.18
                 </span>
               </div>
               <span className="hidden whitespace-nowrap font-sans text-[11px] tracking-tight text-slate-400 2xl:block">
@@ -486,7 +486,7 @@ export const Header: React.FC = () => {
           <button
             type="button"
             onClick={openPlanModal}
-            className="hidden shrink-0 cursor-pointer items-center gap-x-1 whitespace-nowrap rounded border border-violet-500/30 bg-violet-950/40 px-2 py-0.5 font-mono text-[11px] font-bold text-violet-300 transition-all hover:border-violet-400/50 hover:bg-violet-900/40 nav2xl:inline-flex"
+            className="hidden shrink-0 cursor-pointer items-center gap-x-1 whitespace-nowrap rounded border border-violet-500/30 bg-violet-950/40 px-2 py-0.5 font-sans text-[11px] font-bold text-violet-300 transition-all hover:border-violet-400/50 hover:bg-violet-900/40 nav2xl:inline-flex"
             title={`Тарифный план: ${planLabel}. Тарифные планы и права доступа`}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
@@ -598,7 +598,7 @@ export const Header: React.FC = () => {
           {searchQuery.trim() && (
             <div className="mx-auto mt-2 max-w-[1920px] overflow-hidden rounded-md border border-white/[0.1] bg-[#0a0f1d]/95">
               {searchResults.length === 0 ? (
-                <div className="px-3 py-2.5 font-mono text-xs text-slate-400">
+                <div className="px-3 py-2.5 font-sans text-xs text-slate-400">
                   Совпадений не найдено
                 </div>
               ) : (
@@ -685,7 +685,7 @@ export const Header: React.FC = () => {
 
           {/* Primary Navigation Grid */}
           <div>
-            <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="mb-1.5 font-sans text-[11px] font-bold tracking-wide text-slate-400">
               Основные разделы
             </div>
             <div className="grid grid-cols-2 gap-1.5">
@@ -695,7 +695,7 @@ export const Header: React.FC = () => {
 
           {/* Analytics Group */}
           <div>
-            <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="mb-1.5 font-sans text-[11px] font-bold tracking-wide text-slate-400">
               Аналитика
             </div>
             <div className="grid grid-cols-2 gap-1.5">
@@ -724,7 +724,7 @@ export const Header: React.FC = () => {
 
           {/* Tools Group */}
           <div>
-            <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="mb-1.5 font-sans text-[11px] font-bold tracking-wide text-slate-400">
               Инструменты
             </div>
             <div className="grid grid-cols-2 gap-1.5">
@@ -751,8 +751,8 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-mono text-[11px] text-slate-400">
-            <span>CRYPTORA v0.8.17</span>
+          <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-sans text-[11px] text-slate-400">
+            <span>CRYPTORA v0.8.18</span>
             <span>{dataMode === 'live' ? 'LIVE-ДАННЫЕ РЫНКА' : 'QA-ДАТАСЕТ'}</span>
           </div>
         </div>

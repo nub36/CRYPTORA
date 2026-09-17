@@ -77,15 +77,15 @@ export const MarketPage: React.FC = () => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between pb-3 border-b border-white/[0.08] gap-3">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              РЫНОЧНЫЕ КОТИРОВКИ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Рыночные котировки
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
+              <span className="text-[11px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
                 LIVE СПОТ · BINANCE / KUCOIN
               </span>
             ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+              <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 30 АКТИВОВ (QA)
               </span>
             )}
@@ -107,7 +107,7 @@ export const MarketPage: React.FC = () => {
               placeholder="Фильтр по названию или тикеру..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono w-full sm:w-64 min-h-[34px]"
+              className="pl-8 pr-3 py-1.5 bg-[#111a30] border border-white/[0.08] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans w-full sm:w-64 min-h-[34px]"
             />
           </div>
 
@@ -134,7 +134,7 @@ export const MarketPage: React.FC = () => {
       <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left font-sans">
-            <thead className="bg-surface-elevated/80 text-slate-400 font-mono text-[11px] uppercase border-b border-surface-border select-none sticky top-0 z-10">
+            <thead className="bg-surface-elevated/80 text-slate-400 font-sans text-[11px] uppercase border-b border-surface-border select-none sticky top-0 z-10">
               <tr>
                 <th className="py-2.5 px-3 w-10 text-center">★</th>
                 <th
@@ -270,19 +270,19 @@ export const MarketPage: React.FC = () => {
 
                       <td className="py-2.5 px-3 font-sans">
                         <div className="flex items-center space-x-2">
-                          <span className="font-bold font-mono text-white group-hover:text-brand-cyan transition-colors">
+                          <span className="font-bold font-sans text-white group-hover:text-brand-cyan transition-colors">
                             {asset.symbol}
                           </span>
                           <span className="text-slate-400 text-xs hidden sm:inline">
                             {asset.name}
                           </span>
-                          <span className="text-[10px] text-slate-500 uppercase font-mono px-1 py-0.2 bg-slate-800 rounded">
+                          <span className="text-[11px] text-slate-500 uppercase font-sans px-1 py-0.2 bg-slate-800 rounded">
                             {asset.category}
                           </span>
                         </div>
                       </td>
 
-                      <td className="py-2.5 px-3 text-right text-slate-100 font-semibold">
+                      <td className="py-2.5 px-3 text-right text-slate-100 font-semibold font-mono tabular-nums">
                         {formatCurrency(livePrices[asset.symbol] ?? asset.price, {
                           decimals: (livePrices[asset.symbol] ?? asset.price) > 10 ? 2 : 4,
                         })}
@@ -312,11 +312,11 @@ export const MarketPage: React.FC = () => {
                         {formatPercent(asset.change7d)}
                       </td>
 
-                      <td className="py-2.5 px-3 text-right text-slate-300 hidden sm:table-cell">
+                      <td className="py-2.5 px-3 text-right text-slate-300 hidden sm:table-cell font-mono tabular-nums">
                         {formatCurrency(asset.volume24h, { compact: true })}
                       </td>
 
-                      <td className="py-2.5 px-3 text-right text-slate-300">
+                      <td className="py-2.5 px-3 text-right text-slate-300 font-mono tabular-nums">
                         {formatCurrency(asset.marketCap, { compact: true })}
                       </td>
 
@@ -334,7 +334,7 @@ export const MarketPage: React.FC = () => {
         </div>
 
         {/* Footer info in table */}
-        <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-mono">
+        <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-sans">
           <div>Показано: {filteredAssets.length} из {assets.length} активов</div>
           <div
             className={`flex items-center space-x-1 text-[11px] ${

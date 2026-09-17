@@ -88,11 +88,11 @@ export const StrategiesPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <Cpu className="w-5 h-5 text-brand-purple" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ЛАБОРАТОРИЯ СТРАТЕГИЙ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Лаборатория стратегий
             </h1>
             <Badge variant="purple" size="sm">
-              АРХИТЕКТУРНЫЙ ПРОТОТИП
+              Архитектурный прототип
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -101,13 +101,13 @@ export const StrategiesPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded border border-cyan-500/30">
-          СИМУЛЯЦИЯ / БЕЗ ИСПОЛНЕНИЯ ОРДЕРОВ
+          Симуляция / без исполнения ордеров
         </div>
       </div>
 
       {/* Strict Non-Execution Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <ShieldCheck className="w-4 h-4 text-brand-green" />
           <span>CRYPTORA — аналитический терминал: инвариант без исполнения ордеров</span>
         </div>
@@ -120,7 +120,7 @@ export const StrategiesPage: React.FC = () => {
       <StrategyArchivePanel />
 
       {/* Interactive Controls & Parameters */}
-      <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-4 font-mono text-xs">
+      <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-4 font-sans text-xs">
         <div className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2 font-bold text-white uppercase">
             <Sliders className="w-4 h-4 text-brand-cyan" />
@@ -214,7 +214,7 @@ export const StrategiesPage: React.FC = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Чистый результат (PnL)</div>
+              <div className="text-[11px] font-sans text-slate-400">Чистый результат (PnL)</div>
               <div
                 className={`text-lg font-bold font-mono mt-1 ${
                   backtestResult.netProfitUsd >= 0 ? 'text-brand-green' : 'text-rose-400'
@@ -222,58 +222,58 @@ export const StrategiesPage: React.FC = () => {
               >
                 {backtestResult.netProfitUsd >= 0 ? '+' : ''}${backtestResult.netProfitUsd.toLocaleString()}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
+              <div className="text-[11px] text-slate-500 mt-0.5 font-mono tabular-nums">
                 {formatPercent(backtestResult.netProfitPct)} к депозиту
               </div>
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Доля прибыльных</div>
+              <div className="text-[11px] font-sans text-slate-400">Доля прибыльных</div>
               <div className="text-lg font-bold font-mono text-amber-400 mt-1">
                 {backtestResult.winRatePct}%
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
+              <div className="text-[11px] text-slate-500 mt-0.5">
                 {backtestResult.winningTrades} побед / {backtestResult.losingTrades} убытков
               </div>
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Профит-фактор</div>
+              <div className="text-[11px] font-sans text-slate-400">Профит-фактор</div>
               <div className="text-lg font-bold font-mono text-brand-cyan mt-1">
                 {backtestResult.profitFactor}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Валовая прибыль / валовый убыток</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Валовая прибыль / валовый убыток</div>
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Макс. просадка</div>
+              <div className="text-[11px] font-sans text-slate-400">Макс. просадка</div>
               <div className="text-lg font-bold font-mono text-rose-400 mt-1">
                 -{backtestResult.maxDrawdownPct}%
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">От пикового баланса</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">От пикового баланса</div>
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Коэффициент Шарпа</div>
+              <div className="text-[11px] font-sans text-slate-400">Коэффициент Шарпа</div>
               <div className="text-lg font-bold font-mono text-purple-400 mt-1">
                 {backtestResult.sharpeRatio}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Скорректировано на риск</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Скорректировано на риск</div>
             </div>
 
             <div className="bg-surface border border-surface-border rounded-lg p-3">
-              <div className="text-[11px] font-mono text-slate-400">Всего симулировано сделок</div>
+              <div className="text-[11px] font-sans text-slate-400">Всего симулировано сделок</div>
               <div className="text-lg font-bold font-mono text-white mt-1">
                 {backtestResult.totalTrades}
               </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Комиссии учтены</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Комиссии учтены</div>
             </div>
           </div>
 
           {/* Simulated Trade Execution Log */}
-          <div className="bg-surface border border-surface-border rounded-lg p-4 font-mono text-xs space-y-3">
+          <div className="bg-surface border border-surface-border rounded-lg p-4 font-sans text-xs space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-              <span className="font-bold text-white uppercase tracking-wider">
+              <span className="font-bold text-white tracking-wide">
                 Журнал симулированных сделок ({backtestResult.trades.length})
               </span>
               <span className="text-[11px] text-slate-500">
@@ -315,7 +315,7 @@ export const StrategiesPage: React.FC = () => {
                         </td>
                         <td className="py-1.5 px-2">
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
                               trade.exitReason === 'TAKE_PROFIT'
                                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                                 : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'

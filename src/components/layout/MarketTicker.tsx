@@ -59,7 +59,7 @@ export const MarketTicker: React.FC = () => {
             ></span>
           </span>
           <span
-            className={`text-[10px] uppercase tracking-[0.14em] font-mono font-bold ${
+            className={`text-[11px] uppercase tracking-[0.14em] font-sans font-semibold ${
               isLiveMode ? 'text-emerald-400/90' : 'text-amber-300/90'
             }`}
           >
@@ -88,18 +88,18 @@ export const MarketTicker: React.FC = () => {
               <Link
                 key={asset.symbol}
                 to={`/coin/${asset.symbol}`}
-                className="flex items-center space-x-2 px-2 py-0.5 rounded-md hover:bg-white/[0.05] transition-all duration-150 font-mono group border border-transparent hover:border-white/[0.06]"
+                className="flex items-center space-x-2 px-2 py-0.5 rounded-md hover:bg-white/[0.05] transition-all duration-150 font-sans group border border-transparent hover:border-white/[0.06]"
               >
                 <span className="font-extrabold text-[12px] text-white group-hover:text-cyan-300 transition-colors tracking-tight">
                   {asset.symbol}
                 </span>
 
-                <span className="text-slate-200 text-[11px] font-semibold tabular-nums">
+                <span className="text-slate-200 text-[11px] font-semibold tabular-nums font-mono">
                   {formatCurrency(asset.price, { decimals: asset.price > 10 ? 2 : 4 })}
                 </span>
 
                 <span
-                  className={`text-[11px] font-bold tabular-nums flex items-center space-x-0.5 ${
+                  className={`text-[11px] font-bold tabular-nums flex items-center space-x-0.5  font-mono${
                     isPositive ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >

@@ -32,8 +32,8 @@ export const PlanModal: React.FC = () => {
             <Sparkles className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white tracking-tight font-mono">
-              ТАРИФНЫЕ ПЛАНЫ И АНАЛИТИЧЕСКИЙ ДОСТУП
+            <h3 className="text-lg font-bold text-white tracking-tight font-sans">
+              Тарифные планы и аналитический доступ
             </h3>
             <p className="text-xs text-slate-400 font-sans">
               Масштабируемый терминал рыночной информации. CRYPTORA не исполняет ордера и не требует торговых ключей.
@@ -58,21 +58,21 @@ export const PlanModal: React.FC = () => {
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span className="font-mono text-xs uppercase font-bold text-slate-300 flex items-center space-x-1.5">
+                    <span className="font-sans text-xs uppercase font-bold text-slate-300 flex items-center space-x-1.5">
                       {tierKey === 'FREE' && <User className="w-3.5 h-3.5 text-slate-400" />}
                       {tierKey === 'PRO' && <Zap className="w-3.5 h-3.5 text-brand-cyan" />}
                       {tierKey === 'ENTERPRISE' && <Building2 className="w-3.5 h-3.5 text-brand-purple" />}
                       <span>{plan.name}</span>
                     </span>
                     {isCurrent && (
-                      <span className="text-[10px] font-mono text-brand-cyan bg-brand-cyan/15 px-2 py-0.5 rounded border border-brand-cyan/30 font-bold">
+                      <span className="text-[11px] font-sans text-brand-cyan bg-brand-cyan/15 px-2 py-0.5 rounded border border-brand-cyan/30 font-bold">
                         АКТИВЕН
                       </span>
                     )}
                   </div>
 
                   <div className="mb-4">
-                    <div className="flex items-baseline space-x-1 font-mono">
+                    <div className="flex items-baseline space-x-1 font-sans">
                       <span className="text-2xl font-black text-white">
                         ${plan.priceMonthlyUsd}
                       </span>
@@ -84,7 +84,7 @@ export const PlanModal: React.FC = () => {
                   </div>
 
                   <div className="space-y-2 border-t border-surface-border/60 pt-3 mb-6">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                    <span className="text-[11px] font-sans text-slate-400 tracking-wide block">
                       Возможности тарифа:
                     </span>
                     <ul className="space-y-1.5 text-xs font-sans text-slate-300">

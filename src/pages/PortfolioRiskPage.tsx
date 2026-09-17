@@ -67,11 +67,11 @@ export const PortfolioRiskPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <PieChart className="w-5 h-5 text-cyan-400" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ПОРТФЕЛЬНЫЙ РИСК И СТРЕСС-ТЕСТИРОВАНИЕ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Портфельный риск и стресс-тестирование
             </h1>
             <Badge variant="cyan" size="sm">
-              РИСК-АНАЛИТИКА
+              Риск-аналитика
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -80,7 +80,7 @@ export const PortfolioRiskPage: React.FC = () => {
         </div>
 
         {/* Presets */}
-        <div className="flex items-center space-x-1.5 font-mono text-xs overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex items-center space-x-1.5 font-sans text-xs overflow-x-auto pb-1 sm:pb-0">
           <span className="text-slate-400 mr-1 hidden lg:inline font-semibold">Пресеты:</span>
           <button
             onClick={applyPresetConservative}
@@ -105,7 +105,7 @@ export const PortfolioRiskPage: React.FC = () => {
 
       {/* Non-Custodial Invariant Notice */}
       <div className="p-4 bg-[#0a0f1d] border border-white/[0.08] rounded-xl text-xs font-sans text-slate-300 space-y-2 shadow-panel">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span>Без кастоди: аналитическое моделирование риска</span>
         </div>
@@ -116,18 +116,18 @@ export const PortfolioRiskPage: React.FC = () => {
 
       {/* Risk Metrics Dashboard */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Стоимость портфеля</div>
-          <div className="text-2xl font-bold text-white mt-1.5 tabular-nums">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+          <div className="text-[11px] text-slate-400 tracking-wide">Стоимость портфеля</div>
+          <div className="text-2xl font-bold text-white mt-1.5 tabular-nums font-mono">
             ${report.totalValueUsd.toLocaleString()}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Базовая валюта: USD</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Базовая валюта: USD</div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Бета портфеля к BTC</div>
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+          <div className="text-[11px] text-slate-400 tracking-wide">Бета портфеля к BTC</div>
           <div
-            className={`text-2xl font-black mt-1.5 tabular-nums ${
+            className={`text-2xl font-black mt-1.5 tabular-nums  font-mono${
               report.portfolioBeta > 1.2
                 ? 'text-violet-400'
                 : report.portfolioBeta > 0.9
@@ -137,25 +137,25 @@ export const PortfolioRiskPage: React.FC = () => {
           >
             {report.portfolioBeta}x
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Чувствительность к рынку</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Чувствительность к рынку</div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">VaR за 1 день (доверие 95%)</div>
-          <div className="text-2xl font-bold text-rose-400 mt-1.5 tabular-nums">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+          <div className="text-[11px] text-slate-400 tracking-wide">VaR за 1 день (доверие 95%)</div>
+          <div className="text-2xl font-bold text-rose-400 mt-1.5 tabular-nums font-mono">
             -${report.dailyVaR95Usd.toLocaleString()}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
+          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums font-mono">
             -{report.dailyVaR95Pct}% потенциальный риск в сутки
           </div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Концентрация (индекс HHI)</div>
-          <div className="text-2xl font-bold text-amber-400 mt-1.5 tabular-nums">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+          <div className="text-[11px] text-slate-400 tracking-wide">Концентрация (индекс HHI)</div>
+          <div className="text-2xl font-bold text-amber-400 mt-1.5 tabular-nums font-mono">
             {report.hhiConcentrationIndex}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">
+          <div className="text-[11px] text-slate-400 mt-0.5">
             <span
               className={`font-semibold ${
                 report.concentrationRating === 'WELL_DIVERSIFIED'
@@ -172,27 +172,27 @@ export const PortfolioRiskPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-mono shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Годовая волатильность</div>
-          <div className="text-2xl font-bold text-white mt-1.5 tabular-nums">
+        <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-4 font-sans shadow-panel">
+          <div className="text-[11px] text-slate-400 tracking-wide">Годовая волатильность</div>
+          <div className="text-2xl font-bold text-white mt-1.5 tabular-nums font-mono">
             {report.annualizedVolatilityPct}%
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Взвешенная волатильность</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Взвешенная волатильность</div>
         </div>
       </div>
 
       {/* Main Row: Asset Allocator & Weights Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Allocator Form */}
-        <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-mono text-xs">
+        <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-sans text-xs">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center space-x-1.5">
               <Sliders className="w-4 h-4 text-brand-cyan" />
-              <span className="font-bold text-white uppercase tracking-wider">
+              <span className="font-bold text-white tracking-wide">
                 Распределение долей активов
               </span>
             </div>
-            <span className="text-[10px] text-slate-500">Интерактивный ввод</span>
+            <span className="text-[11px] text-slate-500">Интерактивный ввод</span>
           </div>
 
           <div className="space-y-3">
@@ -217,12 +217,12 @@ export const PortfolioRiskPage: React.FC = () => {
         </div>
 
         {/* Weights Breakdown Cards */}
-        <div className="lg:col-span-2 bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-mono text-xs">
+        <div className="lg:col-span-2 bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-sans text-xs">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-            <span className="font-bold text-white uppercase tracking-wider">
+            <span className="font-bold text-white tracking-wide">
               Декомпозиция весов и параметров чувствительности
             </span>
-            <span className="text-[10px] text-slate-500">Взвешенные коэффициенты</span>
+            <span className="text-[11px] text-slate-500">Взвешенные коэффициенты</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -263,11 +263,11 @@ export const PortfolioRiskPage: React.FC = () => {
       </div>
 
       {/* Stress Testing Scenarios Table */}
-      <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-mono text-xs">
+      <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-sans text-xs">
         <div className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2">
             <Zap className="w-4 h-4 text-brand-purple" />
-            <span className="font-bold text-white uppercase tracking-wider">
+            <span className="font-bold text-white tracking-wide">
               Стресс-тестирование портфеля: исторические и макро-шоки
             </span>
           </div>

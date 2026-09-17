@@ -83,11 +83,11 @@ export const ToolsPage: React.FC = () => {
       <div className="pb-3 border-b border-white/[0.08]">
         <div className="flex items-center space-x-2">
           <Wrench className="w-5 h-5 text-cyan-400" />
-          <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-            КАЛЬКУЛЯТОРЫ И РИСК-ИНСТРУМЕНТЫ
+          <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+            Калькуляторы и риск-инструменты
           </h1>
-          <span className="text-[10px] font-mono font-semibold text-emerald-400 bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-            РАБОТАЮЩИЙ РАСЧЕТНЫЙ МОДУЛЬ
+          <span className="text-[11px] font-mono font-semibold text-emerald-400 bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+            Работающий расчетный модуль
           </span>
         </div>
         <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -101,19 +101,19 @@ export const ToolsPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Shield className="w-4 h-4 text-cyan-400" />
-            <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
+            <h2 className="text-sm font-bold font-sans text-white tracking-wide">
               Калькулятор размера позиции
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-sans">
             <div>
               <label className="text-slate-400 block mb-1">Баланс депозита ($)</label>
               <input
                 type="number"
                 value={posAccountBalance}
                 onChange={(e) => setPosAccountBalance(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -124,7 +124,7 @@ export const ToolsPage: React.FC = () => {
                 step="0.1"
                 value={posRiskPercentage}
                 onChange={(e) => setPosRiskPercentage(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -134,7 +134,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={posEntryPrice}
                 onChange={(e) => setPosEntryPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -144,42 +144,42 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={posStopLossPrice}
                 onChange={(e) => setPosStopLossPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
           </div>
 
           {/* Result Box */}
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-mono text-xs">
-            <div className="flex justify-between items-center tabular-nums">
+          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Сумма риска (стоп-лосс, $)</span>
               <span className="font-bold text-rose-400">
                 -{formatCurrency(posResult.riskAmountUsd)}
               </span>
             </div>
 
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Дистанция до стоп-лосса</span>
               <span className="font-semibold text-slate-300">
                 ${posResult.stopLossDistanceUsd.toFixed(2)} ({posResult.stopLossDistancePct.toFixed(2)}%)
               </span>
             </div>
 
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Расчетный объем позиции (USD)</span>
-              <span className="font-bold text-cyan-400 text-sm">
+              <span className="font-bold text-cyan-400 text-sm font-mono tabular-nums">
                 {formatCurrency(posResult.positionUsd)}
               </span>
             </div>
 
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Размер позиции в монетах</span>
               <span className="font-semibold text-slate-300">
                 {posResult.positionUnits.toFixed(4)}
               </span>
             </div>
 
-            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums">
+            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums font-mono">
               <span className="text-slate-400">Рекомендуемое плечо</span>
               <span className="font-black text-amber-400 text-sm">
                 {posResult.recommendedLeverage}x
@@ -192,12 +192,12 @@ export const ToolsPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Calculator className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
+            <h2 className="text-sm font-bold font-sans text-white tracking-wide">
               Калькулятор PnL и ROE
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-sans">
             <div>
               <label className="text-slate-400 block mb-1">Направление</label>
               <div className="flex space-x-2">
@@ -230,7 +230,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlLeverage}
                 onChange={(e) => setPnlLeverage(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -240,7 +240,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlMargin}
                 onChange={(e) => setPnlMargin(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -250,7 +250,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlEntryPrice}
                 onChange={(e) => setPnlEntryPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
 
@@ -260,21 +260,21 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={pnlExitPrice}
                 onChange={(e) => setPnlExitPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 min-h-[38px] tabular-nums font-mono"
               />
             </div>
           </div>
 
           {/* Result Box */}
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-mono text-xs">
-            <div className="flex justify-between items-center tabular-nums">
+          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Номинальный объем позиции</span>
-              <span className="font-semibold text-white">
+              <span className="font-semibold text-white font-mono tabular-nums">
                 {formatCurrency(pnlResult.positionUsd)}
               </span>
             </div>
 
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Движение базовой цены</span>
               <span
                 className={`font-semibold ${
@@ -286,7 +286,7 @@ export const ToolsPage: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Чистый PnL ($)</span>
               <span
                 className={`font-bold text-sm ${
@@ -298,7 +298,7 @@ export const ToolsPage: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums">
+            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums font-mono">
               <span className="text-slate-400">Доходность на маржу (ROE %)</span>
               <span
                 className={`font-black text-sm ${
@@ -318,12 +318,12 @@ export const ToolsPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <Flame className="w-4 h-4 text-rose-400" />
-            <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
+            <h2 className="text-sm font-bold font-sans text-white tracking-wide">
               Цена ликвидации
             </h2>
           </div>
 
-          <div className="space-y-3 text-xs font-mono">
+          <div className="space-y-3 text-xs font-sans">
             <div>
               <label className="text-slate-400 block mb-1">Позиция</label>
               <div className="flex space-x-2">
@@ -356,7 +356,7 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={liqEntryPrice}
                 onChange={(e) => setLiqEntryPrice(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -367,7 +367,7 @@ export const ToolsPage: React.FC = () => {
                   type="number"
                   value={liqLeverage}
                   onChange={(e) => setLiqLeverage(e.target.value)}
-                  className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums"
+                  className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
                 />
               </div>
               <div>
@@ -377,26 +377,26 @@ export const ToolsPage: React.FC = () => {
                   step="0.1"
                   value={liqMmr}
                   onChange={(e) => setLiqMmr(e.target.value)}
-                  className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums"
+                  className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-mono text-xs">
-            <div className="flex justify-between items-center tabular-nums">
+          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Расчетная цена ликвидации</span>
               <span className="font-bold text-rose-400 text-sm">
                 ${liqResult.liquidationPrice.toLocaleString()}
               </span>
             </div>
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Дистанция до ликвидации</span>
               <span className="font-semibold text-amber-400">
                 {liqResult.distancePct}%
               </span>
             </div>
-            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums">
+            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums font-mono">
               <span className="text-slate-400">Цена банкротства (0 маржи)</span>
               <span className="text-slate-300">
                 ${liqResult.bankruptcyPrice.toLocaleString()}
@@ -409,19 +409,19 @@ export const ToolsPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <DollarSign className="w-4 h-4 text-violet-400" />
-            <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
+            <h2 className="text-sm font-bold font-sans text-white tracking-wide">
               Оценка комиссий фандинга
             </h2>
           </div>
 
-          <div className="space-y-3 text-xs font-mono">
+          <div className="space-y-3 text-xs font-sans">
             <div>
               <label className="text-slate-400 block mb-1">Объем позиции ($)</label>
               <input
                 type="number"
                 value={feePosSize}
                 onChange={(e) => setFeePosSize(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -432,7 +432,7 @@ export const ToolsPage: React.FC = () => {
                 step="0.001"
                 value={feeRate8h}
                 onChange={(e) => setFeeRate8h(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -442,25 +442,25 @@ export const ToolsPage: React.FC = () => {
                 type="number"
                 value={feeDays}
                 onChange={(e) => setFeeDays(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
           </div>
 
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-mono text-xs">
-            <div className="flex justify-between items-center tabular-nums">
+          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Начислений фандинга (8h)</span>
               <span className="font-semibold text-white">
                 {feeResult.totalIntervals} сессий
               </span>
             </div>
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Суммарная комиссия ($)</span>
               <span className="font-bold text-violet-400 text-sm">
                 ${feeResult.totalFeeUsd.toLocaleString()}
               </span>
             </div>
-            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums">
+            <div className="flex justify-between items-center pt-2 border-t border-white/[0.06] tabular-nums font-mono">
               <span className="text-slate-400">Годовой эквивалент (APR)</span>
               <span className="font-semibold text-amber-400">
                 {feeResult.annualizedCostPct}% / год
@@ -473,19 +473,19 @@ export const ToolsPage: React.FC = () => {
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-5 space-y-4 shadow-panel">
           <div className="flex items-center space-x-2 pb-2.5 border-b border-white/[0.06]">
             <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
+            <h2 className="text-sm font-bold font-sans text-white tracking-wide">
               Симулятор усреднения (DCA)
             </h2>
           </div>
 
-          <div className="space-y-3 text-xs font-mono">
+          <div className="space-y-3 text-xs font-sans">
             <div>
               <label className="text-slate-400 block mb-1">Сумма регулярной покупки ($)</label>
               <input
                 type="number"
                 value={dcaPeriodic}
                 onChange={(e) => setDcaPeriodic(e.target.value)}
-                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums"
+                className="w-full bg-[#111a30] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cyan-400 min-h-[36px] tabular-nums font-mono"
               />
             </div>
 
@@ -501,20 +501,20 @@ export const ToolsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-mono text-xs">
-            <div className="flex justify-between items-center tabular-nums">
+          <div className="bg-[#070b14] rounded-xl p-4 space-y-2.5 border border-white/[0.06] shadow-inner font-sans text-xs">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Всего инвестировано</span>
               <span className="font-semibold text-white">
                 ${dcaResult.totalInvestedUsd.toLocaleString()}
               </span>
             </div>
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Средняя цена входа</span>
               <span className="font-bold text-cyan-400">
                 ${dcaResult.averageEntryPrice.toLocaleString()}
               </span>
             </div>
-            <div className="flex justify-between items-center tabular-nums">
+            <div className="flex justify-between items-center tabular-nums font-mono">
               <span className="text-slate-400">Оценка портфеля</span>
               <span className="font-semibold text-white">
                 ${dcaResult.currentPortfolioValue.toLocaleString()}

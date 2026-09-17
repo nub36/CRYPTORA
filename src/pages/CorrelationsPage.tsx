@@ -23,11 +23,11 @@ export const CorrelationsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <Grid className="w-5 h-5 text-brand-cyan" />
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              МАТРИЦА КОРРЕЛЯЦИЙ И БЕТА
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Матрица корреляций и бета
             </h1>
             <Badge variant="cyan" size="sm">
-              МАКРО И КРОСС-АКТИВЫ
+              Макро и кросс-активы
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
@@ -36,13 +36,13 @@ export const CorrelationsPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded border border-cyan-500/30">
-          СКОЛЬЗЯЩЕЕ ОКНО 30 ДНЕЙ
+          Скользящее окно 30 дней
         </div>
       </div>
 
       {/* Non-Execution Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-mono font-bold">
+        <div className="flex items-center space-x-2 text-white font-sans font-bold">
           <ShieldCheck className="w-4 h-4 text-brand-green" />
           <span>Аналитическая ценность корреляционного анализа</span>
         </div>
@@ -56,10 +56,10 @@ export const CorrelationsPage: React.FC = () => {
         {/* Correlation Heat Matrix (2 cols on lg) */}
         <div className="lg:col-span-2 bg-surface border border-surface-border rounded-lg p-5 space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-            <span className="font-mono font-bold text-xs uppercase tracking-wider text-white">
+            <span className="font-sans font-bold text-xs tracking-wide text-white">
               Матрица корреляций (Коэффициент Пирсона от -1.00 до +1.00)
             </span>
-            <span className="text-[10px] font-mono text-slate-500">N=30d</span>
+            <span className="text-[11px] font-sans text-slate-500">N=30d</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -95,23 +95,23 @@ export const CorrelationsPage: React.FC = () => {
           </div>
 
           {/* Scale Legend */}
-          <div className="flex items-center justify-between pt-2 border-t border-surface-border text-[11px] font-mono text-slate-400">
+          <div className="flex items-center justify-between pt-2 border-t border-surface-border text-[11px] font-sans text-slate-400">
             <div className="flex items-center space-x-1.5">
               <span>Шкала:</span>
-              <span className="px-1.5 py-0.5 rounded bg-rose-900/70 text-rose-200 text-[10px]">Отрицательная (&lt;-0.4)</span>
-              <span className="px-1.5 py-0.5 rounded bg-surface-elevated text-slate-400 text-[10px]">Нейтральная (~0)</span>
-              <span className="px-1.5 py-0.5 rounded bg-emerald-600/60 text-white text-[10px]">Высокая (&gt;+0.7)</span>
+              <span className="px-1.5 py-0.5 rounded bg-rose-900/70 text-rose-200 text-[11px]">Отрицательная (&lt;-0.4)</span>
+              <span className="px-1.5 py-0.5 rounded bg-surface-elevated text-slate-400 text-[11px]">Нейтральная (~0)</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-600/60 text-white text-[11px]">Высокая (&gt;+0.7)</span>
             </div>
-            <span className="text-[10px] text-slate-500">Обновляется посуточно</span>
+            <span className="text-[11px] text-slate-500">Обновляется посуточно</span>
           </div>
         </div>
 
         {/* Beta Rankings Table (1 col on lg) */}
-        <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-mono text-xs">
+        <div className="bg-surface border border-surface-border rounded-lg p-5 space-y-4 font-sans text-xs">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center space-x-1.5">
               <ArrowUpDown className="w-4 h-4 text-brand-purple" />
-              <span className="font-bold text-white uppercase tracking-wider">
+              <span className="font-bold text-white tracking-wide">
                 Рейтинг чувствительности (Beta к BTC)
               </span>
             </div>
@@ -136,7 +136,7 @@ export const CorrelationsPage: React.FC = () => {
                   <tr key={b.symbol} className="hover:bg-surface-elevated/40">
                     <td className="py-2 px-1">
                       <span className="font-bold text-white">{b.symbol}</span>
-                      <span className="text-[10px] text-slate-500 block">{b.name}</span>
+                      <span className="text-[11px] text-slate-500 block">{b.name}</span>
                     </td>
                     <td className="py-2 px-1 text-center">
                       <span

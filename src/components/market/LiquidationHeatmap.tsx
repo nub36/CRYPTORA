@@ -61,7 +61,7 @@ export const LiquidationHeatmap: React.FC<LiquidationHeatmapProps> = ({ model, u
       <header className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-surface-border">
         <div className="flex items-center space-x-2">
           <Layers className="w-4 h-4 text-cyan-400" />
-          <span className="text-[13px] font-bold uppercase tracking-wider text-white font-mono">
+          <span className="text-[13px] font-bold tracking-wide text-white font-sans">
             Тепловая карта плотности ликвидаций: цена × время
           </span>
         </div>
@@ -83,8 +83,8 @@ export const LiquidationHeatmap: React.FC<LiquidationHeatmapProps> = ({ model, u
               {model.methodNote}{' '}
               <span className="text-slate-400">
                 Максимальная расчетная плотность — вблизи{' '}
-                <strong className="text-slate-200">{formatCurrency(model.peakPrice)}</strong> при текущей
-                метке <strong className="text-slate-200">{formatCurrency(model.referencePrice)}</strong>.
+                <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(model.peakPrice)}</strong> при текущей
+                метке <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(model.referencePrice)}</strong>.
               </span>
             </p>
           </div>
@@ -143,7 +143,7 @@ export const LiquidationHeatmap: React.FC<LiquidationHeatmapProps> = ({ model, u
               return (
                 <span
                   key={`time-${index}`}
-                  className="absolute text-[11px] font-mono text-slate-400 whitespace-nowrap"
+                  className="absolute text-[11px] font-sans text-slate-400 whitespace-nowrap"
                   style={{ left: `${tick.offsetPct}%`, transform: anchor }}
                 >
                   {tick.label}
@@ -153,14 +153,14 @@ export const LiquidationHeatmap: React.FC<LiquidationHeatmapProps> = ({ model, u
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-surface-border">
-            <div className="flex items-center space-x-2 text-[11px] font-mono text-slate-400">
+            <div className="flex items-center space-x-2 text-[11px] font-sans text-slate-400">
               <span>Плотность:</span>
               <span className="w-10 h-2.5 rounded-sm" style={{ background: colorFor(0.15) }} />
               <span className="w-10 h-2.5 rounded-sm" style={{ background: colorFor(0.5) }} />
               <span className="w-10 h-2.5 rounded-sm" style={{ background: colorFor(1) }} />
               <span className="text-slate-500">низкая → высокая</span>
             </div>
-            <div className="text-[11px] font-mono text-slate-400">
+            <div className="text-[11px] font-sans text-slate-400">
               Плечи модели: {model.leverageTiers.map((t) => `${t}x`).join(' · ')} · колонок: {model.columns}
               {busiestRow && (
                 <span className="text-slate-500">

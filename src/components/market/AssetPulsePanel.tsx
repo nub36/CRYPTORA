@@ -37,7 +37,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
         <header className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2">
             <Flame className="w-4 h-4 text-rose-400" />
-            <span className="text-[13px] font-bold uppercase tracking-wider text-white font-mono">
+            <span className="text-[13px] font-bold tracking-wide text-white font-sans">
               Пульс ликвидаций
             </span>
           </div>
@@ -46,29 +46,29 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
 
         {liquidation.totalUsd > 0 ? (
           <>
-            <div className="grid grid-cols-2 gap-2 font-mono">
+            <div className="grid grid-cols-2 gap-2 font-sans">
               <div className="rounded border border-emerald-500/25 bg-emerald-950/20 px-2 py-1.5">
                 <div className="text-[11px] text-emerald-300/90 uppercase tracking-wide">Лонги 24ч</div>
-                <div className="text-base font-bold text-emerald-300 tabular-nums">
+                <div className="text-base font-bold text-emerald-300 tabular-nums font-mono">
                   {formatCurrency(liquidation.longUsd, { compact: true })}
                 </div>
-                <div className="text-[11px] text-slate-400 tabular-nums">
+                <div className="text-[11px] text-slate-400 tabular-nums font-mono">
                   {liquidation.longSharePct}% объема
                 </div>
               </div>
               <div className="rounded border border-rose-500/25 bg-rose-950/20 px-2 py-1.5">
                 <div className="text-[11px] text-rose-300/90 uppercase tracking-wide">Шорты 24ч</div>
-                <div className="text-base font-bold text-rose-300 tabular-nums">
+                <div className="text-base font-bold text-rose-300 tabular-nums font-mono">
                   {formatCurrency(liquidation.shortUsd, { compact: true })}
                 </div>
-                <div className="text-[11px] text-slate-400 tabular-nums">
+                <div className="text-[11px] text-slate-400 tabular-nums font-mono">
                   {liquidation.shortSharePct}% объема
                 </div>
               </div>
             </div>
 
             <div className="space-y-1">
-              <div className="flex justify-between text-[11px] font-mono text-slate-400">
+              <div className="flex justify-between text-[11px] font-sans text-slate-400">
                 <span className="text-emerald-300">Лонги {liquidation.longSharePct}%</span>
                 <span className="text-rose-300">Шорты {liquidation.shortSharePct}%</span>
               </div>
@@ -94,7 +94,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
 
         {liquidation.topEvents.length > 0 && (
           <div className="space-y-1.5">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400 font-mono">
+            <div className="text-[11px] tracking-wide text-slate-400 font-sans">
               Значимые события
             </div>
             {liquidation.topEvents.map((event) => (
@@ -108,7 +108,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
                     {formatTimestamp(event.timestamp)} · {event.exchange}
                   </span>
                 </div>
-                <span className="text-xs font-bold text-white tabular-nums flex-shrink-0">
+                <span className="text-xs font-bold text-white tabular-nums flex-shrink-0 font-mono">
                   {formatCurrency(event.amountUsd, { compact: true })}
                 </span>
               </div>
@@ -118,7 +118,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
 
         <Link
           to="/liquidations"
-          className="inline-flex items-center space-x-1 text-[11px] font-mono text-brand-cyan hover:underline"
+          className="inline-flex items-center space-x-1 text-[11px] font-sans text-brand-cyan hover:underline"
         >
           <span>Карта и поток ликвидаций</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
@@ -130,7 +130,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
         <header className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2">
             <Layers className="w-4 h-4 text-brand-purple" />
-            <span className="text-[13px] font-bold uppercase tracking-wider text-white font-mono">
+            <span className="text-[13px] font-bold tracking-wide text-white font-sans">
               Деривативы
             </span>
           </div>
@@ -140,17 +140,17 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
         </header>
 
         {derivatives ? (
-          <div className="space-y-2 text-xs font-mono">
+          <div className="space-y-2 text-xs font-sans">
             <div className="flex justify-between">
               <span className="text-slate-400">Открытый интерес (OI)</span>
-              <span className="font-bold text-white tabular-nums">
+              <span className="font-bold text-white tabular-nums font-mono">
                 {formatCurrency(derivatives.openInterestUsd, { compact: true })}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">OI Δ за 24ч</span>
               <span
-                className={`font-bold tabular-nums ${
+                className={`font-bold tabular-nums  font-mono${
                   derivatives.openInterestChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'
                 }`}
               >
@@ -160,7 +160,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             <div className="flex justify-between">
               <span className="text-slate-400">Фандинг (8ч)</span>
               <span
-                className={`font-bold tabular-nums ${
+                className={`font-bold tabular-nums  font-mono${
                   derivatives.fundingRate8h >= 0 ? 'text-brand-green' : 'text-brand-red'
                 }`}
               >
@@ -170,7 +170,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Базис</span>
-              <span className="font-bold text-slate-200 tabular-nums">
+              <span className="font-bold text-slate-200 tabular-nums font-mono">
                 {derivatives.basisPct >= 0 ? '+' : ''}
                 {derivatives.basisPct.toFixed(3)}%
               </span>
@@ -184,7 +184,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
 
         <Link
           to="/futures"
-          className="inline-flex items-center space-x-1 text-[11px] font-mono text-brand-cyan hover:underline"
+          className="inline-flex items-center space-x-1 text-[11px] font-sans text-brand-cyan hover:underline"
         >
           <span>Все фьючерсы и фандинг</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
@@ -196,7 +196,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
         <header className="flex items-center justify-between pb-2 border-b border-surface-border">
           <div className="flex items-center space-x-2">
             <Gauge className="w-4 h-4 text-brand-sky" />
-            <span className="text-[13px] font-bold uppercase tracking-wider text-white font-mono">
+            <span className="text-[13px] font-bold tracking-wide text-white font-sans">
               Перекос потока
             </span>
           </div>
@@ -208,7 +208,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             <div className="flex items-baseline justify-between font-mono">
               <span className="text-sm font-bold text-white">{imbalance.label}</span>
               <span
-                className={`text-lg font-black tabular-nums ${
+                className={`text-lg font-black tabular-nums  font-mono${
                   imbalance.score > 0
                     ? 'text-emerald-400'
                     : imbalance.score < 0
@@ -233,22 +233,22 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono text-slate-400">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-sans text-slate-400">
               <span className="flex justify-between">
                 <span>Ликвидации</span>
-                <span className="text-slate-300 tabular-nums">{imbalance.components.liquidation}</span>
+                <span className="text-slate-300 tabular-nums font-mono">{imbalance.components.liquidation}</span>
               </span>
               <span className="flex justify-between">
                 <span>Фандинг</span>
-                <span className="text-slate-300 tabular-nums">{imbalance.components.funding}</span>
+                <span className="text-slate-300 tabular-nums font-mono">{imbalance.components.funding}</span>
               </span>
               <span className="flex justify-between">
                 <span>OI</span>
-                <span className="text-slate-300 tabular-nums">{imbalance.components.openInterest}</span>
+                <span className="text-slate-300 tabular-nums font-mono">{imbalance.components.openInterest}</span>
               </span>
               <span className="flex justify-between">
                 <span>Цена 24ч</span>
-                <span className="text-slate-300 tabular-nums">{imbalance.components.price}</span>
+                <span className="text-slate-300 tabular-nums font-mono">{imbalance.components.price}</span>
               </span>
             </div>
 

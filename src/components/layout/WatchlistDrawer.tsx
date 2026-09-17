@@ -93,7 +93,7 @@ export const WatchlistDrawer: React.FC = () => {
                         </span>
                         <span className="text-xs text-slate-400">{asset.name}</span>
                       </div>
-                      <div className="text-xs text-slate-400 font-mono mt-0.5">
+                      <div className="text-xs text-slate-400 font-sans mt-0.5">
                         Кап: {formatCurrency(asset.marketCap, { compact: true })}
                       </div>
                     </div>
@@ -101,7 +101,7 @@ export const WatchlistDrawer: React.FC = () => {
 
                   <div className="flex items-center space-x-4">
                     <div className="text-right font-mono">
-                      <div className="text-sm font-semibold text-white">
+                      <div className="text-sm font-semibold text-white font-mono tabular-nums">
                         {formatCurrency(asset.price)}
                       </div>
                       <div
@@ -126,7 +126,7 @@ export const WatchlistDrawer: React.FC = () => {
             )}
           </div>
 
-          <div className="pt-4 border-t border-surface-border flex justify-between items-center text-xs text-slate-400 font-mono">
+          <div className="pt-4 border-t border-surface-border flex justify-between items-center text-xs text-slate-400 font-sans">
             <span>Синхронизировано локально</span>
             <Link
               to="/market"

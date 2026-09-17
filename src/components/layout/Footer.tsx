@@ -34,20 +34,20 @@ export const Footer: React.FC = () => {
         {/* Footer Navigation & Columns */}
         <div className="grid grid-cols-2 gap-6 border-t border-white/[0.05] pt-4 text-xs md:grid-cols-4">
           <div>
-            <div className="font-bold text-white font-mono tracking-wider mb-2 flex items-center space-x-1.5">
+            <div className="font-bold text-white font-sans tracking-wider mb-2 flex items-center space-x-1.5">
               <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
               <span>CRYPTORA</span>
             </div>
             <p className="text-slate-400 text-[11px] leading-relaxed">
               Crypto Market Intelligence Terminal. Профессиональная платформа наблюдения за рыночной структурой, открытым интересом, ставками фандинга и аномалиями.
             </p>
-            <div className="mt-3 text-[11px] font-mono text-slate-400">
+            <div className="mt-3 text-[11px] font-sans text-slate-400">
               «Рынок. Данные. Решения.»
             </div>
           </div>
 
           <div>
-            <div className="font-semibold text-slate-200 mb-2 font-mono uppercase text-[11px]">
+            <div className="font-semibold text-slate-200 mb-2 font-sans uppercase text-[11px]">
               Разделы терминала
             </div>
             <ul className="space-y-1.5 text-slate-400">
@@ -67,7 +67,7 @@ export const Footer: React.FC = () => {
           </div>
 
           <div>
-            <div className="font-semibold text-slate-200 mb-2 font-mono uppercase text-[11px]">
+            <div className="font-semibold text-slate-200 mb-2 font-sans uppercase text-[11px]">
               Инструменты и аналитика
             </div>
             <ul className="space-y-1.5 text-slate-400">
@@ -87,7 +87,7 @@ export const Footer: React.FC = () => {
           </div>
 
           <div>
-            <div className="font-semibold text-slate-200 mb-2 font-mono uppercase text-[11px]">
+            <div className="font-semibold text-slate-200 mb-2 font-sans uppercase text-[11px]">
               Архитектура и развитие
             </div>
             <ul className="space-y-1.5 text-slate-400">
@@ -108,9 +108,9 @@ export const Footer: React.FC = () => {
         </div>
 
         {/* Bottom bar */}
-        <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-mono">
+        <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-sans">
           <div>
-            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.17.
+            © 2026 CRYPTORA Terminal. Все права защищены. Рабочая версия v0.8.18.
           </div>
           <div className="mt-2 sm:mt-0 flex items-center space-x-3">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>

@@ -45,7 +45,7 @@ export const AlertsModal: React.FC = () => {
             <h3 className="text-base font-bold text-white tracking-tight">
               Система алертов (превью)
             </h3>
-            <p className="text-xs text-slate-400 font-mono">
+            <p className="text-xs text-slate-400 font-sans">
               Локальные триггеры терминала (прототип)
             </p>
           </div>
@@ -60,13 +60,13 @@ export const AlertsModal: React.FC = () => {
 
         {/* Create Form */}
         <form onSubmit={handleSubmit} className="p-3.5 bg-surface-elevated/70 rounded-md border border-surface-border mb-4 space-y-3">
-          <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+          <div className="text-xs font-semibold text-slate-300 tracking-wide">
             Создать новое условие
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[11px] text-slate-400 font-mono block mb-1">Инструмент</label>
+              <label className="text-[11px] text-slate-400 font-sans block mb-1">Инструмент</label>
               <select
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value)}
@@ -81,7 +81,7 @@ export const AlertsModal: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-[11px] text-slate-400 font-mono block mb-1">Триггер</label>
+              <label className="text-[11px] text-slate-400 font-sans block mb-1">Триггер</label>
               <select
                 value={condition}
                 onChange={(e) => setCondition(e.target.value as any)}
@@ -96,7 +96,7 @@ export const AlertsModal: React.FC = () => {
           </div>
 
           <div>
-            <label className="text-[11px] text-slate-400 font-mono block mb-1">
+            <label className="text-[11px] text-slate-400 font-sans block mb-1">
               Целевое значение / порог
             </label>
             <input
@@ -119,9 +119,9 @@ export const AlertsModal: React.FC = () => {
 
         {/* Existing Alerts List */}
         <div>
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+          <div className="text-xs font-semibold text-slate-400 tracking-wide mb-2 flex items-center justify-between">
             <span>Активные демо-алерты ({alerts.length})</span>
-            <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+            <span className="text-[11px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
               Очередь прототипа
             </span>
           </div>

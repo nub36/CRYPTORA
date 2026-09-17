@@ -66,16 +66,16 @@ export const FuturesPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-lg sm:text-xl font-bold font-mono text-white tracking-wide">
-              ФЬЮЧЕРСЫ И ДЕРИВАТИВЫ
+            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
+              Фьючерсы и деривативы
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[10px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
+              <span className="text-[11px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
                 LIVE-ДЕРИВАТИВЫ · BINANCE FUTURES
               </span>
             ) : (
-              <span className="text-[10px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+              <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 QA-ДАТАСЕТ
               </span>
             )}
@@ -88,7 +88,7 @@ export const FuturesPage: React.FC = () => {
         </div>
 
         {/* Filter Buttons */}
-        <div className="flex items-center space-x-1.5 font-mono text-xs">
+        <div className="flex items-center space-x-1.5 font-sans text-xs">
           <span className="text-slate-400 mr-1.5 hidden sm:inline font-semibold">Фандинг:</span>
           <button
             onClick={() => setFilterFunding('all')}
@@ -124,42 +124,42 @@ export const FuturesPage: React.FC = () => {
       </div>
 
       {/* Aggregate Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-sans">
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Суммарный Открытый Интерес (OI)</div>
-          <div className="text-xl font-bold text-white mt-1 tabular-nums">
+          <div className="text-[11px] text-slate-400 tracking-wide">Суммарный Открытый Интерес (OI)</div>
+          <div className="text-xl font-bold text-white mt-1 tabular-nums font-mono">
             {formatCurrency(overview.totalOpenInterestUsd, { compact: true })}
           </div>
-          <div className="text-[10px] text-emerald-400 mt-0.5 font-semibold">25 ключевых перп-контрактов</div>
+          <div className="text-[11px] text-emerald-400 mt-0.5 font-semibold">25 ключевых перп-контрактов</div>
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Суточный объем деривативов</div>
-          <div className="text-xl font-bold text-white mt-1 tabular-nums">
+          <div className="text-[11px] text-slate-400 tracking-wide">Суточный объем деривативов</div>
+          <div className="text-xl font-bold text-white mt-1 tabular-nums font-mono">
             {formatCurrency(overview.totalVolume24hUsd, { compact: true })}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Публичные данные Binance Futures</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Публичные данные Binance Futures</div>
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Средний фандинг (8h / APR)</div>
+          <div className="text-[11px] text-slate-400 tracking-wide">Средний фандинг (8h / APR)</div>
           <div
-            className={`text-xl font-bold mt-1 tabular-nums ${
+            className={`text-xl font-bold mt-1 tabular-nums  font-mono${
               overview.averageFundingRate8h >= 0 ? 'text-emerald-400' : 'text-rose-400'
             }`}
           >
             {overview.averageFundingRate8h >= 0 ? '+' : ''}
             {overview.averageFundingRate8h.toFixed(4)}%
           </div>
-          <div className="text-[10px] text-slate-300 mt-0.5 tabular-nums">
+          <div className="text-[11px] text-slate-300 mt-0.5 tabular-nums font-mono">
             Годовая ставка: {formatPercent(overview.averageAnnualizedFundingApr)}
           </div>
         </div>
 
         <div className="bg-[#0a0f1d] border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
-          <div className="text-[11px] text-slate-400 uppercase tracking-wider">Рыночный режим (Базис)</div>
+          <div className="text-[11px] text-slate-400 tracking-wide">Рыночный режим (Базис)</div>
           <div
-            className={`text-xl font-bold mt-1 tabular-nums ${
+            className={`text-xl font-bold mt-1 tabular-nums  font-mono${
               overview.marketRegime === 'CONTANGO'
                 ? 'text-cyan-400'
                 : overview.marketRegime === 'BACKWARDATION'
@@ -169,7 +169,7 @@ export const FuturesPage: React.FC = () => {
           >
             {overview.marketRegime}
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
+          <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums font-mono">
             Базис перп/спот: {formatPercent(overview.averageBasisPct)}
           </div>
         </div>
@@ -278,14 +278,14 @@ export const FuturesPage: React.FC = () => {
                           {f.symbol}
                         </span>
                         {!f.isDemo && (
-                          <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-brand-green/20 text-brand-green border border-brand-green/30">
+                          <span className="text-[11px] font-mono px-1 py-0.2 rounded bg-brand-green/20 text-brand-green border border-brand-green/30">
                             LIVE
                           </span>
                         )}
                       </div>
                     </td>
 
-                    <td className="py-2.5 px-3 text-right text-slate-100 font-semibold">
+                    <td className="py-2.5 px-3 text-right text-slate-100 font-semibold font-mono tabular-nums">
                       {formatCurrency(f.markPrice, { decimals: f.markPrice > 10 ? 2 : 4 })}
                     </td>
 
@@ -306,7 +306,7 @@ export const FuturesPage: React.FC = () => {
                       {formatPercent(f.annualizedFundingRate)}
                     </td>
 
-                    <td className="py-2.5 px-3 text-right font-bold text-white">
+                    <td className="py-2.5 px-3 text-right font-bold text-white font-mono tabular-nums">
                       {formatCurrency(f.openInterest, { compact: true })}
                     </td>
 
@@ -326,7 +326,7 @@ export const FuturesPage: React.FC = () => {
                       {formatPercent(f.openInterestChange24h)}
                     </td>
 
-                    <td className="py-2.5 px-3 text-right text-slate-300 hidden sm:table-cell">
+                    <td className="py-2.5 px-3 text-right text-slate-300 hidden sm:table-cell font-mono tabular-nums">
                       {formatCurrency(f.futuresVolume24h, { compact: true })}
                     </td>
 
@@ -338,7 +338,7 @@ export const FuturesPage: React.FC = () => {
                       {formatPercent(f.basisPct)}
                     </td>
 
-                    <td className="py-2.5 px-3 text-right text-rose-400 hidden md:table-cell">
+                    <td className="py-2.5 px-3 text-right text-rose-400 hidden md:table-cell font-mono tabular-nums">
                       {formatCurrency(f.shortLiquidations24h, { compact: true })}
                     </td>
                   </tr>
