@@ -15,6 +15,8 @@ export const LIQUIDATION_SOURCE_LABELS: Record<LiquidationSourceId, string> = {
 const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
 const TIMELINE_BUCKETS = 8;
 const BUCKET_MS = WINDOW_24H_MS / TIMELINE_BUCKETS;
+const STORAGE_KEY = 'cryptora_liq_events';
+const OBS_STORAGE_KEY = 'cryptora_liq_observation';
 
 export interface EstimatedLiquidationCluster {
   leverageTier: number;
@@ -55,22 +57,69 @@ export class LiquidationPipeline {
   /** Достигнуто ли полное 24h окно. */
   private hasFullWindow = false;
 
+  constructor(restoreFromStorage = false) {
+    if (restoreFromStorage) {
+      this._restoreFromStorage();
+      this._restoreObservationMeta();
+    }
+  }
+
   public static getInstance(): LiquidationPipeline {
     if (!LiquidationPipeline.instance) {
-      LiquidationPipeline.instance = new LiquidationPipeline();
+      LiquidationPipeline.instance = new LiquidationPipeline(true);
     }
     return LiquidationPipeline.instance;
   }
 
   /** Только для тестов: сброс singleton-состояния. */
   public static resetInstance(): void {
+    try { sessionStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(OBS_STORAGE_KEY); } catch { /* SSR */ }
     LiquidationPipeline.instance = null;
+  }
+
+  private _restoreFromStorage(): void {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const now = Date.now();
+      for (const e of parsed) {
+        if (e && typeof e.id === 'string' && typeof e.timestamp === 'string') {
+          const ts = Date.parse(e.timestamp);
+          if (Number.isFinite(ts) && ts >= now - WINDOW_24H_MS) {
+            this.events.push(e as LiquidationEvent);
+          }
+        }
+      }
+    } catch { /* SSR or corrupt */ }
+  }
+
+  private persistToStorage(): void {
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.events.slice(0, 100))); } catch { /* full */ }
+  }
+
+  private _restoreObservationMeta(): void {
+    try {
+      const raw = sessionStorage.getItem(OBS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.startedAt === 'number') {
+        this.observationStartedAt = parsed.startedAt;
+        this.hasFullWindow = parsed.hasFullWindow === true;
+      }
+    } catch { /* corrupt */ }
+  }
+
+  private persistObservationMeta(): void {
+    try { sessionStorage.setItem(OBS_STORAGE_KEY, JSON.stringify({ startedAt: this.observationStartedAt, hasFullWindow: this.hasFullWindow })); } catch { /* full */ }
   }
 
   /** Начать наблюдение: вызывается при первой подписке на поток. */
   public startObservation(): void {
     if (this.observationStartedAt === null) {
       this.observationStartedAt = Date.now();
+      this.persistObservationMeta();
     }
   }
 
@@ -92,9 +141,9 @@ export class LiquidationPipeline {
   public setStreamState(state: LiquidationStreamState, source: LiquidationSourceId = 'binance'): void {
     this.streamStates[source] = state;
     this.legacyStreamState = state;
-    // Start observation when any stream connects
     if (state === 'connected' && this.observationStartedAt === null) {
       this.observationStartedAt = Date.now();
+      this.persistObservationMeta();
     }
   }
 
@@ -279,13 +328,13 @@ export class LiquidationPipeline {
   }
 
   public recordEvent(event: LiquidationEvent): void {
-    // Идемпотентность: повторный кадр (переподключение, snapshot) не удваивает агрегаты.
     if (this.events.some((e) => e.id === event.id)) return;
     this.events.unshift(event);
     if (this.events.length > this.maxStoredEvents) {
       this.events.length = this.maxStoredEvents;
     }
     this.pruneExpired();
+    this.persistToStorage();
   }
 
   private pruneExpired(now = Date.now()): void {

@@ -160,7 +160,7 @@ export const FuturesPage: React.FC = () => {
         <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
           <div className="text-[11px] text-slate-400 tracking-wide">Рыночный режим (Базис)</div>
           <div
-            className={`text-xl font-bold mt-1 tabular-nums  font-mono${
+            className={`text-xl font-bold mt-1 tabular-nums font-mono ${
               overview.marketRegime === 'CONTANGO'
                 ? 'text-cyan-400'
                 : overview.marketRegime === 'BACKWARDATION'
@@ -168,7 +168,7 @@ export const FuturesPage: React.FC = () => {
                 : 'text-slate-200'
             }`}
           >
-            {overview.marketRegime}
+            {overview.marketRegime === 'CONTANGO' ? 'Контанго' : overview.marketRegime === 'BACKWARDATION' ? 'Бэквордация' : overview.marketRegime}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums font-mono">
             Базис перп/спот: {formatPercent(overview.averageBasisPct)}

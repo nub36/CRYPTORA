@@ -286,8 +286,8 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(
       screen.getByText(/ФАКТИЧЕСКАЯ ЛИКВИДАЦИЯ ≠ РАСЧЁТНЫЙ УРОВЕНЬ/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Ликвидировано лонгов \(24ч\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ликвидировано шортов \(24ч\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ликвидировано лонгов/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ликвидировано шортов/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Журнал событий ликвидаций QA-датасета/i)
     ).toBeInTheDocument();

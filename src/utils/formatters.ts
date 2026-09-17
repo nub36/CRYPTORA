@@ -103,3 +103,17 @@ export function formatTimestamp(isoString: string): string {
     return isoString;
   }
 }
+
+/** Format milliseconds as human-readable duration: "42 мин", "2 ч 15 мин", "1 д 5 ч". */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '0 мин';
+  const totalMin = Math.floor(ms / 60_000);
+  if (totalMin < 1) return '< 1 мин';
+  if (totalMin < 60) return `${totalMin} мин`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h < 24) return m > 0 ? `${h} ч ${m} мин` : `${h} ч`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return rh > 0 ? `${d} д ${rh} ч` : `${d} д`;
+}

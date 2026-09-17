@@ -142,6 +142,13 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       throw new Error('Live market data unavailable from both Binance and KuCoin gateways');
     }
 
+    // P11: Log missing assets for diagnostics
+    if (results.length < canonicalList.length) {
+      const found = new Set(results.map((r) => r.symbol));
+      const missing = canonicalList.filter((a) => !found.has(a.symbol));
+      console.warn(`[P11] ${missing.length} asset(s) missing from live data:`, missing.map((a) => `${a.symbol} (${a.binanceSymbol} / ${a.kucoinSymbol})`));
+    }
+
     // Anomaly engine feed
     if (this.anomalyEngine) {
       for (const item of results) {

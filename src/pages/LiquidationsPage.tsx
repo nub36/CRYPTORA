@@ -3,7 +3,7 @@ import { useMarketData } from '@/context/MarketDataContext';
 import { LiquidationPipeline, LIQUIDATION_SOURCE_LABELS, type LiquidationSourceId, type LiquidationStreamState } from '@/services/liquidations/LiquidationPipeline';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { LiquidationData } from '@/types/market';
-import { formatCurrency, formatTimestamp } from '@/utils/formatters';
+import { formatCurrency, formatTimestamp, formatDuration } from '@/utils/formatters';
 import { sideLabel } from '@/utils/labels';
 import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
 import { LiquidationHeatmap } from '@/components/market/LiquidationHeatmap';
@@ -166,8 +166,13 @@ export const LiquidationsPage: React.FC = () => {
         </div>
 
         <div className="text-xs text-slate-400 font-sans">
-          Всего ликвидировано за 24ч:{' '}
-          <strong className="text-white font-mono tabular-nums">{formatCurrency(data.total24h, { compact: true })}</strong>
+          {data.hasFullObservationWindow ? (
+            <>Всего ликвидировано за 24ч:{' '}<strong className="text-white font-mono tabular-nums">{formatCurrency(data.total24h, { compact: true })}</strong></>
+          ) : data.observationDurationMs > 0 ? (
+            <>С момента подключения:{' '}<strong className="text-white font-mono tabular-nums">{formatCurrency(data.total24h, { compact: true })}</strong>{' '}<span className="text-slate-500">· Наблюдение: {formatDuration(data.observationDurationMs)}</span></>
+          ) : (
+            <>Всего ликвидировано:{' '}<strong className="text-white font-mono tabular-nums">{formatCurrency(data.total24h, { compact: true })}</strong></>
+          )}
         </div>
       </div>
 
@@ -194,7 +199,7 @@ export const LiquidationsPage: React.FC = () => {
       {/* Aggregate Long/Short Ratio Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-surface border border-white/[0.08] rounded-xl p-4 shadow-panel">
-          <div className="text-xs text-slate-400 tracking-wide">Ликвидировано лонгов (24ч)</div>
+          <div className="text-xs text-slate-400 tracking-wide">Ликвидировано лонгов{data.hasFullObservationWindow ? ' (24ч)' : data.observationDurationMs > 0 ? ' (наблюдение)' : ''}</div>
           <div className="text-2xl font-black text-emerald-400 mt-1 tabular-nums font-mono">
             {formatCurrency(data.totalLong24h, { compact: true })}
           </div>
@@ -204,7 +209,7 @@ export const LiquidationsPage: React.FC = () => {
         </div>
 
         <div className="bg-surface border border-white/[0.08] rounded-xl p-4 shadow-panel">
-          <div className="text-xs text-slate-400 tracking-wide">Ликвидировано шортов (24ч)</div>
+          <div className="text-xs text-slate-400 tracking-wide">Ликвидировано шортов{data.hasFullObservationWindow ? ' (24ч)' : data.observationDurationMs > 0 ? ' (наблюдение)' : ''}</div>
           <div className="text-2xl font-black text-rose-400 mt-1 tabular-nums font-mono">
             {formatCurrency(data.totalShort24h, { compact: true })}
           </div>
@@ -312,8 +317,13 @@ export const LiquidationsPage: React.FC = () => {
         <div className="lg:col-span-4 space-y-4">
           {/* Exchange Breakdown */}
           <div className="bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
-            <div className="text-xs font-bold text-white tracking-wide pb-2 border-b border-white/[0.06]">
-              Распределение по биржам
+            <div className="text-xs font-bold text-white tracking-wide pb-2 border-b border-white/[0.06] flex items-center justify-between">
+              <span>Распределение по биржам</span>
+              {data.dataStatus !== 'DEMO' && (
+                <span className="text-[11px] font-mono text-slate-400">
+                  {connectedSources.length}/3 потоков
+                </span>
+              )}
             </div>
             {data.dataStatus !== 'DEMO' && (
               <ul className="flex flex-wrap gap-1.5 text-[11px] font-sans" aria-label="Состояние потоков ликвидаций по биржам">

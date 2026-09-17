@@ -5,6 +5,7 @@ import { AssetSummary, AssetCategory } from '@/types/market';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { sortData, SortConfig } from '@/utils/sorting';
 import { Sparkline } from '@/components/common/Sparkline';
+import { CoinIcon } from '@/components/common/CoinIcon';
 import { Star, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -270,6 +271,7 @@ export const MarketPage: React.FC = () => {
 
                       <td className="py-2.5 px-3 font-sans">
                         <div className="flex items-center space-x-2">
+                          <CoinIcon symbol={asset.symbol} size={22} />
                           <span className="font-bold font-sans text-white group-hover:text-brand-cyan transition-colors">
                             {asset.symbol}
                           </span>
@@ -335,7 +337,7 @@ export const MarketPage: React.FC = () => {
 
         {/* Footer info in table */}
         <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-sans">
-          <div>Показано: {filteredAssets.length} из {assets.length} активов</div>
+          <div>Показано: {filteredAssets.length} из {assets.length} активов{assets.length < 25 ? ` (из канонических 25)` : ''}</div>
           <div
             className={`flex items-center space-x-1 text-[11px] ${
               dataMode === 'live' ? (sourceUnavailable ? 'text-rose-400/90' : 'text-brand-green/90') : 'text-amber-400/90'
