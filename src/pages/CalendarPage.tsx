@@ -126,7 +126,7 @@ export const CalendarPage: React.FC = () => {
             </button>
           ))}
 
-          <span className="text-slate-600 mx-1">|</span>
+          <span aria-hidden className="text-slate-600 mx-1">|</span>
 
           <span className="text-slate-400">Категория:</span>
           {(['ALL', 'CENTRAL_BANK', 'MACRO_ECONOMICS', 'CRYPTO_CATALYST', 'TOKEN_UNLOCK'] as const).map(

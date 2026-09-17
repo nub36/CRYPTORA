@@ -276,7 +276,7 @@ export const MarketPage: React.FC = () => {
                           <span className="text-slate-400 text-xs hidden sm:inline">
                             {asset.name}
                           </span>
-                          <span className="text-[11px] text-slate-500 uppercase font-sans px-1 py-0.2 bg-slate-800 rounded">
+                          <span className="text-[11px] text-slate-400 uppercase font-sans px-1 py-0.2 bg-slate-800 rounded">
                             {asset.category}
                           </span>
                         </div>

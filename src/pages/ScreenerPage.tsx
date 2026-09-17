@@ -302,7 +302,7 @@ export const ScreenerPage: React.FC = () => {
 
                       <td className="py-2.5 px-3 text-slate-300 font-sans">
                         {asset.name}
-                        <span className="text-[11px] text-slate-500 uppercase font-sans ml-2 px-1 py-0.2 bg-slate-800 rounded">
+                        <span className="text-[11px] text-slate-400 uppercase font-sans ml-2 px-1 py-0.2 bg-slate-800 rounded">
                           {asset.category}
                         </span>
                       </td>

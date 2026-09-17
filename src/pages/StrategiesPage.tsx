@@ -129,7 +129,7 @@ export const StrategiesPage: React.FC = () => {
           <button
             onClick={handleRunBacktest}
             disabled={isRunning || candles.length === 0}
-            className="px-3 py-1.5 bg-brand-cyan hover:bg-brand-cyan/90 text-surface-bg font-bold rounded flex items-center space-x-1.5 transition-all disabled:opacity-50"
+            className="px-3 py-1.5 bg-brand-cyan hover:bg-brand-cyan/90 text-slate-950 font-bold rounded flex items-center space-x-1.5 transition-all disabled:opacity-50"
           >
             {isRunning ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />

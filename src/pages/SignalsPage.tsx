@@ -113,7 +113,7 @@ export const SignalsPage: React.FC = () => {
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
-        <div className="flex items-center space-x-2 font-sans text-xs">
+        <div className="flex flex-wrap items-center gap-2 font-sans text-xs">
           <Filter className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-400 text-xs">Статус:</span>
           {(['ALL', 'ACTIVE', 'TARGET_REACHED', 'INVALIDATED'] as const).map((tab) => (

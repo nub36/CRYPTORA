@@ -246,7 +246,7 @@ export const CoinDetailPage: React.FC = () => {
               >
                 24h: {formatPercent(asset.change24h)}
               </span>
-              <span className="text-slate-600 text-xs">•</span>
+              <span aria-hidden className="text-slate-600 text-xs">•</span>
               <span
                 className={`text-xs font-semibold ${
                   asset.change1h >= 0 ? 'text-brand-green' : 'text-brand-red'

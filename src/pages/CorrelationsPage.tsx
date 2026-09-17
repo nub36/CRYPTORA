@@ -95,8 +95,8 @@ export const CorrelationsPage: React.FC = () => {
           </div>
 
           {/* Scale Legend */}
-          <div className="flex items-center justify-between pt-2 border-t border-surface-border text-[11px] font-sans text-slate-400">
-            <div className="flex items-center space-x-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-border text-[11px] font-sans text-slate-400">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span>Шкала:</span>
               <span className="px-1.5 py-0.5 rounded bg-rose-900/70 text-rose-200 text-[11px]">Отрицательная (&lt;-0.4)</span>
               <span className="px-1.5 py-0.5 rounded bg-surface-elevated text-slate-400 text-[11px]">Нейтральная (~0)</span>

@@ -26,6 +26,8 @@
 - **Графики:** `CandleChart` читает `--chart-bg/--chart-grid/--chart-text/--chart-border` через `getComputedStyle` и перекрашивается при
   смене темы; цвета свечей/объёма (emerald/rose/sky) фиксированы. Canvas-тепловые карты используют семантические rgba (cyan/amber/rose) на
   фоне `bg-surface`.
+- **Контраст (E, v0.8.21):** `slate-500` = `#7484a0` (DARK) / `#56657c` (LIGHT) — ≥4.5:1 на всех поверхностях; в LIGHT `brand-*` = 700-е
+  оттенки, `slate-950` (текст на заливках) = `--c-on-accent` (белый). Проверка — контраст-аудит в headless Chromium по всем маршрутам.
 - **Запрет:** произвольные hex-фоны `bg-[#…]` в `src/**/*.tsx` (148 вхождений заменены на токены; тест-охрана).
 - **QA:** скриншоты обеих тем 390/1440 на `/`, `/market`, `/liquidations`, `/strategies`, `/tools`, `/coin/BTC` (`screenshots/theme-p4/`, gitignored).
 

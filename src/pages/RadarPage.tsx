@@ -86,7 +86,7 @@ export const RadarPage: React.FC = () => {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center space-x-2 font-sans text-xs">
+        <div className="flex flex-wrap items-center gap-2 font-sans text-xs">
           {/* Type filter */}
           <select
             value={selectedType}
