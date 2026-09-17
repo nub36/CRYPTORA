@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { OnChainService } from '@/services/analytics/OnChainService';
 import { Network, ArrowDownRight, ArrowUpRight, ShieldCheck, Database } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { StaticDatasetNotice } from '@/components/common/StaticDatasetNotice';
 
 export const OnChainPage: React.FC = () => {
   const metrics = useMemo(() => OnChainService.getMacroMetrics(), []);
@@ -30,6 +31,8 @@ export const OnChainPage: React.FC = () => {
           Сетевой слой (макро L1)
         </div>
       </div>
+
+      <StaticDatasetNotice what="Он-чейн метрики и биржевые потоки" source="не запланировано в текущем ROADMAP (нужен провайдер он-чейн данных)" />
 
       {/* Analytical Invariant Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">

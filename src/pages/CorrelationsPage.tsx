@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { CorrelationEngine } from '@/services/analytics/CorrelationEngine';
 import { Grid, ArrowUpDown, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { StaticDatasetNotice } from '@/components/common/StaticDatasetNotice';
 
 export const CorrelationsPage: React.FC = () => {
   const { assets, matrix } = useMemo(() => CorrelationEngine.getMacroCorrelationMatrix(), []);
@@ -36,9 +37,11 @@ export const CorrelationsPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded border border-cyan-500/30">
-          Скользящее окно 30 дней
+          Справочные коэффициенты
         </div>
       </div>
+
+      <StaticDatasetNotice what="Матрица корреляций и бета-ранжирование" source="запланировано (расчёт по фактическим свечам Binance)" />
 
       {/* Non-Execution Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
@@ -59,7 +62,7 @@ export const CorrelationsPage: React.FC = () => {
             <span className="font-sans font-bold text-xs tracking-wide text-white">
               Матрица корреляций (Коэффициент Пирсона от -1.00 до +1.00)
             </span>
-            <span className="text-[11px] font-sans text-slate-500">N=30d</span>
+            <span className="text-[11px] font-sans text-slate-500">Справочный набор</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -102,7 +105,7 @@ export const CorrelationsPage: React.FC = () => {
               <span className="px-1.5 py-0.5 rounded bg-surface-elevated text-slate-400 text-[11px]">Нейтральная (~0)</span>
               <span className="px-1.5 py-0.5 rounded bg-emerald-600/60 text-white text-[11px]">Высокая (&gt;+0.7)</span>
             </div>
-            <span className="text-[11px] text-slate-500">Обновляется посуточно</span>
+            <span className="text-[11px] text-slate-500">Не обновляется автоматически</span>
           </div>
         </div>
 

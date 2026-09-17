@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { StaticDatasetNotice } from '@/components/common/StaticDatasetNotice';
 import { sideLabel } from '@/utils/labels';
 import { SignalsAuditLedger, AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 
@@ -40,6 +41,8 @@ export const SignalsPage: React.FC = () => {
           Не является финансовой рекомендацией
         </div>
       </div>
+
+      <StaticDatasetNotice what="Сетапы в реестре и их итоги — иллюстрация методологии журнала аудита, а не фактический трек-рекорд" source="фактических сетапов нет" />
 
       {/* Transparent Performance Metrics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

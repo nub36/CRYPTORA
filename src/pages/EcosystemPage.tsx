@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { EcosystemService, NetworkEcosystem } from '@/services/analytics/EcosystemService';
 import { Layers, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { StaticDatasetNotice } from '@/components/common/StaticDatasetNotice';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
 
 export const EcosystemPage: React.FC = () => {
@@ -31,6 +32,8 @@ export const EcosystemPage: React.FC = () => {
           L1 & L2 МАСШТАБИРОВАНИЕ
         </div>
       </div>
+
+      <StaticDatasetNotice what="TVL и метрики экосистем" source="не подключён (нужен DeFiLlama или аналог)" />
 
       {/* Non-Execution Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
@@ -74,7 +77,7 @@ export const EcosystemPage: React.FC = () => {
         <div className="bg-surface border border-surface-border rounded-lg p-4 font-sans">
           <div className="text-[11px] text-slate-400">Лидер по пропускной способности</div>
           <div className="text-2xl font-bold text-purple-400 mt-1">Solana</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">1,850 TPS в реальном времени</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">1,850 TPS (справочное значение)</div>
         </div>
       </div>
 

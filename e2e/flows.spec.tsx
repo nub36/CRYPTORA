@@ -467,6 +467,16 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(JSON.parse(window.localStorage.getItem('cryptora_alert_history') ?? '[]').length).toBe(1);
   });
 
+  test('Справочные страницы явно маркированы «СТАТИЧЕСКИЙ НАБОР» и не выдают данные за LIVE', async () => {
+    for (const route of ['/correlations', '/onchain', '/calendar', '/ecosystem', '/signals']) {
+      cleanup();
+      renderApp(route);
+      const notice = document.querySelector('[data-qa="static-dataset-notice"]');
+      expect(notice, route).not.toBeNull();
+      expect(notice!.textContent).toContain('СТАТИЧЕСКИЙ НАБОР');
+    }
+  });
+
   test('Статус источника и WebSocket: только индикация, переключение режима недоступно', async () => {
     window.localStorage.removeItem('cryptora_qa_fixture');
     renderApp('/radar');

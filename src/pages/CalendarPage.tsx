@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { CalendarService, EventCategory, EventImpact } from '@/services/analytics/CalendarService';
 import { Calendar, Clock, ShieldCheck, Filter } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { StaticDatasetNotice } from '@/components/common/StaticDatasetNotice';
 import { impactLabel } from '@/utils/labels';
 
 export const CalendarPage: React.FC = () => {
@@ -39,6 +40,8 @@ export const CalendarPage: React.FC = () => {
           Событийный горизонт: Сентябрь 2026
         </div>
       </div>
+
+      <StaticDatasetNotice what="События экономического календаря" source="не подключён; даты и прогнозы могут быть неактуальны" />
 
       {/* Next Major Catalyst Card */}
       {nextMajor && (
