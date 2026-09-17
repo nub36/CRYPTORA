@@ -12,6 +12,9 @@ import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 import { LiquidationPulse } from '@/services/liquidations/LiquidationPulse';
 import { AssetPulsePanel } from '@/components/market/AssetPulsePanel';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { WorkspaceModule } from '@/components/workspace/WorkspaceModule';
+import { useCoinWorkspaceLayout } from '@/workspace/useCoinWorkspaceLayout';
+import { COIN_WORKSPACE_MODULES, isDefaultOrder } from '@/workspace/layout';
 import { LiquidationData } from '@/types/market';
 import { MemoryTimeSeriesRepository } from '@/services/storage/TimeSeriesRepository';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
@@ -27,11 +30,13 @@ import {
   Cpu,
   Wrench,
   Flame,
+  RotateCcw,
 } from 'lucide-react';
 
 export const CoinDetailPage: React.FC = () => {
   const { symbol } = useParams<{ symbol: string }>();
   const { provider, watchlist, toggleWatchlist, livePrices, subscribeSymbol } = useMarketData();
+  const workspace = useCoinWorkspaceLayout();
 
   const [asset, setAsset] = useState<AssetDetail | null>(null);
   const [candles, setCandles] = useState<OHLCV[]>([]);
@@ -291,6 +296,36 @@ export const CoinDetailPage: React.FC = () => {
         </Link>
       </div>
 
+      {/* Переставляемая рабочая область (UX-цикл п. 5): порядок модулей хранится в localStorage
+          (схема v1), внутреннее устройство модулей неизменно. */}
+      <div className="flex items-center justify-between gap-2 border-b border-surface-border pb-1.5">
+        <span className="text-[11px] font-sans text-slate-500">
+          Рабочая область: модули можно переставлять (ручка или стрелки ↑/↓ с клавиатуры)
+        </span>
+        <button
+          type="button"
+          onClick={workspace.reset}
+          disabled={isDefaultOrder(workspace.order)}
+          data-qa="workspace-reset"
+          className="flex items-center gap-1 rounded border border-surface-border px-2 py-1 text-[11px] font-sans text-slate-400 hover:bg-white/[0.05] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RotateCcw className="h-3 w-3" />
+          <span>Сбросить раскладку</span>
+        </button>
+      </div>
+
+      {workspace.order.map((moduleId, index) => (
+        <WorkspaceModule
+          key={moduleId}
+          id={moduleId}
+          title={COIN_WORKSPACE_MODULES.find((m) => m.id === moduleId)!.titleRu}
+          index={index}
+          count={workspace.order.length}
+          onMove={workspace.move}
+          onDrop={workspace.dropOn}
+        >
+          {moduleId === 'chart' && (
+            <>
       {/* Analytical Workspace: доминирующий график + снимок деривативов/ликвидаций.
           Двухколоночная раскладка включается от 1280px; ниже Pulse складывается под график. */}
       <div
@@ -335,7 +370,10 @@ export const CoinDetailPage: React.FC = () => {
           <AssetPulsePanel pulse={pulse} />
         </div>
       </div>
-
+            </>
+          )}
+          {moduleId === 'stats' && (
+            <>
       {/* Stats Grid: Market Metrics, Derivatives, Technical Indicators */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Card 1: Key Market Stats */}
@@ -531,7 +569,10 @@ export const CoinDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
-
+            </>
+          )}
+          {moduleId === 'depth' && (
+            <>
       {/* Order Book L2, Trading Pairs & Radar Stream */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Order Book L2 Column */}
@@ -635,6 +676,10 @@ export const CoinDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+            </>
+          )}
+        </WorkspaceModule>
+      ))}
     </div>
   );
 };

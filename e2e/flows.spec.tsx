@@ -170,6 +170,51 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Пары на ведущих биржах \(QA-датасет\)/i)).toBeInTheDocument();
   });
 
+  test('Coin Detail workspace: модули переставляются (кнопки/клавиатура), порядок сохраняется и сбрасывается', async () => {
+    localStorage.removeItem('cryptora_workspace_coin');
+    const { unmount } = renderApp('/coin/ETH');
+    await screen.findByRole('heading', { name: 'Ethereum' });
+
+    const orderIds = () =>
+      Array.from(document.querySelectorAll('[data-workspace-module]')).map((el) => el.getAttribute('data-workspace-module'));
+    expect(orderIds()).toEqual(['chart', 'stats', 'depth']);
+
+    const reset = document.querySelector('[data-qa="workspace-reset"]') as HTMLButtonElement;
+    expect(reset.disabled).toBe(true);
+
+    // Кнопка «ниже» у графика → график на 2-е место; запись в localStorage с версией схемы.
+    fireEvent.click(screen.getByRole('button', { name: /Модуль «График и пульс актива» ниже/i }));
+    expect(orderIds()).toEqual(['stats', 'chart', 'depth']);
+    expect(JSON.parse(localStorage.getItem('cryptora_workspace_coin') as string)).toEqual({
+      schemaVersion: 1,
+      order: ['stats', 'chart', 'depth'],
+    });
+    expect(reset.disabled).toBe(false);
+
+    // Клавиатурная альтернатива: ArrowDown на ручке модуля «Стакан…» на последнем месте — без изменений; ArrowUp — поднимает.
+    const depthHandle = document.querySelector('[data-qa="workspace-handle-depth"]') as HTMLElement;
+    fireEvent.keyDown(depthHandle, { key: 'ArrowDown' });
+    expect(orderIds()).toEqual(['stats', 'chart', 'depth']);
+    fireEvent.keyDown(depthHandle, { key: 'ArrowUp' });
+    expect(orderIds()).toEqual(['stats', 'depth', 'chart']);
+
+    // Инварианты модулей сохранены после перестановки: график 72/28 и провенанс.
+    const workspace = document.querySelector('[data-qa="coin-workspace"]') as HTMLElement;
+    expect(workspace.className).toContain('xl:grid-cols-[72fr_28fr]');
+    expect(within(document.querySelector('[data-qa="coin-chart-card"]') as HTMLElement).getByText(/QA-СВЕЧИ/i)).toBeInTheDocument();
+
+    // Перезагрузка страницы восстанавливает сохранённый порядок.
+    unmount();
+    renderApp('/coin/ETH');
+    await screen.findByRole('heading', { name: 'Ethereum' });
+    expect(orderIds()).toEqual(['stats', 'depth', 'chart']);
+
+    // Сброс → раскладка по умолчанию, ключ удалён.
+    fireEvent.click(document.querySelector('[data-qa="workspace-reset"]') as HTMLButtonElement);
+    expect(orderIds()).toEqual(['chart', 'stats', 'depth']);
+    expect(localStorage.getItem('cryptora_workspace_coin')).toBeNull();
+  });
+
   test('Coin Detail workspace: график слева, Derivatives/Liquidation Pulse справа, переходы сохранены', async () => {
     renderApp('/coin/ETH');
 
