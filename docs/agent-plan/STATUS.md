@@ -523,6 +523,11 @@ DEMO-режима не должно быть вообще. Оставались:
 
 ## 3. Результаты тестов (все гейты пройдены)
 
+- **Актуально на v0.8.17 (`684aa05`):** typecheck 0 ошибок; unit **34 файла / 333 теста** (из них `tests/unit/strategyArchive/*` —
+  реестр 13/13, immutability, sha256-пины, детерминизм/digest, look-ahead guard, комиссии, паритет перезапусков, presentation-модель);
+  build чистый; e2e **55** (в т.ч. `/strategies`: 13 карточек, verdict ≠ reproducibility, фильтры, предупреждение V2.8 vs V3.0);
+  screenshot QA архива 390/768/1024/1280/1366/1440/1920 — overflow 0px (`screenshots/archive-c8/`).
+- Ниже — исторический срез v0.8.8 (сохранён как справка):
 - **Typecheck (`npm run typecheck`):** PASSED — 0 ошибок TypeScript (`tsc --noEmit`).
 - **Unit Tests (`npm test`):** PASSED — 24 тестовых файла, **145 тестов** (включая 6 новых контрактных
   тестов модели навигации `tests/unit/navigation.test.ts`).
@@ -554,7 +559,8 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 4. Версия, статус развертывания и Git состояние
-- **Версия:** `0.8.8` (corrective: production = только LIVE; поверх v0.8.7 — русификация). Обновлены `package.json`,
+- **Версия:** `0.8.17` (архив стратегий C1–C8 завершён). Историческая запись v0.8.8 ниже сохранена:
+- **Версия (v0.8.8):** corrective: production = только LIVE; поверх v0.8.7 — русификация. Обновлены `package.json`,
   `package-lock.json`, health-эндпоинт `server/productionServer.js`, футер, бейдж версии в шапке, документация.
 - **Ветка:** `arena/01a0aaeb-cryptora` (продолжение `arena/01a0a997-cryptora` от `92b30ed / v0.8.6`).
 - **Инвариант концепции:** `CRYPTORA DOES NOT EXECUTE TRADES`.
@@ -597,7 +603,10 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 6. Следующий шаг
-- **STOP.** Приёмка владельцем пункта A (production = только LIVE, v0.8.8) и пункта 2 (русификация, v0.8.7);
+- **STOP (v0.8.17).** Порт Strategy Research Archive завершён (C1–C8, коммиты `13548c5 17501b0 9a72ed5 af8d1a0 2bb8ab7 bf63be7 53f1afa 684aa05`).
+  Ожидается приёмка владельцем. Открытые решения владельца: (а) перезапуск V2.1a/V2.1b на машине ≥ 8 GB (`reproduce.mjs`, §4b
+  `docs/STRATEGY_ARCHIVE.md`) — только тогда статус может стать REPRODUCED; (б) обновление VPS (там v0.8.4 `6a01ce1`) — по отдельной команде.
+- Ранее открытое: приёмка владельцем пункта A (production = только LIVE, v0.8.8) и пункта 2 (русификация, v0.8.7);
   production-oriented screenshot QA на VPS/CI (`node scripts/screenshot-qa.mjs --tag=v088 ...`);
   обновление статики VPS (сейчас там v0.8.4 `6a01ce1`) — по отдельной команде.
 - **К пункту B (DARK / LIGHT / SYSTEM) не переходить.** Далее по порядку владельца: п. 3 типографика.
@@ -605,6 +614,8 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 7. Commit hash и статус Git remote
+- **Актуально:** HEAD `684aa05` (v0.8.17, C8) ← `53f1afa` (C7) ← `bf63be7` (C6) ← `2bb8ab7` (C5) ← `af8d1a0` (C4) ← `9a72ed5` (C3)
+  ← `17501b0` (C2) ← `13548c5` (C1) ← `45f9ff8` (шаг 1) ← `…` v0.8.8. Всё отправлено в `origin/arena/01a0aaeb-cryptora`.
 - **База:** `ee41857` (v0.8.5) → `92b30ed` (v0.8.6) → `1d0bd95` — `feat(i18n): системная русификация интерфейса (v0.8.7)`.
 - **Текущий corrective-коммит:** `fix(prod): production = только LIVE, без пользовательского DEMO (v0.8.8)` —
   хэш см. `git log --oneline -1`.
