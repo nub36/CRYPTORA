@@ -8,7 +8,8 @@ import { Badge } from '@/components/common/Badge';
 import { Link } from 'react-router-dom';
 import { Radio, ArrowUpRight, Sparkles, AlertCircle } from 'lucide-react';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
-import { AiExplanationEngine, AiMarketBriefing } from '@/services/ai/AiExplanationEngine';
+import { AiExplanationEngine, AiMarketBriefing, MarketContextFact } from '@/services/ai/AiExplanationEngine';
+import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 
 export const RadarPage: React.FC = () => {
   const { provider, dataMode } = useMarketData();
@@ -41,20 +42,54 @@ export const RadarPage: React.FC = () => {
     return true;
   });
 
-  // Synthesize AI Market Briefing for top anomaly asset
-  const aiBriefing = useMemo<AiMarketBriefing | null>(() => {
-    if (events.length === 0) return null;
-    const topEvent = events.find((e) => e.severity === 'HIGH') || events[0];
-    return AiExplanationEngine.generateBriefing({
-      symbol: topEvent.symbol,
-      price: topEvent.symbol === 'BTC' ? 64500 : topEvent.symbol === 'ETH' ? 3480 : 158,
-      change24h: 3.2,
-      fundingRate8h: 0.012,
-      openInterestDelta24h: 6.8,
-      rsi14: 64.5,
-      anomalies: [topEvent],
-    });
-  }, [events]);
+  // Брифинг по активу главной аномалии — ТОЛЬКО из фактов провайдера (цена/Δ24ч/фандинг/Δ OI/RSI по свечам);
+  // если факт недоступен, поле опускается, а не подставляется (docs/AI.md).
+  const topEvent = useMemo(() => (events.length ? events.find((e) => e.severity === 'HIGH') || events[0] : null), [events]);
+  const [briefingFacts, setBriefingFacts] = useState<MarketContextFact | null>(null);
+  useEffect(() => {
+    if (!topEvent) {
+      setBriefingFacts(null);
+      return;
+    }
+    let active = true;
+    const symbol = topEvent.symbol;
+    (async () => {
+      const [detail, futures, candles] = await Promise.allSettled([
+        provider.getAssetDetail(symbol),
+        provider.getFuturesList(),
+        provider.getCandles(symbol, '1h'),
+      ]);
+      const d = detail.status === 'fulfilled' ? detail.value : null;
+      if (!d) {
+        if (active) setBriefingFacts(null);
+        return;
+      }
+      const fut =
+        futures.status === 'fulfilled' ? futures.value.find((f) => f.symbol.split('/')[0] === symbol) : undefined;
+      const rsi =
+        candles.status === 'fulfilled' && candles.value.length >= 15
+          ? IndicatorEngine.computeCompleteIndicators(candles.value).rsi14
+          : undefined;
+      if (!active) return;
+      setBriefingFacts({
+        symbol,
+        price: d.price,
+        change24h: d.change24h,
+        fundingRate8h: fut?.fundingRate,
+        openInterestDelta24h: fut?.openInterestChange24h,
+        openInterestDeltaSource: fut?.openInterestChangeSource,
+        rsi14: rsi,
+        anomalies: [topEvent],
+      });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [provider, topEvent]);
+  const aiBriefing = useMemo<AiMarketBriefing | null>(
+    () => (briefingFacts ? AiExplanationEngine.generateBriefing(briefingFacts) : null),
+    [briefingFacts],
+  );
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
@@ -122,10 +157,10 @@ export const RadarPage: React.FC = () => {
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center space-x-2 font-bold text-white">
               <Sparkles className="w-4 h-4 text-brand-cyan" />
-              <span>БРИФИНГ AI-АНАЛИТИКА: {aiBriefing.headline}</span>
+              <span>Аналитический брифинг: {aiBriefing.headline}</span>
             </div>
             <span className="text-[11px] text-slate-400 bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
-              Основано на детерминированных фактах
+              Детерминированные правила по фактам источника · без LLM
             </span>
           </div>
 

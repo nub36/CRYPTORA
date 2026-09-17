@@ -1,11 +1,19 @@
 import { RadarEvent } from '@/types/market';
 
+/**
+ * Факты для брифинга. Каждое поле ОБЯЗАНО приходить из детерминированного движка / источника (docs/AI.md);
+ * отсутствующее значение опускается, а не подставляется.
+ */
 export interface MarketContextFact {
   symbol: string;
   price: number;
   change24h: number;
+  /** Ставка фандинга за 8ч в процентах (0.01 = 0.01%), как в FuturesAsset.fundingRate. */
   fundingRate8h?: number;
+  /** Δ OI за 24ч, %. */
   openInterestDelta24h?: number;
+  /** Происхождение Δ OI; ESTIMATED явно оговаривается в тексте. */
+  openInterestDeltaSource?: 'ACTUAL' | 'ESTIMATED';
   rsi14?: number;
   anomalies?: RadarEvent[];
 }
@@ -48,24 +56,25 @@ export class AiExplanationEngine {
     if (context.fundingRate8h !== undefined) {
       if (context.fundingRate8h < -0.01) {
         drivers.push(
-          `Отрицательная ставка финансирования (${(context.fundingRate8h * 100).toFixed(4)}%) свидетельствует о преобладании шорт-позиций (повышенный риск шорт-сквиза).`
+          `Отрицательная ставка финансирования (${context.fundingRate8h.toFixed(4)}% / 8ч) свидетельствует о преобладании шорт-позиций (повышенный риск шорт-сквиза).`
         );
       } else if (context.fundingRate8h > 0.03) {
         risks.push(
-          `Повышенная ставка фандинга (${(context.fundingRate8h * 100).toFixed(4)}%) отражает агрессивную перегрузку рынка длинными позициями.`
+          `Повышенная ставка фандинга (${context.fundingRate8h.toFixed(4)}% / 8ч) отражает перегрузку рынка длинными позициями.`
         );
       }
     }
 
     // 3. Evaluate Open Interest Delta
     if (context.openInterestDelta24h !== undefined) {
+      const est = context.openInterestDeltaSource === 'ESTIMATED' ? ' (оценка, не фактический ряд OI)' : '';
       if (context.openInterestDelta24h > 5) {
         drivers.push(
-          `Суточный приток открытого интереса (+${context.openInterestDelta24h.toFixed(1)}%) подтверждает участие свежей институциональной ликвидности.`
+          `Суточный приток открытого интереса (+${context.openInterestDelta24h.toFixed(1)}%${est}) указывает на открытие новых деривативных позиций.`
         );
       } else if (context.openInterestDelta24h < -5) {
         risks.push(
-          `Отток открытого интереса (${context.openInterestDelta24h.toFixed(1)}%) указывает на фиксацию и закрытие деривативных позиций.`
+          `Отток открытого интереса (${context.openInterestDelta24h.toFixed(1)}%${est}) указывает на закрытие деривативных позиций.`
         );
       }
     }
@@ -96,7 +105,7 @@ export class AiExplanationEngine {
       keyDrivers: drivers,
       riskObservations: risks,
       disclaimer:
-        'CRYPTORA — аналитический терминал. AI-объяснения основаны исключительно на расчетных показателях и не являются инвестиционной рекомендацией или торговым сигналом.',
+        'CRYPTORA — аналитический терминал. Брифинг сформирован детерминированными правилами из фактических показателей (без LLM) и не является инвестиционной рекомендацией или торговым сигналом.',
       generatedAt: new Date().toISOString(),
     };
   }

@@ -7,7 +7,7 @@ describe('AiExplanationEngine Unit Tests (Context-Grounded Analysis)', () => {
       symbol: 'BTC',
       price: 64200,
       change24h: 3.4,
-      fundingRate8h: 0.045, // elevated funding
+      fundingRate8h: 0.045, // % за 8ч, повышенный
       openInterestDelta24h: 8.2, // institutional inflow
       rsi14: 72.5, // overbought
       anomalies: [
@@ -43,5 +43,19 @@ describe('AiExplanationEngine Unit Tests (Context-Grounded Analysis)', () => {
 
     expect(briefing.keyDrivers.some((d) => d.includes('шорт-сквиз'))).toBe(true);
     expect(briefing.keyDrivers.some((d) => d.includes('перепроданность'))).toBe(true);
+  });
+});
+
+describe('AiExplanationEngine — правило docs/AI.md: ни одной цифры вне переданных фактов', () => {
+  it('все числа в брифинге выводимы из входного контекста; отсутствующие факты не подставляются', () => {
+    const ctx = { symbol: 'SOL', price: 158.4, change24h: -2.35, fundingRate8h: -0.0123, openInterestDelta24h: 7.4, openInterestDeltaSource: 'ESTIMATED' as const };
+    const b = AiExplanationEngine.generateBriefing(ctx);
+    const text = [b.headline, b.explanation, ...b.keyDrivers, ...b.riskObservations].join(' ');
+    expect(text).not.toMatch(/RSI/); // rsi14 не передан — о нём ни слова
+    expect(text).toContain('оценка, не фактический ряд OI');
+    const allowed = new Set(['158.4', '2.35', '0.0123', '7.4', '14', '24', '8']);
+    const nums = Array.from(text.matchAll(/\d+(?:[.,]\d+)?/g), (m) => m[0].replace(',', ''));
+    const foreign = nums.filter((n) => !allowed.has(n) && !allowed.has(n.replace(/^0+(?=\d)/, '')));
+    expect(foreign, `посторонние числа: ${foreign.join(', ')}`).toEqual([]);
   });
 });
