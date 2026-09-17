@@ -4,6 +4,7 @@ import {
   formatPercent,
   formatNumber,
   formatTimestamp,
+  formatDuration,
 } from '@/utils/formatters';
 
 describe('formatCurrency', () => {
@@ -61,5 +62,33 @@ describe('formatTimestamp', () => {
     const formatted = formatTimestamp('2026-09-15T11:45:00Z');
     expect(formatted).toContain('UTC');
     expect(formatted).toContain('11:45:00');
+  });
+});
+
+describe('formatDuration', () => {
+  it('formats sub-minute as < 1 мин', () => {
+    expect(formatDuration(30000)).toBe('< 1 мин');
+  });
+
+  it('formats minutes', () => {
+    expect(formatDuration(42 * 60_000)).toBe('42 мин');
+  });
+
+  it('formats hours and minutes', () => {
+    expect(formatDuration(2 * 3600_000 + 15 * 60_000)).toBe('2 ч 15 мин');
+  });
+
+  it('formats hours without minutes when exact', () => {
+    expect(formatDuration(5 * 3600_000)).toBe('5 ч');
+  });
+
+  it('formats days and hours', () => {
+    expect(formatDuration(25 * 3600_000)).toBe('1 д 1 ч');
+  });
+
+  it('handles zero and negative', () => {
+    expect(formatDuration(0)).toBe('< 1 мин');
+    expect(formatDuration(-1000)).toBe('0 мин');
+    expect(formatDuration(NaN)).toBe('0 мин');
   });
 });

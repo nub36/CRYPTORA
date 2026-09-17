@@ -3,6 +3,7 @@ import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
 import { BinanceSpotAdapter } from '@/services/data/adapters/BinanceSpotAdapter';
 import { KuCoinSpotAdapter } from '@/services/data/adapters/KuCoinSpotAdapter';
 import { AdapterNetworkError } from '@/services/data/adapters/errors';
+import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 
 const SAMPLE_BINANCE_TICKER = {
   symbol: 'BTCUSDT',
@@ -47,6 +48,14 @@ const SAMPLE_KUCOIN_CANDLES = [
   ['1726358400', '63800.0', '64950.0', '65400.0', '63500.0', '980.0', '63000000.0'],
 ];
 
+/** Generate a bulk ticker array where each canonical symbol maps to the sample ticker. */
+function mockBulkTickers(): any[] {
+  return CANONICAL_ASSETS.map((a) => ({
+    ...SAMPLE_BINANCE_TICKER,
+    symbol: a.binanceSymbol,
+  }));
+}
+
 describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => {
   it('identifies as non-demo provider (isDemo: false)', () => {
     const provider = new LiveMarketDataProvider();
@@ -55,6 +64,7 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
 
   it('fetches spot asset list primarily from Binance when available', async () => {
     const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue(mockBulkTickers());
     vi.spyOn(binanceMock, 'fetch24hrTicker').mockResolvedValue(SAMPLE_BINANCE_TICKER as any);
 
     const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock });
@@ -71,6 +81,7 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
 
   it('gracefully falls back to KuCoin when Binance request fails', async () => {
     const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockRejectedValue(new AdapterNetworkError('binance'));
     vi.spyOn(binanceMock, 'fetch24hrTicker').mockRejectedValue(new AdapterNetworkError('binance'));
 
     const kucoinMock = new KuCoinSpotAdapter();
@@ -93,6 +104,7 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
 
   it('throws an explicit error when both Binance and KuCoin gateways fail without faking demo numbers', async () => {
     const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockRejectedValue(new AdapterNetworkError('binance'));
     vi.spyOn(binanceMock, 'fetch24hrTicker').mockRejectedValue(new AdapterNetworkError('binance'));
 
     const kucoinMock = new KuCoinSpotAdapter();
@@ -140,6 +152,7 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
 
   it('aggregates live market overview over active spot assets', async () => {
     const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue(mockBulkTickers());
     vi.spyOn(binanceMock, 'fetch24hrTicker').mockResolvedValue(SAMPLE_BINANCE_TICKER as any);
 
     const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock });
@@ -152,6 +165,7 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
 
   it('filters live assets by category', async () => {
     const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue(mockBulkTickers());
     vi.spyOn(binanceMock, 'fetch24hrTicker').mockResolvedValue(SAMPLE_BINANCE_TICKER as any);
 
     const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock });
@@ -165,6 +179,7 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
 
   it('filters live assets in screener query', async () => {
     const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue(mockBulkTickers());
     vi.spyOn(binanceMock, 'fetch24hrTicker').mockResolvedValue(SAMPLE_BINANCE_TICKER as any);
 
     const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock });
@@ -175,7 +190,21 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
   });
 
   it('provides live liquidation data and manages subsystem states', async () => {
-    const provider = new LiveMarketDataProvider();
+    // P22: Fully mocked — ZERO real network calls. Network-isolated unit test.
+    const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue(mockBulkTickers());
+    vi.spyOn(binanceMock, 'fetch24hrTicker').mockResolvedValue(SAMPLE_BINANCE_TICKER as any);
+
+    const futuresAdapterMock = {
+      fetchPremiumIndexes: vi.fn().mockRejectedValue(new AdapterNetworkError('binance')),
+      fetch24hrTickers: vi.fn().mockRejectedValue(new AdapterNetworkError('binance')),
+      fetchOpenInterestHist: vi.fn().mockRejectedValue(new AdapterNetworkError('binance')),
+    } as any;
+
+    const provider = new LiveMarketDataProvider({
+      binanceAdapter: binanceMock,
+      futuresAdapter: futuresAdapterMock,
+    });
 
     // LIVE-FIRST: без фактического источника деривативов — честная ошибка, а не демо-датасет.
     await expect(provider.getFuturesList()).rejects.toThrow(AdapterNetworkError);
