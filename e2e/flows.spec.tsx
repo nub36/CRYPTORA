@@ -406,7 +406,65 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     // Alerts Modal
     const alertsBtn = screen.getByLabelText(/Открыть алерты/i);
     fireEvent.click(alertsBtn);
-    expect(screen.getByText(/Система алертов \(превью\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Система алертов$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Система алертов \(превью\)|Демо-алерт|Очередь прототипа/i)).toBeNull();
+  });
+
+  test('Алерты: правило создаётся, срабатывает на фактическом тике и попадает в историю; лимит тарифа соблюдается', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem('cryptora_alerts', '[]');
+    renderApp('/');
+
+    fireEvent.click(screen.getByLabelText(/Открыть алерты/i));
+    expect(screen.getByText(/^Система алертов$/i)).toBeInTheDocument();
+    // Стартовое состояние — без выдуманных «демо»-правил.
+    expect(screen.getByText(/Нет активных алертов/i)).toBeInTheDocument();
+
+    const target = document.querySelector('[data-qa="alert-target-input"]') as HTMLInputElement;
+    fireEvent.change(target, { target: { value: '100' } });
+    fireEvent.click(document.querySelector('[data-qa="alert-submit"]') as HTMLElement);
+    expect(document.querySelectorAll('[data-qa="alert-rule"]').length).toBe(1);
+
+    // Фактический тик по BTC выше порога → событие
+    const { RealtimeFeedManager } = await import('@/services/realtime/RealtimeFeedManager');
+    RealtimeFeedManager.getInstance().eventBus.publishTicker(
+      {
+        symbol: 'BTC',
+        price: 101,
+        priceChangePercent24h: 0,
+        high24h: 101,
+        low24h: 99,
+        volume24h: 1,
+        quoteVolume24h: 100,
+        timestamp: Date.now(),
+        provenance: { exchange: 'binance', market: 'spot', symbol: 'BTCUSDT', timestamp: Date.now() },
+      },
+      true,
+    );
+
+    await waitFor(() => expect(document.querySelector('[data-qa="alerts-unread-badge"]')).not.toBeNull());
+    fireEvent.click(document.querySelector('[data-qa="alerts-tab-history"]') as HTMLElement);
+    const events = document.querySelectorAll('[data-qa="alert-event"]');
+    expect(events.length).toBe(1);
+    expect(events[0].textContent).toMatch(/BTC/);
+    expect(events[0].textContent).toMatch(/источник: binance/i);
+    expect(events[0].textContent).toMatch(/IN_APP: ДОСТАВЛЕНО/);
+    await waitFor(() => expect(document.querySelector('[data-qa="alerts-unread-badge"]')).toBeNull());
+
+    // Лимит тарифа: FREE = 2 алерта
+    const { PlanManager } = await import('@/services/subscription/PlanManager');
+    const max = PlanManager.getMaxAlerts();
+    fireEvent.click(document.querySelector('[data-qa="alerts-tab-rules"]') as HTMLElement);
+    for (let i = 1; i < max; i++) {
+      fireEvent.change(document.querySelector('[data-qa="alert-target-input"]') as HTMLInputElement, { target: { value: String(1000 + i) } });
+      fireEvent.click(document.querySelector('[data-qa="alert-submit"]') as HTMLElement);
+    }
+    expect(document.querySelectorAll('[data-qa="alert-rule"]').length).toBe(max);
+    expect((document.querySelector('[data-qa="alert-submit"]') as HTMLButtonElement).disabled).toBe(true);
+
+    // Хранилище: правила и история персистятся
+    expect(JSON.parse(window.localStorage.getItem('cryptora_alerts') ?? '[]').length).toBe(max);
+    expect(JSON.parse(window.localStorage.getItem('cryptora_alert_history') ?? '[]').length).toBe(1);
   });
 
   test('Статус источника и WebSocket: только индикация, переключение режима недоступно', async () => {

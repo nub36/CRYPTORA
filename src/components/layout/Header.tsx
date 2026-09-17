@@ -55,6 +55,7 @@ export const Header: React.FC = () => {
     alerts,
     openWatchlist,
     openAlertsModal,
+    unreadAlertCount,
     dataMode,
     provider,
     realtimeStatus,
@@ -389,7 +390,7 @@ export const Header: React.FC = () => {
                   CRYPTORA
                 </span>
                 <span className="hidden shrink-0 rounded border border-cyan-500/30 bg-cyan-950/80 px-1.5 font-mono text-[11px] font-semibold tracking-normal text-cyan-400 navxl:inline-block">
-                  v0.8.22
+                  v0.8.23
                 </span>
               </div>
               <span className="hidden whitespace-nowrap font-sans text-[11px] tracking-tight text-slate-400 2xl:block">
@@ -557,11 +558,18 @@ export const Header: React.FC = () => {
             aria-label="Открыть алерты"
           >
             <Bell className="h-4 w-4 text-cyan-400" />
-            {alerts.length > 0 && (
+            {unreadAlertCount > 0 ? (
+              <span
+                data-qa="alerts-unread-badge"
+                className="absolute right-1 top-1 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-rose-500 px-0.5 font-mono text-[11px] font-bold text-white"
+              >
+                {unreadAlertCount}
+              </span>
+            ) : alerts.length > 0 ? (
               <span className="absolute right-1 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-cyan-400 font-mono text-[11px] font-bold text-slate-950">
                 {alerts.length}
               </span>
-            )}
+            ) : null}
           </button>
 
           {/* Mobile Menu Hamburger (< 1024px) */}
@@ -755,7 +763,7 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-sans text-[11px] text-slate-400">
-            <span>CRYPTORA v0.8.22</span>
+            <span>CRYPTORA v0.8.23</span>
             <span>{dataMode === 'live' ? 'LIVE-ДАННЫЕ РЫНКА' : 'QA-ДАТАСЕТ'}</span>
           </div>
         </div>

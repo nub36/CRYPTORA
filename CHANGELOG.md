@@ -4,6 +4,33 @@
 
 ---
 
+## [0.8.23] — 2026-09-17
+
+### Added — Этап 6: расширенная система алертов (Telegram / Webhook)
+- `src/services/alerts/alertEvaluator.ts`: чистая оценка правил `ABOVE` / `BELOW` (цена), `FUNDING_EXTREME` (|фандинг 8ч|), `OI_SPIKE`
+  (Δ OI 1ч); cooldown 5 мин на правило, пауза, детерминированные id событий, источник входа в тексте уведомления.
+- `MarketDataContext`: правила оцениваются на каждом WS-тике (`ticker:*`) по подписанным символам; для FUNDING_EXTREME — REST-опрос
+  `getFuturesList` раз в 60 с (демо-фолбэк провайдера игнорируется); история срабатываний (`cryptora_alert_history`, ≤100),
+  счётчик непрочитанных в шапке (`data-qa=alerts-unread-badge`), лимит тарифа (`PlanManager.getMaxAlerts`: FREE 2 / PRO 25 / ENTERPRISE 999).
+- Каналы доставки `deliveryChannels.ts` + `AlertDispatcher`: В приложении, браузерные Notification (только при `granted`),
+  Telegram Bot API `sendMessage` (bot token + chat id пользователя, запрос напрямую в api.telegram.org), Webhook POST JSON
+  `cryptora.alert.v1` (CORS-ошибка → повтор no-cors → статус `SENT_UNCONFIRMED`). Журнал доставки `cryptora_alert_delivery_log` (≤200).
+  Настройки каналов хранятся только в localStorage браузера; серверного посредника у CRYPTORA нет — это зафиксировано в UI.
+- `AlertsModal`: вкладки Правила / История / Каналы; удалены подписи «превью», «Демо-алерт», «Очередь прототипа» и стартовый
+  фиктивный алерт `alert-sample-1` (старое значение вычищается из хранилища при загрузке).
+
+### Tests
+- `tests/unit/alertsEvaluator.test.ts` (8): пороги, cooldown/paused, иммутабельность `evaluateAll`, валидация конфигов, Telegram 2xx/401
+  (секрет не попадает в журнал), webhook no-cors, персистентность журнала. E2E: создание правила → фактический тик → история и бейдж →
+  лимит тарифа. Всего: vitest 366, playwright 58, typecheck 0.
+
+### Known limitations
+- `OI_SPIKE`: источник Δ OI 1ч в реальном времени не подключён (в `DerivativesEngine` поле оценочное) — правило можно сохранить, но оно не
+  оценивается; это указано в селекторе триггера. Живая доставка в Telegram/webhook из песочницы не проверена (внешняя сеть закрыта) —
+  проверено на моках HTTP-ответов; **UNVERIFIED в проде**.
+
+---
+
 ## [0.8.22] — 2026-09-17
 
 ### Added — Этап 6: фактические потоки ликвидаций Bybit и OKX
