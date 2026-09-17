@@ -69,83 +69,90 @@ export class CorrelationEngine {
     return Number((covariance / benchVariance).toFixed(2));
   }
 
-  /**
-   * Generates a precomputed correlation matrix for top canonical cryptos and macro benchmarks
-   */
-  public static getMacroCorrelationMatrix(): {
-    assets: string[];
-    matrix: Record<string, Record<string, number>>;
-  } {
-    const assets = ['BTC', 'ETH', 'SOL', 'BNB', 'NEAR', 'SP500', 'GOLD', 'DXY'];
+}
 
-    // Statistically grounded cross-correlations
-    const matrix: Record<string, Record<string, number>> = {
-      BTC: { BTC: 1.0, ETH: 0.88, SOL: 0.76, BNB: 0.72, NEAR: 0.69, SP500: 0.42, GOLD: 0.18, DXY: -0.45 },
-      ETH: { BTC: 0.88, ETH: 1.0, SOL: 0.82, BNB: 0.75, NEAR: 0.74, SP500: 0.46, GOLD: 0.15, DXY: -0.48 },
-      SOL: { BTC: 0.76, ETH: 0.82, SOL: 1.0, BNB: 0.68, NEAR: 0.79, SP500: 0.38, GOLD: 0.11, DXY: -0.41 },
-      BNB: { BTC: 0.72, ETH: 0.75, SOL: 0.68, BNB: 1.0, NEAR: 0.64, SP500: 0.31, GOLD: 0.14, DXY: -0.36 },
-      NEAR: { BTC: 0.69, ETH: 0.74, SOL: 0.79, BNB: 0.64, NEAR: 1.0, SP500: 0.35, GOLD: 0.08, DXY: -0.39 },
-      SP500: { BTC: 0.42, ETH: 0.46, SOL: 0.38, BNB: 0.31, NEAR: 0.35, SP500: 1.0, GOLD: 0.05, DXY: -0.58 },
-      GOLD: { BTC: 0.18, ETH: 0.15, SOL: 0.11, BNB: 0.14, NEAR: 0.08, SP500: 0.05, GOLD: 1.0, DXY: -0.52 },
-      DXY: { BTC: -0.45, ETH: -0.48, SOL: -0.41, BNB: -0.36, NEAR: -0.39, SP500: -0.58, GOLD: -0.52, DXY: 1.0 },
-    };
+// ---------------------------------------------------------------------------
+// Фактический расчёт по свечам (v0.8.26). Чистые функции: вход — закрытия по символам.
+// ---------------------------------------------------------------------------
+export interface LiveCorrelationReport {
+  assets: string[];
+  matrix: Record<string, Record<string, number>>;
+  betas: AssetBeta[];
+  /** Число дневных доходностей в окне (по факту, после выравнивания рядов). */
+  windowDays: number;
+  /** Символы, исключённые из-за нехватки данных. */
+  excluded: string[];
+}
 
-    return { assets, matrix };
+/** Логарифмические дневные доходности по массиву закрытий (по возрастанию времени). */
+export function toLogReturns(closes: number[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i - 1] > 0 && closes[i] > 0) out.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  return out;
+}
+
+export function classifyBeta(beta: number): AssetBeta['classification'] {
+  if (beta < 0) return 'INVERSE';
+  if (beta > 1.3) return 'HIGH_BETA';
+  if (beta < 0.8) return 'LOW_BETA';
+  return 'NEUTRAL_BETA';
+}
+
+/**
+ * Строит матрицу Пирсона и бету к BTC по фактическим закрытиям.
+ * Ряды выравниваются по хвосту (последние `windowDays` доходностей). Символы с < minPoints
+ * доходностей исключаются и перечисляются в `excluded`. Детерминировано.
+ */
+export function buildCorrelationReport(
+  closesBySymbol: Record<string, number[]>,
+  names: Record<string, string> = {},
+  windowDays = 30,
+  minPoints = 10,
+  benchmark = 'BTC',
+): LiveCorrelationReport {
+  const returns: Record<string, number[]> = {};
+  const excluded: string[] = [];
+  for (const [sym, closes] of Object.entries(closesBySymbol)) {
+    const r = toLogReturns(closes);
+    if (r.length < minPoints) {
+      excluded.push(sym);
+      continue;
+    }
+    returns[sym] = r.slice(-windowDays);
+  }
+  const assets = Object.keys(returns);
+  if (assets.length === 0) return { assets: [], matrix: {}, betas: [], windowDays: 0, excluded };
+  const n = Math.min(...assets.map((s) => returns[s].length));
+  for (const s of assets) returns[s] = returns[s].slice(-n);
+
+  const matrix: Record<string, Record<string, number>> = {};
+  for (const a of assets) {
+    matrix[a] = {};
+    for (const b of assets) {
+      matrix[a][b] = a === b ? 1 : CorrelationEngine.calculatePearsonCorrelation(returns[a], returns[b]);
+    }
   }
 
-  /**
-   * Generates ranking of assets by Beta relative to Bitcoin
-   */
-  public static getBetaRankings(): AssetBeta[] {
-    return [
-      {
-        symbol: 'SOL',
-        name: 'Solana',
-        betaToBtc: 1.64,
-        correlationToBtc: 0.76,
-        volatility30d: 68.2,
-        classification: 'HIGH_BETA',
-      },
-      {
-        symbol: 'NEAR',
-        name: 'NEAR Protocol',
-        betaToBtc: 1.52,
-        correlationToBtc: 0.69,
-        volatility30d: 74.5,
-        classification: 'HIGH_BETA',
-      },
-      {
-        symbol: 'ETH',
-        name: 'Ethereum',
-        betaToBtc: 1.18,
-        correlationToBtc: 0.88,
-        volatility30d: 52.4,
-        classification: 'NEUTRAL_BETA',
-      },
-      {
-        symbol: 'BNB',
-        name: 'BNB',
-        betaToBtc: 0.85,
-        correlationToBtc: 0.72,
-        volatility30d: 41.8,
-        classification: 'LOW_BETA',
-      },
-      {
-        symbol: 'GOLD',
-        name: 'Gold (PAXG)',
-        betaToBtc: 0.12,
-        correlationToBtc: 0.18,
-        volatility30d: 14.6,
-        classification: 'LOW_BETA',
-      },
-      {
-        symbol: 'DXY',
-        name: 'US Dollar Index',
-        betaToBtc: -0.28,
-        correlationToBtc: -0.45,
-        volatility30d: 8.2,
-        classification: 'INVERSE',
-      },
-    ];
+  const betas: AssetBeta[] = [];
+  if (returns[benchmark]) {
+    for (const s of assets) {
+      if (s === benchmark) continue;
+      const r = returns[s];
+      const mean = r.reduce((x, y) => x + y, 0) / r.length;
+      const variance = r.reduce((acc, v) => acc + (v - mean) ** 2, 0) / Math.max(1, r.length - 1);
+      const beta = CorrelationEngine.calculateBeta(r, returns[benchmark]);
+      betas.push({
+        symbol: s,
+        name: names[s] ?? s,
+        betaToBtc: beta,
+        correlationToBtc: matrix[s][benchmark],
+        volatility30d: Number((Math.sqrt(variance) * Math.sqrt(365) * 100).toFixed(1)),
+        classification: classifyBeta(beta),
+      });
+    }
+    betas.sort((x, y) => y.betaToBtc - x.betaToBtc);
   }
+  return { assets, matrix, betas, windowDays: n, excluded };
 }

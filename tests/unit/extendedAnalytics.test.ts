@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CorrelationEngine } from '@/services/analytics/CorrelationEngine';
+import { CorrelationEngine, buildCorrelationReport, toLogReturns } from '@/services/analytics/CorrelationEngine';
 import { OnChainService } from '@/services/analytics/OnChainService';
 import { JournalService } from '@/services/journal/JournalService';
 
@@ -23,16 +23,35 @@ describe('CorrelationEngine Unit Tests', () => {
     expect(beta).toBe(2.0);
   });
 
-  it('provides precomputed macro correlation matrix and beta rankings', () => {
-    const { assets, matrix } = CorrelationEngine.getMacroCorrelationMatrix();
-    expect(assets.length).toBeGreaterThan(5);
-    expect(matrix.BTC.BTC).toBe(1.0);
-    expect(matrix.BTC.ETH).toBeGreaterThan(0.7);
+  it('buildCorrelationReport: матрица по фактическим закрытиям, диагональ 1, бета к BTC, исключение коротких рядов', () => {
+    const btc = Array.from({ length: 40 }, (_, i) => 100 * Math.exp(0.01 * Math.sin(i)));
+    const twice = btc.map((_v, i) => 50 * Math.exp(0.02 * Math.sin(i))); // лог-доходности ×2 → beta 2, r 1
+    const inverse = btc.map((_v, i) => 10 * Math.exp(-0.01 * Math.sin(i)));
+    const short = [1, 2, 3];
+    const rep = buildCorrelationReport({ BTC: btc, TWO: twice, INV: inverse, SHORT: short }, { TWO: 'Two' }, 30);
+    expect(rep.excluded).toEqual(['SHORT']);
+    expect(rep.assets).toEqual(['BTC', 'TWO', 'INV']);
+    expect(rep.windowDays).toBe(30);
+    expect(rep.matrix.BTC.BTC).toBe(1);
+    expect(rep.matrix.BTC.TWO).toBe(1);
+    expect(rep.matrix.BTC.INV).toBe(-1);
+    expect(rep.matrix.TWO.INV).toBe(rep.matrix.INV.TWO);
+    const two = rep.betas.find((b) => b.symbol === 'TWO')!;
+    expect(two.betaToBtc).toBe(2);
+    expect(two.name).toBe('Two');
+    expect(two.classification).toBe('HIGH_BETA');
+    expect(rep.betas.find((b) => b.symbol === 'INV')!.classification).toBe('INVERSE');
+    expect(rep.betas.some((b) => b.symbol === 'BTC')).toBe(false);
+    // Детерминизм
+    expect(buildCorrelationReport({ BTC: btc, TWO: twice, INV: inverse, SHORT: short }, {}, 30)).toEqual({ ...rep, betas: rep.betas.map((b) => ({ ...b, name: b.symbol })) });
+  });
 
-    const rankings = CorrelationEngine.getBetaRankings();
-    expect(rankings.length).toBeGreaterThan(0);
-    expect(rankings[0].symbol).toBe('SOL');
-    expect(rankings[0].classification).toBe('HIGH_BETA');
+  it('buildCorrelationReport: без BTC бет нет; пустой вход → пустой отчёт', () => {
+    const rep = buildCorrelationReport({ A: Array.from({ length: 20 }, (_, i) => Math.exp(0.01 * i * i)), B: Array.from({ length: 20 }, (_, i) => Math.exp(-0.01 * i * i)) });
+    expect(rep.betas).toEqual([]);
+    expect(rep.matrix.A.B).toBe(-1);
+    expect(buildCorrelationReport({}).assets).toEqual([]);
+    expect(toLogReturns([1, 0, 2])).toEqual([]);
   });
 });
 

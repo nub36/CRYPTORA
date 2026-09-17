@@ -467,8 +467,23 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(JSON.parse(window.localStorage.getItem('cryptora_alert_history') ?? '[]').length).toBe(1);
   });
 
+  test('Корреляции считаются по свечам источника и помечают их происхождение (QA-свечи ≠ LIVE)', async () => {
+    renderApp('/correlations');
+    const badge = await waitFor(() => {
+      const el = document.querySelector('[data-qa="correlations-source"]') as HTMLElement;
+      expect(el.textContent).toMatch(/QA-СВЕЧИ/);
+      return el;
+    });
+    expect(badge.textContent).not.toMatch(/LIVE/);
+    expect(document.querySelector('[data-qa="static-dataset-notice"]')).toBeNull();
+    // Диагональ матрицы = +1.00, бенчмарк BTC присутствует
+    const cells = Array.from(document.querySelectorAll('td')).map((td) => td.textContent?.trim());
+    expect(cells.filter((c) => c === '+1.00').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('BTC').length).toBeGreaterThan(0);
+  });
+
   test('Справочные страницы явно маркированы «СТАТИЧЕСКИЙ НАБОР» и не выдают данные за LIVE', async () => {
-    for (const route of ['/correlations', '/onchain', '/calendar', '/ecosystem', '/signals']) {
+    for (const route of ['/onchain', '/calendar', '/ecosystem', '/signals']) {
       cleanup();
       renderApp(route);
       const notice = document.querySelector('[data-qa="static-dataset-notice"]');

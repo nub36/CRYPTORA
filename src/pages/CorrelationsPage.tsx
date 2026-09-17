@@ -1,12 +1,59 @@
-import React, { useMemo } from 'react';
-import { CorrelationEngine } from '@/services/analytics/CorrelationEngine';
+import React, { useEffect, useMemo, useState } from 'react';
+import { buildCorrelationReport, type LiveCorrelationReport } from '@/services/analytics/CorrelationEngine';
 import { Grid, ArrowUpDown, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
-import { StaticDatasetNotice } from '@/components/common/StaticDatasetNotice';
+import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
+import { useMarketData } from '@/context/MarketDataContext';
+import { getCanonicalAssets } from '@/services/data/registry/assetRegistry';
+
+/** Набор для матрицы: BTC как бенчмарк + ведущие активы каталога (8 колонок — читаемо на 1024px). */
+const CORRELATION_SYMBOLS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'AVAX', 'NEAR'] as const;
+const WINDOW_DAYS = 30;
 
 export const CorrelationsPage: React.FC = () => {
-  const { assets, matrix } = useMemo(() => CorrelationEngine.getMacroCorrelationMatrix(), []);
-  const betaRankings = useMemo(() => CorrelationEngine.getBetaRankings(), []);
+  const { provider, dataMode } = useMarketData();
+  const [report, setReport] = useState<LiveCorrelationReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
+  const [isQaFixture, setIsQaFixture] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setSourceUnavailable(false);
+    const names = Object.fromEntries(getCanonicalAssets().map((a) => [a.symbol, a.name]));
+    // Свечи 1D по каждому символу; отказ по символу исключает его из матрицы, а не подменяет данными.
+    Promise.allSettled(CORRELATION_SYMBOLS.map((sym) => provider.getCandles(sym, '1D')))
+      .then((results) => {
+        if (!active) return;
+        const closes: Record<string, number[]> = {};
+        let anyFixture = false;
+        results.forEach((r, i) => {
+          if (r.status !== 'fulfilled' || r.value.length === 0) return;
+          const sorted = [...r.value].sort((a, b) => a.time - b.time);
+          closes[CORRELATION_SYMBOLS[i]] = sorted.map((c) => c.close);
+          if (sorted.some((c) => c.provenance?.exchange === 'synthetic-demo')) anyFixture = true;
+        });
+        const rep = buildCorrelationReport(closes, names, WINDOW_DAYS);
+        if (!rep.assets.includes('BTC') || rep.assets.length < 2) {
+          setSourceUnavailable(true);
+          setReport(null);
+        } else {
+          setReport(rep);
+          setIsQaFixture(anyFixture || dataMode !== 'live');
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [provider, dataMode]);
+
+  const assets = report?.assets ?? [];
+  const matrix = report?.matrix ?? {};
+  const betaRankings = useMemo(() => report?.betas ?? [], [report]);
 
   const getHeatColor = (val: number): string => {
     if (val === 1.0) return 'bg-brand-cyan/40 text-white font-bold';
@@ -32,16 +79,30 @@ export const CorrelationsPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Кросс-рыночная матрица коэффициентов Пирсона и расчет чувствительности (Beta) альткоинов к динамике Bitcoin.
+            Матрица коэффициентов Пирсона по дневным лог-доходностям и чувствительность (Beta) альткоинов к Bitcoin — по фактическим свечам биржи.
           </p>
         </div>
 
-        <div className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded border border-cyan-500/30">
-          Справочные коэффициенты
+        <div
+          data-qa="correlations-source"
+          className={`text-xs font-mono px-2.5 py-1 rounded border ${
+            isQaFixture
+              ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+              : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30'
+          }`}
+        >
+          {report ? `${isQaFixture ? 'QA-СВЕЧИ' : 'LIVE-СВЕЧИ 1D'} · окно ${report.windowDays} дн. лог-доходностей` : 'Окно 30 дн. дневных лог-доходностей'}
         </div>
       </div>
 
-      <StaticDatasetNotice what="Матрица корреляций и бета-ранжирование" source="запланировано (расчёт по фактическим свечам Binance)" />
+      {sourceUnavailable && (
+        <DataSourceUnavailable subject="дневные свечи для расчёта корреляций" />
+      )}
+      {report && report.excluded.length > 0 && (
+        <div className="text-[11px] font-sans text-slate-400">
+          Исключены из-за нехватки дневных свечей: <span className="font-mono">{report.excluded.join(', ')}</span>
+        </div>
+      )}
 
       {/* Non-Execution Notice */}
       <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
@@ -50,7 +111,7 @@ export const CorrelationsPage: React.FC = () => {
           <span>Аналитическая ценность корреляционного анализа</span>
         </div>
         <p className="text-[11px] leading-relaxed text-slate-400">
-          Корреляция позволяет избегать мнимой диверсификации портфеля (когда все купленные активы имеют $r &gt; 0.85$ к BTC) и находить защитные инструменты с отрицательной зависимостью к индексу доллара (DXY). Терминал предоставляет аналитические расчеты без исполнения ордеров.
+          Корреляция позволяет избегать мнимой диверсификации портфеля (когда все активы имеют $r &gt; 0.85$ к BTC). Макро-бенчмарки (S&amp;P 500, золото, DXY) не показаны: у терминала нет их фактического источника, а справочные значения выдавать за расчёт нельзя. Терминал предоставляет аналитические расчёты без исполнения ордеров.
         </p>
       </div>
 
@@ -62,7 +123,7 @@ export const CorrelationsPage: React.FC = () => {
             <span className="font-sans font-bold text-xs tracking-wide text-white">
               Матрица корреляций (Коэффициент Пирсона от -1.00 до +1.00)
             </span>
-            <span className="text-[11px] font-sans text-slate-500">Справочный набор</span>
+            <span className="text-[11px] font-sans text-slate-500">{loading ? 'Загрузка свечей…' : report ? `N=${report.windowDays} дн.` : '—'}</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -105,7 +166,7 @@ export const CorrelationsPage: React.FC = () => {
               <span className="px-1.5 py-0.5 rounded bg-surface-elevated text-slate-400 text-[11px]">Нейтральная (~0)</span>
               <span className="px-1.5 py-0.5 rounded bg-emerald-600/60 text-white text-[11px]">Высокая (&gt;+0.7)</span>
             </div>
-            <span className="text-[11px] text-slate-500">Не обновляется автоматически</span>
+            <span className="text-[11px] text-slate-500">Пересчёт при каждом открытии страницы</span>
           </div>
         </div>
 
