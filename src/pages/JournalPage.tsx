@@ -305,7 +305,7 @@ export const JournalPage: React.FC = () => {
 
                 <button
                   onClick={() => handleDelete(entry.id)}
-                  className="text-slate-500 hover:text-rose-400 transition-colors p-1"
+                  className="text-slate-500 hover:text-rose-400 transition-colors p-1.5"
                   title="Удалить запись"
                 >
                   <Trash2 className="w-4 h-4" />

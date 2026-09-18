@@ -51,7 +51,7 @@ export const WatchlistDrawer: React.FC = () => {
             </div>
             <button
               onClick={closeWatchlist}
-              className="text-slate-400 hover:text-white transition-colors p-1"
+              className="text-slate-400 hover:text-white transition-colors p-1.5"
               aria-label="Закрыть"
             >
               <X className="w-5 h-5" />
@@ -115,7 +115,7 @@ export const WatchlistDrawer: React.FC = () => {
 
                     <button
                       onClick={() => toggleWatchlist(asset.symbol)}
-                      className="text-slate-500 hover:text-rose-400 transition-colors p-1"
+                      className="text-slate-500 hover:text-rose-400 transition-colors p-1.5"
                       title="Удалить из избранного"
                     >
                       <Trash2 className="w-4 h-4" />
