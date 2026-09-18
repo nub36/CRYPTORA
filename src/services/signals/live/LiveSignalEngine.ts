@@ -1,18 +1,16 @@
 /**
  * LiveSignalEngine — runs archived strategy cores on LIVE candle data.
  *
- * Subscribes to 1H + 4H candles for the 6 canonical symbols.
- * On each new closed 1H bar, runs V3.0 / V3.3 / V2.8 detection.
- * Publishes matches to SignalsAuditLedger.
+ * V3.0 — HTF Liquidation Trap (validated, flagship)
+ * V3.3 — HTF Zone Mitigation (4H swing zone + 1H wick rejection)
+ * V2.8 — Sniper (liquidity sweep + impulse reclaim)
  *
  * ⚠️ SIGNALS ONLY — CRYPTORA does NOT execute trades.
- * Every setup includes disclaimers and invalidation factors.
  */
 
 import type { MarketDataProvider } from '@/services/data/MarketDataProvider';
 import type { Timeframe } from '@/types/market';
 import type { ArchiveCandle } from '@/services/strategyArchive/types';
-import type { AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 import { SignalsAuditLedger } from '@/services/signals/SignalsAuditLedger';
 import { ohlcvToArchive } from '@/services/signals/live/ohlcvAdapter';
 import {
@@ -20,9 +18,9 @@ import {
   confirmedLevels,
   detectTrap,
   buildPending,
-  type V30Pending,
 } from '@/services/strategyArchive/definitions/v3_0-htf-liquidation-trap/v30Core';
-import { atrAt, rvolAt } from '@/services/strategyArchive/shared/primitives';
+import { V33_CONSTANTS, bodyRatio as v33BodyRatio, rejectionWick } from '@/services/strategyArchive/definitions/v3_3-htf-zone-mitigation/v33Core';
+import { atrAt, rvolAt, findSwingsV2 } from '@/services/strategyArchive/shared/primitives';
 import { FROZEN_ENGINE } from '@/services/strategyArchive/shared/frozenSettings';
 
 export type SignalStrategy = 'V3.0' | 'V3.3' | 'V2.8';
@@ -30,19 +28,18 @@ export type SignalStrategy = 'V3.0' | 'V3.3' | 'V2.8';
 export interface LiveSignalConfig {
   provider: MarketDataProvider;
   symbols?: readonly string[];
-  checkIntervalMs?: number;
   strategies?: SignalStrategy[];
 }
 
 interface SymbolState {
   lastCheckedBarTime: number;
-  h1Candles: ArchiveCandle[];
-  h4Candles: ArchiveCandle[];
-  pendingV30: V30Pending | null;
-  pendingSetupTime: number;
 }
 
 const DEFAULT_SYMBOLS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE'];
+
+function fmtPrice(p: number): number {
+  return Number(p.toFixed(p > 100 ? 2 : p > 1 ? 4 : 6));
+}
 
 export class LiveSignalEngine {
   private static instance: LiveSignalEngine | null = null;
@@ -58,7 +55,7 @@ export class LiveSignalEngine {
   constructor(config: LiveSignalConfig) {
     this.provider = config.provider;
     this.symbols = config.symbols ?? DEFAULT_SYMBOLS;
-    this.strategies = config.strategies ?? ['V3.0'];
+    this.strategies = config.strategies ?? ['V3.0', 'V3.3', 'V2.8'];
     this.ledger = SignalsAuditLedger.getInstance();
   }
 
@@ -76,41 +73,27 @@ export class LiveSignalEngine {
     LiveSignalEngine.instance = null;
   }
 
-  /** Start periodic signal scanning. */
   public start(): void {
     if (this.running) return;
     this.running = true;
-    // Check every 60 seconds for new closed candles
     this.timer = setInterval(() => this.scan(), 60_000);
-    // Initial scan after short delay (let provider initialize)
     setTimeout(() => this.scan(), 5_000);
   }
 
   public stop(): void {
     this.running = false;
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
   }
 
-  public isActive(): boolean {
-    return this.running;
-  }
+  public isActive(): boolean { return this.running; }
 
-  /** Main scan: fetch candles for all symbols, run detection. */
   private async scan(): Promise<void> {
     for (const symbol of this.symbols) {
-      try {
-        await this.scanSymbol(symbol);
-      } catch {
-        // Non-fatal: skip symbol on error
-      }
+      try { await this.scanSymbol(symbol); } catch { /* non-fatal */ }
     }
   }
 
   private async scanSymbol(symbol: string): Promise<void> {
-    // Fetch 1H and 4H candles
     const [h1Raw, h4Raw] = await Promise.all([
       this.provider.getCandles(symbol, '1h' as Timeframe),
       this.provider.getCandles(symbol, '4h' as Timeframe),
@@ -121,98 +104,203 @@ export class LiveSignalEngine {
     const h1 = h1Raw.map((c) => ohlcvToArchive(c, '1h'));
     const h4 = h4Raw.map((c) => ohlcvToArchive(c, '4h'));
 
-    // Get or create state
     let symState = this.state.get(symbol);
     if (!symState) {
-      symState = { lastCheckedBarTime: 0, h1Candles: [], h4Candles: [], pendingV30: null, pendingSetupTime: 0 };
+      symState = { lastCheckedBarTime: 0 };
       this.state.set(symbol, symState);
     }
 
-    // Check if we have a new closed bar
     const lastBar = h1[h1.length - 1];
     if (!lastBar || lastBar.openTime === symState.lastCheckedBarTime) return;
     symState.lastCheckedBarTime = lastBar.openTime;
-    symState.h1Candles = h1;
-    symState.h4Candles = h4;
 
-    // Run V3.0 detection on the LATEST closed bar (second-to-last if last is forming)
     const closedBars = h1.filter((c) => c.isClosed);
     if (closedBars.length < 2) return;
-    const checkBar = closedBars[closedBars.length - 1];
-    const checkBarIndex = closedBars.length - 1;
+    const bar = closedBars[closedBars.length - 1];
+    const barIndex = closedBars.length - 1;
 
-    if (this.strategies.includes('V3.0')) {
-      this.runV30(symbol, checkBar, checkBarIndex, closedBars, h4);
-    }
+    if (this.strategies.includes('V3.0')) this.runV30(symbol, bar, barIndex, closedBars, h4);
+    if (this.strategies.includes('V3.3')) this.runV33(symbol, bar, barIndex, closedBars, h4);
+    if (this.strategies.includes('V2.8')) this.runV28(symbol, bar, barIndex, closedBars);
   }
 
-  /** V3.0 — HTF Liquidation Trap detection on latest closed 1H bar. */
-  private runV30(
-    symbol: string,
-    bar: ArchiveCandle,
-    barIndex: number,
-    h1Candles: ArchiveCandle[],
-    h4Candles: ArchiveCandle[],
-  ): void {
-    const symState = this.state.get(symbol)!;
+  /* ===== V3.0 — HTF Liquidation Trap ===== */
+
+  private runV30(symbol: string, bar: ArchiveCandle, barIndex: number, h1: ArchiveCandle[], h4: ArchiveCandle[]): void {
     const strength = FROZEN_ENGINE.swingLookback;
-    const atrPeriod = FROZEN_ENGINE.atrPeriod;
-    const volPeriod = FROZEN_ENGINE.volumePeriod;
-
-    // 1. Get confirmed 4H swing levels
-    const levels = confirmedLevels(h4Candles, bar.closeTime, strength);
-    if (levels.swingHigh === null || levels.swingLow === null) return;
-
-    // 2. Calculate ATR and RVOL
-    const atr = atrAt(h1Candles, barIndex, atrPeriod);
-    const rvol = rvolAt(h1Candles, barIndex, volPeriod);
+    const atr = atrAt(h1, barIndex, FROZEN_ENGINE.atrPeriod);
+    const rvol = rvolAt(h1, barIndex, FROZEN_ENGINE.volumePeriod);
     if (!atr || atr <= 0) return;
 
-    // 3. Detect trap
+    const levels = confirmedLevels(h4, bar.closeTime, strength);
+    if (levels.swingHigh === null || levels.swingLow === null) return;
+
     const trap = detectTrap(bar, levels as { swingHigh: number; swingLow: number }, rvol);
     if (!trap) return;
 
-    // 4. Build pending corridor
     const pending = buildPending(trap, bar, levels as { swingHigh: number; swingLow: number }, atr, barIndex);
-    symState.pendingV30 = pending;
-    symState.pendingSetupTime = Date.now();
 
-    // 5. Publish signal to ledger
-    const entryLow = pending.zoneLow;
-    const entryHigh = pending.zoneHigh;
-    const direction = pending.dir;
-
-    const setup: Omit<AnalyticalSetup, 'auditHash'> = {
-      id: `v30-live-${symbol}-${bar.openTime}`,
-      symbol: `${symbol}/USDT`,
-      direction,
-      timeframe: '1h',
-      entryZone: [
-        Number(entryLow.toFixed(entryLow > 100 ? 2 : entryLow > 1 ? 4 : 6)),
-        Number(entryHigh.toFixed(entryHigh > 100 ? 2 : entryHigh > 1 ? 4 : 6)),
-      ],
-      invalidationLevel: Number(pending.stop.toFixed(pending.stop > 100 ? 2 : pending.stop > 1 ? 4 : 6)),
-      targets: [
-        Number(pending.tp1.toFixed(pending.tp1 > 100 ? 2 : pending.tp1 > 1 ? 4 : 6)),
-        Number(pending.tp2.toFixed(pending.tp2 > 100 ? 2 : pending.tp2 > 1 ? 4 : 6)),
-      ],
-      riskRewardRatio: Number((Math.abs(pending.tp2 - (entryLow + entryHigh) / 2) / Math.abs((entryLow + entryHigh) / 2 - pending.stop)).toFixed(2)),
+    this.publish({
+      id: `v30-${symbol}-${bar.openTime}`, strategy: 'V3.0', symbol, direction: pending.dir,
+      entryLow: pending.zoneLow, entryHigh: pending.zoneHigh, stop: pending.stop,
+      tp1: pending.tp1, tp2: pending.tp2,
       confirmingFactors: [
-        `Ложный пробой 4H ${direction === 'SHORT' ? 'максимума' : 'минимума'} (${trap.level.toFixed(2)})`,
-        `Тело свечи ${(trap.bodyRatio * 100).toFixed(1)}% (мин ${(V30_CONSTANTS.MIN_BODY_RATIO * 100)}%)`,
-        `RVOL ${(trap.rvol).toFixed(2)}x (мин ${V30_CONSTANTS.MIN_RVOL}x)`,
-        `ATR(14) = ${atr.toFixed(2)}`,
+        `Ложный пробой 4H ${pending.dir === 'SHORT' ? 'максимума' : 'минимума'} (${trap.level.toFixed(2)})`,
+        `Тело ${(trap.bodyRatio * 100).toFixed(1)}% (мин 35%)`,
+        `RVOL ${trap.rvol.toFixed(2)}x (мин 1.25x)`,
       ],
       invalidationFactors: [
-        'Ложный пробой не подтвердился — цена закрепилась за уровнем',
-        'Объём ниже порогового — возможен фейковый сигнал',
-        'Риск: перекрытие с макро-событием (FOMC, CPI)',
-        '⚠️ Сигнал из архивной стратегии, не инвест-совет',
+        'Ложный пробой не подтвердился',
+        '⚠️ V3.0 (валидирована), не инвест-совет',
       ],
+    });
+  }
+
+  /* ===== V3.3 — HTF Zone Mitigation ===== */
+
+  private runV33(symbol: string, bar: ArchiveCandle, barIndex: number, h1: ArchiveCandle[], h4: ArchiveCandle[]): void {
+    const atr = atrAt(h1, barIndex, FROZEN_ENGINE.atrPeriod);
+    const rvol = rvolAt(h1, barIndex);
+    if (!atr || atr <= 0 || rvol === null || !(rvol > V33_CONSTANTS.MIN_RVOL)) return;
+
+    const br = v33BodyRatio(bar);
+    if (br < V33_CONSTANTS.WICK_FRAC_MIN) return;
+
+    // Find 4H swing zones
+    const strength = FROZEN_ENGINE.swingLookback;
+    const swings4 = findSwingsV2(h4, strength);
+    if (swings4.length < 2) return;
+
+    // Check each recent swing as a zone
+    for (let i = swings4.length - 1; i >= Math.max(0, swings4.length - 4); i--) {
+      const sw = swings4[i];
+      if (!sw) continue;
+
+      const zoneHalf = 0.5 * atr;
+      const zoneLow = sw.price - zoneHalf;
+      const zoneHigh = sw.price + zoneHalf;
+      const dir = sw.kind === 'LOW' ? 'LONG' as const : 'SHORT' as const;
+
+      // Does the bar enter this zone?
+      if (bar.low > zoneHigh || bar.high < zoneLow) continue;
+
+      // Wick rejection?
+      const wick = rejectionWick(bar, dir);
+      if (wick < V33_CONSTANTS.WICK_FRAC_MIN) continue;
+
+      const entryMid = (zoneLow + zoneHigh) / 2;
+      const half = V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr;
+      const stop = dir === 'LONG' ? bar.low - V33_CONSTANTS.STOP_BUFFER_ATR * atr : bar.high + V33_CONSTANTS.STOP_BUFFER_ATR * atr;
+      const eq = (bar.high + bar.low) / 2;
+      const tp1 = dir === 'LONG' ? eq + Math.abs(eq - entryMid) : eq - Math.abs(entryMid - eq);
+      const risk = Math.abs(entryMid - stop);
+      const tp2 = dir === 'LONG' ? entryMid + 2 * risk : entryMid - 2 * risk;
+
+      this.publish({
+        id: `v33-${symbol}-${bar.openTime}`, strategy: 'V3.3', symbol, direction: dir,
+        entryLow: entryMid - half, entryHigh: entryMid + half, stop, tp1, tp2,
+        confirmingFactors: [
+          `4H зона (${sw.kind === 'LOW' ? 'спрос' : 'предложение'}) ${sw.price.toFixed(2)}`,
+          `Отбой: тень ${(wick * 100).toFixed(1)}% (мин 35%)`,
+          `RVOL ${rvol.toFixed(2)}x (мин 1.25x)`,
+        ],
+        invalidationFactors: [
+          'Зона пробита',
+          '⚠️ V3.3 (TRAIN ONLY), не инвест-совет',
+        ],
+      });
+      return; // one signal per bar
+    }
+  }
+
+  /* ===== V2.8 — Sniper (liquidity sweep + reclaim) ===== */
+
+  private runV28(symbol: string, bar: ArchiveCandle, barIndex: number, h1: ArchiveCandle[]): void {
+    const atr = atrAt(h1, barIndex, FROZEN_ENGINE.atrPeriod);
+    const rvol = rvolAt(h1, barIndex);
+    if (!atr || atr <= 0 || rvol === null || !(rvol > 1.2)) return;
+
+    const range = bar.high - bar.low;
+    if (!(range > 0)) return;
+    const br = Math.abs(bar.close - bar.open) / range;
+    if (br < 0.35) return;
+
+    const strength = Math.min(5, Math.floor(barIndex / 4));
+    if (strength < 2) return;
+    const swings = findSwingsV2(h1.slice(0, barIndex), strength);
+    if (swings.length < 2) return;
+
+    const lastSwing = swings[swings.length - 1];
+    if (!lastSwing) return;
+
+    // Bullish: sweep below swing low, close back above
+    if (lastSwing.kind === 'LOW' && bar.low < lastSwing.price && bar.close > lastSwing.price) {
+      const entry = bar.close;
+      const stop = bar.low - V30_CONSTANTS.STOP_BUFFER_ATR * atr;
+      const risk = entry - stop;
+      if (risk <= 0) return;
+
+      this.publish({
+        id: `v28-${symbol}-${bar.openTime}`, strategy: 'V2.8', symbol, direction: 'LONG',
+        entryLow: entry - V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
+        entryHigh: entry + V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
+        stop, tp1: entry + risk, tp2: entry + 2 * risk,
+        confirmingFactors: [
+          `Свинг-лоу ${lastSwing.price.toFixed(2)} вынесен → выкуп`,
+          `Тело ${(br * 100).toFixed(1)}% (мин 35%)`,
+          `RVOL ${rvol.toFixed(2)}x (мин 1.2x)`,
+        ],
+        invalidationFactors: ['Выкуп не подтвердился', '⚠️ V2.8 (gross only), не инвест-совет'],
+      });
+      return;
+    }
+
+    // Bearish: sweep above swing high, close back below
+    if (lastSwing.kind === 'HIGH' && bar.high > lastSwing.price && bar.close < lastSwing.price) {
+      const entry = bar.close;
+      const stop = bar.high + V30_CONSTANTS.STOP_BUFFER_ATR * atr;
+      const risk = stop - entry;
+      if (risk <= 0) return;
+
+      this.publish({
+        id: `v28-${symbol}-${bar.openTime}`, strategy: 'V2.8', symbol, direction: 'SHORT',
+        entryLow: entry - V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
+        entryHigh: entry + V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
+        stop, tp1: entry - risk, tp2: entry - 2 * risk,
+        confirmingFactors: [
+          `Свинг-хай ${lastSwing.price.toFixed(2)} вынесен → откат`,
+          `Тело ${(br * 100).toFixed(1)}% (мин 35%)`,
+          `RVOL ${rvol.toFixed(2)}x (мин 1.2x)`,
+        ],
+        invalidationFactors: ['Откат не подтвердился', '⚠️ V2.8 (gross only), не инвест-совет'],
+      });
+    }
+  }
+
+  /* ===== Publish ===== */
+
+  private publish(params: {
+    id: string; strategy: string; symbol: string; direction: 'LONG' | 'SHORT';
+    entryLow: number; entryHigh: number; stop: number; tp1: number; tp2: number;
+    confirmingFactors: string[]; invalidationFactors: string[];
+  }): void {
+    const mid = (params.entryLow + params.entryHigh) / 2;
+    const risk = Math.abs(mid - params.stop);
+    const reward = Math.abs(params.tp2 - mid);
+
+    this.ledger.append({
+      id: params.id,
+      symbol: `${params.symbol}/USDT`,
+      direction: params.direction,
+      timeframe: '1h',
+      entryZone: [fmtPrice(params.entryLow), fmtPrice(params.entryHigh)],
+      invalidationLevel: fmtPrice(params.stop),
+      targets: [fmtPrice(params.tp1), fmtPrice(params.tp2)],
+      riskRewardRatio: risk > 0 ? Number((reward / risk).toFixed(2)) : 0,
+      confirmingFactors: params.confirmingFactors,
+      invalidationFactors: params.invalidationFactors,
       createdAt: new Date().toISOString(),
       status: 'ACTIVE',
-    };
-
-    this.ledger.append(setup);
+    });
   }
 }
