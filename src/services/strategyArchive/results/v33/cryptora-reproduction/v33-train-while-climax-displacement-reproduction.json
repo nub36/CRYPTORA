@@ -1,0 +1,163 @@
+{
+  "kind": "CRYPTORA_REPRODUCTION_EVIDENCE",
+  "origin": "DERIVED_BY_CRYPTORA",
+  "versionId": "V3_3_HTF_ZONE_MITIGATION",
+  "variantId": "while-climax-displacement",
+  "slice": "train",
+  "runAtUtc": "2026-09-16T17:54:53.935Z",
+  "runner": "scripts/strategy-archive/reproduce.mjs",
+  "dataset": {
+    "repo": "https://github.com/nub36/svechnoy-suslik-binance-data.git",
+    "commit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f",
+    "intervalsRead": [
+      "1h",
+      "4h"
+    ],
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "loader": "monthly ZIP → CSV, openTime µs→ms normalised, closeTime=open+span−1, isClosed=true"
+  },
+  "sourceArtifact": {
+    "path": "artifacts/research/v33/v33-train-metrics-while-climax-displacement.json",
+    "sha256": "8c87de344857ad74f69de78f421fff3917e54224f801c8d339e2bcb260a0fa12"
+  },
+  "deterministicDigest": "fnv1a32:a9410819:n6263",
+  "tradeCount": 6263,
+  "funnel": {
+    "signals": 15957,
+    "pendingCreated": 15957,
+    "filled": 6263,
+    "expired": 0,
+    "cancelled": 2416,
+    "rejected": 7269,
+    "unresolved": 7
+  },
+  "maxCandleOpenTimeRead": 1716728400000,
+  "metrics": {
+    "n": 6263,
+    "grossRPerTrade": 0.1874,
+    "feeDragRHeadline": 0.0816,
+    "netRPerTradeHeadline": 0.1058,
+    "feeDragRStress": 0.1165,
+    "netRPerTradeStress": 0.0708,
+    "profitFactor": 1.4902,
+    "maxDrawdownR": -22.48,
+    "positiveRRatePct": 61.62,
+    "grossMedianR": 0.1189,
+    "avgWinR": 0.9244,
+    "avgLossR": -0.9958,
+    "medianBarsHeld": 5,
+    "stopDistancePct": {
+      "p25": 0.6865,
+      "median": 1.0514,
+      "p75": 1.6296
+    },
+    "exits": {
+      "TP1_THEN_BE": 2761,
+      "SL": 2390,
+      "TP1_THEN_TIMEOUT": 300,
+      "TP2": 757,
+      "TIMEOUT": 55
+    },
+    "outlierDependence": {
+      "grossExpectancy": 0.1874,
+      "exTop1": 0.1852,
+      "exTop5": 0.1792,
+      "exTop1Pct": 0.1249,
+      "removedForTop1Pct": 63
+    },
+    "byDirection": {
+      "SHORT": {
+        "n": 3076,
+        "grossExpectancy": 0.2405
+      },
+      "LONG": {
+        "n": 3187,
+        "grossExpectancy": 0.1361
+      }
+    },
+    "bySymbol": {
+      "BTCUSDT": {
+        "n": 1026,
+        "grossExpectancy": 0.1968
+      },
+      "ETHUSDT": {
+        "n": 1040,
+        "grossExpectancy": 0.2037
+      },
+      "BNBUSDT": {
+        "n": 981,
+        "grossExpectancy": 0.2142
+      },
+      "SOLUSDT": {
+        "n": 1028,
+        "grossExpectancy": 0.1738
+      },
+      "XRPUSDT": {
+        "n": 1093,
+        "grossExpectancy": 0.2022
+      },
+      "DOGEUSDT": {
+        "n": 1095,
+        "grossExpectancy": 0.1371
+      }
+    }
+  },
+  "comparison": {
+    "checks": {
+      "n": true,
+      "funnel": true,
+      "grossRPerTrade": true,
+      "netRPerTrade": true,
+      "netRPerTradeSpot": true,
+      "feeDragR": true,
+      "profitFactor": true,
+      "maxDrawdownR": true,
+      "exits": true,
+      "bySymbol": true,
+      "byDirection": true,
+      "outlierDependence": true,
+      "stopDistancePct": true,
+      "medianBarsHeld": true,
+      "avgWinR": true,
+      "avgLossR": true,
+      "grossMedianR": true,
+      "positiveRRatePct": true,
+      "tp1HitRatePct": true,
+      "tp2HitRatePct": true
+    },
+    "allMatched": true,
+    "firstMismatch": null,
+    "source": {
+      "n": 6263,
+      "grossRPerTrade": 0.1874,
+      "netRPerTrade": {
+        "FUT_4": 0.1058,
+        "SPOT": 0.0708
+      },
+      "profitFactor": 1.4902,
+      "funnel": {
+        "zonesTotal": 10665,
+        "zonesMitigated": 8627,
+        "zonesDead": 8238,
+        "zonesSkippedByWarmup": 0,
+        "skippedNoSwingLeg": 0,
+        "triggersInZone": 15957,
+        "multiZoneBars": 8756,
+        "pendingCreated": 15957,
+        "filled": 6263,
+        "expired": 0,
+        "cancelled": 2416,
+        "rejected": 7269,
+        "unresolved": 7,
+        "triggersWithTp1BehindClose": 7762
+      }
+    }
+  }
+}

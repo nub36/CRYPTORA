@@ -1,0 +1,156 @@
+{
+  "kind": "CRYPTORA_REPRODUCTION_EVIDENCE",
+  "origin": "DERIVED_BY_CRYPTORA",
+  "versionId": "V3_1_HTF_TREND_PULLBACK",
+  "variantId": "leg",
+  "slice": "train",
+  "runAtUtc": "2026-09-16T17:39:55.356Z",
+  "runner": "scripts/strategy-archive/reproduce.mjs",
+  "dataset": {
+    "repo": "https://github.com/nub36/svechnoy-suslik-binance-data.git",
+    "commit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f",
+    "intervalsRead": [
+      "1h",
+      "4h"
+    ],
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "loader": "monthly ZIP → CSV, openTime µs→ms normalised, closeTime=open+span−1, isClosed=true"
+  },
+  "sourceArtifact": {
+    "path": "artifacts/research/v31/v31-train-metrics.json",
+    "sha256": "1ae41fd6912c07f68d1701809f8ff842af45dbb4a9fcdcd238967af1d81f258e"
+  },
+  "deterministicDigest": "fnv1a32:faecff40:n158",
+  "tradeCount": 158,
+  "funnel": {
+    "signals": 242,
+    "pendingCreated": 242,
+    "filled": 158,
+    "expired": 0,
+    "cancelled": 0,
+    "rejected": 84,
+    "unresolved": 0
+  },
+  "maxCandleOpenTimeRead": 1716728400000,
+  "metrics": {
+    "n": 158,
+    "grossRPerTrade": -0.0838,
+    "feeDragRHeadline": 0.0258,
+    "netRPerTradeHeadline": -0.1097,
+    "feeDragRStress": 0.0369,
+    "netRPerTradeStress": -0.1207,
+    "profitFactor": 0.7873,
+    "maxDrawdownR": -20.42,
+    "positiveRRatePct": 55.06,
+    "grossMedianR": 0.0386,
+    "avgWinR": 0.5637,
+    "avgLossR": -0.8773,
+    "medianBarsHeld": 19,
+    "stopDistancePct": {
+      "p25": 2.046,
+      "median": 3.4561,
+      "p75": 5.2789
+    },
+    "exits": {
+      "TP2": 24,
+      "SL": 57,
+      "TP1_THEN_BE": 48,
+      "TIMEOUT": 25,
+      "TP1_THEN_TIMEOUT": 4
+    },
+    "outlierDependence": {
+      "grossExpectancy": -0.0838,
+      "exTop1": -0.1057,
+      "exTop5": -0.1755,
+      "exTop1Pct": -0.1272,
+      "removedForTop1Pct": 2
+    },
+    "byDirection": {
+      "SHORT": {
+        "n": 100,
+        "grossExpectancy": -0.1229
+      },
+      "LONG": {
+        "n": 58,
+        "grossExpectancy": -0.0165
+      }
+    },
+    "bySymbol": {
+      "BTCUSDT": {
+        "n": 26,
+        "grossExpectancy": 0.1487
+      },
+      "ETHUSDT": {
+        "n": 17,
+        "grossExpectancy": -0.201
+      },
+      "BNBUSDT": {
+        "n": 27,
+        "grossExpectancy": 0.0978
+      },
+      "SOLUSDT": {
+        "n": 31,
+        "grossExpectancy": -0.0402
+      },
+      "XRPUSDT": {
+        "n": 24,
+        "grossExpectancy": -0.5533
+      },
+      "DOGEUSDT": {
+        "n": 33,
+        "grossExpectancy": -0.0549
+      }
+    }
+  },
+  "comparison": {
+    "checks": {
+      "n": true,
+      "funnel": true,
+      "grossRPerTrade": true,
+      "netRPerTrade": true,
+      "netRPerTradeSpot": true,
+      "feeDragR": true,
+      "profitFactor": true,
+      "maxDrawdownR": true,
+      "exits": true,
+      "bySymbol": true,
+      "byDirection": true,
+      "outlierDependence": true,
+      "stopDistancePct": true,
+      "medianBarsHeld": true,
+      "avgWinR": true,
+      "avgLossR": true,
+      "grossMedianR": true,
+      "positiveRRatePct": true,
+      "tp1HitRatePct": true,
+      "tp2HitRatePct": true
+    },
+    "allMatched": true,
+    "firstMismatch": null,
+    "source": {
+      "n": 158,
+      "grossRPerTrade": -0.0838,
+      "netRPerTrade": {
+        "FUT_4": -0.1097,
+        "SPOT": -0.1207
+      },
+      "profitFactor": 0.7873,
+      "funnel": {
+        "signals": 242,
+        "pendingCreated": 242,
+        "filled": 158,
+        "expired": 0,
+        "cancelled": 0,
+        "rejected": 84,
+        "unresolved": 0
+      }
+    }
+  }
+}

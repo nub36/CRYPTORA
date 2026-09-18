@@ -25,17 +25,8 @@ const RULE_LABELS: Record<string, string> = {
   fees: 'Комиссии', scope: 'Охват', zones: 'Зоны', mitigation: 'Митигация',
 };
 
-interface StrategyArchivePanelProps {
-  /** Show only these strategy IDs (from registry). If omitted, shows all. */
-  strategyIds?: string[];
-}
-
-export const StrategyArchivePanel: React.FC<StrategyArchivePanelProps> = ({ strategyIds }) => {
-  const allCards = useMemo(() => buildArchiveCards(), []);
-  const cards = useMemo(
-    () => strategyIds ? allCards.filter((c) => strategyIds.includes(c.id)) : allCards,
-    [allCards, strategyIds],
-  );
+export const StrategyArchivePanel: React.FC = () => {
+  const cards = useMemo(() => buildArchiveCards(), []);
   const counts = useMemo(() => filterCounts(cards), [cards]);
   const [filter, setFilter] = useState<ArchiveFilterId>('ALL');
   const [compare, setCompare] = useState<string[]>([]);
@@ -54,17 +45,9 @@ export const StrategyArchivePanel: React.FC<StrategyArchivePanelProps> = ({ stra
         <div className="flex flex-wrap items-center gap-2">
           <Archive className="w-4 h-4 text-brand-cyan" />
           <h2 className="text-sm font-semibold text-white">
-            {strategyIds ? (
-              <>Активные стратегии → <span data-testid="strategy-archive-count">{cards.length} стратегий</span></>
-            ) : (
-              <>Архив исследований → <span data-testid="strategy-archive-count">{STRATEGY_ARCHIVE_TOTAL_ROWS} версий</span></>
-            )}
+            Архив исследований → <span data-testid="strategy-archive-count">{STRATEGY_ARCHIVE_TOTAL_ROWS} версий</span>
           </h2>
-          {strategyIds ? (
-            <Badge variant="purple" size="xs">Продуктовые стратегии · live-сигналы</Badge>
-          ) : (
-            <Badge variant="cyan" size="xs">Историческое исследование · read-only</Badge>
-          )}
+          <Badge variant="cyan" size="xs">Историческое исследование · read-only</Badge>
         </div>
         <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
           <ShieldCheck className="w-3.5 h-3.5 text-brand-green" />
@@ -73,11 +56,11 @@ export const StrategyArchivePanel: React.FC<StrategyArchivePanelProps> = ({ stra
       </div>
 
       <p className="text-slate-400 leading-relaxed">
-        {strategyIds ? (
-          'Три стратегии, подключённые к LiveSignalEngine для генерации аналитических сигналов на реальных рыночных данных. Статус каждой стратегии отражает результат валидации в исследовании. Сигналы создаются строго при выполнении алгоритмических условий — никаких прогнозов и исполнения ордеров.'
-        ) : (
-          'Полный перенос архива исследований svechnoy-suslik-v2 (13 версий, включая отклонённые и фальсифицированные). У каждой версии два независимых статуса: вердикт исследования и статус воспроизведения. Все цифры — R-метрики без капитала; происхождение каждой — SOURCE_REPORTED (артефакты источника).'
-        )}
+        Полный перенос архива исследований <span className="font-mono">svechnoy-suslik-v2</span> (13 версий, включая отклонённые и
+        фальсифицированные). У каждой версии два независимых статуса: <span className="text-slate-200">вердикт исследования</span> (что
+        показал источник) и <span className="text-slate-200">статус воспроизведения</span> (перезапускала ли CRYPTORA прогон на пинованном
+        датасете). «Воспроизведено» означает повторяемость чисел, а не успешность стратегии. Все цифры — R-метрики без капитала;
+        происхождение каждой — <span className="font-mono">SOURCE_REPORTED</span> (артефакты источника).
       </p>
 
       {/* filters */}
@@ -106,7 +89,7 @@ export const StrategyArchivePanel: React.FC<StrategyArchivePanelProps> = ({ stra
               <GitCompare className="w-3.5 h-3.5 text-brand-cyan" />
               Сравнение допущений ({compared.length}/3)
             </div>
-            <button onClick={() => setCompare([])} className="text-slate-500 hover:text-slate-200 flex items-center gap-1 text-[11px] min-h-[28px]">
+            <button onClick={() => setCompare([])} className="text-slate-500 hover:text-slate-200 flex items-center gap-1 text-[11px]">
               <X className="w-3 h-3" /> очистить
             </button>
           </div>

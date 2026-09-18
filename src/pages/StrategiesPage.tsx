@@ -89,14 +89,14 @@ export const StrategiesPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Cpu className="w-5 h-5 text-brand-purple" />
             <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
-              Стратегии CRYPTORA
+              Лаборатория стратегий
             </h1>
             <Badge variant="purple" size="sm">
-              3 активных стратегии
+              Архитектурный прототип
             </Badge>
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Алгоритмические стратегии, подключённые к LiveSignalEngine. Генерация аналитических сетапов на реальных рыночных данных.
+            Конструктор формализованных правил и побарная симуляция на исторических данных (без заглядывания в будущее).
           </p>
         </div>
 
@@ -116,12 +116,8 @@ export const StrategiesPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Product strategies: V3.0, V3.3, V2.8 — connected to LiveSignalEngine */}
-      <StrategyArchivePanel strategyIds={[
-        'V3_0_HTF_LIQUIDATION_TRAP',
-        'V3_3_HTF_ZONE_MITIGATION',
-        'V2_8_ZERO_FEE_SNIPER_TRAILING',
-      ]} />
+      {/* Strategy Research Archive (read-only; all 13 historical versions from the registry) */}
+      <StrategyArchivePanel />
 
       {/* Interactive Controls & Parameters */}
       <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-4 font-sans text-xs">

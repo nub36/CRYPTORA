@@ -1,0 +1,140 @@
+{
+  "kind": "CRYPTORA_REPRODUCTION_EVIDENCE",
+  "origin": "DERIVED_BY_CRYPTORA",
+  "versionId": "V3_0_HTF_LIQUIDATION_TRAP",
+  "slice": "validation",
+  "runAtUtc": "2026-09-16T00:00:00Z",
+  "runner": "scripts/strategy-archive/reproduce-v30.mjs",
+  "cryptoraCommitBefore": "45f9ff8",
+  "dataset": {
+    "repo": "https://github.com/nub36/svechnoy-suslik-binance-data.git",
+    "commit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f",
+    "intervalsRead": [
+      "1h",
+      "4h"
+    ],
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "loader": "monthly ZIP → CSV, openTime µs→ms normalised, closeTime=open+span−1, isClosed=true"
+  },
+  "sourceArtifact": {
+    "path": "artifacts/research/v30/v30-validation-metrics.json",
+    "sha256": "703e38811dfa71d1db1b9846928ad8b5d1dd1262c06d78372255a9009655f7f6"
+  },
+  "deterministicDigest": "fnv1a32:02e59d33:n536",
+  "tradeCount": 536,
+  "funnel": {
+    "signals": 691,
+    "pendingCreated": 691,
+    "filled": 536,
+    "expired": 0,
+    "cancelled": 130,
+    "rejected": 24,
+    "unresolved": 1
+  },
+  "maxCandleOpenTimeRead": 1741975200000,
+  "metrics": {
+    "n": 536,
+    "grossRPerTrade": 0.1274,
+    "feeDragRHeadline": 0.0673,
+    "netRPerTradeHeadline": 0.06,
+    "feeDragRStress": 0.0962,
+    "netRPerTradeStress": 0.0312,
+    "profitFactor": 1.2484,
+    "maxDrawdownR": -25.94,
+    "positiveRRatePct": 48.69,
+    "grossMedianR": -1,
+    "avgWinR": 1.3146,
+    "avgLossR": -0.9994,
+    "medianBarsHeld": 7,
+    "stopDistancePct": {
+      "p25": 0.833,
+      "median": 1.2799,
+      "p75": 1.9565
+    },
+    "exits": {
+      "TP2": 76,
+      "TP1_THEN_BE": 157,
+      "SL": 274,
+      "TP1_THEN_TIMEOUT": 21,
+      "TIMEOUT": 8
+    },
+    "outlierDependence": {
+      "grossExpectancy": 0.1274,
+      "exTop1": 0.0995,
+      "exTop5": 0.0482,
+      "exTop1Pct": 0.0384,
+      "removedForTop1Pct": 6
+    },
+    "byDirection": {
+      "SHORT": {
+        "n": 306,
+        "grossExpectancy": 0.1602
+      },
+      "LONG": {
+        "n": 230,
+        "grossExpectancy": 0.0837
+      }
+    },
+    "bySymbol": {
+      "BTCUSDT": {
+        "n": 107,
+        "grossExpectancy": -0.0129
+      },
+      "ETHUSDT": {
+        "n": 101,
+        "grossExpectancy": 0.4684
+      },
+      "BNBUSDT": {
+        "n": 77,
+        "grossExpectancy": 0.4272
+      },
+      "SOLUSDT": {
+        "n": 90,
+        "grossExpectancy": -0.0685
+      },
+      "XRPUSDT": {
+        "n": 87,
+        "grossExpectancy": -0.0966
+      },
+      "DOGEUSDT": {
+        "n": 74,
+        "grossExpectancy": 0.0542
+      }
+    }
+  },
+  "comparison": {
+    "fieldsCompared": [
+      "n",
+      "funnel",
+      "grossRPerTrade",
+      "netRPerTrade.FUT_4",
+      "netRPerTrade.SPOT",
+      "feeDragR",
+      "profitFactor",
+      "maxDrawdownR",
+      "positiveRRatePct",
+      "stopDistancePct",
+      "grossMedianR",
+      "avgWinR",
+      "avgLossR",
+      "medianBarsHeld",
+      "exits",
+      "outlierDependence",
+      "byDirection",
+      "bySymbol"
+    ],
+    "allMatched": true,
+    "firstMismatch": null,
+    "notes": [
+      "Overlapping trades preserved (D-V30-001).",
+      "Source field outlierDependence.edgeRetainedPct (validation only) is derived, not recomputed."
+    ]
+  }
+}

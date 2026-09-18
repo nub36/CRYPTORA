@@ -1,0 +1,168 @@
+{
+  "schema": "cryptora.strategy-archive.provenance/1",
+  "generatedAt": "2026-09-16",
+  "sourceRepository": "https://github.com/nub36/svechnoy-suslik-v2.git",
+  "sourceBranch": "arena/01a0aa75-svechnoy-suslik-v2",
+  "sourceHead": "292050c6c3f32807a85548e037f674d42a2efb18",
+  "frozenEngineCommit": "48390748ff1ed1f08b104206c3430142059d7430",
+  "datasetRepository": "https://github.com/nub36/svechnoy-suslik-binance-data.git",
+  "datasetCommit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f",
+  "datasetProvenance": {
+    "exchange": "Binance",
+    "market": "Spot",
+    "quote": "USDT",
+    "originalSource": "https://data.binance.vision/data/spot/monthly/klines/",
+    "note": "Original unmodified monthly ZIP archives, re-hosted on GitHub by the user."
+  },
+  "datasetPeriod": {
+    "from": "2022-01",
+    "to": "2025-12"
+  },
+  "datasetManifestSha256": "e31d739fc21d82331a45b366512c87ea9b296d2ae32f41933303ea7877cee39e",
+  "datasetZipChecksumsSha256": "7c36e62ec8e028daed311fa2683efccb81c0b5d73c2d9d42f065bd587af748fc",
+  "frozenSettingsSha256": "92311c4f9a96bc2e6922fc952aacc53ae473ffb22bcb6749b11c2a0cfa0cd3f9",
+  "splitsSha256": "a44eed9ae3ad036853f14845113e392c434081301b21647398a4a3af2ab84f0b",
+  "splitPolicy": "CHRONOLOGICAL per (symbol,timeframe) series: TRAIN 60% / VALIDATION 20% / TEST 20% by candle index. No shuffle.",
+  "requiredForV30": {
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT"
+    ],
+    "intervals": [
+      "1h",
+      "4h"
+    ],
+    "periodFrom": "2022-01",
+    "periodTo": "2025-03 (VALIDATION ends 2025-03-14; TEST must not be read)"
+  },
+  "requiredSeries": [
+    {
+      "symbol": "BTCUSDT",
+      "timeframe": "1h",
+      "files": 48,
+      "candles": 35063,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767222000000
+    },
+    {
+      "symbol": "BTCUSDT",
+      "timeframe": "4h",
+      "files": 48,
+      "candles": 8766,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767211200000
+    },
+    {
+      "symbol": "ETHUSDT",
+      "timeframe": "1h",
+      "files": 48,
+      "candles": 35063,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767222000000
+    },
+    {
+      "symbol": "ETHUSDT",
+      "timeframe": "4h",
+      "files": 48,
+      "candles": 8766,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767211200000
+    },
+    {
+      "symbol": "BNBUSDT",
+      "timeframe": "1h",
+      "files": 48,
+      "candles": 35063,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767222000000
+    },
+    {
+      "symbol": "BNBUSDT",
+      "timeframe": "4h",
+      "files": 48,
+      "candles": 8766,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767211200000
+    },
+    {
+      "symbol": "SOLUSDT",
+      "timeframe": "1h",
+      "files": 48,
+      "candles": 35063,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767222000000
+    },
+    {
+      "symbol": "SOLUSDT",
+      "timeframe": "4h",
+      "files": 48,
+      "candles": 8766,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767211200000
+    },
+    {
+      "symbol": "XRPUSDT",
+      "timeframe": "1h",
+      "files": 48,
+      "candles": 35063,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767222000000
+    },
+    {
+      "symbol": "XRPUSDT",
+      "timeframe": "4h",
+      "files": 48,
+      "candles": 8766,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767211200000
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "timeframe": "1h",
+      "files": 48,
+      "candles": 35063,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767222000000
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "timeframe": "4h",
+      "files": 48,
+      "candles": 8766,
+      "firstOpenTimeMs": 1640995200000,
+      "lastOpenTimeMs": 1767211200000
+    }
+  ],
+  "datasetTotals": {
+    "zips": 2016,
+    "candles": 16681073,
+    "duplicateOpenTime": 0,
+    "outOfOrder": 0,
+    "gapCount": 31,
+    "missingCandles": 625,
+    "invalidOhlc": 0,
+    "invalidVolume": 0,
+    "badCloseTime": 30
+  },
+  "artifacts": {
+    "v30-train-metrics.json": "bc18ad9612b987678a40551be9ecfb064db5c15a72ebf3ff3d6e7357fca33fec",
+    "v30-validation-metrics.json": "703e38811dfa71d1db1b9846928ad8b5d1dd1262c06d78372255a9009655f7f6",
+    "v30-port-parity.json": "5a5b9cb4fb45994713e4d54f570da556cb09b3e7dcac6f6f59f2e68e767d2e68",
+    "settings.json": "92311c4f9a96bc2e6922fc952aacc53ae473ffb22bcb6749b11c2a0cfa0cd3f9",
+    "splits.json": "a44eed9ae3ad036853f14845113e392c434081301b21647398a4a3af2ab84f0b",
+    "dataset-manifest.c3c1dce.json": "e31d739fc21d82331a45b366512c87ea9b296d2ae32f41933303ea7877cee39e"
+  },
+  "strategySources": {
+    "research/v30_htf_trap.ts": "a821757ff0319a100a8a9087da1bdd137abb1df0785493d644ad4d87f05dc4cd",
+    "research/v30_validate.ts": "b6d582eca49dd5a1e8a09c5c1c899b45548329776cdd29f2abc1827a6704a28b",
+    "src/strategy/v2/structure.ts": "e04806a33d1ebc4bab24f12f5240c7320ae8e00276157833e51534152a4e662f",
+    "src/strategy/v2/indicators.ts": "10594cadf615b0e048797e1db9504648794b0cbec41b62da6ec55641d1daa55c",
+    "src/strategy/v2/htf.ts": "b175efade6feb8069e5564502931585bf09ef371ad181813758422e774fe88f0"
+  },
+  "fullDatasetInRepository": false,
+  "note": "Full Binance dataset is NOT committed. Reproduction requires the offline script scripts/strategy-archive/import-dataset.mjs run by an operator; production UI never downloads data."
+}
