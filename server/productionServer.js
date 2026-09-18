@@ -1,16 +1,18 @@
 /**
- * CRYPTORA — Production Static & Market Data Gateway Server
+ * CRYPTORA — Production Static Server
  *
  * Lightweight, zero-dependency Node.js production server for serving
- * the compiled Vite static assets (dist/) with SPA fallback, production
- * security headers, and minimal server-side market data proxy.
+ * the compiled Vite static assets (dist/) with SPA fallback and
+ * production security headers.
  *
  * Architecture:
  * Internet -> Nginx (80/443) -> Node.js production server (0.0.0.0:3000)
+ *
+ * P0: Removed /api/proxy/binance and /api/proxy/kucoin (dead code, SSRF risk,
+ * unbounded cache). Frontend connects to exchanges directly via browser.
  */
 
 import http from 'node:http';
-import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,10 +32,6 @@ const APP_VERSION = (() => {
     return 'unknown';
   }
 })();
-const CACHE_TTL_MS = parseInt(process.env.MARKET_DATA_CACHE_TTL_MS || '10000', 10);
-
-// In-memory cache for market-data proxy
-const proxyCache = new Map();
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -86,78 +84,8 @@ function applySecurityHeaders(res) {
   res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
 }
 
-// Minimal server-side proxy forwarder
-function proxyRequest(targetBaseUrl, targetPath, req, res) {
-  const cacheKey = `${targetBaseUrl}${targetPath}`;
-  const cached = proxyCache.get(cacheKey);
-  const now = Date.now();
-
-  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-    res.writeHead(200, {
-      'Content-Type': 'application/json; charset=utf-8',
-      'X-Cache': 'HIT',
-      'Access-Control-Allow-Origin': '*',
-    });
-    res.end(cached.body);
-    return;
-  }
-
-  const targetUrl = new URL(targetPath, targetBaseUrl);
-  const isHttps = targetUrl.protocol === 'https:';
-  const transport = isHttps ? https : http;
-
-  const proxyReq = transport.request(
-    targetUrl,
-    {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'CRYPTORA-Gateway/0.7.0',
-      },
-      timeout: 8000,
-    },
-    (proxyRes) => {
-      let data = '';
-      proxyRes.on('data', (chunk) => {
-        data += chunk;
-      });
-      proxyRes.on('end', () => {
-        if (proxyRes.statusCode && proxyRes.statusCode >= 200 && proxyRes.statusCode < 300) {
-          proxyCache.set(cacheKey, { timestamp: now, body: data });
-        }
-        res.writeHead(proxyRes.statusCode || 200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'X-Cache': 'MISS',
-          'Access-Control-Allow-Origin': '*',
-        });
-        res.end(data);
-      });
-    }
-  );
-
-  proxyReq.on('timeout', () => {
-    proxyReq.destroy();
-    res.writeHead(504, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(
-      JSON.stringify({
-        error: 'Gateway Timeout',
-        message: `Exchange target ${targetBaseUrl} timed out after 8000ms`,
-      })
-    );
-  });
-
-  proxyReq.on('error', (err) => {
-    res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(
-      JSON.stringify({
-        error: 'Bad Gateway',
-        message: `Failed to reach exchange endpoint: ${err.message}`,
-      })
-    );
-  });
-
-  proxyReq.end();
-}
+// P0: proxy routes removed (dead code, SSRF risk, unbounded cache).
+// Frontend connects to exchanges directly from the browser (CSP allows it).
 
 const server = http.createServer((req, res) => {
   const startTime = Date.now();
@@ -185,30 +113,6 @@ const server = http.createServer((req, res) => {
   // Endpoint: LLM-объяснение поверх фактов (Этап 7). Ключ только в env сервера.
   if (pathname === '/api/ai/explain') {
     handleAiExplain(req, res);
-    return;
-  }
-
-  // Endpoint: Binance Proxy Gateway
-  if (pathname.startsWith('/api/proxy/binance')) {
-    const targetPath = parsedUrl.searchParams.get('path');
-    if (!targetPath) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Missing path query parameter' }));
-      return;
-    }
-    proxyRequest('https://api.binance.com', targetPath, req, res);
-    return;
-  }
-
-  // Endpoint: KuCoin Proxy Gateway
-  if (pathname.startsWith('/api/proxy/kucoin')) {
-    const targetPath = parsedUrl.searchParams.get('path');
-    if (!targetPath) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Missing path query parameter' }));
-      return;
-    }
-    proxyRequest('https://api.kucoin.com', targetPath, req, res);
     return;
   }
 
@@ -282,7 +186,6 @@ server.listen(PORT, HOST, () => {
   console.log(`  Serving static: ${DIST_DIR}`);
   console.log(`  SPA Fallback: enabled -> /index.html`);
   console.log(`  Security Headers: active`);
-  console.log(`  Public Exchange Proxy: /api/proxy/binance, /api/proxy/kucoin`);
   console.log(`=======================================================`);
 });
 
