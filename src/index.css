@@ -1,0 +1,439 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Семантические токены темы (UX-цикл п. 4)
+   :root        — DARK (по умолчанию, терминальная палитра)
+   html.light   — LIGHT
+   Выбор темы: ThemeProvider (src/context/ThemeContext.tsx) ставит класс dark|light
+   на <html> и атрибут data-theme=dark|light|system. RGB-триплеты нужны Tailwind
+   для alpha-модификаторов.
+   ============================================================ */
+:root {
+  color-scheme: dark;
+
+  --c-root: 6 8 14;
+  --c-surface-1: 10 15 29;
+  --c-surface-2: 15 23 42;
+  --c-surface-3: 20 30 54;
+  --c-surface-elevated: 17 26 48;
+  --c-surface-hover: 23 35 63;
+  --c-surface-inset: 7 11 20;
+  --c-contrast: 255 255 255;
+
+  --c-slate-50: 248 250 252;
+  --c-slate-100: 241 245 249;
+  --c-slate-200: 226 232 240;
+  --c-slate-300: 203 213 225;
+  --c-slate-400: 148 163 184;
+  --c-slate-500: 116 132 160; /* #7484a0 — ≥4.5:1 на surface-1/elevated (WCAG AA для 11–12px) */
+  --c-slate-600: 71 85 105;
+  --c-slate-700: 51 65 85;
+  --c-slate-800: 30 41 59;
+  --c-slate-900: 15 23 42;
+
+  /* Акцентные шкалы: в LIGHT инвертируются (200/300 → тёмные читаемые оттенки, 950 → бледные подложки); 500 общий */
+  --c-rose-50: 255 241 242;
+  --c-rose-100: 255 228 230;
+  --c-rose-200: 254 205 211;
+  --c-rose-300: 253 164 175;
+  --c-rose-400: 251 113 133;
+  --c-rose-500: 244 63 94;
+  --c-rose-600: 225 29 72;
+  --c-rose-700: 190 18 60;
+  --c-rose-800: 159 18 57;
+  --c-rose-900: 136 19 55;
+  --c-rose-950: 76 5 25;
+  --c-emerald-50: 236 253 245;
+  --c-emerald-100: 209 250 229;
+  --c-emerald-200: 167 243 208;
+  --c-emerald-300: 110 231 183;
+  --c-emerald-400: 52 211 153;
+  --c-emerald-500: 16 185 129;
+  --c-emerald-600: 5 150 105;
+  --c-emerald-700: 4 120 87;
+  --c-emerald-800: 6 95 70;
+  --c-emerald-900: 6 78 59;
+  --c-emerald-950: 2 44 34;
+  --c-cyan-50: 236 254 255;
+  --c-cyan-100: 207 250 254;
+  --c-cyan-200: 165 243 252;
+  --c-cyan-300: 103 232 249;
+  --c-cyan-400: 34 211 238;
+  --c-cyan-500: 6 182 212;
+  --c-cyan-600: 8 145 178;
+  --c-cyan-700: 14 116 144;
+  --c-cyan-800: 21 94 117;
+  --c-cyan-900: 22 78 99;
+  --c-cyan-950: 8 51 68;
+  --c-amber-50: 255 251 235;
+  --c-amber-100: 254 243 199;
+  --c-amber-200: 253 230 138;
+  --c-amber-300: 252 211 77;
+  --c-amber-400: 251 191 36;
+  --c-amber-500: 245 158 11;
+  --c-amber-600: 217 119 6;
+  --c-amber-700: 180 83 9;
+  --c-amber-800: 146 64 14;
+  --c-amber-900: 120 53 15;
+  --c-amber-950: 69 26 3;
+  --c-violet-50: 245 243 255;
+  --c-violet-100: 237 233 254;
+  --c-violet-200: 221 214 254;
+  --c-violet-300: 196 181 253;
+  --c-violet-400: 167 139 250;
+  --c-violet-500: 139 92 246;
+  --c-violet-600: 124 58 237;
+  --c-violet-700: 109 40 217;
+  --c-violet-800: 91 33 182;
+  --c-violet-900: 76 29 149;
+  --c-violet-950: 46 16 101;
+  --c-purple-50: 250 245 255;
+  --c-purple-100: 243 232 255;
+  --c-purple-200: 233 213 255;
+  --c-purple-300: 216 180 254;
+  --c-purple-400: 192 132 252;
+  --c-purple-500: 168 85 247;
+  --c-purple-600: 147 51 234;
+  --c-purple-700: 126 34 206;
+  --c-purple-800: 107 33 168;
+  --c-purple-900: 88 28 135;
+  --c-purple-950: 59 7 100;
+  --c-sky-50: 240 249 255;
+  --c-sky-100: 224 242 254;
+  --c-sky-200: 186 230 253;
+  --c-sky-300: 125 211 252;
+  --c-sky-400: 56 189 248;
+  --c-sky-500: 14 165 233;
+  --c-sky-600: 2 132 199;
+  --c-sky-700: 3 105 161;
+  --c-sky-800: 7 89 133;
+  --c-sky-900: 12 74 110;
+  --c-sky-950: 8 47 73;
+  --c-blue-50: 239 246 255;
+  --c-blue-100: 219 234 254;
+  --c-blue-200: 191 219 254;
+  --c-blue-300: 147 197 253;
+  --c-blue-400: 96 165 250;
+  --c-blue-500: 59 130 246;
+  --c-blue-600: 37 99 235;
+  --c-blue-700: 29 78 216;
+  --c-blue-800: 30 64 175;
+  --c-blue-900: 30 58 138;
+  --c-blue-950: 23 37 84;
+
+  /* Фирменные акценты (текст и заливки) */
+  --c-brand-green: 16 185 129;
+  --c-brand-red: 244 63 94;
+  --c-brand-cyan: 34 211 238;
+  --c-brand-amber: 245 158 11;
+  --c-brand-purple: 139 92 246;
+  --c-brand-sky: 56 189 248;
+  --c-brand-blue: 59 130 246;
+  --c-on-accent: 2 6 23;
+
+  --shadow-alpha: 0.5;
+  --shadow-alpha-strong: 0.6;
+
+  --body-bg: #06080e;
+  --body-fg: #e2e8f0;
+  --body-glow-1: rgba(34, 211, 238, 0.04);
+  --body-glow-2: rgba(139, 92, 246, 0.035);
+  --scrollbar-track: #080c16;
+  --scrollbar-thumb: #1e293b;
+  --scrollbar-thumb-hover: #334155;
+  --glass-bg: rgba(10, 15, 29, 0.75);
+  --glass-bg-elevated: rgba(17, 26, 48, 0.85);
+
+  /* Графики (lightweight-charts читает через getComputedStyle) */
+  --chart-bg: #090e1a;
+  --chart-grid: rgba(255, 255, 255, 0.04);
+  --chart-text: #94a3b8;
+  --chart-border: rgba(255, 255, 255, 0.08);
+
+  /* Legacy-алиасы (сохранены для совместимости) */
+  --bg-primary: rgb(var(--c-root));
+  --surface-1: rgb(var(--c-surface-1));
+  --surface-2: rgb(var(--c-surface-2));
+  --surface-3: rgb(var(--c-surface-3));
+  --surface-hover: rgb(var(--c-surface-hover));
+  --surface-inset: rgb(var(--c-surface-inset));
+  --border-subtle: rgb(var(--c-contrast) / 0.06);
+  --border-muted: rgb(var(--c-contrast) / 0.12);
+  --border-active: rgba(34, 211, 238, 0.45);
+  --text-primary: rgb(var(--c-slate-50));
+  --text-secondary: rgb(var(--c-slate-400));
+  --text-muted: rgb(var(--c-slate-500));
+
+  /* Accents / Financial Semantics — одинаковы в обеих темах */
+  --accent-cyan: #22d3ee;
+  --accent-cyan-hover: #06b6d4;
+  --accent-blue: #3b82f6;
+  --accent-violet: #8b5cf6;
+  --accent-violet-hover: #7c3aed;
+  --positive: #10b981;
+  --positive-bg: rgba(16, 185, 129, 0.12);
+  --negative: #f43f5e;
+  --negative-bg: rgba(244, 63, 94, 0.12);
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --info: #38bdf8;
+  --info-bg: rgba(56, 189, 248, 0.12);
+
+  --glow-cyan: 0 0 24px -4px rgba(34, 211, 238, 0.25);
+  --glow-violet: 0 0 24px -4px rgba(139, 92, 246, 0.25);
+  --shadow-panel: 0 4px 20px -2px rgb(0 0 0 / var(--shadow-alpha)), 0 0 0 1px var(--border-subtle);
+  --shadow-glow: 0 0 30px -5px rgba(34, 211, 238, 0.15);
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+html.light {
+  color-scheme: light;
+
+  --c-root: 244 246 250;
+  --c-surface-1: 255 255 255;
+  --c-surface-2: 246 248 251;
+  --c-surface-3: 236 240 246;
+  --c-surface-elevated: 248 250 252;
+  --c-surface-hover: 232 237 244;
+  --c-surface-inset: 238 241 246;
+  --c-contrast: 15 23 42;
+
+  /* Инвертированная шкала: slate-200/300 → тёмный текст, slate-800/900 → светлые фоны */
+  --c-slate-50: 15 23 42;
+  --c-slate-100: 30 41 59;
+  --c-slate-200: 30 41 59;
+  --c-slate-300: 51 65 85;
+  --c-slate-400: 71 85 105;
+  --c-slate-500: 86 101 124; /* #56657c — ≥5:1 на белом/серых поверхностях */
+  --c-slate-600: 148 163 184;
+  --c-slate-700: 203 213 225;
+  --c-slate-800: 226 232 240;
+  --c-slate-900: 241 245 249;
+
+  --c-rose-50: 76 5 25;
+  --c-rose-100: 136 19 55;
+  --c-rose-200: 136 19 55;
+  --c-rose-300: 159 18 57;
+  --c-rose-400: 190 18 60;
+  --c-rose-500: 190 18 60;
+  --c-rose-600: 251 113 133;
+  --c-rose-700: 253 164 175;
+  --c-rose-800: 254 205 211;
+  --c-rose-900: 255 228 230;
+  --c-rose-950: 255 241 242;
+  --c-emerald-50: 2 44 34;
+  --c-emerald-100: 6 78 59;
+  --c-emerald-200: 6 78 59;
+  --c-emerald-300: 6 95 70;
+  --c-emerald-400: 4 120 87;
+  --c-emerald-500: 4 120 87;
+  --c-emerald-600: 52 211 153;
+  --c-emerald-700: 110 231 183;
+  --c-emerald-800: 167 243 208;
+  --c-emerald-900: 209 250 229;
+  --c-emerald-950: 236 253 245;
+  --c-cyan-50: 8 51 68;
+  --c-cyan-100: 22 78 99;
+  --c-cyan-200: 22 78 99;
+  --c-cyan-300: 21 94 117;
+  --c-cyan-400: 14 116 144;
+  --c-cyan-500: 14 116 144;
+  --c-cyan-600: 34 211 238;
+  --c-cyan-700: 103 232 249;
+  --c-cyan-800: 165 243 252;
+  --c-cyan-900: 207 250 254;
+  --c-cyan-950: 236 254 255;
+  --c-amber-50: 69 26 3;
+  --c-amber-100: 120 53 15;
+  --c-amber-200: 120 53 15;
+  --c-amber-300: 146 64 14;
+  --c-amber-400: 180 83 9;
+  --c-amber-500: 180 83 9;
+  --c-amber-600: 251 191 36;
+  --c-amber-700: 252 211 77;
+  --c-amber-800: 253 230 138;
+  --c-amber-900: 254 243 199;
+  --c-amber-950: 255 251 235;
+  --c-violet-50: 46 16 101;
+  --c-violet-100: 76 29 149;
+  --c-violet-200: 76 29 149;
+  --c-violet-300: 91 33 182;
+  --c-violet-400: 109 40 217;
+  --c-violet-500: 109 40 217;
+  --c-violet-600: 167 139 250;
+  --c-violet-700: 196 181 253;
+  --c-violet-800: 221 214 254;
+  --c-violet-900: 237 233 254;
+  --c-violet-950: 245 243 255;
+  --c-purple-50: 59 7 100;
+  --c-purple-100: 88 28 135;
+  --c-purple-200: 88 28 135;
+  --c-purple-300: 107 33 168;
+  --c-purple-400: 126 34 206;
+  --c-purple-500: 126 34 206;
+  --c-purple-600: 192 132 252;
+  --c-purple-700: 216 180 254;
+  --c-purple-800: 233 213 255;
+  --c-purple-900: 243 232 255;
+  --c-purple-950: 250 245 255;
+  --c-sky-50: 8 47 73;
+  --c-sky-100: 12 74 110;
+  --c-sky-200: 12 74 110;
+  --c-sky-300: 7 89 133;
+  --c-sky-400: 3 105 161;
+  --c-sky-500: 3 105 161;
+  --c-sky-600: 56 189 248;
+  --c-sky-700: 125 211 252;
+  --c-sky-800: 186 230 253;
+  --c-sky-900: 224 242 254;
+  --c-sky-950: 240 249 255;
+  --c-blue-50: 23 37 84;
+  --c-blue-100: 30 58 138;
+  --c-blue-200: 30 58 138;
+  --c-blue-300: 30 64 175;
+  --c-blue-400: 29 78 216;
+  --c-blue-500: 29 78 216;
+  --c-blue-600: 96 165 250;
+  --c-blue-700: 147 197 253;
+  --c-blue-800: 191 219 254;
+  --c-blue-900: 219 234 254;
+  --c-blue-950: 239 246 255;
+
+  /* Акценты темнее (≥4.5:1 на белом), текст поверх заливок — белый */
+  --c-brand-green: 4 120 87;
+  --c-brand-red: 190 18 60;
+  --c-brand-cyan: 14 116 144;
+  --c-brand-amber: 180 83 9;
+  --c-brand-purple: 109 40 217;
+  --c-brand-sky: 3 105 161;
+  --c-brand-blue: 29 78 216;
+  --c-on-accent: 255 255 255;
+
+  --shadow-alpha: 0.08;
+  --shadow-alpha-strong: 0.12;
+
+  --body-bg: #f4f6fa;
+  --body-fg: #1e293b;
+  --body-glow-1: rgba(34, 211, 238, 0.06);
+  --body-glow-2: rgba(139, 92, 246, 0.05);
+  --scrollbar-track: #e9edf3;
+  --scrollbar-thumb: #c7d0dd;
+  --scrollbar-thumb-hover: #a5b1c2;
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-bg-elevated: rgba(248, 250, 252, 0.9);
+
+  --chart-bg: #ffffff;
+  --chart-grid: rgba(15, 23, 42, 0.06);
+  --chart-text: #475569;
+  --chart-border: rgba(15, 23, 42, 0.1);
+
+  /* Акценты чуть темнее ради контраста на светлом фоне (AA для текста 12px+) */
+  --accent-cyan: #0e7490;
+  --info: #0284c7;
+}
+
+body {
+  margin: 0;
+  background-color: var(--body-bg);
+  background-image:
+    radial-gradient(circle at 10% 0%, var(--body-glow-1) 0%, transparent 35%),
+    radial-gradient(circle at 90% 100%, var(--body-glow-2) 0%, transparent 40%);
+  background-attachment: fixed;
+  color: var(--body-fg);
+  transition: background-color 160ms ease, color 160ms ease;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbars for high-density terminal tables */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Tabular numbers for financial metrics */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Glassmorphism Surface Helpers */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(var(--c-contrast) / 0.07);
+}
+
+.glass-panel-elevated {
+  background: var(--glass-bg-elevated);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgb(var(--c-contrast) / 0.1);
+}
+
+/* Gradient Borders & Accent Illumination */
+.animated-gradient-border {
+  position: relative;
+  background: linear-gradient(60deg, rgb(var(--c-surface-1)), rgb(var(--c-surface-elevated)), rgb(var(--c-surface-1)));
+  background-size: 300% 300%;
+}
+
+.border-glow-accent {
+  box-shadow: 0 0 15px -3px rgba(34, 211, 238, 0.2), inset 0 0 15px -3px rgba(34, 211, 238, 0.1);
+}
+
+/* Accessible focus ring for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+/* Respect user accessibility preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Animations */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes sweep-light {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-sweep-light {
+  animation: sweep-light 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
