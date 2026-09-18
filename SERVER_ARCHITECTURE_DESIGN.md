@@ -111,7 +111,8 @@ CRYPTORA/
 │   │   │   ├── 006_create_signals.sql
 │   │   │   ├── 007_create_audit_log.sql
 │   │   │   └── 008_create_subscriptions.sql
-│   │   └── seed.js                 # Начальные данные (admin user, default settings)
+│   │   └── seed.js                 # Дефолтные настройки (site_settings, strategy_settings).
+│   │                               # ⚠️ НЕ создаёт админа — только `npm run create-admin`.
 │   ├── middleware/
 │   │   ├── auth.js                 # Session check + user injection
 │   │   ├── rbac.js                 # requireRole('admin')
@@ -966,7 +967,7 @@ server/
 │   │   ├── 006_create_signals.sql
 │   │   ├── 007_create_audit_log.sql
 │   │   └── 008_create_subscriptions.sql
-│   └── seed.js                       # Admin user + default settings
+│   └── seed.js                       # Дефолтные настройки (БЕЗ админа — админ только через CLI)
 ├── middleware/
 │   ├── auth.js
 │   ├── rbac.js
@@ -1016,7 +1017,8 @@ src/
 - `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`
 - argon2id hashing
 - express-session + connect-pg-simple
-- Seed: admin user
+- Первый админ: **только** интерактивный `npm run create-admin` (Argon2id → PostgreSQL).
+  Никакого seed-админа, никаких `ADMIN_PASSWORD` в `.env`.
 
 ### Этап 2: Auth middleware + RBAC (1 день)
 - `requireAuth`, `requireRole` middleware
@@ -1034,7 +1036,7 @@ src/
 - Миграция 005: `strategy_settings`
 - `GET /api/strategies` (public)
 - `GET/PUT /api/admin/strategies/:id`
-- Seed: V3.0, V3.3, V2.8
+- Seed: V3.0, V3.3, V2.8 (только строки `strategy_settings`; админов seed не создаёт)
 
 ### Этап 5: Signal persistence (1-2 дня)
 - Миграция 006: `signals`
@@ -1257,11 +1259,47 @@ NODE_ENV=production
 LOGIN_RATE_LIMIT=5              # per minute per IP
 REGISTER_RATE_LIMIT=3           # per minute per IP
 API_RATE_LIMIT=100              # per minute per user
-
-# Admin seed
-ADMIN_EMAIL=admin@cryptora.duckdns.org
-ADMIN_PASSWORD=<strong-password>
 ```
+
+> **⚠️ Здесь НЕТ `ADMIN_PASSWORD` / `ADMIN_SEED_PASSWORD`.**
+> Первый администратор создаётся интерактивным CLI — см. «First Admin» ниже.
+> Plaintext-пароль администратора не должен попадать ни в один файл.
+
+### First Admin (обязательный механизм)
+
+**Первый администратор создаётся ТОЛЬКО интерактивным CLI.** Никакого постоянного
+«admin seed» механизма в production не требуется и быть не должно.
+
+```bash
+npm run create-admin
+```
+
+CLI запрашивает:
+1. Email
+2. Display name
+3. Пароль (скрывается при вводе)
+4. Подтверждение пароля
+
+Пароль хешируется **Argon2id** (memoryCost 64 MB, timeCost 3, parallelism 1)
+и сохраняется в PostgreSQL вместе с `role = 'admin'`.
+
+**Plaintext-пароль администратора НИКОГДА не сохраняется в:**
+
+| Место | Запрещено |
+|-------|-----------|
+| `.env` / `.env.production` | ✗ нет `ADMIN_PASSWORD` / `ADMIN_SEED_PASSWORD` |
+| shell-скрипт (`deploy.sh`, `update.sh`) | ✗ никаких `ADMIN_PASSWORD=...` |
+| git (любой файл, любой коммит) | ✗ |
+| SQL-миграция | ✗ `001_create_users.sql` не содержит INSERT админа |
+| логи (`stdout`, `journalctl`, `server.log`) | ✗ пароль не логируется, не эхо-ится |
+
+Дополнительные гарантии реализации:
+- `create-admin` — **не** HTTP-endpoint (публичного `/api/admin/create` нет и не будет).
+- Email/пароль не захардкожены в коде.
+- CLI отклоняет email, уже существующий в `users`.
+- CLI отклоняет пароль короче 8 символов и несовпадающее подтверждение.
+- После создания администратора механизм не нужен повторно — дальнейшие
+  админы назначаются через БД вручную (или отдельным этапом).
 
 ### CORS policy
 
@@ -1280,7 +1318,7 @@ Same-origin — CORS **не нужен**. Не добавлять `cors()` middl
 3.  npm install
 4.  sudo -u postgres createdb cryptora          # if DB doesn't exist
 5.  npm run migrate                               # run DB migrations
-6.  npm run seed                                  # create admin + default settings
+6.  npm run create-admin                          # interactive: first admin (Argon2id)
 7.  npm run build                                 # build frontend
 8.  sudo cp -r dist/* /var/www/cryptora/          # deploy static files
 9.  sudo systemctl restart cryptora               # restart backend

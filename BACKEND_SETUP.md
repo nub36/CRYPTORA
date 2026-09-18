@@ -93,16 +93,42 @@ npm run migrate:status
 
 ## 4. Create First Admin
 
-**NEVER expose admin creation as an HTTP endpoint.**
+The first admin is created **only** by the interactive CLI. There is no
+"admin seed" mechanism in production, and no admin credential belongs in any
+configuration file.
 
 ```bash
 npm run create-admin
 ```
 
-Interactive CLI prompts:
-- Email
-- Display name
-- Password (Argon2id hashed)
+Interactive prompts:
+1. Email
+2. Display name
+3. Password (typed hidden, then confirmed)
+
+The password is hashed with **Argon2id** (memoryCost 64 MB, timeCost 3,
+parallelism 1) and written straight to PostgreSQL as `password_hash`
+with `role = 'admin'`.
+
+### Plaintext admin password must never be stored in:
+
+| Location | Status |
+|----------|--------|
+| `.env` / `.env.production` | ✗ no `ADMIN_PASSWORD` / `ADMIN_SEED_PASSWORD` |
+| shell scripts (`deploy.sh`, `update.sh`, …) | ✗ no `ADMIN_PASSWORD=...` |
+| git (any file, any commit) | ✗ |
+| SQL migrations | ✗ `001_create_users.sql` contains no admin INSERT |
+| logs (`stdout`, `journalctl`, `server.log`) | ✗ the password is never printed |
+
+Additional guarantees:
+- `create-admin` is **not** an HTTP endpoint — no public create-admin route exists.
+- Email and password are not hardcoded in source.
+- The CLI rejects an email that already exists in `users`.
+- The CLI rejects passwords shorter than 8 characters and mismatched confirmation.
+- After the first admin exists, the mechanism is not needed again.
+
+These constraints are enforced by `tests/unit/adminBootstrapPolicy.test.ts`,
+which fails the build if an admin-seed mechanism is reintroduced.
 
 ---
 
