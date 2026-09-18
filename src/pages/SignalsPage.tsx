@@ -1,21 +1,32 @@
-import React, { useState, useMemo } from 'react';
-import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check, Radio } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { sideLabel } from '@/utils/labels';
 import { SignalsAuditLedger, AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 
 export const SignalsPage: React.FC = () => {
   const ledger = useMemo(() => SignalsAuditLedger.getInstance(), []);
-  const summary = useMemo(() => ledger.getSummary(), [ledger]);
-  const isIntegrityVerified = useMemo(() => ledger.verifyIntegrity(), [ledger]);
+  const [tick, setTick] = useState(0); // Trigger re-render on new signals
 
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'TARGET_REACHED' | 'INVALIDATED'>('ALL');
+  // Poll for new signals every 5s (engine appends asynchronously)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      ledger.expireStale(); // Expire signals older than 4h
+      setTick((t) => t + 1);
+    }, 5_000);
+    return () => clearInterval(interval);
+  }, [ledger]);
+
+  const summary = useMemo(() => ledger.getSummary(), [ledger, tick]);
+  const isIntegrityVerified = useMemo(() => ledger.verifyIntegrity(), [ledger, tick]);
+
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'TARGET_REACHED' | 'INVALIDATED' | 'EXPIRED'>('ALL');
 
   const setups = useMemo(() => {
     const list = ledger.getSetups();
     if (statusFilter === 'ALL') return list;
     return list.filter((s) => s.status === statusFilter);
-  }, [ledger, statusFilter]);
+  }, [ledger, statusFilter, tick]);
 
   return (
     <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
@@ -36,8 +47,14 @@ export const SignalsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="text-xs font-mono text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded border border-rose-500/30">
-          Не является финансовой рекомендацией
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-1.5 text-[11px] font-mono text-emerald-400">
+            <Radio className="w-3 h-3 animate-pulse" />
+            <span>Сканирование 6 символов · 60с</span>
+          </div>
+          <div className="text-xs font-mono text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded border border-rose-500/30">
+            Не является финансовой рекомендацией
+          </div>
         </div>
       </div>
 
@@ -129,7 +146,7 @@ export const SignalsPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 font-sans text-xs">
           <Filter className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-400 text-xs">Статус:</span>
-          {(['ALL', 'ACTIVE', 'TARGET_REACHED', 'INVALIDATED'] as const).map((tab) => (
+          {(['ALL', 'ACTIVE', 'TARGET_REACHED', 'INVALIDATED', 'EXPIRED'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setStatusFilter(tab)}
@@ -143,6 +160,7 @@ export const SignalsPage: React.FC = () => {
               {tab === 'ACTIVE' && 'Активные'}
               {tab === 'TARGET_REACHED' && 'Цель достигнута'}
               {tab === 'INVALIDATED' && 'Инвалидированы'}
+              {tab === 'EXPIRED' && 'Истекшие'}
             </button>
           ))}
         </div>
@@ -172,7 +190,7 @@ export const SignalsPage: React.FC = () => {
                   variant={
                     setup.status === 'TARGET_REACHED'
                       ? 'green'
-                      : setup.status === 'INVALIDATED'
+                      : setup.status === 'INVALIDATED' || setup.status === 'EXPIRED'
                       ? 'red'
                       : 'cyan'
                   }
@@ -182,6 +200,8 @@ export const SignalsPage: React.FC = () => {
                     ? 'ЦЕЛЬ ДОСТИГНУТА'
                     : setup.status === 'INVALIDATED'
                     ? 'ИНВАЛИДИРОВАН (СТОП)'
+                    : setup.status === 'EXPIRED'
+                    ? 'ИСТЕК (4ч)'
                     : `ИДЕЯ: ${sideLabel(setup.direction).toUpperCase()}`}
                 </Badge>
               </div>

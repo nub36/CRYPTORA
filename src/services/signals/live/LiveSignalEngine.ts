@@ -88,6 +88,9 @@ export class LiveSignalEngine {
   public isActive(): boolean { return this.running; }
 
   private async scan(): Promise<void> {
+    // Expire signals older than 4 hours
+    this.ledger.expireStale();
+
     for (const symbol of this.symbols) {
       try { await this.scanSymbol(symbol); } catch { /* non-fatal */ }
     }
