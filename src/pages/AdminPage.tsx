@@ -55,6 +55,7 @@ interface AdminUser {
   isActive: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  emailVerified: boolean;
 }
 
 interface SystemInfo {
@@ -353,6 +354,7 @@ export const AdminPage: React.FC = () => {
                   <th className="px-4 py-3 text-left font-medium text-slate-400">Пользователь</th>
                   <th className="px-4 py-3 text-left font-medium text-slate-400">Роль</th>
                   <th className="px-4 py-3 text-left font-medium text-slate-400">Статус</th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-400">Email</th>
                   <th className="px-4 py-3 text-left font-medium text-slate-400">Регистрация</th>
                   <th className="px-4 py-3 text-left font-medium text-slate-400">Последний вход</th>
                   <th className="px-4 py-3 text-right font-medium text-slate-400">Действия</th>
@@ -377,6 +379,15 @@ export const AdminPage: React.FC = () => {
                         u.isActive ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'
                       }`}>
                         {u.isActive ? 'Активен' : 'Заблокирован'}
+                      </span>
+                    </td>
+                    {/* Read-only: verification must prove mailbox ownership, so there
+                        is deliberately NO manual "confirm email" action here. */}
+                    <td className="px-4 py-3">
+                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${
+                        u.emailVerified ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
+                      }`}>
+                        {u.emailVerified ? 'Verified' : 'Not verified'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-400">{formatDate(u.createdAt)}</td>

@@ -121,6 +121,22 @@ describe('CSRF — development policy', () => {
     expect((res.body as { error: string }).error).not.toBe(CSRF_ERROR);
   });
 
+  it('a development localhost origin is allowed (dev policy preserved)', async () => {
+    const res = await rawRequest(
+      port,
+      'POST',
+      '/api/auth/login',
+      {
+        Origin: 'http://localhost:5173',
+        Host: `127.0.0.1:${port}`,
+        'Content-Type': 'application/json',
+      },
+      JSON.stringify({ email: 'nobody@example.com', password: 'whatever-pass' })
+    );
+    expect(res.status).toBe(401);
+    expect((res.body as { error: string }).error).not.toBe(CSRF_ERROR);
+  });
+
   it('a FOREIGN Origin is rejected with 403 CSRF', async () => {
     const res = await rawRequest(
       port,
@@ -189,6 +205,8 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
   beforeAll(async () => {
     process.env.NODE_ENV = 'production';
     process.env.SESSION_STORE = 'postgres';
+    // Canonical production origin — the middleware must read this, not a hardcoded domain.
+    process.env.APP_ORIGIN = PRODUCTION_ORIGIN;
     vi.resetModules();
 
     const { MemoryDb } = await import('../helpers/memoryDb');
@@ -240,12 +258,9 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
     expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
   });
 
-  it('a same-host http:// origin is ACCEPTED (current policy: scheme-agnostic same-host match)', async () => {
-    // server/middleware/csrf.js matches BOTH `https://<host>` and `http://<host>`.
-    // This is the implemented, documented behaviour — asserted here so a
-    // future tightening (or loosening) is a deliberate, visible change.
-    // Residual risk is low: the session cookie is Secure, so it is never sent
-    // over plain HTTP, and a cross-site page cannot forge this Origin value.
+  it('a same-host http:// origin is REJECTED in production (HTTPS-only)', async () => {
+    // The canonical origin is https://cryptora.duckdns.org, so a scheme
+    // downgrade must not be accepted even though the host matches.
     const res = await rawRequest(
       port,
       'POST',
@@ -257,17 +272,97 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
       },
       JSON.stringify({ email: 'x@example.com', password: 'whatever-pass' })
     );
-    expect(res.status).toBe(401);
-    expect((res.body as { error: string }).error).not.toBe(CSRF_ERROR);
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
   });
 
-  it('a subdomain of the production host is rejected (exact-host match only)', async () => {
+  it('a subdomain of the production host is rejected (exact-origin match only)', async () => {
     const res = await rawRequest(
       port,
       'POST',
       '/api/auth/login',
       {
         Origin: 'https://evil.cryptora.duckdns.org',
+        Host: PRODUCTION_HOST,
+        'Content-Type': 'application/json',
+      },
+      JSON.stringify({ email: 'x@example.com', password: 'whatever-pass' })
+    );
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
+  });
+
+  it('a suffix attack origin is rejected (cryptora.duckdns.org.evil.com)', async () => {
+    const res = await rawRequest(
+      port,
+      'POST',
+      '/api/auth/login',
+      {
+        Origin: 'https://cryptora.duckdns.org.evil.com',
+        Host: PRODUCTION_HOST,
+        'Content-Type': 'application/json',
+      },
+      JSON.stringify({ email: 'x@example.com', password: 'whatever-pass' })
+    );
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
+  });
+
+  it('a prefix attack origin is rejected (notcryptora.duckdns.org)', async () => {
+    const res = await rawRequest(
+      port,
+      'POST',
+      '/api/auth/login',
+      {
+        Origin: 'https://notcryptora.duckdns.org',
+        Host: PRODUCTION_HOST,
+        'Content-Type': 'application/json',
+      },
+      JSON.stringify({ email: 'x@example.com', password: 'whatever-pass' })
+    );
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
+  });
+
+  it('a malformed Origin header is rejected rather than erroring', async () => {
+    const res = await rawRequest(
+      port,
+      'POST',
+      '/api/auth/login',
+      {
+        Origin: 'not a url at all',
+        Host: PRODUCTION_HOST,
+        'Content-Type': 'application/json',
+      },
+      JSON.stringify({ email: 'x@example.com', password: 'whatever-pass' })
+    );
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
+  });
+
+  it('a foreign Referer (no Origin) is rejected in production', async () => {
+    const res = await rawRequest(
+      port,
+      'POST',
+      '/api/auth/login',
+      {
+        Referer: 'https://evil.example/attack',
+        Host: PRODUCTION_HOST,
+        'Content-Type': 'application/json',
+      },
+      JSON.stringify({ email: 'x@example.com', password: 'whatever-pass' })
+    );
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
+  });
+
+  it('an http:// Referer for the production host is rejected', async () => {
+    const res = await rawRequest(
+      port,
+      'POST',
+      '/api/auth/login',
+      {
+        Referer: 'http://cryptora.duckdns.org/login',
         Host: PRODUCTION_HOST,
         'Content-Type': 'application/json',
       },

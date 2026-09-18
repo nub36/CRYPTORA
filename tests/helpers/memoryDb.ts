@@ -10,13 +10,18 @@
  *   - Zod validators (server/validators/auth.js)
  *   - express-session middleware + cookie flow
  *   - Argon2id hashing/verification
+ *   - token generation/hashing + transaction control flow
  *   - audit service (server/services/audit.js)
  *
  * What is MOCKED:
  *   - the SQL layer only. `query(text, params)` is pattern-matched against an
- *     in-memory users/audit_log/sessions store. It understands exactly the
- *     statements the real handlers issue (see the SQL inventory below) and
- *     throws on anything unknown, so a handler change cannot silently pass.
+ *     in-memory store. It understands exactly the statements the real handlers
+ *     issue and THROWS on anything unknown, so a handler change cannot
+ *     silently pass.
+ *   - `connect()` returns a client that shares the same in-memory store, so
+ *     BEGIN/COMMIT/ROLLBACK execute but do not provide atomic rollback. The
+ *     production code paths (BEGIN → checks → COMMIT/ROLLBACK) are still
+ *     exercised; only the isolation guarantee is not simulated.
  *
  * Injected via the explicit test seam `__setPoolForTests` in server/db/pool.js.
  * No business logic is duplicated here: it stores and returns rows, nothing else.
@@ -29,6 +34,8 @@ export interface UserRow {
   password_hash: string;
   role: 'user' | 'admin';
   is_active: boolean;
+  email_verified: boolean;
+  email_verified_at: Date | null;
   created_at: Date;
   updated_at: Date;
   last_login_at: Date | null;
@@ -41,6 +48,15 @@ export interface AuditRow {
   target_type: string;
   target_id: string | null;
   metadata: Record<string, unknown>;
+  created_at: Date;
+}
+
+export interface TokenRow {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: Date;
+  used_at: Date | null;
   created_at: Date;
 }
 
@@ -66,9 +82,15 @@ const nextId = (): string => {
   return `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`;
 };
 
+export interface PoolResult {
+  rows: unknown[];
+  rowCount: number;
+}
+
 export class MemoryDb {
   users: UserRow[] = [];
   audit: AuditRow[] = [];
+  tokens: TokenRow[] = [];
   sessions: Array<{ sess: { userId?: string } }> = [];
 
   /** Every statement executed, for assertions. */
@@ -77,14 +99,23 @@ export class MemoryDb {
   reset(): void {
     this.users = [];
     this.audit = [];
+    this.tokens = [];
     this.sessions = [];
     this.executed = [];
   }
 
-  /** Drop-in replacement for pg.Pool — exposes .query and .end. */
-  asPool(): { query: (t: string, p?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>; end: () => Promise<void> } {
+  /** Drop-in replacement for pg.Pool — exposes .query, .connect and .end. */
+  asPool(): {
+    query: (t: string, p?: unknown[]) => Promise<PoolResult>;
+    connect: () => Promise<{ query: (t: string, p?: unknown[]) => Promise<PoolResult>; release: () => void }>;
+    end: () => Promise<void>;
+  } {
     return {
       query: (text: string, params?: unknown[]) => this.query(text, params ?? []),
+      connect: async () => ({
+        query: (text: string, params?: unknown[]) => this.query(text, params ?? []),
+        release: () => undefined,
+      }),
       end: async () => undefined,
     };
   }
@@ -98,18 +129,28 @@ export class MemoryDb {
     return this.users.find((u) => u.email.toLowerCase() === e);
   }
 
-  async query(text: string, params: unknown[] = []): Promise<{ rows: unknown[]; rowCount: number }> {
+  activeTokensFor(userId: string): TokenRow[] {
+    return this.tokens.filter((t) => t.user_id === userId && !t.used_at);
+  }
+
+  async query(text: string, params: unknown[] = []): Promise<PoolResult> {
     const sql = norm(text);
     this.executed.push(sql);
-    const p = params as Array<string | number>;
+    const p = params as unknown[];
+
+    /* ── transaction control (no-op here; see the header note) ──────── */
+    if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(sql)) {
+      return { rows: [], rowCount: 0 };
+    }
 
     /* ── connectivity probe ─────────────────────────────────────────── */
     if (/^SELECT 1 AS ok$/i.test(sql)) {
       return { rows: [{ ok: 1 }], rowCount: 1 };
     }
 
-    /* ── INSERT INTO users (register: role 'user') ──────────────────── */
-    if (/^INSERT INTO users \(email, display_name, password_hash, role\) VALUES \(\$1, \$2, \$3, 'user'\)/i.test(sql)) {
+    /* ── INSERT INTO users ──────────────────────────────────────────── */
+    // Register path: explicit email_verified = FALSE.
+    if (/^INSERT INTO users \(email, display_name, password_hash, role, email_verified\) VALUES \(\$1, \$2, \$3, 'user', FALSE\)/i.test(sql)) {
       const now = new Date();
       const row: UserRow = {
         id: nextId(),
@@ -118,6 +159,8 @@ export class MemoryDb {
         password_hash: str(p[2]),
         role: 'user',
         is_active: true,
+        email_verified: false,
+        email_verified_at: null,
         created_at: now,
         updated_at: now,
         last_login_at: null,
@@ -141,6 +184,20 @@ export class MemoryDb {
       return { rows: [], rowCount: 1 };
     }
 
+    /* ── INSERT INTO email_verification_tokens ──────────────────────── */
+    if (/^INSERT INTO email_verification_tokens \(user_id, token_hash, expires_at\) VALUES \(\$1, \$2, \$3\)/i.test(sql)) {
+      const row: TokenRow = {
+        id: nextId(),
+        user_id: str(p[0]),
+        token_hash: str(p[1]),
+        expires_at: p[2] instanceof Date ? p[2] : new Date(str(p[2])),
+        used_at: null,
+        created_at: new Date(),
+      };
+      this.tokens.push(row);
+      return { rows: [row], rowCount: 1 };
+    }
+
     /* ── SELECT ... FROM users WHERE lower(email) = lower($1) ───────── */
     if (/FROM users WHERE lower\(email\) = lower\(\$1\)/i.test(sql)) {
       const u = this.findUserByEmail(str(p[0]));
@@ -151,6 +208,21 @@ export class MemoryDb {
     if (/FROM users WHERE id = \$1/i.test(sql)) {
       const u = this.findUserById(str(p[0]));
       return { rows: u ? [u] : [], rowCount: u ? 1 : 0 };
+    }
+
+    /* ── SELECT token by hash ───────────────────────────────────────── */
+    if (/^SELECT t\.id, t\.user_id, t\.expires_at, t\.used_at FROM email_verification_tokens t WHERE t\.token_hash = \$1/i.test(sql)) {
+      const t = this.tokens.find((x) => x.token_hash === str(p[0]));
+      return { rows: t ? [t] : [], rowCount: t ? 1 : 0 };
+    }
+
+    /* ── SELECT MAX(created_at) for resend throttling ───────────────── */
+    if (/^SELECT MAX\(created_at\) AS last_created FROM email_verification_tokens WHERE user_id = \$1/i.test(sql)) {
+      const rows = this.tokens.filter((t) => t.user_id === str(p[0]));
+      const last = rows.length
+        ? rows.reduce((a, b) => (a.created_at > b.created_at ? a : b)).created_at
+        : null;
+      return { rows: [{ last_created: last }], rowCount: 1 };
     }
 
     /* ── UPDATE users SET last_login_at ─────────────────────────────── */
@@ -179,6 +251,48 @@ export class MemoryDb {
         u.updated_at = new Date();
       }
       return { rows: [], rowCount: u ? 1 : 0 };
+    }
+
+    /* ── UPDATE users SET email_verified = TRUE ─────────────────────── */
+    if (/^UPDATE users SET email_verified = TRUE, email_verified_at = now\(\), updated_at = now\(\) WHERE id = \$1/i.test(sql)) {
+      const u = this.findUserById(str(p[0]));
+      if (u) {
+        u.email_verified = true;
+        u.email_verified_at = new Date();
+        u.updated_at = new Date();
+      }
+      return { rows: [], rowCount: u ? 1 : 0 };
+    }
+
+    /* ── consume a single token ─────────────────────────────────────── */
+    if (/^UPDATE email_verification_tokens SET used_at = now\(\) WHERE id = \$1/i.test(sql)) {
+      const t = this.tokens.find((x) => x.id === str(p[0]));
+      if (t && !t.used_at) t.used_at = new Date();
+      return { rows: [], rowCount: t ? 1 : 0 };
+    }
+
+    /* ── invalidate all outstanding tokens for a user ───────────────── */
+    if (/^UPDATE email_verification_tokens SET used_at = now\(\) WHERE user_id = \$1 AND used_at IS NULL$/i.test(sql)) {
+      let n = 0;
+      for (const t of this.tokens) {
+        if (t.user_id === str(p[0]) && !t.used_at) {
+          t.used_at = new Date();
+          n += 1;
+        }
+      }
+      return { rows: [], rowCount: n };
+    }
+
+    /* ── invalidate siblings except one ─────────────────────────────── */
+    if (/^UPDATE email_verification_tokens SET used_at = now\(\) WHERE user_id = \$1 AND used_at IS NULL AND id <> \$2/i.test(sql)) {
+      let n = 0;
+      for (const t of this.tokens) {
+        if (t.user_id === str(p[0]) && !t.used_at && t.id !== str(p[1])) {
+          t.used_at = new Date();
+          n += 1;
+        }
+      }
+      return { rows: [], rowCount: n };
     }
 
     /* ── DELETE FROM sessions (block propagation) ───────────────────── */
@@ -225,7 +339,7 @@ export class MemoryDb {
     }
 
     /* ── admin users: page ──────────────────────────────────────────── */
-    if (/^SELECT id, email, display_name, role, is_active, created_at, last_login_at FROM users/i.test(sql) && /LIMIT \$\d+ OFFSET \$\d+/i.test(sql)) {
+    if (/^SELECT id, email, display_name, role, is_active, email_verified, created_at, last_login_at FROM users/i.test(sql) && /LIMIT \$\d+ OFFSET \$\d+/i.test(sql)) {
       const filtered = this.filterUsers(sql, p);
       const limitIdx = sql.match(/LIMIT \$(\d+) OFFSET \$(\d+)/i);
       const limit = limitIdx ? Number(p[Number(limitIdx[1]) - 1]) : filtered.length;
@@ -238,7 +352,6 @@ export class MemoryDb {
 
     /* ── audit service: paginated read with optional filters ────────── */
     if (/^SELECT al\.\*, u\.email AS actor_email, u\.display_name AS actor_name FROM audit_log al/i.test(sql)) {
-      // Apply the WHERE filters positionally, exactly as the real query binds them.
       let filtered = this.audit;
 
       const actorMatch = sql.match(/actor_user_id = \$(\d+)/i);
@@ -273,7 +386,7 @@ export class MemoryDb {
   }
 
   /** Applies the optional `WHERE lower(email) LIKE $1 OR lower(display_name) LIKE $1`. */
-  private filterUsers(sql: string, p: Array<string | number>): UserRow[] {
+  private filterUsers(sql: string, p: unknown[]): UserRow[] {
     if (!/WHERE lower\(email\) LIKE \$1 OR lower\(display_name\) LIKE \$1/i.test(sql)) {
       return this.users;
     }
@@ -284,7 +397,12 @@ export class MemoryDb {
   }
 }
 
-/** Seed a user directly (bypasses HTTP) — for RBAC/blocked-user setups. */
+/**
+ * Seed a user directly (bypasses HTTP).
+ *
+ * Defaults to a VERIFIED user, because existing RBAC/auth tests need to be
+ * able to log in. Unverified scenarios must pass `email_verified: false`.
+ */
 export function seedUser(
   db: MemoryDb,
   overrides: Partial<UserRow> & { password_hash: string }
@@ -296,6 +414,8 @@ export function seedUser(
     display_name: 'Seeded',
     role: 'user',
     is_active: true,
+    email_verified: true,
+    email_verified_at: now,
     created_at: now,
     updated_at: now,
     last_login_at: null,

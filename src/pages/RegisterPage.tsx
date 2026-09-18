@@ -1,15 +1,20 @@
 /**
  * CRYPTORA — Register Page
+ *
+ * After a successful registration the user is NOT logged in: the address must
+ * be verified first. We switch to a "Проверьте почту" screen with the masked
+ * address and a resend button on a cooldown.
  */
 
-import React, { useState, FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
-import { UserPlus } from 'lucide-react';
+import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth, maskEmail } from '@/context/AuthContext';
+import { UserPlus, Mail, RefreshCw } from 'lucide-react';
+
+const RESEND_COOLDOWN_SECONDS = 60;
 
 export const RegisterPage: React.FC = () => {
-  const { register } = useAuth();
-  const navigate = useNavigate();
+  const { register, resendVerification } = useAuth();
 
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -17,6 +22,17 @@ export const RegisterPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // "Check your mail" screen state.
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,7 +47,10 @@ export const RegisterPage: React.FC = () => {
 
     try {
       await register(email, displayName, password);
-      navigate('/');
+      // No session was created — show the verification screen instead.
+      setSentTo(email);
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setNotice('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка регистрации');
     } finally {
@@ -39,6 +58,72 @@ export const RegisterPage: React.FC = () => {
     }
   };
 
+  const handleResend = useCallback(async () => {
+    if (!sentTo || cooldown > 0) return;
+    setError('');
+    setNotice('');
+    try {
+      await resendVerification(sentTo);
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setNotice('Новая ссылка отправлена');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось отправить ссылку');
+    }
+  }, [sentTo, cooldown, resendVerification]);
+
+  // ── Verification screen ─────────────────────────────────────────────
+  if (sentTo) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-8 text-center shadow-2xl backdrop-blur-xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500">
+              <Mail className="h-6 w-6 text-white" />
+            </div>
+
+            <h1 className="text-xl font-bold text-white">Проверьте почту</h1>
+            <p className="mt-2 text-sm text-slate-400">
+              Мы отправили ссылку подтверждения на{' '}
+              <span className="font-mono text-slate-200">{maskEmail(sentTo)}</span>
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Перейдите по ссылке из письма, чтобы активировать аккаунт. Ссылка действительна 60 минут.
+            </p>
+
+            {notice && (
+              <div className="mt-4 rounded-md border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
+                {notice}
+              </div>
+            )}
+            {error && (
+              <div className="mt-4 rounded-md border border-rose-500/30 bg-rose-950/30 px-3 py-2 text-sm text-rose-300">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={cooldown > 0}
+              className="mt-6 inline-flex items-center gap-2 rounded-md border border-white/10 bg-surface-2 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:border-cyan-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className="h-4 w-4" />
+              {cooldown > 0 ? `Отправить снова через ${cooldown} с` : 'Отправить ссылку ещё раз'}
+            </button>
+
+            <div className="mt-6 text-sm text-slate-400">
+              Уже подтвердили?{' '}
+              <Link to="/login" className="font-medium text-cyan-400 hover:text-cyan-300">
+                Войти
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Registration form ───────────────────────────────────────────────
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4">
       <div className="w-full max-w-md">

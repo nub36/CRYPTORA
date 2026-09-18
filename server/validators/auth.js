@@ -65,3 +65,24 @@ export const updateProfileSchema = z.object({
 export const blockUserSchema = z.object({
   userId: z.string().uuid('Некорректный userId'),
 });
+
+/**
+ * Verification token as it arrives from the link.
+ * Raw tokens are 32 random bytes base64url-encoded → exactly 43 characters.
+ * The bound is deliberately generous; entropy is validated in the service.
+ */
+export const verifyEmailSchema = z.object({
+  token: z
+    .string()
+    .min(32, 'Некорректная ссылка')
+    .max(128, 'Некорректная ссылка')
+    .regex(/^[A-Za-z0-9_-]+$/, 'Некорректная ссылка'),
+});
+
+export const resendSchema = z.object({
+  email: z
+    .string()
+    .min(1, 'Введите email')
+    .max(EMAIL_MAX_LENGTH)
+    .transform(normalizeEmail),
+});

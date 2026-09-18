@@ -62,6 +62,9 @@ cp .env.example .env
 | `PORT` | Backend port | `3000` |
 | `COOKIE_SECURE` | HTTPS-only cookies | `true` (production) |
 | `SESSION_STORE` | Session store backend | `postgres` (production). `memory` is test-only and refused when `NODE_ENV=production` |
+| `APP_ORIGIN` | Canonical public origin. The **only** origin the CSRF middleware accepts in production, and the base for verification links. Must be `https://` in production — a plain-`http` value is rejected. No trailing slash, no path. | `https://cryptora.duckdns.org` |
+| `SMTP_HOST` | SMTP relay host. Empty ⇒ mail is **unavailable** in production (registration still works, resend answers `503 MAIL_UNAVAILABLE`). Production never silently falls back to a fake transport. | `smtp.example.com` |
+| `MAIL_FROM` | Display sender | `CRYPTORA <noreply@example.com>` |
 
 ### Optional variables
 
@@ -71,6 +74,34 @@ cp .env.example .env
 | `LOGIN_RATE_LIMIT` | `10` | Login attempts per minute per IP |
 | `REGISTER_RATE_LIMIT` | `5` | Registrations per minute per IP |
 | `API_RATE_LIMIT` | `100` | API requests per minute per IP |
+| `SMTP_PORT` | `587` | SMTP port |
+| `SMTP_SECURE` | `false` | `true` = implicit TLS (port 465); `false` = STARTTLS (port 587) |
+| `SMTP_USER` | — | SMTP username |
+| `SMTP_PASS` | — | SMTP password. **Never commit a real value.** Not logged anywhere. |
+| `MAIL_TRANSPORT` | `` (auto) | `smtp`, `json` (stdout echo, dev only) or auto: smtp when `SMTP_HOST` is set, `json` outside production, `unavailable` inside production |
+| `EMAIL_VERIFY_TOKEN_TTL_MINUTES` | `60` | Verification link lifetime |
+| `RESEND_RATE_LIMIT` | `3` | `resend-verification` requests per window per IP |
+| `RESEND_RATE_WINDOW_MINUTES` | `15` | Window for the above |
+| `RESEND_MIN_INTERVAL_SECONDS` | `60` | Per-email resend throttle (SMTP flood protection) |
+| `VERIFY_RATE_LIMIT` | `20` | `verify-email` attempts per window per IP |
+| `VERIFY_RATE_WINDOW_MINUTES` | `15` | Window for the above |
+
+### Email verification
+
+Registration creates the account with `email_verified = false` and **no session**.
+The user must follow the link `${APP_ORIGIN}/verify-email?token=…` before they can log in.
+
+- The raw token is generated with `crypto.randomBytes(32)` and sent **only** to the mailbox.
+- PostgreSQL stores the **SHA-256 hex digest** — never the plaintext.
+- Tokens are single-use. On success the token is consumed and every other outstanding
+  token for that user is invalidated, so replay is impossible.
+- A mail outage never breaks registration: the account stays created and unverified,
+  the API reports `verification.delivery = 'unavailable'`, and resend recovers later.
+- Login checks the password **first**. Wrong password ⇒ generic `401`. Correct password
+  but unverified ⇒ `403 {"error":"EMAIL_NOT_VERIFIED"}` — verification state is never
+  disclosed before the password check.
+- `POST /api/auth/resend-verification` answers the same generic body whether or not the
+  address exists, so it cannot be used for account enumeration.
 
 ---
 
@@ -235,10 +266,12 @@ WantedBy=multi-user.target
 - `GET /api/health` — Backend health, version, DB status
 
 ### Auth
-- `POST /api/auth/register` — Create account
-- `POST /api/auth/login` — Authenticate
+- `POST /api/auth/register` — Create account (unverified, **no session** created)
+- `POST /api/auth/verify-email` — Consume a verification token. `200` ok, `410` expired, `400` invalid/unknown. Does **not** create a session.
+- `POST /api/auth/resend-verification` — New token, previous ones invalidated. Always the same generic response; `503 MAIL_UNAVAILABLE` if mail is down.
+- `POST /api/auth/login` — Authenticate. `403 EMAIL_NOT_VERIFIED` if the password is correct but the address is not yet confirmed.
 - `POST /api/auth/logout` — Destroy session
-- `GET /api/auth/session` — Current session user
+- `GET /api/auth/session` — Current session user (includes `emailVerified`)
 
 ### Profile
 - `GET /api/me` — Current user profile
@@ -258,8 +291,10 @@ WantedBy=multi-user.target
 - **Passwords:** Argon2id (64MB memory, 3 iterations)
 - **Sessions:** Server-side PostgreSQL (connect-pg-simple)
 - **Cookies:** `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=7d`
-- **CSRF:** Origin/Referer validation for state-changing requests
-- **Rate limiting:** Per-IP for auth endpoints
+- **CSRF:** In production only the exact canonical `APP_ORIGIN` is accepted for `Origin`/`Referer`. `http://cryptora.duckdns.org`, `https://evil.cryptora.duckdns.org` and `https://cryptora.duckdns.org.evil.com` are all rejected. The domain is never hardcoded — it comes from `APP_ORIGIN`. Dev `localhost` origins keep working.
+- **Email verification:** mandatory before login; raw token only in the mailbox, SHA-256 digest only in PostgreSQL, single-use, transactional
+- **Rate limiting:** Per-IP for auth endpoints, plus a separate tight budget for `resend-verification` and a per-email resend throttle
+- **No secret logging:** SMTP password, session secret, verification token and the full verification link are never written to logs or the audit trail
 - **RBAC:** Server-side only (never trust client state)
 
 ---

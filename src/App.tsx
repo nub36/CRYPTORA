@@ -32,6 +32,7 @@ const ArticlesPage = React.lazy(() => import('@/pages/ArticlesPage').then(m => (
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 const LoginPage = React.lazy(() => import('@/pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const RegisterPage = React.lazy(() => import('@/pages/RegisterPage').then(m => ({ default: m.RegisterPage })));
+const VerifyEmailPage = React.lazy(() => import('@/pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
 const ProfilePage = React.lazy(() => import('@/pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
 const AdminPage = React.lazy(() => import('@/pages/AdminPage').then(m => ({ default: m.AdminPage })));
 
@@ -71,6 +72,7 @@ export const App: React.FC = () => {
             <Route path="/articles/:slug" element={<ArticlesPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="*" element={<NotFoundPage />} />

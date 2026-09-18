@@ -14,6 +14,8 @@ import type { HttpClient } from '../helpers/httpHarness';
 // Low thresholds so the limit trips quickly.
 process.env.LOGIN_RATE_LIMIT = '3';
 process.env.REGISTER_RATE_LIMIT = '2';
+process.env.RESEND_RATE_LIMIT = '3';
+process.env.RESEND_MIN_INTERVAL_SECONDS = '0';
 process.env.API_RATE_LIMIT = '1000000';
 process.env.SESSION_STORE = 'memory';
 process.env.NODE_ENV = 'development';
@@ -87,5 +89,29 @@ describe('rate limiting — real express-rate-limit middleware', () => {
     // Budget is 2: first two are accepted (201), the rest throttled (429).
     expect(statuses.slice(0, 2)).toEqual([201, 201]);
     expect(statuses.slice(2).every((s) => s === 429)).toBe(true);
+  });
+
+  it('resend-verification has its own tight budget (3 / 15 min)', async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const res = await client.post('/api/auth/resend-verification', {
+        email: 'nobody@example.com',
+      });
+      statuses.push(res.status);
+    }
+
+    // Budget is 3: the first three are answered generically (200), then 429.
+    expect(statuses.slice(0, 3)).toEqual([200, 200, 200]);
+    expect(statuses.slice(3).every((s) => s === 429)).toBe(true);
+
+    const last = await client.post('/api/auth/resend-verification', { email: 'nobody@example.com' });
+    expect(last.headers.get('ratelimit-policy')).toBe('3;w=900');
+  });
+
+  it('verify-email is rate limited independently', async () => {
+    const res = await client.post('/api/auth/verify-email', { token: 'A'.repeat(43) });
+    // VERIFY_RATE_LIMIT defaults to 20/15min, so this one still reaches the handler.
+    expect(res.status).toBe(400);
+    expect(res.headers.get('ratelimit-policy')).toBe('20;w=900');
   });
 });

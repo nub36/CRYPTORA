@@ -104,7 +104,7 @@ router.get('/users', async (req, res) => {
   );
 
   const usersResult = await query(
-    `SELECT id, email, display_name, role, is_active, created_at, last_login_at
+    `SELECT id, email, display_name, role, is_active, email_verified, created_at, last_login_at
      FROM users
      ${whereClause}
      ORDER BY created_at DESC
@@ -119,6 +119,7 @@ router.get('/users', async (req, res) => {
       displayName: u.display_name,
       role: u.role,
       isActive: u.is_active,
+      emailVerified: u.email_verified ?? false,
       createdAt: u.created_at,
       lastLoginAt: u.last_login_at,
     })),

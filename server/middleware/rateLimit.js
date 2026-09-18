@@ -43,3 +43,30 @@ export const apiLimiter = rateLimit({
     res.status(429).json({ error: 'Слишком много запросов. Попробуйте позже.' });
   },
 });
+
+/**
+ * Resend-verification limiter — 3 requests / 15 minutes per IP.
+ * The endpoint triggers outbound SMTP, so this is the anti-flooding gate.
+ */
+export const resendLimiter = rateLimit({
+  windowMs: config.RESEND_RATE_WINDOW_MINUTES * 60 * 1000,
+  max: config.RESEND_RATE_LIMIT,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Слишком много запросов. Попробуйте позже.',
+    });
+  },
+});
+
+/** Verify-email limiter — stops token guessing / hammering. */
+export const verifyLimiter = rateLimit({
+  windowMs: config.VERIFY_RATE_WINDOW_MINUTES * 60 * 1000,
+  max: config.VERIFY_RATE_LIMIT,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Слишком много попыток. Попробуйте позже.' });
+  },
+});

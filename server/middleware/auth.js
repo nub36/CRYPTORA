@@ -24,7 +24,8 @@ export async function requireAuth(req, res, next) {
   // Look up user from DB — session alone is not enough if user was blocked
   try {
     const result = await query(
-      `SELECT id, email, display_name, role, is_active, created_at, last_login_at
+      `SELECT id, email, display_name, role, is_active, email_verified, email_verified_at,
+              created_at, last_login_at
        FROM users WHERE id = $1`,
       [req.session.userId]
     );
@@ -49,13 +50,15 @@ export async function requireAuth(req, res, next) {
       return;
     }
 
-    // Attach sanitized user (no password_hash)
+    // Attach sanitized user (no password_hash, no token hashes)
     req.user = {
       id: user.id,
       email: user.email,
       displayName: user.display_name,
       role: user.role,
       isActive: user.is_active,
+      emailVerified: user.email_verified ?? false,
+      emailVerifiedAt: user.email_verified_at ?? null,
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at,
     };

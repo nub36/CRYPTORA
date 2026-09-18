@@ -16,6 +16,28 @@ export interface AuthUser {
   isActive: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
+}
+
+/**
+ * Raised by login() when the password was CORRECT but the address is not yet
+ * verified. LoginPage uses this to show a friendly resend flow instead of a
+ * technical error — the password check always happens first server-side.
+ */
+export class EmailNotVerifiedError extends Error {
+  constructor(public readonly email: string) {
+    super('EMAIL_NOT_VERIFIED');
+    this.name = 'EmailNotVerifiedError';
+  }
+}
+
+/** Local mask for "Проверьте почту" — never shows the full address. */
+export function maskEmail(email: string): string {
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return email;
+  const first = name.charAt(0);
+  return `${first}${'*'.repeat(Math.max(1, name.length - 1))}@${domain}`;
 }
 
 interface AuthContextValue {
@@ -25,7 +47,9 @@ interface AuthContextValue {
   isAdmin: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
+  /** Resolves once the account is created. Does NOT log the user in. */
   register: (email: string, displayName: string, password: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
@@ -92,7 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await res.json();
 
     if (!res.ok) {
-      throw new Error(data.error || 'Ошибка входа');
+      if (data.error === 'EMAIL_NOT_VERIFIED') {
+        throw new EmailNotVerifiedError(email);
+      }
+      throw new Error(data.message || 'Ошибка входа');
     }
 
     if (data.user) {
@@ -112,12 +139,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await res.json();
 
     if (!res.ok) {
-      throw new Error(data.error || 'Ошибка регистрации');
+      throw new Error(data.message || 'Ошибка регистрации');
     }
 
-    if (data.user) {
-      setUser(data.user);
-      setError(null);
+    // Registration never creates a session: the address must be verified
+    // first. So we deliberately do NOT setUser() here.
+    setError(null);
+  }, []);
+
+  const resendVerification = useCallback(async (email: string) => {
+    const res = await fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.message || 'Не удалось отправить ссылку');
     }
   }, []);
 
@@ -140,6 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     error,
     login,
     register,
+    resendVerification,
     logout,
     refreshSession: fetchSession,
   };

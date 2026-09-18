@@ -7,7 +7,7 @@
 import React, { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { User, Mail, Calendar, Shield } from 'lucide-react';
+import { User, Mail, Calendar, Shield, BadgeCheck } from 'lucide-react';
 
 export const ProfilePage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -86,6 +86,17 @@ export const ProfilePage: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4" />
                   <span>{user.email}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <BadgeCheck className="h-4 w-4" />
+                  <span>
+                    Статус email:{' '}
+                    <span
+                      className={`font-medium ${user.emailVerified ? 'text-emerald-400' : 'text-amber-400'}`}
+                    >
+                      {user.emailVerified ? 'Подтверждён' : 'Не подтверждён'}
+                    </span>
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />

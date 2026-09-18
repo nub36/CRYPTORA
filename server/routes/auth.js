@@ -1,18 +1,27 @@
 /**
  * CRYPTORA — Auth Routes
  *
- * POST /api/auth/register — Create account (Argon2id hash)
- * POST /api/auth/login    — Authenticate, create server-side session
- * POST /api/auth/logout   — Destroy session
- * GET  /api/auth/session  — Return current session user (or 401)
+ * POST /api/auth/register             — Create account (Argon2id hash, unverified)
+ * POST /api/auth/login                — Authenticate, create server-side session
+ * POST /api/auth/logout               — Destroy session
+ * GET  /api/auth/session              — Return current session user (or 401)
+ * POST /api/auth/verify-email         — Consume a one-time verification token
+ * POST /api/auth/resend-verification  — Re-send the verification email
  */
 
 import { Router } from 'express';
 import argon2 from 'argon2';
-import { registerSchema, loginSchema } from '../validators/auth.js';
+import { registerSchema, loginSchema, verifyEmailSchema, resendSchema } from '../validators/auth.js';
 import { query } from '../db/pool.js';
-import { loginLimiter, registerLimiter } from '../middleware/rateLimit.js';
+import {
+  loginLimiter,
+  registerLimiter,
+  resendLimiter,
+  verifyLimiter,
+} from '../middleware/rateLimit.js';
 import { config } from '../config.js';
+import { createVerificationToken, verifyRawToken, secondsSinceLastToken, VERIFY_RESULT } from '../services/emailVerification.js';
+import { sendVerificationEmail, getMailStatus, MailUnavailableError, maskEmail } from '../services/mail.js';
 
 const router = Router();
 
@@ -54,32 +63,55 @@ router.post('/register', registerLimiter, async (req, res) => {
     parallelism: config.ARGON2_PARALLELISM,
   });
 
-  // Insert user
+  // Insert user — created UNVERIFIED. An unverified user never receives an
+  // authenticated session; login is refused until the mailbox is confirmed.
   const result = await query(
-    `INSERT INTO users (email, display_name, password_hash, role)
-     VALUES ($1, $2, $3, 'user')
-     RETURNING id, email, display_name, role, is_active, created_at`,
+    `INSERT INTO users (email, display_name, password_hash, role, email_verified)
+     VALUES ($1, $2, $3, 'user', FALSE)
+     RETURNING id, email, display_name, role, is_active, email_verified, created_at`,
     [email, displayName, passwordHash]
   );
 
   const user = result.rows[0];
 
-  // Create session
-  req.session.userId = user.id;
-  req.session.role = user.role;
+  // Issue a one-time token (only its SHA-256 hash is persisted).
+  const { rawToken } = await createVerificationToken(user.id);
 
-  // Save session
-  await new Promise((resolve, reject) => {
-    req.session.save((err) => (err ? reject(err) : resolve()));
-  });
+  // Deliver the email. A mail outage must NOT break the registration: the user
+  // row stays (unverified) and the resend endpoint can recover later.
+  let delivery = 'sent';
+  try {
+    await sendVerificationEmail({
+      to: user.email,
+      displayName: user.display_name,
+      token: rawToken,
+    });
+  } catch (err) {
+    delivery = 'unavailable';
+    // No secrets, no token, no stack trace.
+    console.warn(
+      `[register] verification email not delivered to=${user.email}: ${
+        err instanceof MailUnavailableError ? err.message : 'mail error'
+      }`
+    );
+  }
 
+  // Deliberately NO session here.
   res.status(201).json({
     user: {
       id: user.id,
       email: user.email,
       displayName: user.display_name,
       role: user.role,
+      emailVerified: user.email_verified ?? false,
+      emailVerifiedAt: user.email_verified_at ?? null,
       createdAt: user.created_at,
+    },
+    verification: {
+      required: true,
+      emailMasked: maskEmail(user.email),
+      delivery,
+      ttlMinutes: config.EMAIL_VERIFY_TOKEN_TTL_MINUTES,
     },
   });
 });
@@ -101,7 +133,8 @@ router.post('/login', loginLimiter, async (req, res) => {
 
   // Look up user by normalized email
   const result = await query(
-    `SELECT id, email, display_name, password_hash, role, is_active, last_login_at
+    `SELECT id, email, display_name, password_hash, role, is_active,
+            email_verified, email_verified_at, last_login_at
      FROM users WHERE lower(email) = lower($1)`,
     [email]
   );
@@ -122,12 +155,22 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   if (!valid) {
+    // Generic 401 — the verification state is never revealed for a wrong password.
     return res.status(401).json({ error: 'Неверный email или пароль' });
   }
 
   // Check if blocked
   if (!user.is_active) {
     return res.status(403).json({ error: 'Аккаунт заблокирован' });
+  }
+
+  // Password is correct, so it is now safe to disclose that the mailbox is
+  // still unverified. No authenticated session is created.
+  if (!user.email_verified) {
+    return res.status(403).json({
+      error: 'EMAIL_NOT_VERIFIED',
+      message: 'Подтвердите адрес электронной почты',
+    });
   }
 
   // Update last_login_at
@@ -150,6 +193,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       email: user.email,
       displayName: user.display_name,
       role: user.role,
+      emailVerified: user.email_verified ?? false,
+      emailVerifiedAt: user.email_verified_at ?? null,
       lastLoginAt: user.last_login_at,
     },
   });
@@ -182,7 +227,8 @@ router.get('/session', async (req, res) => {
 
   // Look up user from DB (ensures blocked users can't use stale sessions)
   const result = await query(
-    `SELECT id, email, display_name, role, is_active, created_at, last_login_at
+    `SELECT id, email, display_name, role, is_active, email_verified, email_verified_at,
+            created_at, last_login_at
      FROM users WHERE id = $1`,
     [req.session.userId]
   );
@@ -204,10 +250,111 @@ router.get('/session', async (req, res) => {
       email: user.email,
       displayName: user.display_name,
       role: user.role,
+      emailVerified: user.email_verified ?? false,
+      emailVerifiedAt: user.email_verified_at ?? null,
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at,
     },
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* POST /api/auth/verify-email                                        */
+/* ------------------------------------------------------------------ */
+router.post('/verify-email', verifyLimiter, async (req, res) => {
+  const parsed = verifyEmailSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'INVALID', message: 'Некорректная ссылка' });
+  }
+
+  const { token } = parsed.data;
+
+  const outcome = await verifyRawToken(token);
+
+  switch (outcome.result) {
+    case VERIFY_RESULT.OK:
+      // Deliberately NO session is created here: the user logs in normally.
+      return res.json({ status: 'ok', message: 'Email подтверждён' });
+
+    case VERIFY_RESULT.EXPIRED:
+      return res.status(410).json({ error: 'EXPIRED', message: 'Срок действия ссылки истёк' });
+
+    case VERIFY_RESULT.USED:
+      // A consumed token is a replay attempt — same shape as invalid, no detail.
+      return res.status(400).json({ error: 'INVALID', message: 'Ссылка уже использована' });
+
+    default:
+      return res.status(400).json({ error: 'INVALID', message: 'Ссылка недействительна' });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* POST /api/auth/resend-verification                                 */
+/* ------------------------------------------------------------------ */
+router.post('/resend-verification', resendLimiter, async (req, res) => {
+  const parsed = resendSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Некорректные данные' });
+  }
+
+  const { email } = parsed.data;
+
+  // One generic answer regardless of whether the account exists, is verified,
+  // or is throttled — the endpoint must not enumerate accounts.
+  const generic = () =>
+    res.json({
+      status: 'ok',
+      message: 'Если аккаунт существует и email не подтверждён, письмо отправлено повторно',
+    });
+
+  const found = await query(
+    `SELECT id, email, display_name, is_active, email_verified
+       FROM users WHERE lower(email) = lower($1)`,
+    [email]
+  );
+
+  if (found.rows.length === 0) return generic();
+
+  const user = found.rows[0];
+
+  // Already verified, or blocked: send nothing, reveal nothing.
+  if (user.email_verified || !user.is_active) return generic();
+
+  // Per-email throttle on top of the per-IP rate limit (SMTP flood protection).
+  const sinceLast = await secondsSinceLastToken(user.id);
+  if (sinceLast !== null && sinceLast < config.RESEND_MIN_INTERVAL_SECONDS) {
+    return generic();
+  }
+
+  if (!getMailStatus().configured) {
+    console.warn(`[resend] mail unavailable, nothing sent for=${user.email}`);
+    return res.status(503).json({
+      error: 'MAIL_UNAVAILABLE',
+      message: 'Почтовый сервис временно недоступен, попробуйте позже',
+    });
+  }
+
+  const { rawToken } = await createVerificationToken(user.id);
+
+  try {
+    await sendVerificationEmail({
+      to: user.email,
+      displayName: user.display_name,
+      token: rawToken,
+    });
+  } catch (err) {
+    console.warn(
+      `[resend] delivery failed for=${user.email}: ${
+        err instanceof MailUnavailableError ? err.message : 'mail error'
+      }`
+    );
+    return res.status(503).json({
+      error: 'MAIL_UNAVAILABLE',
+      message: 'Почтовый сервис временно недоступен, попробуйте позже',
+    });
+  }
+
+  return generic();
 });
 
 export default router;

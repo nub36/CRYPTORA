@@ -116,6 +116,8 @@ describe('recordAudit / getAuditLog — production implementation', () => {
       created_at: new Date(),
       updated_at: new Date(),
       last_login_at: null,
+      email_verified: true,
+      email_verified_at: new Date(),
     });
   });
 
