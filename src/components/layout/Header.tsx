@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
+import { useAuth } from '@/context/AuthContext';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 import {
@@ -23,6 +24,10 @@ import {
   ChevronDown,
   ChevronRight,
   Activity,
+  User,
+  LogIn,
+  LogOut,
+  Shield,
 } from 'lucide-react';
 
 /**
@@ -63,17 +68,21 @@ export const Header: React.FC = () => {
     openPlanModal,
   } = useMarketData();
 
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<'analytics' | 'tools' | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const analyticsDropdownRef = useRef<HTMLDivElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const compactSearchRef = useRef<HTMLDivElement>(null);
   const compactSearchInputRef = useRef<HTMLInputElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -83,6 +92,7 @@ export const Header: React.FC = () => {
     setMobileMenuOpen(false);
     setCompactSearchOpen(false);
     setIsSearchFocused(false);
+    setUserMenuOpen(false);
   }, []);
 
   // Закрытие dropdown/search по клику вне области или клавише Escape
@@ -92,8 +102,10 @@ export const Header: React.FC = () => {
       const inAnalytics = analyticsDropdownRef.current?.contains(target);
       const inTools = toolsDropdownRef.current?.contains(target);
       const inSearch = compactSearchRef.current?.contains(target);
+      const inUserMenu = userMenuRef.current?.contains(target);
       if (!inAnalytics && !inTools) setActiveDropdown(null);
       if (!inSearch && !searchButtonRef.current?.contains(target)) setCompactSearchOpen(false);
+      if (!inUserMenu) setUserMenuOpen(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -572,6 +584,86 @@ export const Header: React.FC = () => {
             ) : null}
           </button>
 
+          {/* ── Auth UI ─────────────────────────────────────────────────── */}
+          {isAuthenticated && user ? (
+            <div className="relative shrink-0" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen((open) => !open)}
+                aria-label="Меню пользователя"
+                aria-expanded={userMenuOpen}
+                className={`flex shrink-0 items-center gap-x-1.5 rounded-md border p-1.5 transition-colors ${
+                  userMenuOpen
+                    ? 'border-white/20 bg-white/[0.08] text-white'
+                    : 'border-transparent text-slate-300 hover:border-white/[0.08] hover:bg-white/[0.06] hover:text-white'
+                }`}
+              >
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500">
+                  <User className="h-3.5 w-3.5 text-white" />
+                </div>
+                <ChevronDown className={`hidden h-3 w-3 transition-transform sm:block ${userMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {userMenuOpen && (
+                <div className="absolute right-0 z-50 mt-1.5 w-56 rounded-lg border border-white/[0.12] bg-surface/95 py-1.5 text-xs font-sans shadow-2xl shadow-black/80 backdrop-blur-2xl">
+                  <div className="border-b border-white/[0.06] px-3 py-2">
+                    <div className="font-medium text-white">{user.displayName}</div>
+                    <div className="text-[11px] text-slate-400">{user.email}</div>
+                  </div>
+                  <div className="py-1">
+                    <NavLink
+                      to="/profile"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-x-2.5 px-3 py-2 text-slate-200 transition-colors hover:bg-white/[0.06] hover:text-white"
+                    >
+                      <User className="h-4 w-4 text-slate-400" />
+                      <span>Профиль</span>
+                    </NavLink>
+                    {isAdmin && (
+                      <NavLink
+                        to="/admin"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-x-2.5 px-3 py-2 text-cyan-300 transition-colors hover:bg-white/[0.06]"
+                      >
+                        <Shield className="h-4 w-4 text-cyan-400" />
+                        <span>Админка</span>
+                      </NavLink>
+                    )}
+                  </div>
+                  <div className="border-t border-white/[0.06] pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setUserMenuOpen(false);
+                        await logout();
+                      }}
+                      className="flex w-full items-center gap-x-2.5 px-3 py-2 text-left text-rose-300 transition-colors hover:bg-white/[0.06]"
+                    >
+                      <LogOut className="h-4 w-4 text-rose-400" />
+                      <span>Выйти</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="hidden shrink-0 items-center gap-x-1.5 sm:flex">
+              <NavLink
+                to="/login"
+                className="flex items-center gap-x-1 rounded-md border border-transparent px-2 py-1.5 text-[13px] font-medium text-slate-300 transition-colors hover:bg-white/[0.05] hover:text-white"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                <span>Войти</span>
+              </NavLink>
+              <NavLink
+                to="/register"
+                className="flex items-center gap-x-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-1.5 text-[13px] font-medium text-cyan-300 transition-colors hover:bg-cyan-500/20"
+              >
+                <span>Регистрация</span>
+              </NavLink>
+            </div>
+          )}
+
           {/* Mobile Menu Hamburger (< 1024px) */}
           <button
             type="button"
@@ -760,6 +852,70 @@ export const Header: React.FC = () => {
                 );
               })}
             </div>
+          </div>
+
+          {/* Auth Section in Mobile Menu */}
+          <div className="border-t border-white/[0.08] pt-3">
+            {isAuthenticated && user ? (
+              <div className="space-y-1.5">
+                <div className="mb-2 flex items-center gap-x-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-blue-500">
+                    <User className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-white">{user.displayName}</div>
+                    <div className="text-[11px] text-slate-400">{user.email}</div>
+                  </div>
+                </div>
+                <NavLink
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-x-2 rounded-md px-3 py-2 text-[13px] font-medium text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                >
+                  <User className="h-4 w-4 text-slate-400" />
+                  <span>Профиль</span>
+                </NavLink>
+                {isAdmin && (
+                  <NavLink
+                    to="/admin"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 rounded-md px-3 py-2 text-[13px] font-medium text-cyan-300 hover:bg-white/[0.06]"
+                  >
+                    <Shield className="h-4 w-4 text-cyan-400" />
+                    <span>Админка</span>
+                  </NavLink>
+                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setMobileMenuOpen(false);
+                    await logout();
+                  }}
+                  className="flex w-full items-center gap-x-2 rounded-md px-3 py-2 text-left text-[13px] font-medium text-rose-300 hover:bg-white/[0.06]"
+                >
+                  <LogOut className="h-4 w-4 text-rose-400" />
+                  <span>Выйти</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                <NavLink
+                  to="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-x-1.5 rounded-md border border-white/[0.1] px-3 py-2 text-[13px] font-medium text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                >
+                  <LogIn className="h-4 w-4" />
+                  <span>Войти</span>
+                </NavLink>
+                <NavLink
+                  to="/register"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-x-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-[13px] font-medium text-cyan-300 hover:bg-cyan-500/20"
+                >
+                  <span>Регистрация</span>
+                </NavLink>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-sans text-[11px] text-slate-400">
