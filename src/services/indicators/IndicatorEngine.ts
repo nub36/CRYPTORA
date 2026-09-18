@@ -482,15 +482,16 @@ export class IndicatorEngine {
       bbSeries.length > 0
         ? bbSeries[bbSeries.length - 1]
         : {
-            upper: lastPrice * 1.05,
+            // Not enough data — bands collapse to price (bandwidth 0), not fake ±5%
+            upper: lastPrice,
             middle: lastPrice,
-            lower: lastPrice * 0.95,
-            bandwidthPct: 10,
+            lower: lastPrice,
+            bandwidthPct: 0,
           };
 
     // ATR
     const atrSeries = this.calculateATR(candles, 14);
-    const atr14 = atrSeries.length > 0 ? atrSeries[atrSeries.length - 1] : lastPrice * 0.02;
+    const atr14 = atrSeries.length > 0 ? atrSeries[atrSeries.length - 1] : 0;
 
     // VWAP
     const vwap = this.calculateVWAP(candles);
