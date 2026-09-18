@@ -44,6 +44,10 @@ export const AssetSummarySchema = z.object({
   sparkline: z.array(z.number()),
   isDemo: z.boolean().default(true),
   provenance: DataProvenanceSchema.optional(),
+  /** 24h high from exchange ticker (factual). Undefined when unavailable. */
+  high24h: z.number().optional(),
+  /** 24h low from exchange ticker (factual). Undefined when unavailable. */
+  low24h: z.number().optional(),
 });
 
 export type AssetSummary = z.infer<typeof AssetSummarySchema>;

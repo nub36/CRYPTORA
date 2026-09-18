@@ -156,8 +156,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
           symbol: item.symbol,
           price: item.price,
           priceChangePercent24h: item.change24h,
-          high24h: item.price * 1.05,
-          low24h: item.price * 0.95,
+          high24h: item.high24h ?? item.price * 1.03,
+          low24h: item.low24h ?? item.price * 0.97,
           volume24h: item.volume24h,
           quoteVolume24h: item.volume24h * item.price,
           timestamp: Date.now(),
@@ -180,9 +180,13 @@ export class LiveMarketDataProvider implements MarketDataProvider {
    */
   private enrichmentInFlight = false;
   private enrichmentDone = false;
+  private enrichmentLastRun = 0;
+  private static readonly ENRICHMENT_INTERVAL_MS = 60_000; // Re-enrich every 60s
 
   private ensureCandleEnrichment(): void {
-    if (this.enrichmentInFlight || this.enrichmentDone) return;
+    const now = Date.now();
+    const stale = now - this.enrichmentLastRun > LiveMarketDataProvider.ENRICHMENT_INTERVAL_MS;
+    if (this.enrichmentInFlight || (this.enrichmentDone && !stale)) return;
     if (!this.assetCache) return;
     this.enrichmentInFlight = true;
 
@@ -199,6 +203,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
         }
       }
       this.enrichmentDone = true;
+      this.enrichmentLastRun = Date.now();
       this.enrichmentInFlight = false;
     }).catch(() => {
       // Non-fatal: change1h/change7d stay null
@@ -210,28 +215,21 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     const asset = getAssetBySymbol(symbol);
     if (!asset) return null;
 
+    // Fetch from BOTH exchanges in parallel for real pairs data (P0)
+    const [binanceResult, kucoinResult] = await Promise.allSettled([
+      asset.binanceSymbol ? this.binance.fetch24hrTicker(asset.binanceSymbol) : Promise.reject('no symbol'),
+      asset.kucoinSymbol ? this.kucoin.fetch24hrStats(asset.kucoinSymbol) : Promise.reject('no symbol'),
+    ]);
+
+    const rawBinanceTicker = binanceResult.status === 'fulfilled' ? binanceResult.value : null;
+    const rawKucoinStats = kucoinResult.status === 'fulfilled' ? kucoinResult.value : null;
+
+    // Primary summary from whichever succeeded (Binance preferred)
     let summary: AssetSummary | null = null;
-
-    // 1. Try Binance
-    let rawBinanceTicker: Record<string, unknown> | null = null;
-    if (asset.binanceSymbol) {
-      try {
-        const ticker = await this.binance.fetch24hrTicker(asset.binanceSymbol);
-        rawBinanceTicker = ticker as Record<string, unknown>;
-        summary = normalizeBinanceTicker(ticker, asset);
-      } catch {
-        // Fallback to KuCoin
-      }
-    }
-
-    // 2. Try KuCoin
-    if (!summary && asset.kucoinSymbol) {
-      try {
-        const stats = await this.kucoin.fetch24hrStats(asset.kucoinSymbol);
-        summary = normalizeKuCoinStats(stats, asset, [], true);
-      } catch {
-        // Both failed
-      }
+    if (rawBinanceTicker) {
+      summary = normalizeBinanceTicker(rawBinanceTicker, asset);
+    } else if (rawKucoinStats) {
+      summary = normalizeKuCoinStats(rawKucoinStats, asset, [], true);
     }
 
     if (!summary) {
@@ -246,8 +244,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       candles = [];
     }
 
-    const high24h = candles.length > 0 ? Math.max(...candles.map((c) => c.high)) : summary.price * 1.03;
-    const low24h = candles.length > 0 ? Math.min(...candles.map((c) => c.low)) : summary.price * 0.97;
+    const high24h = summary.high24h ?? (candles.length > 0 ? Math.max(...candles.map((c) => c.high)) : summary.price);
+    const low24h = summary.low24h ?? (candles.length > 0 ? Math.min(...candles.map((c) => c.low)) : summary.price);
 
     // DERIVED: вычисляем индикаторы из фактических свечей через IndicatorEngine
     const indicators = candles.length >= 26
@@ -285,10 +283,40 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     // FACTUAL: реальный спред из Binance bid/ask через extractBinanceSpread()
     let spreadPct = 0.01;
     if (rawBinanceTicker) {
-      const spread = extractBinanceSpread(rawBinanceTicker as any);
+      const spread = extractBinanceSpread(rawBinanceTicker);
       if (spread) {
         spreadPct = Number((spread.spreadBps / 100).toFixed(4));
       }
+    }
+
+    // P0: Build pairs from factual exchange data (no stubs)
+    const pairs = [];
+    if (rawBinanceTicker) {
+      pairs.push({
+        exchange: 'Binance',
+        pair: `${asset.symbol}/USDT`,
+        price: parseFloat(rawBinanceTicker.lastPrice) || summary.price,
+        volume24h: parseFloat(rawBinanceTicker.quoteVolume) || summary.volume24h,
+        spreadPct,
+      });
+    }
+    if (rawKucoinStats) {
+      pairs.push({
+        exchange: 'KuCoin',
+        pair: `${asset.symbol}/USDT`,
+        price: parseFloat(rawKucoinStats.last) || summary.price,
+        volume24h: parseFloat(rawKucoinStats.volValue) || 0,
+        spreadPct: 0.02,
+      });
+    }
+    if (pairs.length === 0) {
+      pairs.push({
+        exchange: 'Binance',
+        pair: `${asset.symbol}/USDT`,
+        price: summary.price,
+        volume24h: summary.volume24h,
+        spreadPct,
+      });
     }
 
     return {
@@ -314,22 +342,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
           lower: Number(indicators.bollinger.lower.toFixed(2)),
         },
       },
-      pairs: [
-        {
-          exchange: 'Binance',
-          pair: `${asset.symbol}/USDT`,
-          price: summary.price,
-          volume24h: summary.volume24h * 0.65,
-          spreadPct,
-        },
-        {
-          exchange: 'KuCoin',
-          pair: `${asset.symbol}/USDT`,
-          price: summary.price * 0.9998,
-          volume24h: summary.volume24h * 0.35,
-          spreadPct: 0.02,
-        },
-      ],
+      pairs,
     };
   }
 
