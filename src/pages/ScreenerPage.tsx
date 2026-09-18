@@ -283,7 +283,7 @@ export const ScreenerPage: React.FC = () => {
                         }}
                       >
                         <button
-                          className="text-slate-600 hover:text-amber-400 transition-colors p-1"
+                          className="text-slate-600 hover:text-amber-400 transition-colors p-1.5"
                           title={isStarred ? 'Удалить из избранного' : 'Добавить в избранное'}
                         >
                           <Star

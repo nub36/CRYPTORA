@@ -78,7 +78,7 @@ export const WorkspaceModule: React.FC<WorkspaceModuleProps> = ({ id, title, ind
             onClick={() => onMove(id, -1)}
             disabled={!canUp}
             aria-label={`Модуль «${title}» выше`}
-            className="rounded p-1 text-slate-500 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded p-1 text-slate-500 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 min-h-[28px] min-w-[28px]"
           >
             <ChevronUp className="h-3.5 w-3.5" />
           </button>
@@ -87,7 +87,7 @@ export const WorkspaceModule: React.FC<WorkspaceModuleProps> = ({ id, title, ind
             onClick={() => onMove(id, 1)}
             disabled={!canDown}
             aria-label={`Модуль «${title}» ниже`}
-            className="rounded p-1 text-slate-500 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+            className="rounded p-1 text-slate-500 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-30 min-h-[28px] min-w-[28px]"
           >
             <ChevronDown className="h-3.5 w-3.5" />
           </button>

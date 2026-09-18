@@ -88,7 +88,7 @@ export const MarketTicker: React.FC = () => {
               <Link
                 key={asset.symbol}
                 to={`/coin/${asset.symbol}`}
-                className="flex items-center space-x-2 px-2 py-0.5 rounded-md hover:bg-white/[0.05] transition-all duration-150 font-sans group border border-transparent hover:border-white/[0.06]"
+                className="flex items-center space-x-2 px-2 py-1.5 rounded-md hover:bg-white/[0.05] transition-all duration-150 font-sans group border border-transparent hover:border-white/[0.06]"
               >
                 <span className="font-extrabold text-[12px] text-white group-hover:text-cyan-300 transition-colors tracking-tight">
                   {asset.symbol}
@@ -117,7 +117,7 @@ export const MarketTicker: React.FC = () => {
                   </div>
                 )}
 
-                <span className="text-white/[0.08] pl-2 font-normal">/</span>
+                <span aria-hidden className="text-white/[0.08] pl-2 font-normal">/</span>
               </Link>
             );
           })

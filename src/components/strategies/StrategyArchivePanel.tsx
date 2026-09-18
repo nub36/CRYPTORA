@@ -89,7 +89,7 @@ export const StrategyArchivePanel: React.FC = () => {
               <GitCompare className="w-3.5 h-3.5 text-brand-cyan" />
               Сравнение допущений ({compared.length}/3)
             </div>
-            <button onClick={() => setCompare([])} className="text-slate-500 hover:text-slate-200 flex items-center gap-1 text-[11px]">
+            <button onClick={() => setCompare([])} className="text-slate-500 hover:text-slate-200 flex items-center gap-1 text-[11px] min-h-[28px]">
               <X className="w-3 h-3" /> очистить
             </button>
           </div>

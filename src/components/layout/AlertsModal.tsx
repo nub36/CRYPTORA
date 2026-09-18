@@ -293,7 +293,7 @@ export const AlertsModal: React.FC = () => {
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => toggleAlertPaused(alert.id)}
-                        className="text-slate-500 hover:text-white transition-colors p-1"
+                        className="text-slate-500 hover:text-white transition-colors p-1.5"
                         title={alert.paused ? 'Возобновить' : 'Приостановить'}
                         aria-label={alert.paused ? 'Возобновить' : 'Приостановить'}
                       >
@@ -301,7 +301,7 @@ export const AlertsModal: React.FC = () => {
                       </button>
                       <button
                         onClick={() => removeAlert(alert.id)}
-                        className="text-slate-500 hover:text-rose-400 transition-colors p-1"
+                        className="text-slate-500 hover:text-rose-400 transition-colors p-1.5"
                         title="Удалить"
                         aria-label="Удалить"
                       >
