@@ -64,6 +64,8 @@ interface SystemInfo {
   environment: string;
   uptimeSeconds: number;
   database: string;
+  /** Открыта ли публичная регистрация (REGISTRATION_ENABLED на сервере). */
+  registrationEnabled: boolean;
   memoryUsage: { rss: string; heapUsed: string };
 }
 
@@ -476,6 +478,15 @@ export const AdminPage: React.FC = () => {
               <span className="text-slate-400">База данных</span>
               <span className={`font-medium ${system.database === 'connected' ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {system.database === 'connected' ? 'Подключена' : 'Отключена'}
+              </span>
+            </div>
+            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+              <span className="text-slate-400">Регистрация</span>
+              <span
+                className={`font-medium ${system.registrationEnabled ? 'text-emerald-400' : 'text-amber-400'}`}
+                title="REGISTRATION_ENABLED — управляется переменной окружения сервера, не админ-панелью"
+              >
+                {system.registrationEnabled ? 'Открыта' : 'Закрыта'}
               </span>
             </div>
             <div className="flex justify-between border-b border-white/[0.05] pb-2">

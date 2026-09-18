@@ -437,3 +437,35 @@ body {
 .animate-sweep-light {
   animation: sweep-light 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* ---------------------------------------------------------------------------
+   Бегущая строка рыночного тикера (MarketTicker)
+   ----------------------------------------------------------------------------
+   Плавный бесшовный marquee на CSS transform: трек содержит два одинаковых
+   набора тикеров и смещается ровно на -50%, поэтому стык не виден.
+   Никаких дополнительных запросов к рынку — данные те же, что и раньше.
+--------------------------------------------------------------------------- */
+@keyframes ticker-marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+.ticker-marquee {
+  animation: ticker-marquee 45s linear infinite;
+  will-change: transform;
+}
+
+/* Пауза при наведении — допустима по требованиям и помогает читать значения. */
+.ticker-marquee-host:hover .ticker-marquee,
+.ticker-marquee-host:focus-within .ticker-marquee {
+  animation-play-state: paused;
+}
+
+/* При prefers-reduced-motion анимация полностью выключается, а трек
+   возвращается в исходное положение, чтобы контент не «застывал» со сдвигом. */
+@media (prefers-reduced-motion: reduce) {
+  .ticker-marquee {
+    animation: none !important;
+    transform: none !important;
+  }
+}

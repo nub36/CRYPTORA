@@ -171,9 +171,9 @@ export const ScreenerPage: React.FC = () => {
               className="w-full bg-surface-elevated border border-surface-border rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-brand-cyan"
             >
               <option value="all">Все сектора</option>
-              <option value="l1">L1-сети</option>
+              <option value="l1">Layer-1</option>
               <option value="defi">DeFi</option>
-              <option value="l2">L2-сети</option>
+              <option value="l2">Layer-2</option>
               <option value="ai">ИИ и данные</option>
               <option value="meme">Мемкоины</option>
             </select>

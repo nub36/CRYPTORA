@@ -6,8 +6,20 @@ import { formatCurrency, formatPercent } from '@/utils/formatters';
 import { sortData, SortConfig } from '@/utils/sorting';
 import { Sparkline } from '@/components/common/Sparkline';
 import { CoinIcon } from '@/components/common/CoinIcon';
-import { Star, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { Star, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
+/**
+ * Человекочитаемые подписи категорий активов.
+ * Внутренние значения (`l1`, `l2`, …) не меняются — меняется только label.
+ */
+const CATEGORY_LABELS: Record<string, string> = {
+  l1: 'Layer-1',
+  l2: 'Layer-2',
+  defi: 'DeFi',
+  ai: 'ИИ и данные',
+  meme: 'Мемкоины',
+};
 
 export const MarketPage: React.FC = () => {
   const { provider, watchlist, toggleWatchlist, livePrices, dataMode } = useMarketData();
@@ -64,12 +76,52 @@ export const MarketPage: React.FC = () => {
 
   const categories: { label: string; value: AssetCategory }[] = [
     { label: 'Все активы', value: 'all' },
-    { label: 'L1-сети', value: 'l1' },
+    { label: 'Layer-1', value: 'l1' },
     { label: 'DeFi', value: 'defi' },
-    { label: 'L2-сети', value: 'l2' },
+    { label: 'Layer-2', value: 'l2' },
     { label: 'ИИ и данные', value: 'ai' },
     { label: 'Мемкоины', value: 'meme' },
   ];
+
+  /**
+   * Заголовок столбца с сортировкой.
+   *
+   * Индикатор — отдельная иконка, а не «# ^» внутри текста: неактивный столбец
+   * показывает приглушённую нейтральную иконку, активный — стрелку направления.
+   * `aria-sort` объявляет текущее состояние сортировки для скринридеров.
+   */
+  const renderSortHeader = (
+    key: SortConfig<AssetSummary>['key'],
+    label: string,
+    align: 'left' | 'right',
+    extraClass: string
+  ) => {
+    const isActive = sortConfig.key === key;
+    const isAsc = sortConfig.direction === 'asc';
+    const alignClass = align === 'right' ? 'justify-end text-right' : 'justify-start text-left';
+    return (
+      <th
+        key={key}
+        scope="col"
+        aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : 'none'}
+        onClick={() => handleSort(key)}
+        className={`py-2.5 px-2.5 cursor-pointer hover:text-white transition-colors ${alignClass} ${extraClass}`}
+      >
+        <span className={`inline-flex items-center gap-1 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
+          <span className="whitespace-nowrap">{label}</span>
+          {isActive ? (
+            isAsc ? (
+              <ArrowUp className="h-3 w-3 shrink-0 text-cyan-400" aria-hidden />
+            ) : (
+              <ArrowDown className="h-3 w-3 shrink-0 text-cyan-400" aria-hidden />
+            )
+          ) : (
+            <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-600" aria-hidden />
+          )}
+        </span>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
@@ -82,8 +134,19 @@ export const MarketPage: React.FC = () => {
               Рыночные котировки
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[11px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2.5 py-0.5 rounded-full border border-brand-green/30">
-                LIVE СПОТ · BINANCE / KUCOIN
+              <span
+                data-testid="spot-live-label"
+                className="inline-flex items-center gap-1.5 rounded-full border border-brand-green/30 bg-brand-green/10 px-2.5 py-0.5 text-[11px] font-mono font-semibold text-brand-green"
+              >
+                <span aria-hidden className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-green opacity-70" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-green" />
+                </span>
+                СПОТ • LIVE
+                {/* Источник — вторичная, менее заметная информация */}
+                <span className="font-sans font-normal tracking-normal text-slate-500">
+                  Binance / KuCoin
+                </span>
               </span>
             ) : (
               <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
@@ -135,98 +198,25 @@ export const MarketPage: React.FC = () => {
       <div className="bg-surface border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left font-sans">
-            <thead className="bg-surface-elevated/80 text-slate-400 font-sans text-[11px] uppercase border-b border-surface-border select-none sticky top-0 z-10">
+            <thead className="bg-surface-elevated/80 text-slate-400 font-sans text-[11px] border-b border-surface-border select-none sticky top-0 z-10">
               <tr>
-                <th className="py-2.5 px-3 w-10 text-center">★</th>
-                <th
-                  onClick={() => handleSort('rank')}
-                  className="py-2.5 px-2 cursor-pointer hover:text-white"
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>#</span>
-                    {sortConfig.key === 'rank' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
+                <th className="py-2.5 px-3 w-10 text-center" aria-label="Избранное">
+                  <Star className="w-3 h-3 inline-block text-slate-500" aria-hidden />
                 </th>
+                {renderSortHeader('rank', '#', 'left', '')}
+                {renderSortHeader('symbol', 'Актив', 'left', '')}
+                {renderSortHeader('price', 'Цена, USD', 'right', '')}
+                {renderSortHeader('change1h', '1ч %', 'right', '')}
+                {renderSortHeader('change24h', '24ч %', 'right', '')}
+                {renderSortHeader('change7d', '7д %', 'right', 'hidden md:table-cell')}
+                {renderSortHeader('volume24h', 'Объём 24ч', 'right', 'hidden sm:table-cell')}
+                {renderSortHeader('marketCap', 'Капитализация', 'right', '')}
                 <th
-                  onClick={() => handleSort('symbol')}
-                  className="py-2.5 px-3 cursor-pointer hover:text-white"
+                  scope="col"
+                  className="py-2.5 px-3 text-right hidden lg:table-cell"
                 >
-                  <div className="flex items-center space-x-1">
-                    <span>Актив</span>
-                    {sortConfig.key === 'symbol' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
+                  Тренд 7д
                 </th>
-                <th
-                  onClick={() => handleSort('price')}
-                  className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
-                >
-                  <div className="flex items-center justify-end space-x-1">
-                    <span>Цена (USD)</span>
-                    {sortConfig.key === 'price' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('change1h')}
-                  className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
-                >
-                  <div className="flex items-center justify-end space-x-1">
-                    <span>1h %</span>
-                    {sortConfig.key === 'change1h' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('change24h')}
-                  className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
-                >
-                  <div className="flex items-center justify-end space-x-1">
-                    <span>24h %</span>
-                    {sortConfig.key === 'change24h' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('change7d')}
-                  className="py-2.5 px-3 text-right cursor-pointer hover:text-white hidden md:table-cell"
-                >
-                  <div className="flex items-center justify-end space-x-1">
-                    <span>7d %</span>
-                    {sortConfig.key === 'change7d' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('volume24h')}
-                  className="py-2.5 px-3 text-right cursor-pointer hover:text-white hidden sm:table-cell"
-                >
-                  <div className="flex items-center justify-end space-x-1">
-                    <span>24h Объем</span>
-                    {sortConfig.key === 'volume24h' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort('marketCap')}
-                  className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
-                >
-                  <div className="flex items-center justify-end space-x-1">
-                    <span>Капитализация</span>
-                    {sortConfig.key === 'marketCap' && (
-                      sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                    )}
-                  </div>
-                </th>
-                <th className="py-2.5 px-3 text-right hidden lg:table-cell">Тренд 7D</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-border font-mono">
@@ -278,8 +268,11 @@ export const MarketPage: React.FC = () => {
                           <span className="text-slate-400 text-xs hidden sm:inline">
                             {asset.name}
                           </span>
-                          <span className="text-[11px] text-slate-400 uppercase font-sans px-1 py-0.2 bg-slate-800 rounded">
-                            {asset.category}
+                          <span
+                            title={CATEGORY_LABELS[asset.category] ?? asset.category}
+                            className="hidden shrink-0 rounded bg-slate-800 px-1.5 py-0.5 font-sans text-[11px] leading-none text-slate-400 lg:inline-block"
+                          >
+                            {CATEGORY_LABELS[asset.category] ?? asset.category}
                           </span>
                         </div>
                       </td>

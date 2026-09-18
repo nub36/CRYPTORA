@@ -29,7 +29,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Sparkles,
-  Zap,
   PieChart,
   Grid,
   Network,
@@ -64,7 +63,7 @@ const DeltaChip: React.FC<{ value: number | null; qa: string; title: string }> =
   );
 
 export const OverviewPage: React.FC = () => {
-  const { provider, dataMode, realtimeStatus } = useMarketData();
+  const { provider, dataMode } = useMarketData();
 
   const [overview, setOverview] = useState<MarketOverviewData | null>(null);
   const [assets, setAssets] = useState<AssetSummary[]>([]);
@@ -270,7 +269,10 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* SECTION A: Market Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+      <div
+        data-testid="overview-kpi-grid"
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3"
+      >
         {/* Total Market Cap */}
         <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
@@ -396,42 +398,7 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Статус режима данных: только индикация источника и соединения */}
-        <div
-          data-qa="overview-mode-card"
-          className={`border rounded-xl p-3.5 shadow-panel ${
-            dataMode === 'live' ? 'bg-surface border-white/[0.08]' : 'bg-amber-500/[0.07] border-amber-500/25'
-          }`}
-        >
-          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between font-bold tracking-wide">
-            <span>Режим данных</span>
-            <Zap className={`w-3.5 h-3.5 ${dataMode === 'live' ? 'text-cyan-400' : 'text-amber-400'}`} />
-          </div>
-          <div className={`text-sm font-bold font-mono mt-1.5 ${dataMode === 'live' ? 'text-white' : 'text-amber-200'}`}>
-            {dataMode === 'live' ? 'LIVE спот (Binance / KuCoin)' : 'Внутренний датасет QA'}
-          </div>
-          <div className="text-[11px] text-slate-400 font-sans mt-1 flex items-center space-x-1.5">
-            <span
-              className={`inline-block h-1.5 w-1.5 rounded-full ${
-                realtimeStatus === 'connected'
-                  ? 'bg-emerald-400'
-                  : realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting'
-                  ? 'bg-amber-400'
-                  : 'bg-slate-500'
-              }`}
-            />
-            <span>
-              WebSocket:{' '}
-              {realtimeStatus === 'connected'
-                ? 'подключен'
-                : realtimeStatus === 'connecting'
-                ? 'подключение'
-                : realtimeStatus === 'reconnecting'
-                ? 'переподключение'
-                : 'нет соединения'}
-            </span>
-          </div>
-        </div>
+
 
       </div>
 
@@ -453,7 +420,7 @@ export const OverviewPage: React.FC = () => {
                   >
                     {dataMode === 'live'
                       ? `LIVE СПОТ${btcAsset?.provenance?.exchange ? `: ${btcAsset.provenance.exchange.toUpperCase()}` : ' · BINANCE / KUCOIN'}`
-                      : 'Спот и перп · QA-датасет'}
+                      : 'QA-датасет · только спот (без перпетуалов)'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 mt-0.5 font-sans">

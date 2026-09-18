@@ -11,6 +11,9 @@ import {
   type NavItem,
   type SubNavItem,
 } from '@/components/layout/navigation';
+
+/** Какие выпадающие меню есть в шапке (общий тип для состояния и рендера). */
+type DropdownKind = 'market' | 'analytics' | 'tools';
 import {
   Search,
   Star,
@@ -74,9 +77,10 @@ export const Header: React.FC = () => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState<'analytics' | 'tools' | null>(null);
+  const [activeDropdown, setActiveDropdown] = useState<DropdownKind | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  const marketDropdownRef = useRef<HTMLDivElement>(null);
   const analyticsDropdownRef = useRef<HTMLDivElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const compactSearchRef = useRef<HTMLDivElement>(null);
@@ -99,11 +103,12 @@ export const Header: React.FC = () => {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
+      const inMarket = marketDropdownRef.current?.contains(target);
       const inAnalytics = analyticsDropdownRef.current?.contains(target);
       const inTools = toolsDropdownRef.current?.contains(target);
       const inSearch = compactSearchRef.current?.contains(target);
       const inUserMenu = userMenuRef.current?.contains(target);
-      if (!inAnalytics && !inTools) setActiveDropdown(null);
+      if (!inMarket && !inAnalytics && !inTools) setActiveDropdown(null);
       if (!inSearch && !searchButtonRef.current?.contains(target)) setCompactSearchOpen(false);
       if (!inUserMenu) setUserMenuOpen(false);
     };
@@ -165,6 +170,14 @@ export const Header: React.FC = () => {
   };
 
   const primaryNavItems = PRIMARY_NAV_ITEMS;
+
+  /** Пункт primary-навигации, у которого есть дети, рендерится как dropdown. */
+  const DROPDOWN_KIND_BY_PATH: Record<string, DropdownKind> = { '/market': 'market' };
+  const dropdownRefs: Record<DropdownKind, React.RefObject<HTMLDivElement>> = {
+    market: marketDropdownRef,
+    analytics: analyticsDropdownRef,
+    tools: toolsDropdownRef,
+  };
   const analyticsItems = ANALYTICS_NAV_ITEMS;
   const toolsItems = TOOLS_NAV_ITEMS;
 
@@ -229,17 +242,23 @@ export const Header: React.FC = () => {
   /* Выпадающие меню вторичной навигации                                 */
   /* ------------------------------------------------------------------ */
   const renderDropdown = (
-    kind: 'analytics' | 'tools',
+    kind: DropdownKind,
     label: string,
     items: SubNavItem[],
     isActive: boolean,
     ref: React.RefObject<HTMLDivElement>,
     menuTitle: string,
-    accent: 'violet' | 'blue'
+    accent: 'cyan' | 'violet' | 'blue',
+    TriggerIcon: typeof Grid = Grid
   ) => {
     const isOpen = activeDropdown === kind;
-    const TriggerIcon = kind === 'analytics' ? Grid : Wrench;
     const accentClasses = {
+      cyan: {
+        active: 'border-cyan-500/35 bg-cyan-500/15 font-semibold text-cyan-300 shadow-sm shadow-cyan-950/40',
+        icon: 'text-cyan-400',
+        item: 'bg-cyan-500/15 text-cyan-300',
+        underline: 'from-cyan-400 to-blue-500',
+      },
       violet: {
         active: 'border-violet-500/35 bg-violet-500/15 font-semibold text-violet-300 shadow-sm shadow-violet-950/40',
         icon: 'text-violet-400',
@@ -370,7 +389,7 @@ export const Header: React.FC = () => {
     <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-surface-inset/90 shadow-panel backdrop-blur-xl">
       <div className="mx-auto flex min-w-0 max-w-[1920px] flex-wrap items-center gap-x-2 px-3 sm:px-4">
         {/* ----------------------------- Brand ----------------------------- */}
-        <div className="order-1 flex h-14 min-w-0 shrink items-center gap-x-2 sm:gap-x-3">
+        <div className="order-1 flex h-14 shrink-0 items-center gap-x-2 pr-1 sm:gap-x-3 sm:pr-2">
           <Link
             to="/"
             className="group flex min-w-0 items-center gap-x-2.5 focus:outline-none"
@@ -414,10 +433,25 @@ export const Header: React.FC = () => {
 
         {/* ------------------ Primary desktop navigation (lg+) ------------------ */}
         <nav
-          className="order-3 hidden w-full min-w-0 shrink-0 items-center justify-start gap-x-1 border-t border-white/[0.07] py-1.5 text-[13px] font-medium lg:flex xl:order-2 xl:w-auto xl:flex-1 xl:justify-center xl:border-t-0 xl:py-0 2xl:text-sm"
+          className="order-3 hidden w-full min-w-0 items-center justify-start gap-x-1 border-t border-white/[0.07] py-1.5 text-[13px] font-medium lg:flex xl:order-2 xl:w-auto xl:flex-1 xl:justify-center xl:border-t-0 xl:py-0 2xl:text-sm"
           aria-label="Главная навигация"
         >
-          {primaryNavItems.map((item) => renderPrimaryLink(item))}
+          {primaryNavItems.map((item) =>
+            item.children ? (
+              renderDropdown(
+                DROPDOWN_KIND_BY_PATH[item.path] ?? 'market',
+                item.label,
+                item.children,
+                item.children.some((sub) => location.pathname === sub.path),
+                dropdownRefs[DROPDOWN_KIND_BY_PATH[item.path] ?? 'market'],
+                `${item.label}: разделы`,
+                'cyan',
+                item.icon
+              )
+            ) : (
+              renderPrimaryLink(item)
+            )
+          )}
 
           {renderDropdown(
             'analytics',
@@ -436,7 +470,8 @@ export const Header: React.FC = () => {
             isToolsActive,
             toolsDropdownRef,
             'Инструменты терминала',
-            'blue'
+            'blue',
+            Wrench
           )}
         </nav>
 
@@ -605,14 +640,33 @@ export const Header: React.FC = () => {
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 z-50 mt-1.5 w-56 rounded-lg border border-white/[0.12] bg-surface/95 py-1.5 text-xs font-sans shadow-2xl shadow-black/80 backdrop-blur-2xl">
+                <div
+                  role="menu"
+                  aria-label="Меню пользователя"
+                  onKeyDown={(e) => {
+                    // Стрелки перемещают фокус внутри меню, Escape закрывает.
+                    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                    e.preventDefault();
+                    const items = Array.from(
+                      (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="menuitem"]')
+                    );
+                    const idx = items.indexOf(document.activeElement as HTMLElement);
+                    const next =
+                      e.key === 'ArrowDown'
+                        ? (idx + 1) % items.length
+                        : (idx - 1 + items.length) % items.length;
+                    items[next]?.focus();
+                  }}
+                  className="absolute right-0 z-50 mt-1.5 w-56 max-w-[calc(100vw-1.5rem)] rounded-lg border border-white/[0.12] bg-surface/95 py-1.5 text-xs font-sans shadow-2xl shadow-black/80 backdrop-blur-2xl"
+                >
                   <div className="border-b border-white/[0.06] px-3 py-2">
-                    <div className="font-medium text-white">{user.displayName}</div>
-                    <div className="text-[11px] text-slate-400">{user.email}</div>
+                    <div className="truncate font-medium text-white">{user.displayName}</div>
+                    <div className="truncate text-[11px] text-slate-400">{user.email}</div>
                   </div>
                   <div className="py-1">
                     <NavLink
                       to="/profile"
+                      role="menuitem"
                       onClick={() => setUserMenuOpen(false)}
                       className="flex items-center gap-x-2.5 px-3 py-2 text-slate-200 transition-colors hover:bg-white/[0.06] hover:text-white"
                     >
@@ -622,6 +676,7 @@ export const Header: React.FC = () => {
                     {isAdmin && (
                       <NavLink
                         to="/admin"
+                        role="menuitem"
                         onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-x-2.5 px-3 py-2 text-cyan-300 transition-colors hover:bg-white/[0.06]"
                       >
@@ -633,6 +688,7 @@ export const Header: React.FC = () => {
                   <div className="border-t border-white/[0.06] pt-1">
                     <button
                       type="button"
+                      role="menuitem"
                       onClick={async () => {
                         setUserMenuOpen(false);
                         await logout();
@@ -792,7 +848,13 @@ export const Header: React.FC = () => {
               Основные разделы
             </div>
             <div className="grid grid-cols-2 gap-1.5">
-              {primaryNavItems.map((item) => renderPrimaryLink(item, true))}
+              {/* Пункты с подпунктами в мобильном drawer раскрываются сразу:
+                  «Рынок» -> «Спот» и «Фьючерсы» как прямые ссылки. */}
+              {primaryNavItems.flatMap((item) =>
+                item.children
+                  ? item.children.map((sub) => renderPrimaryLink(sub, true))
+                  : [renderPrimaryLink(item, true)]
+              )}
             </div>
           </div>
 

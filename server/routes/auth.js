@@ -7,6 +7,7 @@
  * GET  /api/auth/session              — Return current session user (or 401)
  * POST /api/auth/verify-email         — Consume a one-time verification token
  * POST /api/auth/resend-verification  — Re-send the verification email
+ * GET  /api/auth/registration-status  — Public: is sign-up currently open?
  */
 
 import { Router } from 'express';
@@ -24,6 +25,18 @@ import { createVerificationToken, verifyRawToken, secondsSinceLastToken, VERIFY_
 import { sendVerificationEmail, getMailStatus, MailUnavailableError, maskEmail } from '../services/mail.js';
 
 const router = Router();
+
+/* ------------------------------------------------------------------ */
+/* GET /api/auth/registration-status                                  */
+/*                                                                    */
+/* Public (no session required). Lets the sign-up page render an       */
+/* honest closed state instead of a form that always 403s.             */
+/* Reflects the same REGISTRATION_ENABLED flag the register handler    */
+/* enforces, so the UI and the API can never disagree.                 */
+/* ------------------------------------------------------------------ */
+router.get('/registration-status', (req, res) => {
+  res.json({ registrationOpen: config.REGISTRATION_ENABLED === true });
+});
 
 /* ------------------------------------------------------------------ */
 /* POST /api/auth/register                                            */

@@ -3,19 +3,26 @@ import { vi } from 'vitest';
 
 // Mock lightweight-charts for JSDOM canvas environment
 vi.mock('lightweight-charts', () => {
+  // Общий стаб серии: всё, что CandleChart вызывает на candlestick/histogram/line.
+  const makeSeries = () => ({
+    setData: vi.fn(),
+    update: vi.fn(),
+    applyOptions: vi.fn(),
+    createPriceLine: vi.fn(() => ({})),
+    removePriceLine: vi.fn(),
+    priceScale: () => ({ applyOptions: vi.fn() }),
+  });
   return {
     ColorType: { Solid: 'solid' },
     createChart: () => ({
       applyOptions: vi.fn(),
-      addCandlestickSeries: () => ({
-        setData: vi.fn(),
-        priceScale: () => ({ applyOptions: vi.fn() }),
-      }),
-      addHistogramSeries: () => ({
-        setData: vi.fn(),
-        priceScale: () => ({ applyOptions: vi.fn() }),
-      }),
-      timeScale: () => ({ fitContent: vi.fn() }),
+      addCandlestickSeries: makeSeries,
+      addHistogramSeries: makeSeries,
+      // CandleChart рисует оверлеи (EMA/зоны) линейной серией.
+      addLineSeries: makeSeries,
+      priceScale: () => ({ applyOptions: vi.fn() }),
+      subscribeCrosshairMove: vi.fn(),
+      timeScale: () => ({ fitContent: vi.fn(), applyOptions: vi.fn() }),
       remove: vi.fn(),
     }),
   };
