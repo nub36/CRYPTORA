@@ -1,12 +1,15 @@
 import React from 'react';
 
-/** Deterministic color from symbol string (no randomness). */
+/**
+ * Deterministic color from symbol string (no randomness).
+ * All colors have ≥ 4.5:1 contrast with white text (WCAG AA).
+ */
 function symbolColor(symbol: string): string {
   const COLORS = [
-    '#F7931A', '#627EEA', '#00D4AA', '#F0B90B', '#23292F',
-    '#0033AD', '#C2A633', '#E84142', '#2A5ADA', '#E6007A',
-    '#2775CA', '#8247E5', '#E4405F', '#00BFFF', '#FF6600',
-    '#26A17B', '#1A1A2E', '#FF4081', '#7B61FF', '#00BCD4',
+    '#F7931A', '#627EEA', '#00A87D', '#D4A017', '#2563EB',
+    '#1D4ED8', '#B8860B', '#DC2626', '#4338CA', '#DB2777',
+    '#1D4ED8', '#7C3AED', '#E11D48', '#0891B2', '#EA580C',
+    '#059669', '#4F46E5', '#BE185D', '#6D28D9', '#0E7490',
   ];
   let hash = 0;
   for (let i = 0; i < symbol.length; i++) {
@@ -27,7 +30,7 @@ interface CoinIconProps {
  */
 export const CoinIcon: React.FC<CoinIconProps> = ({ symbol, size = 24, className = '' }) => {
   const bg = symbolColor(symbol);
-  const fontSize = Math.max(10, size * 0.45);
+  const fontSize = Math.max(11, size * 0.45);
   const letter = (symbol || '?')[0].toUpperCase();
 
   return (

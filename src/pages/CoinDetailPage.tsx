@@ -277,7 +277,7 @@ export const CoinDetailPage: React.FC = () => {
             <ChevronLeft className="w-3.5 h-3.5" />
             <span>Рынок</span>
           </Link>
-          <span>/</span>
+          <span aria-hidden>/</span>
           <span className="text-white font-bold">{asset.symbol}</span>
         </div>
 
@@ -836,7 +836,7 @@ export const CoinDetailPage: React.FC = () => {
                       </td>
                       <td className="py-2 text-right text-slate-400">
                         {p.spreadPct}%
-                        <span className="text-[11px] text-slate-600 ml-1">({(p.spreadPct * 100).toFixed(1)}bps)</span>
+                        <span className="text-[11px] text-slate-500 ml-1">({(p.spreadPct * 100).toFixed(1)}bps)</span>
                       </td>
                     </tr>
                   ))}
