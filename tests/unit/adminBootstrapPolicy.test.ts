@@ -119,8 +119,22 @@ describe('create-admin CLI — password handled safely', () => {
 
   it('hashes with Argon2id before insert', () => {
     expect(cli).toContain('argon2.argon2id');
-    expect(cli).toMatch(/memoryCost:\s*65536/);
-    expect(cli).toMatch(/timeCost:\s*3/);
+
+    // The cost parameters must come from server/config.js rather than being
+    // re-declared here, so the CLI and the HTTP register/login path can never
+    // drift to different Argon2id settings.
+    expect(cli).toMatch(/from '\.\.\/server\/config\.js'/);
+    expect(cli).toMatch(/memoryCost:\s*config\.ARGON2_MEMORY_COST/);
+    expect(cli).toMatch(/timeCost:\s*config\.ARGON2_TIME_COST/);
+    expect(cli).toMatch(/parallelism:\s*config\.ARGON2_PARALLELISM/);
+    expect(cli).not.toMatch(/memoryCost:\s*\d/);
+    expect(cli).not.toMatch(/timeCost:\s*\d/);
+
+    // …and config.js itself must still declare the required strength.
+    const cfg = read('server/config.js');
+    expect(cfg).toMatch(/ARGON2_MEMORY_COST:\s*65536/);
+    expect(cfg).toMatch(/ARGON2_TIME_COST:\s*3/);
+    expect(cfg).toMatch(/ARGON2_PARALLELISM:\s*1/);
   });
 
   it('inserts only the hash, never the plaintext password', () => {

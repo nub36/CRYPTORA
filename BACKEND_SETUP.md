@@ -139,8 +139,42 @@ Interactive prompts:
 3. Password (typed hidden, then confirmed)
 
 The password is hashed with **Argon2id** (memoryCost 64 MB, timeCost 3,
-parallelism 1) and written straight to PostgreSQL as `password_hash`
+parallelism 1 — taken from `server/config.js`, so the CLI and the HTTP flow
+cannot drift apart) and written straight to PostgreSQL as `password_hash`
 with `role = 'admin'`.
+
+### CLI-created initial admin is verified by trusted local bootstrap
+
+The row is written with:
+
+| Column | Value |
+|--------|-------|
+| `role` | `'admin'` |
+| `is_active` | `true` |
+| `email_verified` | `true` |
+| `email_verified_at` | `now()` |
+
+This is a deliberate exception to the mandatory email verification introduced
+by migration 005, and it applies **only** to this CLI:
+
+- `npm run create-admin` runs interactively on the trusted VPS, by an operator
+  who already holds the database credentials. It is a bootstrap mechanism, not
+  a public surface.
+- Asking that operator to confirm an address they demonstrably control would
+  add no assurance about mailbox ownership.
+- Without it the first admin could never authenticate: `/api/auth/login`
+  refuses unverified accounts, and there would be no other admin to promote
+  anyone.
+
+**No verification token is created** and no email is sent.
+
+The public flow is unaffected: `POST /api/auth/register` still creates accounts
+with `email_verified = false` and requires the emailed link before login.
+Migration 005 still defaults the column to `FALSE`, so any code path that
+forgets it produces an unverified — not an over-privileged — account.
+
+These properties are enforced by `tests/unit/createAdminBootstrap.test.ts`,
+which exercises the real INSERT from `scripts/create-admin.mjs`.
 
 ### Plaintext admin password must never be stored in:
 
