@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
+coverage
+test-results
+playwright-report
+server.log
+
+# Screenshot QA artifacts (scripts/screenshot-qa.mjs)
+screenshots
