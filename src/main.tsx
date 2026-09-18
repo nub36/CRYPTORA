@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { AuthProvider } from '@/context/AuthContext';
 import App from './App';
 
 // Self-hosted fonts (Д1: CSP-safe, no Google Fonts dependency)
@@ -18,9 +19,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
       <ThemeProvider>
-        <MarketDataProviderComponent>
-          <App />
-        </MarketDataProviderComponent>
+        <AuthProvider>
+          <MarketDataProviderComponent>
+            <App />
+          </MarketDataProviderComponent>
+        </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>

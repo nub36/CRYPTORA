@@ -25,8 +25,17 @@ const RULE_LABELS: Record<string, string> = {
   fees: 'Комиссии', scope: 'Охват', zones: 'Зоны', mitigation: 'Митигация',
 };
 
-export const StrategyArchivePanel: React.FC = () => {
-  const cards = useMemo(() => buildArchiveCards(), []);
+interface StrategyArchivePanelProps {
+  /** Show only these strategy IDs (from registry). If omitted, shows all. */
+  strategyIds?: string[];
+}
+
+export const StrategyArchivePanel: React.FC<StrategyArchivePanelProps> = ({ strategyIds }) => {
+  const allCards = useMemo(() => buildArchiveCards(), []);
+  const cards = useMemo(
+    () => (strategyIds ? allCards.filter((c) => strategyIds.includes(c.id)) : allCards),
+    [allCards, strategyIds],
+  );
   const counts = useMemo(() => filterCounts(cards), [cards]);
   const [filter, setFilter] = useState<ArchiveFilterId>('ALL');
   const [compare, setCompare] = useState<string[]>([]);

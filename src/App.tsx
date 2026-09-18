@@ -30,6 +30,11 @@ const EcosystemPage = React.lazy(() => import('@/pages/EcosystemPage').then(m =>
 const PortfolioRiskPage = React.lazy(() => import('@/pages/PortfolioRiskPage').then(m => ({ default: m.PortfolioRiskPage })));
 const ArticlesPage = React.lazy(() => import('@/pages/ArticlesPage').then(m => ({ default: m.ArticlesPage })));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
+const LoginPage = React.lazy(() => import('@/pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const RegisterPage = React.lazy(() => import('@/pages/RegisterPage').then(m => ({ default: m.RegisterPage })));
+const VerifyEmailPage = React.lazy(() => import('@/pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
+const ProfilePage = React.lazy(() => import('@/pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const AdminPage = React.lazy(() => import('@/pages/AdminPage').then(m => ({ default: m.AdminPage })));
 
 const PageLoader: React.FC = () => (
   <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-sans text-sm">
@@ -65,6 +70,11 @@ export const App: React.FC = () => {
             <Route path="/portfolio" element={<PortfolioRiskPage />} />
             <Route path="/articles" element={<ArticlesPage />} />
             <Route path="/articles/:slug" element={<ArticlesPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/admin" element={<AdminPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>

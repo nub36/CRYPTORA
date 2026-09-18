@@ -116,8 +116,12 @@ export const StrategiesPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Strategy Research Archive (read-only; all 13 historical versions from the registry) */}
-      <StrategyArchivePanel />
+      {/* Product strategies: V3.0, V3.3, V2.8 — connected to LiveSignalEngine */}
+      <StrategyArchivePanel strategyIds={[
+        'V3_0_HTF_LIQUIDATION_TRAP',
+        'V3_3_HTF_ZONE_MITIGATION',
+        'V2_8_ZERO_FEE_SNIPER_TRAILING',
+      ]} />
 
       {/* Interactive Controls & Parameters */}
       <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-4 font-sans text-xs">

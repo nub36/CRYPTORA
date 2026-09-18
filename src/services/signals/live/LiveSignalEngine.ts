@@ -104,8 +104,13 @@ export class LiveSignalEngine {
 
     if (h1Raw.length < V30_CONSTANTS.WARMUP_BARS) return;
 
-    const h1 = h1Raw.map((c) => ohlcvToArchive(c, '1h'));
-    const h4 = h4Raw.map((c) => ohlcvToArchive(c, '4h'));
+    // P0 look-ahead guard: pass the current instant so the adapter can mark the
+    // still-forming candle as isClosed=false. Binance REST returns the forming
+    // candle in the array; without this the closedBars filter below would let
+    // strategies evaluate incomplete data as if it were final.
+    const nowMs = Date.now();
+    const h1 = h1Raw.map((c) => ohlcvToArchive(c, '1h', nowMs));
+    const h4 = h4Raw.map((c) => ohlcvToArchive(c, '4h', nowMs));
 
     let symState = this.state.get(symbol);
     if (!symState) {
