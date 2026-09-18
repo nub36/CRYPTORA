@@ -24,5 +24,16 @@ export default defineConfig({
   },
   build: {
     sourcemap: false,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Heavy shared libs split from main bundle
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['lightweight-charts'],
+          'vendor-ui': ['lucide-react', 'clsx'],
+        },
+      },
+    },
   },
 })
