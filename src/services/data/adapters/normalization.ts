@@ -36,6 +36,8 @@ export function normalizeBinanceTicker(
     sparkline: sparkline, // Filled by CandleHistoryService from real 1h klines
     isDemo: false,
     provenance,
+    high24h: parseFloat(ticker.highPrice) || undefined,
+    low24h: parseFloat(ticker.lowPrice) || undefined,
   };
 }
 
@@ -75,6 +77,8 @@ export function normalizeKuCoinStats(
     sparkline: sparkline,
     isDemo: false,
     provenance,
+    high24h: parseFloat(stats.high) || undefined,
+    low24h: parseFloat(stats.low) || undefined,
   };
 }
 
@@ -114,6 +118,8 @@ export function normalizeKuCoinTickerItem(
     sparkline: sparkline,
     isDemo: false,
     provenance,
+    high24h: item.high ? parseFloat(item.high) : undefined,
+    low24h: item.low ? parseFloat(item.low) : undefined,
   };
 }
 
