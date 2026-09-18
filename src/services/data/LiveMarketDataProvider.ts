@@ -149,22 +149,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       console.warn(`[P11] ${missing.length} asset(s) missing from live data:`, missing.map((a) => `${a.symbol} (${a.binanceSymbol} / ${a.kucoinSymbol})`));
     }
 
-    // Anomaly engine feed
-    if (this.anomalyEngine) {
-      for (const item of results) {
-        this.anomalyEngine.processTick({
-          symbol: item.symbol,
-          price: item.price,
-          priceChangePercent24h: item.change24h,
-          high24h: item.high24h ?? item.price * 1.03,
-          low24h: item.low24h ?? item.price * 0.97,
-          volume24h: item.volume24h,
-          quoteVolume24h: item.volume24h * item.price,
-          timestamp: Date.now(),
-          provenance: item.provenance ?? { exchange: 'binance', market: 'spot', symbol: item.symbol, timestamp: Date.now() },
-        });
-      }
-    }
+    // AnomalyEngine: fed exclusively by WebSocket (BinanceWebSocketClient.handleTickerPayload)
+    // for real-time accuracy. REST bulk fetch (getAssets) is for building the asset list only.
 
     this.assetCache = { data: results, timestamp: now };
 
