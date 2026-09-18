@@ -61,6 +61,7 @@ cp .env.example .env
 | `HOST` | Bind address | `127.0.0.1` (production) |
 | `PORT` | Backend port | `3000` |
 | `COOKIE_SECURE` | HTTPS-only cookies | `true` (production) |
+| `SESSION_STORE` | Session store backend | `postgres` (production). `memory` is test-only and refused when `NODE_ENV=production` |
 
 ### Optional variables
 

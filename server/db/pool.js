@@ -56,3 +56,18 @@ export async function closePool() {
     pool = null;
   }
 }
+
+/**
+ * Test seam — replace the pool with any object exposing `.query(text, params)`.
+ *
+ * Used ONLY by the integration suite so the real route handlers, middleware,
+ * validators and session layer run against a controlled in-memory DB.
+ * Production code never calls this. Every accessor in this module funnels
+ * through getPool(), so a single injection point covers query/getClient/
+ * checkDatabase.
+ *
+ * @param {{ query: Function, end?: Function, connect?: Function }|null} injected
+ */
+export function __setPoolForTests(injected) {
+  pool = injected;
+}

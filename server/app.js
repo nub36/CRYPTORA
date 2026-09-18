@@ -3,7 +3,7 @@
  *
  * Importable app module (no listen). Used by:
  *   - server/index.js (production entry)
- *   - tests (supertest)
+ *   - tests/integration/* (real route handlers against a mock DB)
  */
 
 import express from 'express';
@@ -26,7 +26,44 @@ import adminRouter from './routes/admin.js';
 
 const PgStore = connectPgSimple(session);
 
-export function createApp() {
+/**
+ * Resolve the session store.
+ *
+ * Production is PostgreSQL-backed. The MemoryStore variant exists only so the
+ * integration suite can exercise the real session middleware without a live
+ * PostgreSQL; it is refused outright when NODE_ENV=production so that a
+ * stray SESSION_STORE=memory can never silently degrade production.
+ *
+ * @param {{ sessionStore?: 'postgres' | 'memory' }} [options]
+ */
+function resolveSessionStore(options = {}) {
+  const kind = options.sessionStore || config.SESSION_STORE;
+
+  if (kind === 'memory') {
+    if (config.NODE_ENV === 'production') {
+      throw new Error(
+        'SESSION_STORE=memory is not permitted when NODE_ENV=production. ' +
+        'Production must use the PostgreSQL session store.'
+      );
+    }
+    return new session.MemoryStore();
+  }
+
+  if (kind !== 'postgres') {
+    throw new Error(`Unknown SESSION_STORE: ${kind}`);
+  }
+
+  return new PgStore({
+    pool: getPool(),
+    tableName: 'sessions',
+    createTableIfMissing: false, // We manage migrations manually
+  });
+}
+
+/**
+ * @param {{ sessionStore?: 'postgres' | 'memory' }} [options]
+ */
+export function createApp(options = {}) {
   const app = express();
 
   // Trust proxy (Nginx sets X-Forwarded-For, X-Forwarded-Proto)
@@ -43,15 +80,9 @@ export function createApp() {
   app.use(express.urlencoded({ extended: false, limit: '100kb' }));
   app.use(cookieParser());
 
-  // Session (server-side, PostgreSQL-backed)
-  const sessionStore = new PgStore({
-    pool: getPool(),
-    tableName: 'sessions',
-    createTableIfMissing: false, // We manage migrations manually
-  });
-
+  // Session (server-side; PostgreSQL-backed in production)
   app.use(session({
-    store: sessionStore,
+    store: resolveSessionStore(options),
     name: 'sid',
     secret: config.SESSION_SECRET,
     resave: false,

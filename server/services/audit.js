@@ -29,8 +29,11 @@ export async function recordAudit({ actorUserId, action, targetType, targetId, m
 
 /**
  * Remove sensitive keys from metadata before persisting.
+ *
+ * Exported so the test suite asserts against THIS implementation rather than
+ * a re-implementation. Never logs, returns, or persists the stripped values.
  */
-function sanitizeMetadata(meta) {
+export function sanitizeMetadata(meta) {
   const BLOCKED = new Set([
     'password', 'passwordHash', 'password_hash', 'hash',
     'sessionToken', 'session_token', 'token', 'secret',
