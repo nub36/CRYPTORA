@@ -9,7 +9,6 @@ import { Header } from '@/components/layout/Header';
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
-import React from 'react';
 
 // Mock fetch
 const mockFetch = vi.fn();
