@@ -6,8 +6,7 @@
 > **Текущий этап:** LIVE SIGNALS PASS completed. `/signals`: V3.0 / V3.3 / V2.8 считаются на фактических закрытых свечах
 > реплеем архивных раннеров (frozen-функции, без изменения стратегий); исходы ведутся по опубликованным уровням; журнал v2
 > с цепочным SHA-256. Предыдущий этап (Corrective Data-Honesty Pass, v0.8.44) сохранён без изменений.  
-> ⚠️ **Git:** коммит сделан локально на ветке `arena/01a0b8cc-cryptora`; `git push` из песочницы **не выполнен** —
-> учётные данные GitHub недоступны (см. §«Git-статус» ниже). Пуш нужно выполнить с машины владельца.  
+> **Git:** ветка `arena/01a0b8cc-cryptora` запушена в `origin` (nub36/CRYPTORA); PR в `main` — см. §«Git-статус».  
 > **D5 VERIFIED_NO_CHANGE:** Liquidation normalization/freshness — `LiquidationPulse`, `LiquidationPipeline`, `LiquidationHeatmap` data flow unchanged in D-series. Liquidation 24h remains ACTUAL (pipeline events) / ESTIMATED (DerivativesEngine model) / UNAVAILABLE.  
 > **D6 VERIFIED_NO_CHANGE:** Radar/Screener/Heatmap consistency — null-safe change1h/change7d from D1 already applied to ScreenerPage (D1 commit). RadarPage and HeatmapGrid now also null-safe for OI delta. No new artificial data was needed.  
 > 🏭 **ФАКТИЧЕСКИЙ PRODUCTION (исправлено по указанию владельца):** перед v0.8.5 production на VPS
@@ -39,9 +38,9 @@
   D-V28-005 и комментарии `legacy/v2` приведены к факту (порт остаётся архивным, LIVE идёт через обёртку архива).
 
 ### Git-статус (v0.8.45)
-- Ветка `arena/01a0b8cc-cryptora`, коммит с изменениями создан локально. `git ls-remote origin` и `gh auth status`
-  в песочнице падают (нет учётных данных) — **push не выполнен и не имитировался**. Следующий шаг владельца:
-  `git push origin arena/01a0b8cc-cryptora` и PR в `main`.
+- Ветка `arena/01a0b8cc-cryptora` с коммитом `v0.8.45: LIVE signals — three archived strategies run on real closed
+  candles` запушена в `origin` (в начале сессии доступа к GitHub не было; он появился к моменту пуша). Слияние в `main` —
+  через pull request, решение владельца.
 
 ### v0.8.39 — Тарифы без иллюзии покупки
 - Модал тарифов: уведомление «Биллинг не подключён», кнопки «Предпросмотр: …» вместо «Переключить». e2e-проверка. Этап 8 (оплата) — решение владельца.
