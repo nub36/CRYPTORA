@@ -115,14 +115,17 @@ describe('migration inventory', () => {
       'audit_log',
       'email_verification_tokens',
       'sessions',
+      'signals',
+      'strategy_settings',
       'user_preferences',
       'users',
     ]);
   });
 
   it('found every index definition in the migrations', () => {
-    // Guards the parser itself: 12 is the exact count in 001–005. If this
-    // drops, a regex silently stopped matching and the checks below are void.
+    // Guards the parser itself: this is the exact index inventory of
+    // 001–007 (12 from 001–005 + 1 from 006 + 4 from 007). If the count drops,
+    // a regex silently stopped matching and the checks below are void.
     expect(indexes.map((i) => i.name).sort()).toEqual([
       'idx_audit_log_action',
       'idx_audit_log_actor',
@@ -132,6 +135,11 @@ describe('migration inventory', () => {
       'idx_evt_token_hash',
       'idx_evt_user_id',
       'idx_sessions_expire',
+      'idx_signals_created_at_desc',
+      'idx_signals_previous_hash',
+      'idx_signals_strategy_status',
+      'idx_signals_symbol',
+      'idx_strategy_settings_enabled',
       'idx_users_email_lower',
       'idx_users_email_unverified',
       'idx_users_is_active',

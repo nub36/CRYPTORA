@@ -59,16 +59,66 @@ describe('admin bootstrap policy — no plaintext admin password anywhere', () =
     expect(seedScripts, `no seed script may exist, found: ${seedScripts}`).toEqual([]);
   });
 
-  it('migrations create no admin row (no INSERT at all)', () => {
+  it('migrations create no admin row and seed no credentials', () => {
     const dir = path.join(ROOT, 'server/db/migrations');
     const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql'));
     expect(files.length).toBeGreaterThan(0);
 
+    /**
+     * Раньше здесь стоял запрет на само слово INSERT. Настоящее свойство,
+     * которое защищает тест, другое: миграция не должна создавать
+     * пользователя и не должна нести учётные данные. Запрет по слову оказался
+     * шире цели и заблокировал легитимный seed 006 — три строки
+     * `strategy_settings`, все с `enabled = FALSE` и без каких-либо паролей.
+     *
+     * Поэтому проверяем по существу:
+     *   1. ни одного INSERT в таблицы, где живут учётные данные;
+     *   2. любой разрешённый INSERT — только в белый список таблиц без
+     *      паролей, ролей и токенов;
+     *   3. никакого захардкоженного пароля/роли/токена.
+     */
+    const CREDENTIAL_TABLES = ['users', 'sessions', 'audit_log', 'email_verification_tokens'];
+    const INSERT_WHITELIST = ['strategy_settings'];
+
     for (const f of files) {
       const sql = fs.readFileSync(path.join(dir, f), 'utf8');
-      expect(sql.toUpperCase(), `${f} must not INSERT data`).not.toContain('INSERT');
+      // Комментарии не анализируем: в них legitimately объясняется политика.
+      const code = sql.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+
+      for (const m of code.matchAll(/INSERT\s+INTO\s+(\w+)/gi)) {
+        const table = m[1]!.toLowerCase();
+        expect(
+          CREDENTIAL_TABLES,
+          `${f} must not INSERT into credential-bearing table '${table}'`,
+        ).not.toContain(table);
+        expect(
+          INSERT_WHITELIST,
+          `${f} INSERTs into '${table}', which is not whitelisted — extend the list only for a table with no credentials`,
+        ).toContain(table);
+      }
+
       expect(sql.toLowerCase(), `${f} must not hardcode a role`).not.toMatch(/role\s*=\s*'admin'/);
+      expect(code.toLowerCase(), `${f} must not hardcode a password hash`)
+        .not.toMatch(/password_hash\s*[,)]?\s*(values|')/i);
     }
+  });
+
+  it('the only seeded rows are the three disabled product strategies', () => {
+    const sql = fs
+      .readFileSync(path.join(ROOT, 'server/db/migrations/006_strategy_settings.sql'), 'utf8')
+      .split('\n')
+      .map((l) => l.replace(/--.*$/, ''))
+      .join('\n');
+
+    const valuesBlock = sql.slice(sql.indexOf('VALUES'));
+    const tuples = [...valuesBlock.matchAll(/\(\s*'([^']+)'\s*,\s*(TRUE|FALSE)/gi)];
+    expect(tuples.map((t) => t[1]).sort()).toEqual([
+      'V2_8_ZERO_FEE_SNIPER_TRAILING',
+      'V3_0_HTF_LIQUIDATION_TRAP',
+      'V3_3_HTF_ZONE_MITIGATION',
+    ]);
+    // Ключевое требование: после миграции ничего не начинает работать само.
+    expect(tuples.every((t) => t[2]!.toUpperCase() === 'FALSE')).toBe(true);
   });
 
   it('shell scripts contain no admin credential', () => {
