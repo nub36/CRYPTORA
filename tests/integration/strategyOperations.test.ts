@@ -133,13 +133,23 @@ beforeAll(async () => {
 }, 240_000);
 
 afterAll(async () => {
+  // Порядок важен: сначала закрываем пул приложения, и только потом
+  // останавливаем PostgreSQL. Иначе pg рвёт живые соединения сервера и
+  // процесс получает 57P01 «terminating connection due to administrator
+  // command» как unhandled error.
   try {
     if (db) await db.end();
+  } catch { /* уже закрыто */ }
+  try {
     if (closeServer) await closeServer();
+  } catch { /* сервер уже остановлен */ }
+  try {
+    const { closePool } = await import('../../server/db/pool.js');
+    await closePool();
+  } catch { /* пул уже закрыт */ }
+  try {
     if (pg) await pg.stop();
-  } catch {
-    /* завершение тестовой инфраструктуры не должно ронять набор */
-  }
+  } catch { /* БД уже остановлена */ }
 });
 
 beforeEach(async () => {
