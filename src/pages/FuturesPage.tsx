@@ -78,7 +78,7 @@ export const FuturesPage: React.FC = () => {
               </span>
             ) : (
               <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                QA-ДАТАСЕТ
+                QA
               </span>
             )}
           </div>
@@ -222,7 +222,7 @@ export const FuturesPage: React.FC = () => {
                   className="py-2.5 px-3 text-right cursor-pointer hover:text-white"
                 >
                   <div className="flex items-center justify-end space-x-1">
-                    <span>Открытый интерес</span>
+                    <span>Open Interest</span>
                     {sortConfig.key === 'openInterest' && (
                       sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                     )}

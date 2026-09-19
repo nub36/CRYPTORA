@@ -212,7 +212,7 @@ export const Header: React.FC = () => {
                   ? 'border-cyan-500/40 bg-cyan-500/20 font-bold text-cyan-300'
                   : 'border-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white'
               }`
-            : `relative flex shrink-0 items-center gap-x-1.5 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
+            : `relative flex min-w-0 shrink items-center gap-x-1.5 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
                 isActive
                   ? 'border-cyan-500/35 bg-cyan-500/15 font-semibold text-cyan-300 shadow-sm shadow-cyan-950/40'
                   : 'border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white'
@@ -228,7 +228,7 @@ export const Header: React.FC = () => {
                   : `hidden h-3.5 w-3.5 nav2xl:block ${isActive ? 'text-cyan-400' : 'text-slate-400'}`
               }
             />
-            <span className={inDrawer ? 'truncate' : ''}>{item.label}</span>
+            <span className={inDrawer ? 'truncate' : 'truncate'}>{item.label}</span>
             {!inDrawer && isActive && (
               <span className="absolute -bottom-1 left-2 right-2 h-[2px] rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 xl:left-2.5 xl:right-2.5" />
             )}
@@ -274,13 +274,13 @@ export const Header: React.FC = () => {
     }[accent];
 
     return (
-      <div className="relative shrink-0" ref={ref}>
+      <div className="relative min-w-0 shrink" ref={ref}>
         <button
           type="button"
           onClick={() => setActiveDropdown(isOpen ? null : kind)}
           aria-expanded={isOpen}
           aria-haspopup="true"
-          className={`relative flex shrink-0 items-center gap-x-1 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
+          className={`relative flex min-w-0 shrink items-center gap-x-1 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
             isActive
               ? accentClasses.active
               : isOpen
@@ -291,7 +291,7 @@ export const Header: React.FC = () => {
           <TriggerIcon
             className={`hidden h-3.5 w-3.5 nav2xl:block ${isActive ? accentClasses.icon : 'text-slate-400'}`}
           />
-          <span>{label}</span>
+          <span className="truncate">{label}</span>
           <ChevronDown
             className={`h-3 w-3 transition-transform duration-200 ${
               isOpen ? `rotate-180 ${accentClasses.icon}` : 'text-slate-400'
@@ -482,7 +482,7 @@ export const Header: React.FC = () => {
             role="status"
             data-qa="data-source-status"
             aria-label={`Источник данных: ${isLiveMode ? `LIVE Spot, ${realtimeLabel}` : 'внутренний датасет QA'}`}
-            title={`Источник данных: ${isLiveMode ? 'LIVE Spot (Binance / KuCoin)' : 'внутренний датасет QA'}. Статус WebSocket: ${realtimeStatus}`}
+            title={`Источник данных: ${isLiveMode ? 'СПОТ • LIVE (Binance / KuCoin)' : 'внутренний датасет QA'}. Статус WebSocket: ${realtimeStatus}`}
             className={`hidden shrink-0 items-center gap-x-1.5 whitespace-nowrap rounded-md border px-2 py-1 font-mono text-[11px] sm:inline-flex navxl:px-2.5 ${
               isLiveMode
                 ? 'border-emerald-500/35 bg-emerald-950/40 text-emerald-400'
@@ -494,7 +494,7 @@ export const Header: React.FC = () => {
             ) : (
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
             )}
-            <span className="hidden font-bold navxl:inline">{isLiveMode ? 'LIVE SPOT' : 'QA-ДАТАСЕТ'}</span>
+            <span className="hidden font-bold navxl:inline">{isLiveMode ? 'СПОТ • LIVE' : 'СПОТ • QA'}</span>
             <span className="font-bold navxl:hidden">{isLiveMode ? 'LIVE' : 'QA'}</span>
             {isLiveMode && (
               <span
@@ -516,7 +516,7 @@ export const Header: React.FC = () => {
             role="status"
             data-qa="data-source-status-compact"
             aria-label={`Источник данных: ${isLiveMode ? `LIVE Spot, ${realtimeLabel}` : 'внутренний датасет QA'}`}
-            title={`Источник данных: ${isLiveMode ? 'LIVE Spot (Binance / KuCoin)' : 'внутренний датасет QA'}`}
+            title={`Источник данных: ${isLiveMode ? 'СПОТ • LIVE (Binance / KuCoin)' : 'внутренний датасет QA'}`}
             className={`inline-flex shrink-0 items-center gap-x-1 rounded-md border p-1.5 sm:hidden ${
               isLiveMode
                 ? 'border-emerald-500/35 bg-emerald-950/40 text-emerald-400'
@@ -811,7 +811,7 @@ export const Header: React.FC = () => {
               ) : (
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
               )}
-              <span>{isLiveMode ? 'LIVE SPOT' : 'QA-ДАТАСЕТ'}</span>
+              <span>{isLiveMode ? 'СПОТ • LIVE' : 'СПОТ • QA'}</span>
             </span>
 
             <span
@@ -982,7 +982,7 @@ export const Header: React.FC = () => {
 
           <div className="flex items-center justify-between border-t border-white/[0.08] pt-3 font-sans text-[11px] text-slate-400">
             <span>CRYPTORA v0.8.44</span>
-            <span>{dataMode === 'live' ? 'LIVE-ДАННЫЕ РЫНКА' : 'QA-ДАТАСЕТ'}</span>
+            <span>{dataMode === 'live' ? 'РЫНОК • LIVE' : 'РЫНОК • QA'}</span>
           </div>
         </div>
       )}

@@ -149,7 +149,7 @@ export const LiquidationsPage: React.FC = () => {
             )}
             {data.dataStatus === 'DEMO' && (
               <span className="text-[11px] font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                QA-СРЕЗ
+                QA
               </span>
             )}
           </div>
@@ -478,7 +478,7 @@ export const LiquidationsPage: React.FC = () => {
           </div>
           {data.dataStatus === 'DEMO' ? (
             <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
-              QA-ДАТАСЕТ
+              QA
             </span>
           ) : (
             <span className="text-[11px] font-mono text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30">

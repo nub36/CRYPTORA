@@ -13,7 +13,7 @@ interface AssetPulsePanelProps {
 
 const SOURCE_BADGE: Record<AssetLiquidationSource, { label: string; variant: 'green' | 'amber' | 'cyan' | 'neutral' }> = {
   FACTUAL: { label: 'ФАКТ · BINANCE', variant: 'green' },
-  DEMO: { label: 'QA-ДАТАСЕТ', variant: 'amber' },
+  DEMO: { label: 'QA', variant: 'amber' },
   ESTIMATED: { label: 'MODEL / ESTIMATED', variant: 'cyan' },
   UNAVAILABLE: { label: 'НЕТ ДАННЫХ', variant: 'neutral' },
 };
@@ -136,14 +136,14 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             </span>
           </div>
           <Badge variant={isDemoInputs ? 'amber' : 'green'}>
-            {isDemoInputs ? 'QA' : 'LIVE · BINANCE FUTURES'}
+            {isDemoInputs ? 'QA' : 'FUTURES • LIVE'}
           </Badge>
         </header>
 
         {derivatives ? (
           <div className="space-y-2 text-xs font-sans">
             <div className="flex justify-between">
-              <span className="text-slate-400">Открытый интерес (OI)</span>
+              <span className="text-slate-400">Open Interest</span>
               <span className="font-bold text-white tabular-nums font-mono">
                 {formatCurrency(derivatives.openInterestUsd, { compact: true })}
               </span>
