@@ -51,7 +51,11 @@ describe('Bybit V5 allLiquidation → конвейер', () => {
     expect(events[1]).toMatchObject({ symbol: 'SOL', side: 'SHORT', amountUsd: 15000 });
     expect(events[0].timestamp).toBe(new Date(T).toISOString());
     const snap = p.getLiquidationSnapshot(T + 1000);
-    expect(snap.exchangeBreakdown).toEqual([{ exchange: 'Bybit', totalUsd: 47000, percentage: 100 }]);
+    // §40: в разбивке все подключённые биржи; ненулевая только Bybit.
+    const bybit = snap.exchangeBreakdown.find((e) => e.exchange === 'Bybit');
+    expect(bybit).toMatchObject({ exchange: 'Bybit', totalUsd: 47000, percentage: 100, eventCount: 2 });
+    expect(snap.exchangeBreakdown.filter((e) => e.totalUsd > 0)).toHaveLength(1);
+    expect(snap.exchangeBreakdown).toHaveLength(3);
   });
 
   it('игнорирует чужие топики, неизвестную сторону и нулевые объёмы', () => {

@@ -6,7 +6,12 @@ export interface LiquidationTransportOptions {
   wsUrl?: string;
   reconnectInitialDelayMs?: number;
   reconnectMaxDelayMs?: number;
-  maxReconnectAttempts?: number;
+  /**
+   * Порог, после которого транспорт объявляется `unavailable` в UI (§48).
+   * Это НЕ прекращение попыток: восстановление продолжается бесконечно,
+   * меняется только честность отображаемого статуса.
+   */
+  unavailableAfterAttempts?: number;
   webSocketClass?: any;
   /** Колбэк смены состояния транспорта (для честного отображения статуса в UI). */
   onStateChange?: (state: LiquidationStreamState) => void;
@@ -29,7 +34,9 @@ export abstract class LiquidationStreamTransport {
   protected readonly wsUrl: string;
   private readonly reconnectInitialDelayMs: number;
   private readonly reconnectMaxDelayMs: number;
-  private readonly maxReconnectAttempts: number;
+  private readonly unavailableAfterAttempts: number;
+  /** Подписки на visibilitychange/online; снимаются в disconnect(). */
+  private lifecycleCleanup: (() => void) | null = null;
   private readonly webSocketClass: any;
   private readonly onStateChange?: (state: LiquidationStreamState) => void;
 
@@ -46,7 +53,7 @@ export abstract class LiquidationStreamTransport {
     this.wsUrl = options.wsUrl ?? defaultUrl;
     this.reconnectInitialDelayMs = options.reconnectInitialDelayMs ?? 1500;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 30000;
-    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
+    this.unavailableAfterAttempts = options.unavailableAfterAttempts ?? 10;
     this.onStateChange = options.onStateChange;
     // Явный `null` = «транспорта нет»; не подменяется глобальным WebSocket.
     this.webSocketClass =
@@ -100,6 +107,7 @@ export abstract class LiquidationStreamTransport {
   }
 
   public connect(): void {
+    // `unavailable` — не терминальное состояние: из него восстановление разрешено (§49).
     if (this.state === 'connected' || this.state === 'connecting') return;
     if (!this.webSocketClass) {
       this.setState('unavailable');
@@ -157,6 +165,7 @@ export abstract class LiquidationStreamTransport {
 
   public disconnect(): void {
     this.isExplicitlyClosed = true;
+    this.clearLifecycleHooks();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -189,21 +198,74 @@ export abstract class LiquidationStreamTransport {
     }
   }
 
+  /**
+   * Переподключение (§49).
+   *
+   * Прежняя реализация останавливалась навсегда: после `maxReconnectAttempts`
+   * (10) вызывался `setState('unavailable')` и `return` — сокет больше никогда
+   * не восстанавливался, пока пользователь не перезагрузит вкладку.
+   *
+   * Сейчас: экспоненциальная задержка с потолком, попытки не ограничены,
+   * статус `unavailable` — это только честная метка для UI, а не отказ от
+   * восстановления. `reconnectAttempts` сбрасывается на успешном `onopen`.
+   */
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.setState('unavailable');
-      return;
-    }
+    if (this.isExplicitlyClosed) return;
+    if (this.reconnectTimer) return; // попытка уже запланирована — не плодим таймеры
+
     this.reconnectAttempts += 1;
+    // Задержка растёт экспоненциально и упирается в потолок: никакого tight loop.
     const delay = Math.min(
       this.reconnectInitialDelayMs * Math.pow(2, this.reconnectAttempts - 1),
       this.reconnectMaxDelayMs,
     );
-    this.setState('reconnecting');
+    // Статус: пока порог не превышен — «переподключение», дальше честно «недоступен».
+    this.setState(this.reconnectAttempts > this.unavailableAfterAttempts ? 'unavailable' : 'reconnecting');
+    this.ensureLifecycleHooks();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  /**
+   * Мгновенное восстановление при возврате вкладки/сети (§49): ждать остаток
+   * экспоненциальной паузы бессмысленно, если связь уже появилась.
+   */
+  private ensureLifecycleHooks(): void {
+    if (this.lifecycleCleanup) return;
+    if (typeof document === 'undefined' && typeof window === 'undefined') return;
+
+    const tryNow = () => {
+      if (this.isExplicitlyClosed) return;
+      const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+      const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+      if (!visible || !online) return;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      // Счётчик не обнуляем: обнуление происходит только на успешном onopen.
+      this.connect();
+    };
+
+    const onVisibility = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') tryNow(); };
+    try {
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
+      if (typeof window !== 'undefined') window.addEventListener('online', tryNow);
+    } catch { /* среда без DOM */ }
+
+    this.lifecycleCleanup = () => {
+      try {
+        if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
+        if (typeof window !== 'undefined') window.removeEventListener('online', tryNow);
+      } catch { /* noop */ }
+    };
+  }
+
+  private clearLifecycleHooks(): void {
+    this.lifecycleCleanup?.();
+    this.lifecycleCleanup = null;
   }
 
   private handleMessage(dataRaw: any): void {

@@ -177,22 +177,51 @@ export const LiquidationDataSchema = z.object({
       totalUsd: z.number(),
       longUsd: z.number(),
       shortUsd: z.number(),
+      /** Число фактических событий по инструменту (0 — событий не было). */
+      eventCount: z.number().default(0),
+      longEvents: z.number().default(0),
+      shortEvents: z.number().default(0),
+      /** Крупнейшее единичное событие по инструменту, USD; null — событий не было. */
+      largestEventUsd: z.number().nullable().default(null),
     })
   ),
+  /**
+   * Разбивка по биржам. Содержит ВСЕ подключённые биржи, включая нулевые:
+   * 0 — валидное наблюдение («поток жив, событий не было»), а не отсутствие данных.
+   */
   exchangeBreakdown: z.array(
     z.object({
       exchange: z.string(),
       totalUsd: z.number(),
       percentage: z.number(),
+      eventCount: z.number().default(0),
+      /** Состояние транспорта биржи на момент среза. */
+      state: z.enum(['idle', 'connecting', 'connected', 'reconnecting', 'unavailable']).default('idle'),
+      /** Время последнего события с этой биржи (ISO UTC); null — событий не было. */
+      lastEventAt: z.string().nullable().default(null),
     })
   ),
+  /**
+   * Хронология. Бакет адаптивный (§38); `observed: false` означает, что период
+   * НЕ наблюдался (наблюдение ещё не началось) — такие бакеты не выдаются за
+   * «нулевые наблюдения» (§31, §55).
+   */
   timeline: z.array(
     z.object({
       timestamp: z.string(),
       longUsd: z.number(),
       shortUsd: z.number(),
+      totalUsd: z.number().default(0),
+      eventCount: z.number().default(0),
+      observed: z.boolean().default(true),
+      startMs: z.number().default(0),
+      endMs: z.number().default(0),
     })
   ),
+  /** Размер бакета хронологии в минутах (адаптивный к длительности наблюдения). */
+  timelineBucketMinutes: z.number().default(180),
+  /** Человеческая подпись фактического периода хронологии. */
+  timelineRangeLabel: z.string().default(''),
   isDemo: z.boolean().default(true),
   /** Unix ms когда наблюдение началось (первая подписка на поток); null = не начиналось. */
   observationStartedAt: z.number().nullable().default(null),
