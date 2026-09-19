@@ -29,6 +29,13 @@ export {
   V28_DEFINITION, V28_SOURCE_RESULTS, V28_REPRODUCTION_EVIDENCE, V28_REPRODUCED_RESULTS, V28_CAVEATS_RU, V28_RULES_RU, V28_DISCREPANCIES, V28_COMMITS, V28_SOURCE_PINS, V28_VARIANTS,
 } from './definitions/v2_8-zero-fee-sniper-trailing/definition';
 export { V28_CONSTANTS, ARM_ORDER as V28_ARM_ORDER } from './definitions/v2_8-zero-fee-sniper-trailing/v28Core';
+// LIVE-обёртка V2.8 (архивный sniper-цикл на произвольном окне закрытых свечей). Единственная точка, через
+// которую замороженный движок V2 доступен вне strategyArchive/ — правила стратегии не меняются.
+export {
+  runV28Live, v28NetR, v28EntryAtNextOpen, v28TrailOutcome, V28_LIVE_TIMEFRAME, V28_LIVE_HTF, V28_LIVE_NET_FEES,
+  type V28LiveArgs, type V28LiveEvent, type V28LiveOutput, type V28LiveStatus, type V28PoolKind,
+  type V28NextOpenPlan, type V28NextOpenResult, type V28TrailOutcome,
+} from './definitions/v2_8-zero-fee-sniper-trailing/v28Live';
 export {
   V22_DEFINITION, V22_SOURCE_RESULTS, V22_REPRODUCTION_EVIDENCE, V22_REPRODUCED_RESULTS, V22_CAVEATS_RU, V22_RULES_RU, V22_DISCREPANCIES, V22_COMMITS, V22_SOURCE_PINS, V22_VARIANTS, V22_CONSTANTS,
 } from './definitions/v2_2-htf-spot-engine/definition';

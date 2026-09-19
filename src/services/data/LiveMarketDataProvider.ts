@@ -332,8 +332,10 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     };
   }
 
-  public async getCandles(symbol: string, timeframe: Timeframe): Promise<OHLCV[]> {
-    const cacheKey = `${symbol}_${timeframe}`;
+  public async getCandles(symbol: string, timeframe: Timeframe, limit = 500): Promise<OHLCV[]> {
+    // Binance /api/v3/klines принимает limit ≤ 1000 (вес 2 до 500 свечей, 5 до 1000).
+    const klineLimit = Math.max(1, Math.min(1000, Math.floor(limit)));
+    const cacheKey = `${symbol}_${timeframe}_${klineLimit}`;
     const now = Date.now();
     const cached = this.candleCache.get(cacheKey);
     if (cached && now - cached.timestamp < this.cacheTtlMs * 3) {
@@ -351,7 +353,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     // 1. Try Binance
     if (asset.binanceSymbol) {
       try {
-        const raw = await this.binance.fetchKlines(asset.binanceSymbol, binanceInterval, 500);
+        const raw = await this.binance.fetchKlines(asset.binanceSymbol, binanceInterval, klineLimit);
         const normalized = normalizeBinanceKlines(raw, asset.symbol);
         this.candleCache.set(cacheKey, { data: normalized, timestamp: now });
         return normalized;

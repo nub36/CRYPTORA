@@ -1,7 +1,8 @@
 /**
  * Minimal subset of svechnoy-suslik-v2 `src/core/types.ts` @ 4839074 (sha256 2394992c…) required by the frozen
  * V2 research engine. Verbatim declarations; everything database/exchange/signal-lifecycle related is omitted.
- * ARCHIVE-ONLY — never imported by CRYPTORA runtime, LIVE signals or BacktestEngine.
+ * ARCHIVE-ONLY — imported only from inside `strategyArchive/` (reproduction runners and the V2.8 LIVE
+ * wrapper); never by BacktestEngine, workers or UI directly.
  */
 
 export const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'] as const;

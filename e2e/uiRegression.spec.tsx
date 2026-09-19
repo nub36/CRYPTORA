@@ -4,6 +4,7 @@ import { test, expect } from '@playwright/test';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
+import { AuthProvider } from '@/context/AuthContext';
 import App from '@/App';
 import { PRIMARY_NAV_ITEMS, PRIMARY_NAV_CAPACITY } from '@/components/layout/navigation';
 
@@ -16,9 +17,11 @@ function setWindowDimensions(width: number, height: number) {
 function renderApp(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <MarketDataProviderComponent>
-        <App />
-      </MarketDataProviderComponent>
+      <AuthProvider>
+        <MarketDataProviderComponent>
+          <App />
+        </MarketDataProviderComponent>
+      </AuthProvider>
     </MemoryRouter>
   );
 }
@@ -57,20 +60,22 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     setWindowDimensions(1280, 800);
     renderApp('/');
 
-    // Ёмкость прямой навигации — жёсткий архитектурный бюджет
-    expect(PRIMARY_NAV_ITEMS.length).toBe(PRIMARY_NAV_CAPACITY);
-    expect(PRIMARY_NAV_ITEMS.length).toBeLessThanOrEqual(6);
+    // Ёмкость прямой навигации — жёсткий архитектурный бюджет (верхняя граница, а не точное число:
+    // «Фьючерсы» переехали в группу «Рынок», прямых пунктов сейчас 5).
+    expect(PRIMARY_NAV_ITEMS.length).toBeLessThanOrEqual(PRIMARY_NAV_CAPACITY);
+    expect(PRIMARY_NAV_ITEMS.length).toBeGreaterThanOrEqual(4);
 
     // Кегль навигации: 13px (14px от 1536px), без микротекста
     const nav = screen.getByLabelText('Главная навигация');
     expect(nav.className).toContain('text-[13px]');
     expect(nav.className).not.toMatch(/text-\[(9|10|11)px\]/);
 
-    // Все пункты прямой навигации доступны и не ломают строку
+    // Все пункты прямой навигации доступны и не ломают строку («Рынок» — группа с dropdown → кнопка)
     for (const item of PRIMARY_NAV_ITEMS) {
-      const links = screen.getAllByRole('link', { name: new RegExp(item.label, 'i') });
-      expect(links.length).toBeGreaterThan(0);
-      expect(links[0].className).toContain('whitespace-nowrap');
+      const matcher = { name: new RegExp(item.label, 'i') };
+      const controls = item.children ? screen.getAllByRole('button', matcher) : screen.getAllByRole('link', matcher);
+      expect(controls.length).toBeGreaterThan(0);
+      expect(controls[0].className).toContain('whitespace-nowrap');
     }
 
     // Вторичные разделы живут в группированных меню
@@ -212,11 +217,11 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
     fireEvent.click(menuBtn);
   });
 
-  test('Header инвариант: бейдж версии обновлён до v0.8.44', async () => {
+  test('Header инвариант: бейдж версии обновлён до v0.8.45', async () => {
     setWindowDimensions(1920, 1080);
     const { container } = renderApp('/');
     const header = container.querySelector('header') as HTMLElement;
-    expect(header.textContent).toContain('v0.8.44');
+    expect(header.textContent).toContain('v0.8.45');
   });
 
   test('Viewports layout smoke check: 390, 768, 1024, 1280, 1366, 1440, 1920', async () => {
@@ -226,9 +231,11 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
       setWindowDimensions(w, 800);
       const { container } = render(
         <MemoryRouter initialEntries={['/']}>
-          <MarketDataProviderComponent>
-            <App />
-          </MarketDataProviderComponent>
+          <AuthProvider>
+            <MarketDataProviderComponent>
+              <App />
+            </MarketDataProviderComponent>
+          </AuthProvider>
         </MemoryRouter>
       );
 

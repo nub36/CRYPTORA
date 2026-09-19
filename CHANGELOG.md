@@ -4,6 +4,72 @@
 
 ---
 
+## [0.8.45] — 2026-09-19
+
+### Fixed — LIVE-сигналы: три архивные стратегии работают на фактических свечах
+
+Аудит показал, что `LiveSignalEngine` (0.8.44) **не воспроизводил** архивные стратегии: V3.0 не вёл лимитный
+коридор (исполнение/отмена/истечение), V3.3 и V2.8 были упрощёнными эвристиками, исходы сетапов никогда не
+отслеживались (точность в журнале всегда 0 %), ошибки провайдера глотались `catch {}`, движок не
+останавливался при размонтировании контекста. Стратегии **не переписывались** — LIVE-движок теперь вызывает
+те же замороженные функции архива, что и исследовательские раннеры.
+
+#### LIVE-движок = детерминированный реплей архивного раннера (`src/services/signals/live/`)
+- `replays/v30LiveReplay.ts` — V3.0 HTF Liquidation Trap: `detectTrap` → `buildPending` → `corridorStep`
+  (N+1…N+3, худшая граница, отмена при стопе, REJECTED_GEOMETRY, истечение) → `manageTrade` V3.0.
+- `replays/v33LiveReplay.ts` — V3.3 HTF Zone Mitigation (headline-вариант `while-protective-displacement`):
+  `buildZones` → `trackZone` → абсорбция/RVOL → коридор → `manageTrade` V3.3; Amendment-1 tie-break сохранён.
+- `replays/v28LiveReplay.ts` + `strategyArchive/definitions/v2_8-zero-fee-sniper-trailing/v28Live.ts` — V2.8:
+  замороженный `evaluateV2` @4839074 + sniper-гейт (`extremePoolKind`/`baseSniper`) + вход по OPEN N+1
+  (`resolveEntry`/`executableLadder`) + ОДИН слот, освобождаемый `trackOutcome`, + выход Trail (`simulateTrailing`).
+  Обёртка живёт внутри `strategyArchive/`, потому что только архив вправе импортировать `legacy/v2`.
+- Реплей идёт по окну последних ≤ 1000 закрытых 1h-баров (+ 4h, + 1d для V2.8); в журнал публикуются
+  **только** сетапы последнего закрытого бара (latency 0), id = `${strategyId}-${SYMBOL}-${setupOpenTime}`.
+- Pending, которые раннер отклонил бы на баре исполнения по геометрии (TP1 позади коридора), не публикуются
+  (`publishable=false`), но остаются в ретроспективе — счётчики сходятся с воронкой исследования.
+- Forming-свеча никогда не участвует (`ohlcvToArchive(c, tf, nowMs)`, look-ahead тест сохранён).
+
+#### Жизненный цикл опубликованных сетапов (`live/lifecycle.ts`)
+- Исход считается по **опубликованным (хэшированным) уровням** теми же frozen-функциями: `corridorStep` +
+  `manageTrade` (V3.0/V3.3), `v28EntryAtNextOpen` + `v28TrailOutcome` (V2.8). Чистая функция, без состояния.
+- Статусы: ACTIVE → FILLED → TARGET_REACHED / INVALIDATED / CLOSED; ACTIVE → EXPIRED / CANCELLED (no-trade).
+
+#### Журнал аудита v2 (`SignalsAuditLedger.ts`, ключ `cryptora_signals_ledger_v2`)
+- Цепочный SHA-256: `auditHash = sha256(issuance + prevHash)`, `prevHash` хранится; исход хэшируется отдельно
+  и ровно один раз (`outcomeHash`). `expireStale()` удалён — он ломал цепочку.
+- `SetupFill.stop/targets` (уровни после сдвига на дельту исполнения), `netResultR` (2/5 bps);
+  `getSummary()`: доля R > 0, средний/суммарный net R, no-trade не портит точность.
+
+#### UI `/signals`
+- Блок статуса движка: сканы, последний/следующий, покрытие по инструментам (закрытые 1h/4h/1d, пропуски),
+  найденные сетапы/исходы по каждой стратегии в окне, ошибки источника **по инструменту** (не глотаются).
+- Фильтры по статусу и стратегии; карточка показывает вход/стоп/цели, исполнение, gross и net R, правило выхода,
+  audit/outcome hash. «Ретроспектива окна» — диагностика реплея, явно не журнал и не трек-рекорд.
+- Вердикты стратегий на карточках: V3.0 VALIDATED (3 из 6), V3.3 TRAIN-ONLY, V2.8 GROSS-ONLY / net-отрицательна.
+
+#### Данные
+- `MarketDataProvider.getCandles(symbol, timeframe, limit?)`: LIVE — Binance `limit` ≤ 1000 (кэш с учётом лимита),
+  Demo — усечение хвоста без дорисовки. `MarketDataContext`: движок останавливается при размонтировании,
+  ошибка старта логируется.
+
+#### Тесты
+- `tests/unit/signals/liveReplays.test.ts` — паритет LIVE-реплеев V3.0/V3.3 с архивными раннерами (бар в бар:
+  сетап, исполнение, цена, причина выхода, gross/net R, воронка), инвариантность к скользящему 1000-барному окну.
+- `tests/unit/signals/v28Live.test.ts` — паритет обёртки V2.8 со `runSniperEntryLoop` + `simulateTrailing`
+  на трёх детерминированных сериях; AWAITING_NEXT_OPEN ≡ исполнение полного прогона.
+- `tests/unit/signals/liveSignalEngineE2E.test.ts` — движок × реплей × журнал на mock-«бирже» с forming-свечой:
+  публикация, исполнение и исход совпадают с полным реплеем, цепочка цела, ошибки провайдера в статусе.
+- `tests/unit/signals.test.ts` — журнал v2 (цепочка, идемпотентность, одноразовый исход, сводка, persist).
+- E2E (Playwright): харнес починен (`AuthProvider` отсутствовал — 46/66 падали до правок), устаревшие ожидания
+  приведены к фактическому UI, lazy-маршруты ждут рендера. Итог: 66/66.
+
+#### Известные ограничения (честно)
+- Журнал хранится в localStorage браузера — это не серверный трек-рекорд.
+- В песочнице сборки нет доступа к биржам: LIVE-эмиссия проверена только кодом и mock-провайдером.
+- V2.8 в LIVE — только 1h-подмножество исследования (15m/30m/4h не сканируются); все цифры V2.8 — GROSS.
+
+---
+
 ## [0.8.44] — 2026-09-17
 
 ### Fixed — Corrective Data-Honesty Pass

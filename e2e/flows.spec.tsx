@@ -4,14 +4,17 @@ import { test, expect } from '@playwright/test';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
+import { AuthProvider } from '@/context/AuthContext';
 import App from '@/App';
 
 function renderApp(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <MarketDataProviderComponent>
-        <App />
-      </MarketDataProviderComponent>
+      <AuthProvider>
+        <MarketDataProviderComponent>
+          <App />
+        </MarketDataProviderComponent>
+      </AuthProvider>
     </MemoryRouter>
   );
 }
@@ -80,9 +83,11 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     render(
       <MemoryRouter initialEntries={['/']}>
-        <MarketDataProviderComponent qaFixtureAllowed={false}>
-          <App />
-        </MarketDataProviderComponent>
+        <AuthProvider>
+          <MarketDataProviderComponent qaFixtureAllowed={false}>
+            <App />
+          </MarketDataProviderComponent>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -113,8 +118,12 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getAllByText(/CRYPTORA/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Рынок\. Данные\. Решения\./i).length).toBeGreaterThan(0);
 
-    // Строка статуса источника данных в шапке командного центра
-    await screen.findByText(/Источник данных:/i);
+    // Статус источника данных в шапке — чип с aria-label (текст не дублируется визуально)
+    await waitFor(() => {
+      const chip = document.querySelector('[data-qa="data-source-status"]');
+      expect(chip).not.toBeNull();
+      expect(chip!.getAttribute('aria-label') ?? '').toMatch(/Источник данных:/);
+    });
 
     // Summary cards
     await screen.findByText(/Капитализация крипторынка/i);
@@ -242,8 +251,8 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(within(pulse).getByText(/Пульс ликвидаций/i)).toBeInTheDocument();
     expect(within(pulse).getAllByText(/QA-ДАТАСЕТ|^QA$/i).length).toBeGreaterThan(0);
     expect(within(pulse).getByText(/^Деривативы$/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/Лонги 24ч/i)).toBeInTheDocument();
-    expect(within(pulse).getByText(/Шорты 24ч/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Long 24ч/i)).toBeInTheDocument();
+    expect(within(pulse).getByText(/Short 24ч/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/Открытый интерес \(OI\)/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/Фандинг \(8ч\)/i)).toBeInTheDocument();
     expect(within(pulse).getByText(/^Базис$/i)).toBeInTheDocument();
@@ -271,7 +280,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Суммарный Открытый Интерес \(OI\)/i)).toBeInTheDocument();
 
     // Filter by negative funding (Short Squeeze Watch)
-    const negativeFundingBtn = screen.getByRole('button', { name: /Шорт < 0/i });
+    const negativeFundingBtn = screen.getByRole('button', { name: /Short < 0/i });
     fireEvent.click(negativeFundingBtn);
 
     expect(screen.getByText('SUI/USDT')).toBeInTheDocument();
@@ -361,7 +370,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   test('Tools: position size and PnL calculation modules', async () => {
     renderApp('/tools');
 
-    expect(screen.getByText(/КАЛЬКУЛЯТОРЫ И РИСК-ИНСТРУМЕНТЫ/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Калькуляторы и риск-инструменты/i })).toBeInTheDocument();
     expect(screen.getByText(/Калькулятор размера позиции/i)).toBeInTheDocument();
     expect(screen.getByText(/Калькулятор PnL и ROE/i)).toBeInTheDocument();
     expect(screen.getByText(/Сумма риска \(стоп-лосс, \$\)/i)).toBeInTheDocument();
@@ -370,11 +379,16 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
   test('Strategies & Signals: honest architectural previews without fake performance claims', async () => {
     renderApp('/strategies');
-    expect(screen.getByText(/^ЛАБОРАТОРИЯ СТРАТЕГИЙ$/i)).toBeInTheDocument();
-    expect(screen.getByText(/АРХИТЕКТУРНЫЙ ПРОТОТИП/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^Стратегии$/i })).toBeInTheDocument();
+    // Продуктовый экран не обещает доходности и не содержит торговых кнопок
+    expect(document.body.textContent).not.toMatch(/Исполнить ордер|ожидаемая доходность|гарантированн/i);
 
-    // Strategy Research Archive: 13 versions from the registry, verdict ≠ reproducibility, filters, comparability warning
-    const archive = screen.getByTestId('strategy-archive');
+    // Strategy Research Archive живёт в свёрнутой секции (mountOnOpen) — раскрываем
+    const archiveToggle = within(screen.getByTestId('research-archive-collapsible')).getByRole('button', { name: /Исследовательский архив/i });
+    fireEvent.click(archiveToggle);
+
+    // 13 versions from the registry, verdict ≠ reproducibility, filters, comparability warning
+    const archive = await screen.findByTestId('strategy-archive');
     expect(within(archive).getByTestId('strategy-archive-count').textContent).toBe('13 версий');
     expect(archive.querySelectorAll('[data-testid^="archive-card-"]').length).toBe(13);
     const v31 = within(archive).getByTestId('archive-card-V3_1_HTF_TREND_PULLBACK');
@@ -391,10 +405,14 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     fireEvent.click(within(within(archive).getByTestId('archive-card-V3_0_HTF_LIQUIDATION_TRAP')).getByText(/сравнить допущения/));
     expect(within(archive).getByTestId('archive-compare-warning').textContent).toMatch(/fees=0/);
 
+    cleanup();
     renderApp('/signals');
-    expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ И СИГНАЛЫ/i)).toBeInTheDocument();
-    expect(screen.getByText(/НЕ ЯВЛЯЕТСЯ ФИНАНСОВОЙ РЕКОМЕНДАЦИЕЙ/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /^Сигналы$/i })).toBeInTheDocument();
+    expect(screen.getByText(/Не является финансовой рекомендацией/i)).toBeInTheDocument();
     expect(screen.getByText(/Кодекс прозрачности сигналов/i)).toBeInTheDocument();
+    // Пустой журнал: ни одной карточки и никаких заявлений о доходности
+    expect(document.querySelectorAll('[data-qa="signal-card"]').length).toBe(0);
+    expect(document.body.textContent).not.toMatch(/гарантированн|ожидаемая доходность/i);
   });
 
   test('Modals & Drawers: Watchlist drawer and Alerts preview', async () => {
@@ -501,8 +519,8 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   test('/articles: список статей владельца и открытие статьи, без raw-HTML', async () => {
     cleanup();
     renderApp('/articles');
+    await waitFor(() => expect(document.querySelectorAll('[data-qa="article-card"]').length).toBeGreaterThan(0));
     const cards = document.querySelectorAll('[data-qa="article-card"]');
-    expect(cards.length).toBeGreaterThan(0);
     const href = cards[0].getAttribute('href')!;
     cleanup();
     renderApp(href);
@@ -511,7 +529,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(document.body.textContent).toContain('не является инвестиционной рекомендацией');
     cleanup();
     renderApp('/articles/net-takoy');
-    expect(document.querySelector('[data-qa="article-not-found"]')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('[data-qa="article-not-found"]')).not.toBeNull());
   });
 
   test('Партнёрские слоты: при пустом конфиге не рендерятся вовсе', async () => {
@@ -521,12 +539,21 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(document.body.textContent).not.toContain('Sponsored / Partner');
   });
 
-  test('/signals: реестр пуст, без иллюстративных сетапов и без плашки «СТАТИЧЕСКИЙ НАБОР»', async () => {
+  test('/signals: журнал пуст, без иллюстративных сетапов и без плашки «СТАТИЧЕСКИЙ НАБОР»', async () => {
     cleanup();
     renderApp('/signals');
-    expect(document.querySelector('[data-qa="signals-empty"]')).not.toBeNull();
+    // Маршрут ленивый (Suspense): дожидаемся фактического рендера страницы.
+    await waitFor(() => {
+      expect(document.querySelector('[data-qa="signals-empty"]')).not.toBeNull();
+    });
+    // Журнал не содержит ни одной карточки: ни демонстрационных, ни «иллюстративных» сетапов.
+    expect(document.querySelectorAll('[data-qa="signal-card"]').length).toBe(0);
     expect(document.body.textContent).not.toContain('Цель достигнута:');
     expect(document.querySelector('[data-qa="static-dataset-notice"]')).toBeNull();
+    // В QA-режиме (демо-датасет) LIVE-движок не запускается — честная подпись вместо мнимого скана.
+    const engineStatus = document.querySelector('[data-qa="signals-engine-status"]');
+    expect(engineStatus).not.toBeNull();
+    expect(engineStatus!.getAttribute('data-state')).toBe('stopped');
   });
 
   test('/calendar без доступа к Binance показывает «ИСТОЧНИК НЕДОСТУПЕН», без статических FOMC/CPI', async () => {
@@ -585,7 +612,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     renderApp('/radar');
 
     // Радар маркирует происхождение данных и не даёт переключать режим.
-    expect(screen.getByText(/LIVE-ДЕТЕКТОР АНОМАЛИЙ/i)).toBeInTheDocument();
+    expect(await screen.findByText(/LIVE-детектор аномалий/i)).toBeInTheDocument();
     const headerChip = document.querySelector('[data-qa="data-source-status"]') as HTMLElement;
     expect(headerChip).not.toBeNull();
     expect(headerChip.closest('button')).toBeNull();

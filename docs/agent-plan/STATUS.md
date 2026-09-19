@@ -1,9 +1,13 @@
 # STATUS — Текущий статус проекта CRYPTORA
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
-> **Последнее обновление:** 2026-09-17  
-> **Текущая версия:** v0.8.44 (D1-D8 + Corrective Data-Honesty Pass)  
-> **Текущий этап:** CORRECTIVE DATA-HONESTY PASS completed. OI delta null ≠ zero; portfolio beta/vol UNAVAILABLE when no candle data; no silent static fallbacks.  
+> **Последнее обновление:** 2026-09-19  
+> **Текущая версия:** v0.8.45 (LIVE-сигналы трёх архивных стратегий)  
+> **Текущий этап:** LIVE SIGNALS PASS completed. `/signals`: V3.0 / V3.3 / V2.8 считаются на фактических закрытых свечах
+> реплеем архивных раннеров (frozen-функции, без изменения стратегий); исходы ведутся по опубликованным уровням; журнал v2
+> с цепочным SHA-256. Предыдущий этап (Corrective Data-Honesty Pass, v0.8.44) сохранён без изменений.  
+> ⚠️ **Git:** коммит сделан локально на ветке `arena/01a0b8cc-cryptora`; `git push` из песочницы **не выполнен** —
+> учётные данные GitHub недоступны (см. §«Git-статус» ниже). Пуш нужно выполнить с машины владельца.  
 > **D5 VERIFIED_NO_CHANGE:** Liquidation normalization/freshness — `LiquidationPulse`, `LiquidationPipeline`, `LiquidationHeatmap` data flow unchanged in D-series. Liquidation 24h remains ACTUAL (pipeline events) / ESTIMATED (DerivativesEngine model) / UNAVAILABLE.  
 > **D6 VERIFIED_NO_CHANGE:** Radar/Screener/Heatmap consistency — null-safe change1h/change7d from D1 already applied to ScreenerPage (D1 commit). RadarPage and HeatmapGrid now also null-safe for OI delta. No new artificial data was needed.  
 > 🏭 **ФАКТИЧЕСКИЙ PRODUCTION (исправлено по указанию владельца):** перед v0.8.5 production на VPS
@@ -15,6 +19,29 @@
 ---
 
 ## 1. Что сделано
+
+### v0.8.45 — LIVE-сигналы: три архивные стратегии на фактических данных (2026-09-19)
+- **Аудит репозитория:** typecheck/vitest/build были зелёными, но Playwright e2e падал 46/66 (в харнесе не было
+  `AuthProvider`) и ещё 14 тестов держали устаревшие ожидания UI. Заглушек/TODO/`Math.random` в бизнес-логике нет;
+  демо-данные только в `DemoMarketDataProvider`, production-путь — `LiveMarketDataProvider` (Binance/KuCoin REST+WS).
+- **Главный дефект:** `LiveSignalEngine` не воспроизводил стратегии: V3.0 без ведения коридора, V3.3/V2.8 — упрощённые
+  эвристики, исходы не отслеживались (точность всегда 0 %), `catch {}` глотал ошибки, движок не останавливался.
+- **Сделано (стратегии не тронуты):** `live/replays/{v30,v33,v28}LiveReplay.ts` — реплей архивных раннеров теми же
+  frozen-функциями; `v28Live.ts` внутри архива (единственное место вне `legacy/`, импортирующее `legacy/v2`);
+  `live/lifecycle.ts` — исход по опубликованным уровням; `SignalsAuditLedger` v2 (prevHash, outcomeHash, netResultR,
+  без `expireStale`); `/signals` со статусом движка, покрытием, ретроспективой окна; `getCandles(..., limit)`;
+  движок останавливается при размонтировании контекста.
+- **Верификация:** `tsc` 0 ошибок; vitest 85 файлов / 883 теста (новые: паритет реплеев с раннерами бар в бар,
+  паритет V2.8 со `runSniperEntryLoop`+`simulateTrailing`, сквозной движок×журнал на mock-«бирже»); Playwright 66/66;
+  `npm run build` OK. Перф: полный реплей 3 стратегий × 6 символов укладывается в секунды (evaluateV2 ≈ 0.43 мс/бар).
+- **Не проверено (честно):** фактическая эмиссия на бирже — песочница без доступа к сети; журнал живёт в localStorage.
+- **Docs:** `docs/SIGNALS.md` переписан, `14-SIGNALS.md` §3, `DONT_DO.md` (строки 4/8/9/11), README, CHANGELOG,
+  D-V28-005 и комментарии `legacy/v2` приведены к факту (порт остаётся архивным, LIVE идёт через обёртку архива).
+
+### Git-статус (v0.8.45)
+- Ветка `arena/01a0b8cc-cryptora`, коммит с изменениями создан локально. `git ls-remote origin` и `gh auth status`
+  в песочнице падают (нет учётных данных) — **push не выполнен и не имитировался**. Следующий шаг владельца:
+  `git push origin arena/01a0b8cc-cryptora` и PR в `main`.
 
 ### v0.8.39 — Тарифы без иллюзии покупки
 - Модал тарифов: уведомление «Биллинг не подключён», кнопки «Предпросмотр: …» вместо «Переключить». e2e-проверка. Этап 8 (оплата) — решение владельца.
