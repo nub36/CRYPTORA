@@ -13,6 +13,15 @@ export interface AnalyticalSetup {
   confirmingFactors: string[];
   invalidationFactors: string[];
   createdAt: string;
+  /**
+   * Open time (мс) ЗАКРЫТОЙ свечи, на которой сформирован сетап.
+   *
+   * Это естественный ключ дедупликации: повторный скан того же закрытого бара
+   * не должен порождать второй сигнал. В серверной БД ему соответствует
+   * `signals.signal_candle_ts` + UNIQUE-констрейнт (миграция 007).
+   * Необязательное: старые записи в localStorage его не имеют.
+   */
+  sourceCandleTs?: number;
   status: 'ACTIVE' | 'TARGET_REACHED' | 'INVALIDATED' | 'EXPIRED';
   closedAt?: string;
   pnlResultPct?: number;

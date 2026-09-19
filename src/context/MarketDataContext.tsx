@@ -175,11 +175,21 @@ export const MarketDataProviderComponent: React.FC<{
         feedManager.subscribeSymbol(sym);
       }
 
-      // Start live signal engine (V3.0 strategy on 6 symbols)
-      try {
-        const signalEngine = LiveSignalEngine.getInstance({ provider: singletonLiveProvider });
-        signalEngine?.start();
-      } catch { /* non-fatal */ }
+      /**
+       * Генерация сигналов в браузере ОТКЛЮЧЕНА.
+       *
+       * Сигналы производит серверный движок (server/services/strategyEngine),
+       * который работает и при закрытом браузере, и пишет их в PostgreSQL
+       * (миграция 007). /signals читает их через GET /api/signals.
+       *
+       * Почему это важно: два независимых генератора — это два источника
+       * истины, расходящиеся значения и дубли сигналов. Серверный движок
+       * исполняет то же ядро стратегий, но владеет расписанием, кэшем свечей
+       * и дедупликацией по закрытой свече.
+       *
+       * LiveSignalEngine здесь больше не создаётся: даже остановленный
+       * экземпляр держал бы ledger и мог бы быть запущен повторно.
+       */
     } else {
       feedManager.disconnect();
       setRealtimeStatus('idle');

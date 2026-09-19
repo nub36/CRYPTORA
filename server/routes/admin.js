@@ -15,6 +15,12 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { query, checkDatabase } from '../db/pool.js';
 import { config } from '../config.js';
 import { recordAudit } from '../services/audit.js';
+import {
+  setStrategyEnabled,
+  engineStatus,
+} from '../services/strategySettings.js';
+import { isKnownStrategyId } from '../services/strategyCatalog.js';
+import { schedulerStatus } from '../services/strategyEngine/strategyScheduler.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -237,6 +243,74 @@ router.get('/system', async (req, res) => {
     },
     timestamp: new Date().toISOString(),
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* Стратегии: глобальный переключатель ВКЛ/ВЫКЛ                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * GET /api/admin/strategies/status
+ *
+ * Сводка для админ-панели: сколько стратегий включено, когда был последний
+ * скан/сигнал, есть ли ошибки, жив ли планировщик. Все числа — результат
+ * реальных запросов и реального состояния процесса.
+ */
+router.get('/strategies/status', async (_req, res, next) => {
+  try {
+    const [db, scheduler] = await Promise.all([engineStatus(), schedulerStatus()]);
+    res.json({ ...db, scheduler });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * PATCH /api/admin/strategies/:strategyId
+ *
+ * Тело: { "enabled": true }
+ *
+ * Только переключатель. Математические параметры стратегии через API не
+ * меняются и не принимаются: они живут в коде, а не в БД.
+ *
+ * Защита — requireAdmin на уровне всего router'а (см. выше). Роль,
+ * прочитанная на фронте, защитой не является и здесь не используется.
+ */
+router.patch('/strategies/:strategyId', async (req, res, next) => {
+  const { strategyId } = req.params;
+
+  if (!isKnownStrategyId(strategyId)) {
+    return res.status(404).json({
+      error: 'UNKNOWN_STRATEGY',
+      message: `Стратегия «${strategyId}» не существует. Четвёртую стратегию создать нельзя.`,
+    });
+  }
+
+  const { enabled } = req.body ?? {};
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({
+      error: 'INVALID_BODY',
+      message: 'Ожидается тело вида {"enabled": true|false}.',
+    });
+  }
+
+  try {
+    const updated = await setStrategyEnabled({
+      strategyId,
+      enabled,
+      actorUserId: req.user.id,
+    });
+    // Планировщик перечитывает strategy_settings каждый цикл, поэтому
+    // перезапуск бэкенда не требуется.
+    res.json({
+      strategyId,
+      enabled: updated.enabled,
+      updatedAt: updated.updated_at,
+      message: enabled ? 'Стратегия включена' : 'Стратегия выключена',
+    });
+  } catch (e) {
+    next(e);
+  }
 });
 
 export default router;

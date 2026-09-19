@@ -98,6 +98,17 @@ export class LiveSignalEngine {
     violations: readonly string[]; at: string;
   } | null = null;
 
+  /**
+   * Один проход сканирования без таймеров.
+   *
+   * Точка входа для серверного планировщика: тот же самый код, что выполняет
+   * браузер, но по запросу, а не по `setInterval`. Держать две реализации
+   * оценки нельзя — именно расхождение копий и породило баг V3.3.
+   */
+  public async scanOnce(): Promise<void> {
+    await this.scan();
+  }
+
   private async scan(): Promise<void> {
     // Expire signals older than 4 hours
     this.ledger.expireStale();
@@ -161,6 +172,7 @@ export class LiveSignalEngine {
 
     this.publish({
       id: `v30-${symbol}-${bar.openTime}`, strategy: 'V3.0', symbol, direction: pending.dir,
+      barOpenTime: bar.openTime,
       entryLow: pending.zoneLow, entryHigh: pending.zoneHigh, stop: pending.stop,
       tp1: pending.tp1, tp2: pending.tp2,
       confirmingFactors: [
@@ -217,6 +229,7 @@ export class LiveSignalEngine {
 
       this.publish({
         id: `v33-${symbol}-${bar.openTime}`, strategy: 'V3.3', symbol, direction: dir,
+        barOpenTime: bar.openTime,
         entryLow: entryMid - half, entryHigh: entryMid + half, stop, tp1, tp2,
         confirmingFactors: [
           `4H зона (${sw.kind === 'LOW' ? 'спрос' : 'предложение'}) ${sw.price.toFixed(2)}`,
@@ -261,6 +274,7 @@ export class LiveSignalEngine {
 
       this.publish({
         id: `v28-${symbol}-${bar.openTime}`, strategy: 'V2.8', symbol, direction: 'LONG',
+        barOpenTime: bar.openTime,
         entryLow: entry - V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
         entryHigh: entry + V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
         stop, tp1: entry + risk, tp2: entry + 2 * risk,
@@ -283,6 +297,7 @@ export class LiveSignalEngine {
 
       this.publish({
         id: `v28-${symbol}-${bar.openTime}`, strategy: 'V2.8', symbol, direction: 'SHORT',
+        barOpenTime: bar.openTime,
         entryLow: entry - V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
         entryHigh: entry + V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
         stop, tp1: entry - risk, tp2: entry - 2 * risk,
@@ -302,6 +317,8 @@ export class LiveSignalEngine {
     id: string; strategy: string; symbol: string; direction: 'LONG' | 'SHORT';
     entryLow: number; entryHigh: number; stop: number; tp1: number; tp2: number;
     confirmingFactors: string[]; invalidationFactors: string[];
+    /** Open time (мс) закрытой свечи-триггера — ключ дедупликации. */
+    barOpenTime: number;
   }): void {
     const mid = (params.entryLow + params.entryHigh) / 2;
     const risk = Math.abs(mid - params.stop);
@@ -331,6 +348,7 @@ export class LiveSignalEngine {
     }
 
     this.ledger.append({
+      sourceCandleTs: params.barOpenTime,
       id: params.id,
       symbol: pairLabel(params.symbol),
       direction: params.direction,
