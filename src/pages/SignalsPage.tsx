@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check, Radio } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
+import { Collapsible } from '@/components/common/Collapsible';
 import { sideLabel } from '@/utils/labels';
 import { SignalsAuditLedger, AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 
@@ -35,15 +36,10 @@ export const SignalsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <BarChart3 className="w-5 h-5 text-brand-cyan" />
-            <h1 className="text-lg sm:text-xl font-bold font-sans text-white tracking-wide">
-              Аналитические сетапы и сигналы
-            </h1>
-            <Badge variant="amber" size="sm">
-              Методология журнала
-            </Badge>
+            <h1 className="ui-h1">Сигналы</h1>
           </div>
-          <p className="text-xs text-slate-400 font-sans mt-0.5">
-            Прозрачные алгоритмические структуры с неизменяемым журналом аудита (SHA-256) и фиксацией факторов отмены.
+          <p className="ui-helper mt-1">
+            Алгоритмические сетапы с журналом аудита и фиксацией факторов отмены.
           </p>
         </div>
 
@@ -104,7 +100,7 @@ export const SignalsPage: React.FC = () => {
         </div>
 
         <div className="bg-surface border border-surface-border rounded-lg p-3">
-          <div className="text-[11px] font-sans text-slate-400">Целостность реестра</div>
+          <div className="ui-label">Целостность журнала</div>
           <div className="text-sm font-bold font-sans text-brand-green mt-1.5 flex items-center space-x-1">
             {isIntegrityVerified ? (
               <>
@@ -115,31 +111,42 @@ export const SignalsPage: React.FC = () => {
               <span className="text-rose-400">Ошибка хэша</span>
             )}
           </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">Реестр только на добавление</div>
+          <div className="ui-helper mt-0.5">Append-only</div>
         </div>
       </div>
 
-      {/* Ethical Code Banner */}
-      <div className="p-4 bg-surface border border-surface-border rounded-lg text-xs font-sans text-slate-300 space-y-2">
-        <div className="flex items-center space-x-2 text-white font-sans font-bold">
-          <Shield className="w-4 h-4 text-brand-green" />
-          <span>Кодекс прозрачности сигналов CRYPTORA</span>
+      {/* Кодекс прозрачности: вторично, свёрнуто по умолчанию */}
+      <Collapsible
+        testId="signals-code-of-transparency"
+        tone="muted"
+        icon={<Shield className="h-4 w-4 text-brand-green" />}
+        label="Кодекс прозрачности сигналов"
+        hint="журнал, статистика, опровергающие факторы"
+      >
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div>
+            <div className="ui-card-title mb-0.5">Неизменяемый журнал</div>
+            <p className="ui-helper">
+              Выпущенный сетап фиксируется криптографическим хэшем в неизменяемом логе.
+              Ни один сигнал нельзя удалить или отредактировать задним числом.
+            </p>
+          </div>
+          <div>
+            <div className="ui-card-title mb-0.5">Честная статистика</div>
+            <p className="ui-helper">
+              Убыточные сделки и ложные срабатывания учитываются в расчёте win rate на 100%.
+              Заявлений вида «98% точности» здесь нет.
+            </p>
+          </div>
+          <div>
+            <div className="ui-card-title mb-0.5">Опровергающие аргументы</div>
+            <p className="ui-helper">
+              Каждый сетап содержит не только подтверждающие факты, но и риски
+              и опровергающие сигналы других индикаторов.
+            </p>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-[11px] text-slate-400">
-          <div>
-            <strong className="text-white block mb-0.5 font-mono">1. Неизменяемый журнал:</strong>
-            Выпущенный сетап фиксируется криптографическим хэшем в неизменяемом логе. Ни один сигнал нельзя удалить или отредактировать задним числом.
-          </div>
-          <div>
-            <strong className="text-white block mb-0.5 font-mono">2. Честная статистика:</strong>
-            Убыточные сделки и ложные срабатывания учитываются в расчете винрейта на 100%. Мы никогда не заявляем нереалистичные «98% точности».
-          </div>
-          <div>
-            <strong className="text-white block mb-0.5 font-mono">3. Опровергающие аргументы:</strong>
-            Каждый сетап обязан содержать не только подтверждающие факты, но и риски/опровергающие сигналы других индикаторов.
-          </div>
-        </div>
-      </div>
+      </Collapsible>
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
@@ -178,13 +185,13 @@ export const SignalsPage: React.FC = () => {
         {setups.map((setup: AnalyticalSetup) => (
           <div
             key={setup.id}
-            className="bg-surface border border-surface-border rounded-lg p-5 font-sans text-xs space-y-4 shadow-lg hover:border-slate-700 transition-all"
+            className="rounded-lg border border-surface-border bg-surface p-3.5 font-sans text-xs shadow-lg transition-all hover:border-slate-700 sm:p-5"
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
               <div className="flex items-center space-x-3">
                 <span className="text-base font-bold text-white">{setup.symbol}/USDT</span>
                 <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
-                  {setup.timeframe} Timeframe
+                  Timeframe {setup.timeframe}
                 </span>
                 <Badge
                   variant={
@@ -206,68 +213,87 @@ export const SignalsPage: React.FC = () => {
                 </Badge>
               </div>
 
-              <div className="flex items-center space-x-2 text-[11px] text-slate-500">
-                <Lock className="w-3 h-3 text-brand-green" />
-                <span className="font-mono bg-surface-elevated px-2 py-0.5 rounded border border-surface-border">
-                  {setup.auditHash}
+              <div className="flex shrink-0 items-center gap-2 text-[11px] text-slate-500">
+                <Lock className="h-3 w-3 shrink-0 text-brand-green" aria-hidden />
+                <span className="ui-label">
+                  {new Date(setup.createdAt).toLocaleDateString('ru-RU')}
                 </span>
-                <span>{new Date(setup.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
 
             {/* Price Targets Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-                <div className="text-[11px] text-slate-400">Диапазон входа</div>
+                <div className="ui-label">Entry</div>
                 <div className="text-sm font-bold text-white mt-0.5">
                   ${setup.entryZone[0].toLocaleString()} – ${setup.entryZone[1].toLocaleString()}
                 </div>
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-                <div className="text-[11px] text-slate-400">Уровень отмены (стоп)</div>
+                <div className="ui-label">Stop Loss</div>
                 <div className="text-sm font-bold text-rose-400 mt-0.5">
                   &lt; ${setup.invalidationLevel.toLocaleString()}
                 </div>
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-                <div className="text-[11px] text-slate-400">Целевые ориентиры</div>
+                <div className="ui-label">Take Profit</div>
                 <div className="text-sm font-bold text-brand-green mt-0.5">
                   {setup.targets.map((t) => `$${t.toLocaleString()}`).join(' / ')}
                 </div>
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
-                <div className="text-[11px] text-slate-400">Риск / прибыль (R:R)</div>
+                <div className="ui-label">Risk/Reward (R:R)</div>
                 <div className="text-sm font-bold text-amber-400 mt-0.5">
                   1 : {setup.riskRewardRatio}
                 </div>
               </div>
             </div>
 
-            {/* Evidence & Invalidation Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-sans text-xs">
-              <div className="p-3 rounded bg-emerald-950/20 border border-emerald-500/20 space-y-1.5">
-                <div className="font-bold text-emerald-400 font-sans flex items-center space-x-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Подтверждающие наблюдения</span>
-                </div>
-                <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
+            {/* Подтверждения, риски и хеш — вторично, свёрнуто по умолчанию */}
+            <div className="space-y-2 pt-1">
+              <Collapsible
+                testId={`signal-confirming-${setup.id}`}
+                icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+                label="Подтверждающие наблюдения"
+                count={setup.confirmingFactors.length}
+              >
+                <ul className="list-disc space-y-0.5 pl-4">
                   {setup.confirmingFactors.map((factor, idx) => (
                     <li key={idx}>{factor}</li>
                   ))}
                 </ul>
-              </div>
+              </Collapsible>
 
-              <div className="p-3 rounded bg-rose-950/20 border border-rose-500/20 space-y-1.5">
-                <div className="font-bold text-rose-400 font-sans flex items-center space-x-1.5">
-                  <AlertOctagon className="w-3.5 h-3.5" />
-                  <span>Опровергающие факторы и риски</span>
-                </div>
-                <ul className="list-disc list-inside text-slate-300 text-[11px] space-y-0.5">
+              <Collapsible
+                testId={`signal-risks-${setup.id}`}
+                tone="warning"
+                icon={<AlertOctagon className="h-3.5 w-3.5" />}
+                label="Опровергающие факторы и риски"
+                count={setup.invalidationFactors.length}
+              >
+                <ul className="list-disc space-y-0.5 pl-4">
                   {setup.invalidationFactors.map((factor, idx) => (
                     <li key={idx}>{factor}</li>
                   ))}
                 </ul>
-              </div>
+              </Collapsible>
+
+              <Collapsible
+                testId={`signal-technical-${setup.id}`}
+                tone="muted"
+                icon={<Lock className="h-3.5 w-3.5" />}
+                label="Технические сведения"
+              >
+                <dl className="space-y-1">
+                  <div>
+                    <dt className="ui-label inline">Audit hash: </dt>
+                    <dd className="ui-hash inline">{setup.auditHash}</dd>
+                  </div>
+                  <div className="ui-helper">
+                    Запись append-only: удалить или отредактировать сетап задним числом нельзя.
+                  </div>
+                </dl>
+              </Collapsible>
             </div>
           </div>
         ))}

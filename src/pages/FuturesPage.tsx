@@ -110,7 +110,7 @@ export const FuturesPage: React.FC = () => {
                 : 'bg-surface-elevated border border-white/[0.08] text-slate-300 hover:bg-surface-hover hover:text-white'
             }`}
           >
-            Лонг &gt; 0
+            Long &gt; 0
           </button>
           <button
             onClick={() => setFilterFunding('negative')}
@@ -120,7 +120,7 @@ export const FuturesPage: React.FC = () => {
                 : 'bg-surface-elevated border border-white/[0.08] text-slate-300 hover:bg-surface-hover hover:text-white'
             }`}
           >
-            Шорт &lt; 0 (риск сквиза)
+            Short &lt; 0 (риск Short Squeeze)
           </button>
         </div>
       </div>
@@ -132,7 +132,7 @@ export const FuturesPage: React.FC = () => {
           <div className="text-xl font-bold text-white mt-1 tabular-nums font-mono">
             {formatCurrency(overview.totalOpenInterestUsd, { compact: true })}
           </div>
-          <div className="text-[11px] text-emerald-400 mt-0.5 font-semibold">25 ключевых перп-контрактов</div>
+          <div className="text-[11px] text-emerald-400 mt-0.5 font-semibold">25 ключевых perpetual futures</div>
         </div>
 
         <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
@@ -172,7 +172,7 @@ export const FuturesPage: React.FC = () => {
             {overview.marketRegime === 'CONTANGO' ? 'Контанго' : overview.marketRegime === 'BACKWARDATION' ? 'Бэквордация' : overview.marketRegime}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums font-mono">
-            Базис перп/спот: {formatPercent(overview.averageBasisPct)}
+            Базис Futures / Spot: {formatPercent(overview.averageBasisPct)}
           </div>
         </div>
       </div>

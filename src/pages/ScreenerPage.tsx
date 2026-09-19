@@ -121,7 +121,7 @@ export const ScreenerPage: React.FC = () => {
             className="px-3 py-1.5 bg-surface-elevated border border-white/[0.08] hover:border-violet-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
             <Sparkles className="w-3 h-3 text-violet-400" />
-            <span>Шорт-сквиз (фандинг &lt; 0)</span>
+            <span>Short Squeeze (фандинг &lt; 0)</span>
           </button>
           <button
             onClick={applyPresetLargeCap}
@@ -171,9 +171,9 @@ export const ScreenerPage: React.FC = () => {
               className="w-full bg-surface-elevated border border-surface-border rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-brand-cyan"
             >
               <option value="all">Все сектора</option>
-              <option value="l1">L1-сети</option>
+              <option value="l1">Layer-1</option>
               <option value="defi">DeFi</option>
-              <option value="l2">L2-сети</option>
+              <option value="l2">Layer-2</option>
               <option value="ai">ИИ и данные</option>
               <option value="meme">Мемкоины</option>
             </select>

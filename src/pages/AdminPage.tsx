@@ -64,6 +64,8 @@ interface SystemInfo {
   environment: string;
   uptimeSeconds: number;
   database: string;
+  /** Открыта ли публичная регистрация (REGISTRATION_ENABLED на сервере). */
+  registrationEnabled: boolean;
   memoryUsage: { rss: string; heapUsed: string };
 }
 
@@ -218,7 +220,7 @@ export const AdminPage: React.FC = () => {
       {/* Tabs */}
       <div className="mb-6 flex gap-2 border-b border-white/[0.08] pb-2">
         {[
-          { id: 'dashboard' as Tab, label: 'Дашборд', icon: LayoutDashboard },
+          { id: 'dashboard' as Tab, label: 'Обзор', icon: LayoutDashboard },
           { id: 'users' as Tab, label: 'Пользователи', icon: Users },
           { id: 'system' as Tab, label: 'Система', icon: Server },
         ].map((t) => (
@@ -371,7 +373,7 @@ export const AdminPage: React.FC = () => {
                       <span className={`rounded px-2 py-0.5 text-xs font-medium ${
                         u.role === 'admin' ? 'bg-cyan-500/15 text-cyan-300' : 'bg-slate-700/50 text-slate-300'
                       }`}>
-                        {u.role === 'admin' ? 'Admin' : 'User'}
+                        {u.role === 'admin' ? 'Администратор' : 'Пользователь'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -387,7 +389,7 @@ export const AdminPage: React.FC = () => {
                       <span className={`rounded px-2 py-0.5 text-xs font-medium ${
                         u.emailVerified ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
                       }`}>
-                        {u.emailVerified ? 'Verified' : 'Not verified'}
+                        {u.emailVerified ? 'Подтверждён' : 'Не подтверждён'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-400">{formatDate(u.createdAt)}</td>
@@ -476,6 +478,15 @@ export const AdminPage: React.FC = () => {
               <span className="text-slate-400">База данных</span>
               <span className={`font-medium ${system.database === 'connected' ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {system.database === 'connected' ? 'Подключена' : 'Отключена'}
+              </span>
+            </div>
+            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+              <span className="text-slate-400">Регистрация</span>
+              <span
+                className={`font-medium ${system.registrationEnabled ? 'text-emerald-400' : 'text-amber-400'}`}
+                title="REGISTRATION_ENABLED — управляется переменной окружения сервера, не админ-панелью"
+              >
+                {system.registrationEnabled ? 'Включена' : 'Выключена'}
               </span>
             </div>
             <div className="flex justify-between border-b border-white/[0.05] pb-2">

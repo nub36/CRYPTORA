@@ -214,7 +214,7 @@ export const LiquidationsPage: React.FC = () => {
             {formatCurrency(data.totalShort24h, { compact: true })}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums font-mono">
-            {data.total24h > 0 ? `${shortPct}% от общего объема (Шорт-сквиз)` : 'Нет фактических событий за 24ч'}
+            {data.total24h > 0 ? `${shortPct}% от общего объема (Short Squeeze)` : 'Нет фактических событий за 24ч'}
           </div>
         </div>
 
@@ -242,8 +242,8 @@ export const LiquidationsPage: React.FC = () => {
       {data.total24h > 0 && (
       <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
         <div className="flex justify-between text-xs mb-2">
-          <span className="text-emerald-400 font-bold tabular-nums font-mono">Лонги: {longPct}%</span>
-          <span className="text-rose-400 font-bold tabular-nums font-mono">Шорты: {shortPct}%</span>
+          <span className="text-emerald-400 font-bold tabular-nums font-mono">Long: {longPct}%</span>
+          <span className="text-rose-400 font-bold tabular-nums font-mono">Short: {shortPct}%</span>
         </div>
         <div className="w-full h-3 rounded-full overflow-hidden flex bg-surface-elevated">
           <div className="bg-emerald-500 h-full" style={{ width: `${longPct}%` }} />
@@ -284,13 +284,13 @@ export const LiquidationsPage: React.FC = () => {
                     <div
                       style={{ height: `${Math.max(4, longHeight)}px` }}
                       className="w-1/2 bg-emerald-500/80 rounded-t group-hover:bg-emerald-400 transition-colors"
-                      title={`Лонги: ${formatCurrency(bar.longUsd, { compact: true })}`}
+                      title={`Long: ${formatCurrency(bar.longUsd, { compact: true })}`}
                     />
                     {/* Short bar */}
                     <div
                       style={{ height: `${Math.max(4, shortHeight)}px` }}
                       className="w-1/2 bg-rose-500/80 rounded-t group-hover:bg-rose-400 transition-colors"
-                      title={`Шорты: ${formatCurrency(bar.shortUsd, { compact: true })}`}
+                      title={`Short: ${formatCurrency(bar.shortUsd, { compact: true })}`}
                     />
                   </div>
                   <span className="text-[11px] text-slate-400 group-hover:text-white tabular-nums font-mono">

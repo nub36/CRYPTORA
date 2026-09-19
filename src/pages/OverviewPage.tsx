@@ -20,6 +20,7 @@ import { Badge } from '@/components/common/Badge';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 import { Link } from 'react-router-dom';
 import { SponsorSlot } from '@/components/ads/SponsorSlot';
+import { Collapsible } from '@/components/common/Collapsible';
 import {
   TrendingUp,
   Activity,
@@ -29,7 +30,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Sparkles,
-  Zap,
   PieChart,
   Grid,
   Network,
@@ -64,7 +64,7 @@ const DeltaChip: React.FC<{ value: number | null; qa: string; title: string }> =
   );
 
 export const OverviewPage: React.FC = () => {
-  const { provider, dataMode, realtimeStatus } = useMarketData();
+  const { provider, dataMode } = useMarketData();
 
   const [overview, setOverview] = useState<MarketOverviewData | null>(null);
   const [assets, setAssets] = useState<AssetSummary[]>([]);
@@ -182,39 +182,39 @@ export const OverviewPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
-      {/* Строка статуса источника данных: только индикация происхождения значений */}
-      <div
-        role="status"
-        data-qa="overview-source-status"
-        className={`border rounded-xl px-3.5 py-2.5 flex items-start sm:items-center space-x-2.5 text-xs font-mono ${
-          dataMode === 'live'
-            ? 'bg-cyan-500/[0.06] border-cyan-500/25 text-cyan-200'
-            : 'bg-amber-500/[0.07] border-amber-500/25 text-amber-200'
-        }`}
-      >
-        <span className="relative flex h-2 w-2 mt-1 sm:mt-0 flex-shrink-0">
-          <span
-            className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${
-              dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
-            }`}
-          ></span>
-          <span
-            className={`relative inline-flex rounded-full h-2 w-2 ${dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-500'}`}
-          ></span>
-        </span>
-        <span>
-          {dataMode === 'live' ? (
-            <>
-              <strong>Источник данных: LIVE спот (Binance / KuCoin).</strong> Котировки, объёмы и ликвидации
-              поступают из фактических источников; при недоступности источника значения не подставляются.
-            </>
-          ) : (
-            <>
-              <strong>Источник данных: внутренний датасет QA.</strong> Значения зафиксированы для
-              воспроизводимых проверок интерфейса и не выдаются за фактический рыночный поток.
-            </>
-          )}
-        </span>
+      {/* Статус источника: одна компактная строка, подробности по клику */}
+      <div role="status" data-qa="overview-source-status">
+        <Collapsible
+          testId="overview-source-collapsible"
+          tone={dataMode === 'live' ? 'neutral' : 'warning'}
+          icon={
+            <span className="relative flex h-2 w-2">
+              <span
+                className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
+                  dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
+                }`}
+              />
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full ${
+                  dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-500'
+                }`}
+              />
+            </span>
+          }
+          label={
+            <span className="ui-num font-semibold tracking-tight">
+              {dataMode === 'live'
+                ? 'LIVE Data · Binance / KuCoin'
+                : 'QA Data · внутренний датасет'}
+            </span>
+          }
+        >
+          <p className="ui-secondary text-[11px]">
+            {dataMode === 'live'
+              ? 'Котировки, объёмы и ликвидации поступают из фактических источников. При недоступности источника значения не подставляются и не заменяются другим датасетом.'
+              : 'Значения зафиксированы для воспроизводимых проверок интерфейса и не выдаются за фактический рыночный поток.'}
+          </p>
+        </Collapsible>
       </div>
 
       {/* Quick Terminal Intelligence Hub */}
@@ -270,7 +270,10 @@ export const OverviewPage: React.FC = () => {
       </div>
 
       {/* SECTION A: Market Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+      <div
+        data-testid="overview-kpi-grid"
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3"
+      >
         {/* Total Market Cap */}
         <div className="bg-surface border border-white/[0.08] hover:border-cyan-500/30 rounded-xl p-3.5 relative overflow-hidden transition-all duration-200 shadow-panel group">
           <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between">
@@ -396,42 +399,7 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Статус режима данных: только индикация источника и соединения */}
-        <div
-          data-qa="overview-mode-card"
-          className={`border rounded-xl p-3.5 shadow-panel ${
-            dataMode === 'live' ? 'bg-surface border-white/[0.08]' : 'bg-amber-500/[0.07] border-amber-500/25'
-          }`}
-        >
-          <div className="text-[11px] font-sans text-slate-400 flex items-center justify-between font-bold tracking-wide">
-            <span>Режим данных</span>
-            <Zap className={`w-3.5 h-3.5 ${dataMode === 'live' ? 'text-cyan-400' : 'text-amber-400'}`} />
-          </div>
-          <div className={`text-sm font-bold font-mono mt-1.5 ${dataMode === 'live' ? 'text-white' : 'text-amber-200'}`}>
-            {dataMode === 'live' ? 'LIVE спот (Binance / KuCoin)' : 'Внутренний датасет QA'}
-          </div>
-          <div className="text-[11px] text-slate-400 font-sans mt-1 flex items-center space-x-1.5">
-            <span
-              className={`inline-block h-1.5 w-1.5 rounded-full ${
-                realtimeStatus === 'connected'
-                  ? 'bg-emerald-400'
-                  : realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting'
-                  ? 'bg-amber-400'
-                  : 'bg-slate-500'
-              }`}
-            />
-            <span>
-              WebSocket:{' '}
-              {realtimeStatus === 'connected'
-                ? 'подключен'
-                : realtimeStatus === 'connecting'
-                ? 'подключение'
-                : realtimeStatus === 'reconnecting'
-                ? 'переподключение'
-                : 'нет соединения'}
-            </span>
-          </div>
-        </div>
+
 
       </div>
 
@@ -453,7 +421,7 @@ export const OverviewPage: React.FC = () => {
                   >
                     {dataMode === 'live'
                       ? `LIVE СПОТ${btcAsset?.provenance?.exchange ? `: ${btcAsset.provenance.exchange.toUpperCase()}` : ' · BINANCE / KUCOIN'}`
-                      : 'Спот и перп · QA-датасет'}
+                      : 'QA-датасет · только Spot (без Futures)'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-2 mt-0.5 font-sans">
@@ -557,7 +525,7 @@ export const OverviewPage: React.FC = () => {
                   // DERIVED: взвешенный Δ OI 24ч по фьючерсам с ACTUAL-источником
                   const actualOi = futures.filter((f) => f.openInterestChangeSource === 'ACTUAL' && f.openInterest > 0 && f.openInterestChange24h != null);
                   if (actualOi.length === 0) {
-                    return <div className="text-[11px] text-slate-500 font-mono mt-0.5">Δ24ч — нет фактических данных OI</div>;
+                    return <div className="ui-helper mt-0.5">Δ24ч — нет фактических данных OI</div>;
                   }
                   const weightedChange = actualOi.reduce((s, f) => s + f.openInterestChange24h! * f.openInterest, 0)
                     / actualOi.reduce((s, f) => s + f.openInterest, 0);
@@ -571,14 +539,14 @@ export const OverviewPage: React.FC = () => {
               </div>
 
               <div className="bg-surface-elevated p-3 rounded-lg border border-white/[0.06]">
-                <div className="text-[11px] text-slate-400 font-sans">Суточный объём перпов</div>
+                <div className="text-[11px] text-slate-400 font-sans">Суточный объём Futures</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalFuturesVolume, { compact: true })}
                 </div>
                 {(() => {
                   // DERIVED: фактический BTC basis из среза деривативов
                   const btcFut = futures.find((f) => f.symbol.startsWith('BTC'));
-                  if (!btcFut) return <div className="text-[11px] text-slate-500 font-mono mt-0.5">Базис BTC — нет данных</div>;
+                  if (!btcFut) return <div className="ui-helper mt-0.5">Базис BTC — нет данных</div>;
                   return (
                     <div className={`text-[11px] font-mono mt-0.5 ${btcFut.basisPct >= 0 ? 'text-slate-400' : 'text-rose-400'}`}>
                       Базис BTC: {btcFut.basisPct >= 0 ? '+' : ''}{btcFut.basisPct.toFixed(3)}%
@@ -643,11 +611,11 @@ export const OverviewPage: React.FC = () => {
                   <>
                     <div className="flex items-center justify-between mb-2 font-mono text-xs">
                       <span className="text-emerald-400 font-semibold tabular-nums font-mono">
-                        Лонги: {formatCurrency(liquidations.totalLong24h, { compact: true })} (
+                        Long: {formatCurrency(liquidations.totalLong24h, { compact: true })} (
                         {((liquidations.totalLong24h / liquidations.total24h) * 100).toFixed(1)}%)
                       </span>
                       <span className="text-rose-400 font-semibold tabular-nums font-mono">
-                        Шорты: {formatCurrency(liquidations.totalShort24h, { compact: true })} (
+                        Short: {formatCurrency(liquidations.totalShort24h, { compact: true })} (
                         {((liquidations.totalShort24h / liquidations.total24h) * 100).toFixed(1)}%)
                       </span>
                     </div>

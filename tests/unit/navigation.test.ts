@@ -17,7 +17,10 @@ import {
  */
 describe('Навигационная модель терминала CRYPTORA', () => {
   it('прямая навигация не превышает бюджет ёмкости (максимум 6 пунктов)', () => {
-    expect(PRIMARY_NAV_ITEMS.length).toBe(PRIMARY_NAV_CAPACITY);
+    // Бюджет — верхняя граница: «Рынок» и «Фьючерсы» объединены в один пункт
+    // с dropdown, поэтому занято 5 слотов из 6. Пустой навигации быть не может.
+    expect(PRIMARY_NAV_ITEMS.length).toBeLessThanOrEqual(PRIMARY_NAV_CAPACITY);
+    expect(PRIMARY_NAV_ITEMS.length).toBeGreaterThanOrEqual(4);
   });
 
   it('все пути уникальны и начинаются со слеша', () => {

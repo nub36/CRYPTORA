@@ -79,17 +79,40 @@ describe('StrategiesPage wiring', () => {
     'utf8'
   );
 
-  it('passes exactly the three product strategy IDs to the panel', () => {
-    // The page must not render the unfiltered archive.
-    expect(src).toMatch(/<StrategyArchivePanel\s+strategyIds=\{/);
-    expect(src).not.toMatch(/<StrategyArchivePanel\s*\/>/);
-
-    for (const id of PRODUCT_STRATEGY_IDS) {
-      expect(src, `StrategiesPage must request ${id}`).toContain(`'${id}'`);
-    }
+  /**
+   * АРХИТЕКТУРА ИЗМЕНИЛАСЬ (UI-этап «compact terminal»).
+   *
+   * Раньше три продуктовые стратегии показывались САМОЙ панелью архива через
+   * `strategyIds`, из-за чего /strategies выглядел как исследовательский отчёт:
+   * «Архив исследований → 13 версий», методологический абзац, read-only бейдж.
+   * Теперь primary UI — отдельная `ProductStrategiesSection` (ровно 3 карточки),
+   * а архив уехал во вторичный свёрнутый collapsible.
+   *
+   * Смысл исходного инварианта сохранён и даже усилен: продуктовая страница
+   * по-прежнему показывает ровно три стратегии, а не 13. Проверяется ниже и в
+   * tests/unit/strategiesPresentation.test.tsx рендером реальной страницы.
+   */
+  it('primary UI делегирован продуктовой секции трёх стратегий', () => {
+    expect(src).toMatch(/<ProductStrategiesSection\s*\/>/);
   });
 
-  it('the panel component still accepts the strategyIds prop', () => {
+  it('архив остаётся на странице, но только внутри свёрнутого collapsible', () => {
+    // Код архива не удалён (требование владельца).
+    expect(src).toContain('<StrategyArchivePanel');
+    // ...и он не является первичным блоком: только внутри Collapsible.
+    const archiveIdx = src.indexOf('<StrategyArchivePanel');
+    const collapsibleIdx = src.indexOf('research-archive-collapsible');
+    expect(collapsibleIdx).toBeGreaterThan(-1);
+    expect(collapsibleIdx).toBeLessThan(archiveIdx);
+  });
+
+  it('страница не рендерит «Лабораторию стратегий» как основной заголовок', () => {
+    expect(src).not.toContain('Лаборатория стратегий');
+    expect(src).not.toContain('Архитектурный прототип');
+    expect(src).toContain('Стратегии');
+  });
+
+  it('the panel component still accepts the strategyIds prop (back-compat)', () => {
     const panel = fs.readFileSync(
       path.resolve(__dirname, '../../src/components/strategies/StrategyArchivePanel.tsx'),
       'utf8'

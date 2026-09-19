@@ -21,6 +21,12 @@ export interface NavItem {
   label: string;
   path: string;
   icon: LucideIcon;
+  /**
+   * Если задано, пункт рендерится как выпадающее меню с этими подпунктами.
+   * `path` при этом остаётся «основным» разделом (используется для подсветки
+   * активной секции и для прямого перехода в мобильном drawer).
+   */
+  children?: SubNavItem[];
 }
 
 export interface SubNavItem extends NavItem {
@@ -37,14 +43,21 @@ export interface SubNavItem extends NavItem {
  *    ограничение: 6 пунктов с кеглем 13px — максимум, который гарантированно
  *    помещается в одну строку вместе с сервисными контролами на 1280px
  *    (проверено реальными замерами в scripts/screenshot-qa.mjs).
+ *    Сейчас занято 5 слотов: «Рынок» и «Фьючерсы» объединены в один пункт с
+ *    dropdown (Спот / Фьючерсы), что освободило место в шапке.
  *  - Вторичные аналитические и рабочие разделы живут в двух группированных
  *    меню (`ANALYTICS_NAV_ITEMS`, `TOOLS_NAV_ITEMS`) — поэтому при нехватке
  *    места сжимаются сервисные контролы, а не кегль навигации.
  */
+/** Подпункты объединённого раздела «Рынок» (спот и фьючерсы). */
+export const MARKET_NAV_ITEMS: SubNavItem[] = [
+  { label: 'Спот', sublabel: 'Котировки, дельты и спарклайны', path: '/market', icon: LineChart },
+  { label: 'Фьючерсы', sublabel: 'Бессрочные контракты, базис и объёмы', path: '/futures', icon: Layers },
+];
+
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Обзор', path: '/', icon: Compass },
-  { label: 'Рынок', path: '/market', icon: LineChart },
-  { label: 'Фьючерсы', path: '/futures', icon: Layers },
+  { label: 'Рынок', path: '/market', icon: LineChart, children: MARKET_NAV_ITEMS },
   { label: 'Ликвидации', path: '/liquidations', icon: Flame },
   { label: 'Скринер', path: '/screener', icon: Sliders },
   { label: 'Радар', path: '/radar', icon: Radio },
@@ -72,7 +85,12 @@ export const PRIMARY_NAV_CAPACITY = 6;
 
 /** Все разделы терминала, доступные из навигации (без динамических `/coin/:symbol`). */
 export const ALL_NAV_PATHS: string[] = [
-  ...PRIMARY_NAV_ITEMS.map((item) => item.path),
-  ...ANALYTICS_NAV_ITEMS.map((item) => item.path),
-  ...TOOLS_NAV_ITEMS.map((item) => item.path),
+  ...new Set([
+    ...PRIMARY_NAV_ITEMS.map((item) => item.path),
+    // Подпункты dropdown тоже разделы терминала. Порядок сохраняется, а дубли
+    // убираются: у «Рынка» path совпадает с подпунктом «Спот» (/market).
+    ...PRIMARY_NAV_ITEMS.flatMap((item) => item.children?.map((sub) => sub.path) ?? []),
+    ...ANALYTICS_NAV_ITEMS.map((item) => item.path),
+    ...TOOLS_NAV_ITEMS.map((item) => item.path),
+  ]),
 ];

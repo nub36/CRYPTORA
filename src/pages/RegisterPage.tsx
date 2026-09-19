@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, maskEmail } from '@/context/AuthContext';
-import { UserPlus, Mail, RefreshCw } from 'lucide-react';
+import { UserPlus, Mail, RefreshCw, Lock } from 'lucide-react';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -22,6 +22,34 @@ export const RegisterPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  /**
+   * Статус регистрации, запрошенный у backend.
+   *
+   * `null` — статус неизвестен (backend недоступен или ещё грузится). В этом
+   * случае форма показывается как обычно: публичная страница не должна
+   * «закрываться» из-за того, что API не ответило. Закрытое состояние
+   * рендерится только при явном `false` от сервера — того же самого флага
+   * REGISTRATION_ENABLED, который блокирует POST /api/auth/register.
+   */
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/auth/registration-status', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (active && body && typeof body.registrationOpen === 'boolean') {
+          setRegistrationOpen(body.registrationOpen);
+        }
+      })
+      .catch(() => {
+        /* backend недоступен — оставляем null, форму не блокируем */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // "Check your mail" screen state.
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -70,6 +98,42 @@ export const RegisterPage: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Не удалось отправить ссылку');
     }
   }, [sentTo, cooldown, resendVerification]);
+
+  // ── Registration closed ─────────────────────────────────────────────
+  if (registrationOpen === false) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-8 text-center shadow-2xl backdrop-blur-xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-700">
+              <Lock className="h-6 w-6 text-white" />
+            </div>
+
+            <h1 className="text-xl font-bold text-white">Регистрация закрыта</h1>
+            <p className="mt-2 text-sm text-slate-400">
+              Сейчас мы не создаём новые аккаунты. Уже зарегистрированные пользователи
+              могут войти как обычно.
+            </p>
+
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <Link
+                to="/login"
+                className="inline-flex items-center gap-2 rounded-md border border-cyan-400/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-300 transition-colors hover:bg-cyan-500/20"
+              >
+                Войти
+              </Link>
+              <Link
+                to="/"
+                className="inline-flex items-center rounded-md border border-white/10 bg-surface-2 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:border-cyan-400/40"
+              >
+                На главную
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Verification screen ─────────────────────────────────────────────
   if (sentTo) {
