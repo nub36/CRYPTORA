@@ -121,7 +121,7 @@ export const ScreenerPage: React.FC = () => {
             className="px-3 py-1.5 bg-surface-elevated border border-white/[0.08] hover:border-violet-500/50 text-slate-300 hover:text-white rounded-lg transition-all whitespace-nowrap min-h-[32px] flex items-center space-x-1.5"
           >
             <Sparkles className="w-3 h-3 text-violet-400" />
-            <span>Шорт-сквиз (фандинг &lt; 0)</span>
+            <span>Short Squeeze (фандинг &lt; 0)</span>
           </button>
           <button
             onClick={applyPresetLargeCap}

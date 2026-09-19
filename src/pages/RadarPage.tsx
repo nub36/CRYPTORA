@@ -210,7 +210,7 @@ export const RadarPage: React.FC = () => {
             <div data-qa="llm-explanation" className="p-3 rounded bg-surface-elevated/60 border border-brand-cyan/20 space-y-1.5">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="font-bold text-brand-cyan">Пояснение LLM по тем же фактам</span>
-                <span className="text-slate-500 font-mono">{llm.model} · проверено стражем заземления</span>
+                <span className="ui-helper"><span className="ui-num">{llm.model}</span> · проверено стражем заземления</span>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">{llm.explanation.summary}</p>
               {llm.explanation.keyObservations.length > 0 && (

@@ -402,10 +402,10 @@ describe('AdminPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Система/ }));
   };
 
-  it('показывает закрытую регистрацию по-русски', async () => {
+  it('показывает выключенную регистрацию по-русски', async () => {
     await openSystemTab();
 
     const row = (await screen.findByText('Регистрация')).closest('div') as HTMLElement;
-    expect(within(row).getByText('Закрыта')).toBeInTheDocument();
+    expect(within(row).getByText('Выключена')).toBeInTheDocument();
   });
 });

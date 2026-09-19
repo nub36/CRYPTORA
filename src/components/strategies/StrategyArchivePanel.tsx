@@ -196,11 +196,11 @@ const ArchiveCard: React.FC<{ card: ArchiveCardModel; selected: boolean; compare
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
       <div className="space-y-0.5">
         <div className="text-slate-500">Происхождение</div>
-        <div className="font-mono break-all">source pin {c.provenance.sourcePin} · dataset {c.provenance.dataset}</div>
-        <div className="font-mono">{c.provenance.artifactCount} артефакт(ов) sha256 · {c.provenance.discrepancyCount} расхожд. · {c.variantCount} вариант(ов)</div>
-        {c.provenance.frozenEngine && <div className="font-mono text-slate-400">входы: frozen V2 engine {c.provenance.frozenEngine} (только архив)</div>}
+        <div className="ui-hash">source pin {c.provenance.sourcePin} · dataset {c.provenance.dataset}</div>
+        <div className="ui-helper">{c.provenance.artifactCount} артефакт(ов) sha256 · {c.provenance.discrepancyCount} расхожд. · {c.variantCount} вариант(ов)</div>
+        {c.provenance.frozenEngine && <div className="ui-helper">Входы: frozen V2 engine <span className="ui-hash">{c.provenance.frozenEngine}</span> (только архив)</div>}
         {c.reproducedTradeCounts.length > 0 && (
-          <div className="font-mono text-slate-400 break-all">
+          <div className="ui-hash text-slate-400">
             перезапуск: {c.reproducedTradeCounts.slice(0, 3).map((e) => `${e.slice} n=${e.n}`).join('; ')}{c.reproducedTradeCounts.length > 3 ? ` … (+${c.reproducedTradeCounts.length - 3})` : ''}
           </div>
         )}

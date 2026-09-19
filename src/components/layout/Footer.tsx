@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
 import { useMarketData } from '@/context/MarketDataContext';
+import { Collapsible } from '@/components/common/Collapsible';
 
 export const Footer: React.FC = () => {
   const { dataMode } = useMarketData();
@@ -20,18 +21,27 @@ export const Footer: React.FC = () => {
     <footer className="mt-6 border-t border-white/[0.08] bg-surface-inset/90 px-4 py-6 font-sans text-xs text-slate-400 backdrop-blur-md">
       <div className="mx-auto max-w-[1920px] space-y-5">
         <SponsorSlot slot="footer-banner" />
-        {/* Top Disclaimer Banner */}
-        <div className="p-3.5 bg-amber-500/[0.06] border border-amber-500/25 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-sm">
-          <div className="flex items-center space-x-2.5">
-            <ShieldAlert className="w-5 h-5 text-amber-400 flex-shrink-0" />
-            <span className="text-slate-300 text-xs">
-              <strong className="text-amber-300">Отказ от ответственности (Этап 1-2):</strong>{' '}
-              CRYPTORA не является биржей или брокером. Мы не принимаем клиентские средства, не управляем
-              активами и не запрашиваем торговые ключи API. Все значения поступают из фактических источников
-              и могут быть неполными или временно недоступными.
-            </span>
-          </div>
-        </div>
+        {/* Дисклеймер: компактный collapsible, по умолчанию свёрнут. Текст сохранён полностью. */}
+        <Collapsible
+          testId="footer-disclaimer"
+          tone="warning"
+          icon={<ShieldAlert className="h-4 w-4 shrink-0" />}
+          label={
+            <>
+              Дисклеймер
+              <span className="ml-2 hidden font-normal text-slate-400 sm:inline">
+                CRYPTORA — аналитический терминал, не финансовая рекомендация.
+              </span>
+            </>
+          }
+        >
+          <p className="ui-secondary text-[11px]">
+            <strong className="text-amber-300">Отказ от ответственности (Этап 1-2):</strong>{' '}
+            CRYPTORA не является биржей или брокером. Мы не принимаем клиентские средства, не управляем
+            активами и не запрашиваем торговые ключи API. Все значения поступают из фактических источников
+            и могут быть неполными или временно недоступными.
+          </p>
+        </Collapsible>
 
         {/* Footer Navigation & Columns */}
         <div className="grid grid-cols-2 gap-6 border-t border-white/[0.05] pt-4 text-xs md:grid-cols-4">

@@ -28,16 +28,16 @@ export const RADAR_SEVERITY_LABELS: Record<RadarSeverity, string> = {
 
 export type PositionSide = 'LONG' | 'SHORT';
 
-/** Именительный падеж: «Лонг» / «Шорт». */
+/** Позиция: industry English «Long» / «Short» — русский вариант звучит искусственно. */
 export const SIDE_LABELS: Record<PositionSide, string> = {
-  LONG: 'Лонг',
-  SHORT: 'Шорт',
+  LONG: 'Long',
+  SHORT: 'Short',
 };
 
-/** Множественное число: «Лонги» / «Шорты». */
+/** Групповые подписи: в English множественного числа нет, форма та же. */
 export const SIDE_PLURAL_LABELS: Record<PositionSide, string> = {
-  LONG: 'Лонги',
-  SHORT: 'Шорты',
+  LONG: 'Long',
+  SHORT: 'Short',
 };
 
 export type ImpactLevel = 'HIGH' | 'MEDIUM' | 'LOW';

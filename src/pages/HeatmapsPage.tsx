@@ -60,19 +60,19 @@ export const HeatmapsPage: React.FC = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 text-[11px] text-slate-400">
           <div>
-            <strong className="text-white block mb-0.5 font-mono">Изменение цены за 24ч:</strong>
+            <strong className="ui-card-title mb-0.5 block">Изменение цены за 24ч</strong>
             Зеленые плитки отражают положительный суточный импульс, красные — коррекцию. Чем темнее/насыщеннее тон, тем ближе показатель к экстремуму.
           </div>
           <div>
-            <strong className="text-white block mb-0.5 font-mono">Торговый объём:</strong>
+            <strong className="ui-card-title mb-0.5 block">Торговый объём</strong>
             Показывает распределение совокупного торгового капитала. Крупнейшие объемы сосредоточены в BTC, ETH и SOL.
           </div>
           <div>
-            <strong className="text-white block mb-0.5 font-mono">Открытый интерес:</strong>
+            <strong className="ui-card-title mb-0.5 block">Open Interest</strong>
             Отражает концентрацию позиций с кредитным плечом в бессрочных деривативах. Рост открытого интереса сигнализирует о готовящемся импульсе.
           </div>
           <div>
-            <strong className="text-white block mb-0.5 font-mono">Ставка фандинга:</strong>
+            <strong className="ui-card-title mb-0.5 block">Funding Rate</strong>
             Пурпурные плитки показывают отрицательный фандинг (шортисты платят лонгистам), желтые — перегретый длинный рынок.
           </div>
         </div>

@@ -315,12 +315,12 @@ export const JournalPage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] font-sans">
               <div className="p-3 bg-surface-elevated/60 rounded border border-surface-border/50">
-                <span className="text-slate-400 font-mono block mb-1">Причина входа (Сетап):</span>
+                <span className="ui-label mb-1 block">Причина входа (сетап)</span>
                 <p className="text-slate-300">{entry.setupReason}</p>
               </div>
 
               <div className="p-3 bg-surface-elevated/60 rounded border border-surface-border/50">
-                <span className="text-slate-400 font-mono block mb-1">Рефлексия и выводы:</span>
+                <span className="ui-label mb-1 block">Рефлексия и выводы</span>
                 <p className="text-slate-300">{entry.reflection}</p>
               </div>
             </div>

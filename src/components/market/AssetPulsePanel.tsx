@@ -49,7 +49,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
           <>
             <div className="grid grid-cols-2 gap-2 font-sans">
               <div className="rounded border border-emerald-500/25 bg-emerald-950/20 px-2 py-1.5">
-                <div className="text-[11px] text-emerald-300/90 uppercase tracking-wide">Лонги 24ч</div>
+                <div className="text-[11px] text-emerald-300/90 uppercase tracking-wide">Long 24ч</div>
                 <div className="text-base font-bold text-emerald-300 tabular-nums font-mono">
                   {formatCurrency(liquidation.longUsd, { compact: true })}
                 </div>
@@ -58,7 +58,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
                 </div>
               </div>
               <div className="rounded border border-rose-500/25 bg-rose-950/20 px-2 py-1.5">
-                <div className="text-[11px] text-rose-300/90 uppercase tracking-wide">Шорты 24ч</div>
+                <div className="text-[11px] text-rose-300/90 uppercase tracking-wide">Short 24ч</div>
                 <div className="text-base font-bold text-rose-300 tabular-nums font-mono">
                   {formatCurrency(liquidation.shortUsd, { compact: true })}
                 </div>
@@ -70,8 +70,8 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
 
             <div className="space-y-1">
               <div className="flex justify-between text-[11px] font-sans text-slate-400">
-                <span className="text-emerald-300">Лонги {liquidation.longSharePct}%</span>
-                <span className="text-rose-300">Шорты {liquidation.shortSharePct}%</span>
+                <span className="text-emerald-300">Long {liquidation.longSharePct}%</span>
+                <span className="text-rose-300">Short {liquidation.shortSharePct}%</span>
               </div>
               <div className="h-2 rounded-full overflow-hidden flex bg-surface-elevated">
                 <div className="bg-emerald-500 h-full" style={{ width: `${liquidation.longSharePct}%` }} />
