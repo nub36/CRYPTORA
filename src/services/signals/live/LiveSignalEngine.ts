@@ -13,6 +13,8 @@ import type { Timeframe } from '@/types/market';
 import type { ArchiveCandle } from '@/services/strategyArchive/types';
 import { SignalsAuditLedger } from '@/services/signals/SignalsAuditLedger';
 import { ohlcvToArchive } from '@/services/signals/live/ohlcvAdapter';
+import { validateSetupGeometry } from '@/services/signals/live/setupGeometry';
+import { pairLabel } from '@/utils/labels';
 import {
   V30_CONSTANTS,
   confirmedLevels,
@@ -86,6 +88,15 @@ export class LiveSignalEngine {
   }
 
   public isActive(): boolean { return this.running; }
+
+  /**
+   * Последний сетап, отклонённый инвариантом геометрии. Не публикуется в
+   * ledger — это диагностика расхождения адаптера с замороженным определением.
+   */
+  public lastRejected: {
+    id: string; strategy: string; symbol: string;
+    violations: readonly string[]; at: string;
+  } | null = null;
 
   private async scan(): Promise<void> {
     // Expire signals older than 4 hours
@@ -296,9 +307,32 @@ export class LiveSignalEngine {
     const risk = Math.abs(mid - params.stop);
     const reward = Math.abs(params.tp2 - mid);
 
+    /**
+     * Инвариант порядка уровней из замороженного определения (см.
+     * ./setupGeometry). Противоречивый сетап не публикуется: лучше отсутствие
+     * сигнала, чем сигнал, у которого стоп внутри зоны входа.
+     */
+    const violations = validateSetupGeometry({
+      direction: params.direction,
+      entry: mid,
+      stop: params.stop,
+      tp1: params.tp1,
+      tp2: params.tp2,
+    });
+    if (violations.length > 0) {
+      this.lastRejected = {
+        id: params.id,
+        strategy: params.strategy,
+        symbol: params.symbol,
+        violations,
+        at: new Date().toISOString(),
+      };
+      return;
+    }
+
     this.ledger.append({
       id: params.id,
-      symbol: `${params.symbol}/USDT`,
+      symbol: pairLabel(params.symbol),
       direction: params.direction,
       timeframe: '1h',
       entryZone: [fmtPrice(params.entryLow), fmtPrice(params.entryHigh)],

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check, Radio } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { Collapsible } from '@/components/common/Collapsible';
-import { sideLabel } from '@/utils/labels';
+import { sideLabel, pairLabel, stopComparator } from '@/utils/labels';
 import { SignalsAuditLedger, AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 
 export const SignalsPage: React.FC = () => {
@@ -189,7 +189,7 @@ export const SignalsPage: React.FC = () => {
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
               <div className="flex items-center space-x-3">
-                <span className="text-base font-bold text-white">{setup.symbol}/USDT</span>
+                <span className="ui-value break-words">{pairLabel(setup.symbol)}</span>
                 <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
                   Timeframe {setup.timeframe}
                 </span>
@@ -231,14 +231,14 @@ export const SignalsPage: React.FC = () => {
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
                 <div className="ui-label">Stop Loss</div>
-                <div className="text-sm font-bold text-rose-400 mt-0.5">
-                  &lt; ${setup.invalidationLevel.toLocaleString()}
+                <div className="ui-num mt-0.5 text-sm font-bold text-rose-400">
+                  {stopComparator(setup.direction)} ${setup.invalidationLevel.toLocaleString()}
                 </div>
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
                 <div className="ui-label">Take Profit</div>
-                <div className="text-sm font-bold text-brand-green mt-0.5">
-                  {setup.targets.map((t) => `$${t.toLocaleString()}`).join(' / ')}
+                <div className="ui-num mt-0.5 text-sm font-bold text-brand-green">
+                  {setup.targets.map((t, i) => `TP${i + 1} $${t.toLocaleString()}`).join('  ·  ')}
                 </div>
               </div>
               <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
