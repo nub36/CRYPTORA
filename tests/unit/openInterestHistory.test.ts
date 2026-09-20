@@ -42,6 +42,17 @@ describe('Δ OI по фактическому ряду openInterestHist', () => 
     expect(noHist.openInterestChange24h).toBeNull(); // missing history ≠ zero delta
   });
 
+  it('З4: без spot-OI и без ряда openInterest = null (эвристика ×0.15 удалена); spot-OI — факт', () => {
+    const noSource = DerivativesEngine.normalizeFuturesAsset(btc, PREMIUM, TICKER);
+    expect(noSource.openInterest).toBeNull(); // REGRESSION: раньше 650M×0.15 = 97.5M как «факт»
+
+    const spot = DerivativesEngine.normalizeFuturesAsset(
+      btc, PREMIUM, TICKER,
+      { symbol: 'BTCUSDT', openInterest: '81950.5', time: T0 } as any
+    );
+    expect(spot.openInterest).toBe(81950.5 * 65000);
+  });
+
   it('REGRESSION: missing OI history !== zero delta', () => {
     // 0.00% means "OI did not change"; null means "no data". Semantics must not be conflated.
     const noHist = DerivativesEngine.normalizeFuturesAsset(btc, PREMIUM, TICKER);
@@ -60,6 +71,9 @@ describe('Δ OI по фактическому ряду openInterestHist', () => 
       if (sym === 'ETHUSDT') throw new Error('HTTP 500');
       return hist([100, 100, 103]).map((h) => ({ ...h, symbol: sym }));
     });
+    // З4: spot-OI недоступен в этом сценарии (отказ по каждому символу) —
+    // OI берётся из фактического hist-ряда, у ETH честный null (не ×0.15 от объёма).
+    vi.spyOn(adapter, 'fetchOpenInterest').mockRejectedValue(new Error('HTTP 418'));
 
     const provider = new LiveMarketDataProvider({ futuresAdapter: adapter, cacheTtlMs: 0 });
     const list = await provider.getFuturesList();
@@ -68,7 +82,9 @@ describe('Δ OI по фактическому ряду openInterestHist', () => 
     const e = list.find((f) => f.symbol === 'ETH/USDT')!;
     expect(b.openInterestChangeSource).toBe('ACTUAL');
     expect(b.openInterestChange1h).toBe(3);
+    expect(b.openInterest).toBe(103 * 65000); // последняя точка ряда — факт
     expect(e.openInterestChangeSource).toBe('UNAVAILABLE');
+    expect(e.openInterest).toBeNull(); // REGRESSION З4: раньше здесь было quoteVolume×0.15
 
     // Кэш ряда OI (5 мин) — повторный вызов не дёргает openInterestHist заново.
     await provider.getFuturesList();

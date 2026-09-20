@@ -33,6 +33,7 @@ export class BinanceWebSocketClient {
   private subscribedStreams: Set<string> = new Set();
   private eventBus: EventBus;
   private anomalyEngine?: AnomalyEngine;
+  private networkRecoveryAttached = false;
 
   constructor(
     eventBus: EventBus,
@@ -66,6 +67,7 @@ export class BinanceWebSocketClient {
 
     this.isExplicitlyClosed = false;
     this.setConnectionState(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
+    this.attachNetworkRecoveryListeners();
 
     try {
       // Build streams query if we already have subscriptions, or connect to base stream
@@ -112,6 +114,8 @@ export class BinanceWebSocketClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.detachNetworkRecoveryListeners();
+    this.reconnectAttempts = 0;
     if (this.ws) {
       try {
         this.ws.close();
@@ -381,13 +385,15 @@ export class BinanceWebSocketClient {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.setConnectionState('error');
-      return;
-    }
+    // Н6: бесконечный реконнект. Ранее после maxReconnectAttempts (~4.5 мин
+    // офлайна) поток умирал навсегда ('error') — до ручного F5. Теперь задержка
+    // насыщается на reconnectMaxDelayMs и попытки продолжаются, пока вкладка жива.
+    // maxReconnectAttempts теперь означает «число попыток до насыщения задержки».
+    this.setConnectionState('reconnecting');
 
+    const exponent = Math.min(this.reconnectAttempts, Math.max(this.maxReconnectAttempts, 1));
     const delay = Math.min(
-      this.reconnectInitialDelayMs * Math.pow(2, this.reconnectAttempts),
+      this.reconnectInitialDelayMs * Math.pow(2, exponent),
       this.reconnectMaxDelayMs
     );
     this.reconnectAttempts++;
@@ -395,6 +401,41 @@ export class BinanceWebSocketClient {
     this.reconnectTimer = setTimeout(() => {
       this.connect();
     }, delay);
+  }
+
+  /**
+   * Н6: возврат из офлайна — мгновенный реконнект без ожидания текущего таймера.
+   * Триггеры: сетевой 'online' и возврат видимости вкладки ('visibilitychange').
+   */
+  private readonly handleNetworkRecovery = (): void => {
+    if (this.isExplicitlyClosed) return;
+    if (this.connectionState === 'connected' || this.connectionState === 'connecting') return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
+    this.connect();
+  };
+
+  private readonly handleVisibilityChange = (): void => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      this.handleNetworkRecovery();
+    }
+  };
+
+  private attachNetworkRecoveryListeners(): void {
+    if (this.networkRecoveryAttached || typeof window === 'undefined' || typeof document === 'undefined') return;
+    window.addEventListener('online', this.handleNetworkRecovery);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    this.networkRecoveryAttached = true;
+  }
+
+  private detachNetworkRecoveryListeners(): void {
+    if (!this.networkRecoveryAttached || typeof window === 'undefined' || typeof document === 'undefined') return;
+    window.removeEventListener('online', this.handleNetworkRecovery);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    this.networkRecoveryAttached = false;
   }
 
   private setConnectionState(state: RealtimeConnectionState): void {

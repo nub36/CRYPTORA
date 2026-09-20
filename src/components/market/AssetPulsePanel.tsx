@@ -145,7 +145,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
             <div className="flex justify-between">
               <span className="text-slate-400">Открытый интерес (OI)</span>
               <span className="font-bold text-white tabular-nums font-mono">
-                {formatCurrency(derivatives.openInterestUsd, { compact: true })}
+                {derivatives.openInterestUsd != null ? formatCurrency(derivatives.openInterestUsd, { compact: true }) : '—'}
               </span>
             </div>
             <div className="flex justify-between">

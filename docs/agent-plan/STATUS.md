@@ -2,8 +2,16 @@
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
 > **Последнее обновление:** 2026-09-20  
-> **Текущая версия:** v0.8.45 (Source Health — circuit breaker недоступных REST-источников)  
-> **Текущий этап:** CORRECTIVE PROD-DIAGNOSTICS PASS completed. Систематические сетевые отказы
+> **Текущая версия:** v0.8.50 (Audit Remediation Pass 1: Н6/З3/З4/З6/З7/Б3 + Н9/Н11)  
+> **Текущий этап:** AUDIT REMEDIATION PASS 1 completed. По независимому аудиту (PR #1,
+> DEEP_AUDIT_2026-09-18 + AUDIT_REPORT_2026-09-17) верифицирован каждый пункт по актуальному коду:
+> Н1/Н2 (SSRF), Н3 (look-ahead), Н4/Н7 (реестр сигналов), Д1 (шрифты), З1/З2/З5 — оказались уже
+> исправлены в актуальном дереве; в этом проходе исправлены Н6 (WS-реконнект бесконечный +
+> online/visibility reset), З3 (индикаторы null без заглушек), З4 (фактический spot-OI вместо ×0.15),
+> З6 (стакан — скелетон), З7 (спред только из bid/ask), Б3 (watchlist WS-подписка), Н9/Н11 (мелочи).
+> ⚠️ Коллизия версий с PR #2 (0.8.45–0.8.49): эта ветка использует 0.8.45 и 0.8.50 — при merge
+> одну из сторон перенумеровать (см. CHANGELOG 0.8.50).
+> Предыдущий этап: CORRECTIVE PROD-DIAGNOSTICS PASS (v0.8.45 Source Health). Систематические сетевые отказы
 > (CORS KuCoin, делистнутый/недоступный на Binance инструмент, гео-блок) больше не долбятся каждым
 > циклом опроса: `SourceHealthTracker` блокирует endpoint+инструмент с backoff, диагностика — один
 > console.warn на эпизод. P11-warn дедуплицирован. Честность данных не затронута (RULES §1):
@@ -19,6 +27,26 @@
 ---
 
 ## 1. Что сделано
+
+### v0.8.50 — Audit Remediation Pass 1 (по аудиту PR #1)
+- **Верификация аудита:** все находки DEEP_AUDIT_2026-09-18/AUDIT_REPORT_2026-09-17 проверены по
+  актуальному коду (аудит делался на `arena/01a0aeee @ e08acb0` до merge). Уже исправлены ранее:
+  Н1/Н2 SSRF-прокси (удалён, `proxyRemoval.test.ts`), Н3 look-ahead (isClosed + closedBars), Н4
+  персистенция реестра, Н7 реактивность /signals, Д1 шрифты (@fontsource), З1/З2/З5.
+- **Н6:** `BinanceWebSocketClient` + `LiquidationStreamTransport` — бесконечный реконнект с
+  насыщением delay (30 с); `window.online`/`visibilitychange` → мгновенный reconnect + сброс счётчика.
+- **З3:** `getAssetDetail` → `indicators: null` при <200 свечей; UI «—» (RSI=50/MACD=0/SMA=цена удалены).
+- **З4:** spot-OI `/fapi/v1/openInterest` (кэш 60 с) в `getFuturesList`; эвристика ×0.15 удалена;
+  `FuturesAsset.openInterest` nullable, потребители null-safe (Futures/Overview/Heatmap/Pulse/Liquidations).
+- **З6:** `OrderBookL2` — скелетон «ОЖИДАНИЕ ПОТОКА (WS)» вместо выдуманных уровней.
+- **З7:** спред только из bid/ask (Binance/KuCoin), `spreadPct: null` без bid/ask; NaN-гвард
+  `extractBinanceSpread`; мёртвая fallback-ветка пары удалена.
+- **Б3:** `toggleWatchlist` сразу подписывает/отписывает WS-символ.
+- **Н9/Н11:** vite dev-прокси `/api` → `:3000`; React Router future-флаги.
+- **Тесты:** +8 (realtimeWs ×3, openInterestHistory ×1 + расширен, liveDataProvider ×4); версии в
+  test-фикстурах обновлены. НЕ сделано (след. проход): Б1 авто-обновление страниц, Н5 TLS (операция
+  на VPS: certbot + 443/редирект/HSTS), Н8 guard сканов (зона PR #2), Н13 AlertService (зона PR #2),
+  контраст/тач (Д2–Д6), браузерные e2e (Н10), зависимости.
 
 ### v0.8.45 — Source Health: circuit breaker недоступных REST-источников
 - **Контекст (прод-наблюдение с cryptora.duckdns.org):** консоль DevTools заполнялась «красными»
@@ -640,9 +668,10 @@ DEMO-режима не должно быть вообще. Оставались:
 
 ## 3. Результаты тестов (все гейты пройдены)
 
-- **Актуально на v0.8.45 (2026-09-20, песочница Arena):** typecheck (`npm run typecheck`) — 0 ошибок;
-  unit (`npm test`) — **83 файла / 873 теста passed** (859 прежних + 14 новых `sourceHealth`);
-  build (`npm run build`) — чистая production-сборка.
+- **Актуально на v0.8.50 (2026-09-20, песочница Arena):** typecheck (`npm run typecheck`) — 0 ошибок;
+  unit (`npm test`) — **passed без регрессий** (873 → 881 с новыми тестами: финальные цифры в CHANGELOG 0.8.50);
+  build (`npm run build`) — чистая production-сборка. (Фактический прогон перед commit; e2e по-прежнему
+  не прогонялся — CDN Playwright закрыт в песочнице.)
 - **E2E в песочнице НЕ прогонялся:** `npx playwright install chromium` недоступен (CDN Playwright
   закрыт фаерволом контейнера, системные пакеты недоступны). E2E-набор не изменялся
   (кроме строки версии в `e2e/uiRegression.spec.tsx`); прогнать на машине с сетью перед деплоем.
@@ -729,7 +758,11 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 6. Следующий шаг
-- **STOP (v0.8.45).** Source Health circuit breaker выполнен; ожидается проверка владельцем на проде
+- **STOP (v0.8.50).** Audit Remediation Pass 1 выполнен; далее по приоритетам аудита: Б1
+  авто-обновление страниц (P1), Н5 TLS — операция владельца на VPS (certbot, раскомментировать
+  443/redirect/HSTS в `nginx/cryptora.conf`), Н8/Н13 (после судьбы PR #2 — там те же строки),
+  контраст/тач-таргеты (Д2–Д6, P2), браузерные e2e + CI (Н10, P3).
+- Предыдущая остановка (v0.8.45): Source Health circuit breaker выполнен; ожидается проверка владельцем на проде
   (после деплоя консоль DevTools должна замолчать после ~1–2 минут: единичный diagnostics-warn вместо
   потока CORS-ошибок; недоступный актив честно отсутствует без подстановок).
 - **Деплой на VPS не выполнялся** (как и в v0.8.5–v0.8.44 — по отдельной команде владельца).

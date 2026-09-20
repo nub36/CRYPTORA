@@ -173,7 +173,8 @@ export const OverviewPage: React.FC = () => {
 
   // Aggregate futures stats
   const totalFuturesVolume = futures.reduce((acc, f) => acc + f.futuresVolume24h, 0);
-  const totalOpenInterest = futures.reduce((acc, f) => acc + f.openInterest, 0);
+  // null-OI (источник не ответил) в сумму не входит — суммируем только фактические значения
+  const totalOpenInterest = futures.reduce((acc, f) => acc + (f.openInterest ?? 0), 0);
 
   // Funding extremes
   const sortedFunding = [...futures].sort((a, b) => b.fundingRate - a.fundingRate);
@@ -523,12 +524,12 @@ export const OverviewPage: React.FC = () => {
                 </div>
                 {(() => {
                   // DERIVED: взвешенный Δ OI 24ч по фьючерсам с ACTUAL-источником
-                  const actualOi = futures.filter((f) => f.openInterestChangeSource === 'ACTUAL' && f.openInterest > 0 && f.openInterestChange24h != null);
+                  const actualOi = futures.filter((f) => f.openInterestChangeSource === 'ACTUAL' && f.openInterest != null && f.openInterest > 0 && f.openInterestChange24h != null);
                   if (actualOi.length === 0) {
                     return <div className="ui-helper mt-0.5">Δ24ч — нет фактических данных OI</div>;
                   }
-                  const weightedChange = actualOi.reduce((s, f) => s + f.openInterestChange24h! * f.openInterest, 0)
-                    / actualOi.reduce((s, f) => s + f.openInterest, 0);
+                  const weightedChange = actualOi.reduce((s, f) => s + f.openInterestChange24h! * (f.openInterest ?? 0), 0)
+                    / actualOi.reduce((s, f) => s + (f.openInterest ?? 0), 0);
                   return (
                     <div className={`text-[11px] font-mono mt-0.5 font-semibold ${weightedChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {formatPercent(weightedChange)} за 24h
@@ -565,7 +566,7 @@ export const OverviewPage: React.FC = () => {
                 >
                   <span className="font-bold text-white">{f.symbol}</span>
                   <span className="text-slate-300 tabular-nums font-mono">
-                    OI: {formatCurrency(f.openInterest, { compact: true })}
+                    OI: {f.openInterest != null ? formatCurrency(f.openInterest, { compact: true }) : '—'}
                   </span>
                   <span
                     className={`font-semibold tabular-nums  font-mono${

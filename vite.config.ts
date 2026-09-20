@@ -15,6 +15,11 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: true, // Allow e2b proxy hosts
+    // Н9: /api/* есть только у productionServer (:3000) — проксируем, чтобы в dev
+    // /api/ai/explain и /api/health не падали 404 и не засоряли консоль.
+    proxy: {
+      '/api': 'http://localhost:3000',
+    },
   },
   preview: {
     host: '0.0.0.0',

@@ -321,7 +321,15 @@ export const MarketDataProviderComponent: React.FC<{
 
   const toggleWatchlist = (symbol: string) => {
     const s = symbol.toUpperCase();
+    const isAdd = !watchlist.includes(s);
     setWatchlist((prev) => (prev.includes(s) ? prev.filter((item) => item !== s) : [...prev, s]));
+    // Б3: WS-подписка следует за watchlist сразу (раньше добавленный символ не
+    // стримился до переподключения потока — эффект подписки зависит только от dataMode).
+    if (dataMode === 'live') {
+      const feedManager = RealtimeFeedManager.getInstance();
+      if (isAdd) feedManager.subscribeSymbol(s);
+      else feedManager.unsubscribeSymbol(s);
+    }
   };
 
   const isWatchlisted = (symbol: string) => {

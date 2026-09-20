@@ -40,6 +40,7 @@ export abstract class LiquidationStreamTransport {
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
   private isExplicitlyClosed = false;
   private receivedMessages = 0;
+  private networkRecoveryAttached = false;
 
   constructor(pipeline: LiquidationPipeline, defaultUrl: string, options: LiquidationTransportOptions = {}) {
     this.pipeline = pipeline;
@@ -107,6 +108,7 @@ export abstract class LiquidationStreamTransport {
     }
     this.isExplicitlyClosed = false;
     this.setState(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
+    this.attachNetworkRecoveryListeners();
 
     const prep = this.prepare();
     if (!prep) {
@@ -162,6 +164,7 @@ export abstract class LiquidationStreamTransport {
       this.reconnectTimer = null;
     }
     this.clearKeepAlive();
+    this.detachNetworkRecoveryListeners();
     this.reconnectAttempts = 0;
     if (this.ws) {
       try {
@@ -190,13 +193,14 @@ export abstract class LiquidationStreamTransport {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.setState('unavailable');
-      return;
-    }
+    // Н6: бесконечный реконнект — раньше после maxReconnectAttempts (~4.5 мин
+    // офлайна) поток молча умирал ('unavailable') до перезагрузки страницы.
+    // Теперь задержка насыщается на reconnectMaxDelayMs, попытки продолжаются.
+    // maxReconnectAttempts = число попыток до насыщения задержки (обратная совместимость опции).
     this.reconnectAttempts += 1;
+    const exponent = Math.min(this.reconnectAttempts - 1, Math.max(this.maxReconnectAttempts, 1));
     const delay = Math.min(
-      this.reconnectInitialDelayMs * Math.pow(2, this.reconnectAttempts - 1),
+      this.reconnectInitialDelayMs * Math.pow(2, exponent),
       this.reconnectMaxDelayMs,
     );
     this.setState('reconnecting');
@@ -204,6 +208,41 @@ export abstract class LiquidationStreamTransport {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  /**
+   * Н6: возврат из офлайна ('online') или возврат видимости вкладки —
+   * мгновенный реконнект без ожидания текущего таймера задержки.
+   */
+  private readonly handleNetworkRecovery = (): void => {
+    if (this.isExplicitlyClosed) return;
+    if (this.state === 'connected' || this.state === 'connecting') return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
+    this.connect();
+  };
+
+  private readonly handleVisibilityChange = (): void => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      this.handleNetworkRecovery();
+    }
+  };
+
+  private attachNetworkRecoveryListeners(): void {
+    if (this.networkRecoveryAttached || typeof window === 'undefined' || typeof document === 'undefined') return;
+    window.addEventListener('online', this.handleNetworkRecovery);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    this.networkRecoveryAttached = true;
+  }
+
+  private detachNetworkRecoveryListeners(): void {
+    if (!this.networkRecoveryAttached || typeof window === 'undefined' || typeof document === 'undefined') return;
+    window.removeEventListener('online', this.handleNetworkRecovery);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    this.networkRecoveryAttached = false;
   }
 
   private handleMessage(dataRaw: any): void {

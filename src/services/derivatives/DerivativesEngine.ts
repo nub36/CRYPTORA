@@ -89,13 +89,14 @@ export class DerivativesEngine {
     const annualizedFunding = this.calculateAnnualizedFunding(fundingRate8h);
     const basisPct = this.calculateBasis(markPrice, indexPrice);
 
-    let oiUsd = 0;
+    // З4 (честность данных): OI — только фактический: spot-запрос (/fapi/v1/openInterest)
+    // или последняя точка hist-ряда (ниже). Эвристика quoteVolume×0.15 удалена —
+    // она попадала в UI без маркировки (нарушение RULES §1 / DONT_DO §4 «0 ≠ null»).
+    // Нет ни spot-ответа, ни ряда → openInterest = null → «—» в UI.
+    let oiUsd: number | null = null;
     if (openInterest) {
       const contracts = parseFloat(openInterest.openInterest);
       oiUsd = this.calculateOpenInterestUsd(contracts, markPrice);
-    } else if (ticker) {
-      // Estimate baseline OI if openInterest call was omitted
-      oiUsd = parseFloat(ticker.quoteVolume) * 0.15;
     }
 
     const volume24hUsd = ticker ? parseFloat(ticker.quoteVolume) : 0;
@@ -105,8 +106,8 @@ export class DerivativesEngine {
     const oiDelta = this.calculateOpenInterestChanges(openInterestHist);
     const openInterestChange1h = oiDelta ? oiDelta.change1hPct : null;
     const openInterestChange24h = oiDelta ? oiDelta.change24hPct : null;
-    if (oiDelta && !openInterest) {
-      // Последняя точка ряда — фактический OI в USD (sumOpenInterestValue), точнее эвристики от объёма.
+    if (oiUsd == null && oiDelta) {
+      // Spot-ответа нет — последняя точка ряда: фактический OI в USD (sumOpenInterestValue).
       oiUsd = oiDelta.latestValueUsd;
     }
 
@@ -171,9 +172,10 @@ export class DerivativesEngine {
     let negativeFundingCount = 0;
 
     for (const a of assets) {
-      totalOI += a.openInterest;
+      // null-OI (источник не ответил) не входит в суммы — учитываются только фактические значения.
+      totalOI += a.openInterest ?? 0;
       totalVol += a.futuresVolume24h;
-      weightedFundingSum += a.fundingRate * a.openInterest;
+      weightedFundingSum += a.fundingRate * (a.openInterest ?? 0);
       basisSum += a.basisPct;
 
       if (a.fundingRate >= 0.03) highFundingCount++;

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
 import { BinanceSpotAdapter } from '@/services/data/adapters/BinanceSpotAdapter';
 import { KuCoinSpotAdapter } from '@/services/data/adapters/KuCoinSpotAdapter';
+import { CoinGeckoAdapter } from '@/services/data/adapters/CoinGeckoAdapter';
 import { AdapterNetworkError } from '@/services/data/adapters/errors';
 import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 
@@ -221,5 +222,93 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     // Без фактических аномалий радар пуст — демо-события за фактические не выдаются.
     const radar = await provider.getRadarEvents();
     expect(radar).toEqual([]);
+  });
+});
+
+describe('LiveMarketDataProvider — честность detail-данных (З3/З7, v0.8.50)', () => {
+  /** klines-строка Binance: [openTime, open, high, low, close, volume, closeTime, ...] */
+  function klines(closes: number[]): any[] {
+    return closes.map((c, i) => [
+      1726358400000 + i * 3_600_000, String(c - 50), String(c + 50), String(c - 80), String(c), '1000',
+      1726358400000 + (i + 1) * 3_600_000 - 1, '65000000', 1000, '50', '32000000', '0',
+    ]);
+  }
+
+  function makeDetailProvider(closes: number[], tickerOverrides: Record<string, string> = {}) {
+    const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetch24hrTicker').mockResolvedValue({
+      ...SAMPLE_BINANCE_TICKER,
+      bidPrice: '64900.00',
+      askPrice: '65100.00',
+      ...tickerOverrides,
+    } as any);
+    vi.spyOn(binanceMock, 'fetchKlines').mockResolvedValue(klines(closes) as any);
+
+    const kucoinMock = new KuCoinSpotAdapter();
+    vi.spyOn(kucoinMock, 'fetch24hrStats').mockResolvedValue({
+      ...SAMPLE_KUCOIN_STATS,
+      buy: '64950.0',
+      sell: '65050.0',
+    } as any);
+    vi.spyOn(kucoinMock, 'fetchCandles').mockRejectedValue(new AdapterNetworkError('kucoin'));
+
+    const coingeckoMock = new CoinGeckoAdapter({
+      fetchFn: (async () => {
+        throw new TypeError('offline');
+      }) as unknown as typeof fetch,
+    });
+
+    return new LiveMarketDataProvider({
+      binanceAdapter: binanceMock,
+      kucoinAdapter: kucoinMock,
+      coingeckoAdapter: coingeckoMock,
+      candleHistoryService: { getAll: async () => new Map() } as any,
+    });
+  }
+
+  it('З3: <200 фактических свечей → indicators = null (не RSI=50 / SMA=цена / Bollinger=цена)', async () => {
+    const provider = makeDetailProvider(Array.from({ length: 10 }, (_, i) => 64000 + i));
+    const detail = await provider.getAssetDetail('BTC');
+    expect(detail).not.toBeNull();
+    expect(detail!.indicators).toBeNull();
+  });
+
+  it('З3: >= 200 свечей → полный числовой набор из фактических свечей', async () => {
+    const provider = makeDetailProvider(Array.from({ length: 220 }, (_, i) => 64000 + i));
+    const detail = await provider.getAssetDetail('BTC');
+    expect(detail).not.toBeNull();
+    const ind = detail!.indicators;
+    expect(ind).not.toBeNull();
+    expect(Number.isFinite(ind!.rsi14)).toBe(true);
+    expect(Number.isFinite(ind!.sma200)).toBe(true);
+    expect(ind!.sma200).toBeGreaterThan(0);
+    expect(ind!.bollinger.upper).toBeGreaterThan(ind!.bollinger.lower);
+  });
+
+  it('З7: спред пар — из фактических bid/ask обеих бирж, без выдуманных 0.01/0.02', async () => {
+    const provider = makeDetailProvider(Array.from({ length: 10 }, (_, i) => 64000 + i));
+    const detail = await provider.getAssetDetail('BTC');
+
+    const binancePair = detail!.pairs.find((p) => p.exchange === 'Binance');
+    expect(binancePair).toBeDefined();
+    // bid 64900 / ask 65100 → спред (65100−64900)/65000 = 0.3077%
+    expect(binancePair!.spreadPct).not.toBeNull();
+    expect(binancePair!.spreadPct!).toBeCloseTo(0.3077, 3);
+
+    const kucoinPair = detail!.pairs.find((p) => p.exchange === 'KuCoin');
+    expect(kucoinPair).toBeDefined();
+    // buy 64950 / sell 65050 → спред (65050−64950)/65000 = 0.1538%
+    expect(kucoinPair!.spreadPct).not.toBeNull();
+    expect(kucoinPair!.spreadPct!).toBeCloseTo(0.1538, 3);
+  });
+
+  it('З7: биржа не отдала bid/ask → spreadPct = null («—» в UI), не константа', async () => {
+    const provider = makeDetailProvider(Array.from({ length: 10 }, (_, i) => 64000 + i), {
+      bidPrice: '',
+      askPrice: '',
+    });
+    const detail = await provider.getAssetDetail('BTC');
+    const binancePair = detail!.pairs.find((p) => p.exchange === 'Binance');
+    expect(binancePair!.spreadPct).toBeNull();
   });
 });

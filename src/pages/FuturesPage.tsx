@@ -310,7 +310,7 @@ export const FuturesPage: React.FC = () => {
                     </td>
 
                     <td className="py-2.5 px-3 text-right font-bold text-white font-mono tabular-nums">
-                      {formatCurrency(f.openInterest, { compact: true })}
+                      {f.openInterest != null ? formatCurrency(f.openInterest, { compact: true }) : '—'}
                     </td>
 
                     <td

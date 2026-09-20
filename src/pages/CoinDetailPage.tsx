@@ -679,48 +679,57 @@ export const CoinDetailPage: React.FC = () => {
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span className="text-slate-400">RSI (14)</span>
-              <span
-                className={`font-bold ${
-                  (dynamicIndicators?.rsi14 ?? 50) >= 70
-                    ? 'text-rose-400'
-                    : (dynamicIndicators?.rsi14 ?? 50) <= 30
-                    ? 'text-emerald-400'
-                    : 'text-brand-cyan'
-                }`}
-              >
-                {(dynamicIndicators?.rsi14 ?? 50).toFixed(1)}{' '}
-                <span className="text-[11px] font-normal text-slate-400">
-                  {(dynamicIndicators?.rsi14 ?? 50) >= 70
-                    ? '(Перекуплен)'
-                    : (dynamicIndicators?.rsi14 ?? 50) <= 30
-                    ? '(Перепродан)'
-                    : '(Нейтрально)'}
+              {dynamicIndicators?.rsi14 != null ? (
+                <span
+                  className={`font-bold ${
+                    dynamicIndicators.rsi14 >= 70
+                      ? 'text-rose-400'
+                      : dynamicIndicators.rsi14 <= 30
+                      ? 'text-emerald-400'
+                      : 'text-brand-cyan'
+                  }`}
+                >
+                  {dynamicIndicators.rsi14.toFixed(1)}{' '}
+                  <span className="text-[11px] font-normal text-slate-400">
+                    {dynamicIndicators.rsi14 >= 70
+                      ? '(Перекуплен)'
+                      : dynamicIndicators.rsi14 <= 30
+                      ? '(Перепродан)'
+                      : '(Нейтрально)'}
+                  </span>
                 </span>
-              </span>
+              ) : (
+                // З3: недостаточно фактических свечей — «нет данных», не RSI=50
+                <span className="text-slate-500 font-bold">—</span>
+              )}
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Гистограмма MACD</span>
-              <span
-                className={`font-bold ${
-                  (dynamicIndicators?.macd?.hist ?? 0) >= 0 ? 'text-brand-green' : 'text-brand-red'
-                }`}
-              >
-                {(dynamicIndicators?.macd?.hist ?? 0).toFixed(2)}
-              </span>
+              {dynamicIndicators?.macd?.hist != null ? (
+                <span
+                  className={`font-bold ${
+                    dynamicIndicators.macd.hist >= 0 ? 'text-brand-green' : 'text-brand-red'
+                  }`}
+                >
+                  {dynamicIndicators.macd.hist.toFixed(2)}
+                </span>
+              ) : (
+                <span className="text-slate-500 font-bold">—</span>
+              )}
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">SMA (20 / 50 / 200)</span>
               <span className="text-slate-200 font-mono tabular-nums">
-                {formatCurrency(dynamicIndicators?.sma20 ?? 0, { compact: true })} /{' '}
-                {formatCurrency(dynamicIndicators?.sma50 ?? 0, { compact: true })} /{' '}
-                {formatCurrency(dynamicIndicators?.sma200 ?? 0, { compact: true })}
+                {dynamicIndicators?.sma20 != null ? formatCurrency(dynamicIndicators.sma20, { compact: true }) : '—'} /{' '}
+                {dynamicIndicators?.sma50 != null ? formatCurrency(dynamicIndicators.sma50, { compact: true }) : '—'} /{' '}
+                {dynamicIndicators?.sma200 != null ? formatCurrency(dynamicIndicators.sma200, { compact: true }) : '—'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Полосы Боллинджера (верх / низ)</span>
               <span className="text-xs text-slate-400 font-mono tabular-nums">
-                {formatCurrency(dynamicIndicators?.bollinger?.upper ?? 0, { compact: true })} /{' '}
-                {formatCurrency(dynamicIndicators?.bollinger?.lower ?? 0, { compact: true })}
+                {dynamicIndicators?.bollinger?.upper != null ? formatCurrency(dynamicIndicators.bollinger.upper, { compact: true }) : '—'} /{' '}
+                {dynamicIndicators?.bollinger?.lower != null ? formatCurrency(dynamicIndicators.bollinger.lower, { compact: true }) : '—'}
               </span>
             </div>
             {dynamicIndicators && 'atr14' in dynamicIndicators && (
@@ -835,8 +844,14 @@ export const CoinDetailPage: React.FC = () => {
                         {formatCurrency(p.volume24h, { compact: true })}
                       </td>
                       <td className="py-2 text-right text-slate-400">
-                        {p.spreadPct}%
-                        <span className="text-[11px] text-slate-500 ml-1">({(p.spreadPct * 100).toFixed(1)}bps)</span>
+                        {p.spreadPct != null ? (
+                          <>
+                            {p.spreadPct}%
+                            <span className="text-[11px] text-slate-500 ml-1">({(p.spreadPct * 100).toFixed(1)}bps)</span>
+                          </>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                     </tr>
                   ))}

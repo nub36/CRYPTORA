@@ -51,7 +51,7 @@ describe('DemoMarketDataProvider Contracts & Determinism', () => {
     if (btc) {
       const parsed = AssetDetailSchema.parse(btc);
       expect(parsed.symbol).toBe('BTC');
-      expect(parsed.indicators.rsi14).toBeDefined();
+      expect(parsed.indicators?.rsi14).toBeDefined();
       expect(parsed.pairs.length).toBeGreaterThanOrEqual(3);
     }
   });

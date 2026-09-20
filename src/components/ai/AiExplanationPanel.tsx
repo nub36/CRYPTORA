@@ -74,7 +74,7 @@ export const AiExplanationPanel: React.FC<AiExplanationPanelProps> = ({
       marketCap: asset.marketCap,
       source: asset.provenance?.exchange ?? 'binance',
       // Derivatives
-      openInterest: futuresData?.openInterest,
+      openInterest: futuresData?.openInterest ?? undefined,
       openInterestDelta24h: futuresData?.openInterestChange24h ?? undefined,
       fundingRate8h: futuresData?.fundingRate,
       basisPct: futuresData?.basisPct,

@@ -92,7 +92,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
       if (oiChange == null) {
         return {
           bg: 'bg-slate-900/60 border-slate-700/20 text-slate-400',
-          label: formatCurrency(oiVal, { compact: true }),
+          label: oiVal != null ? formatCurrency(oiVal, { compact: true }) : '—',
           sublabel: 'OI Δ: —',
         };
       }
@@ -105,7 +105,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
 
       return {
         bg,
-        label: formatCurrency(oiVal, { compact: true }),
+        label: oiVal != null ? formatCurrency(oiVal, { compact: true }) : '—',
         sublabel: `OI Δ: ${formatPercent(oiChange)}`,
       };
     }

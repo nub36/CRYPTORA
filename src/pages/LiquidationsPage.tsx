@@ -64,7 +64,7 @@ export const LiquidationsPage: React.FC = () => {
       .then(([futures, btcCandles]) => {
         if (!isActive) return;
         const btc = futures.find((f) => f.symbol.toUpperCase().startsWith('BTC'));
-        if (btc && btc.markPrice > 0 && btc.openInterest > 0) {
+        if (btc && btc.markPrice > 0 && btc.openInterest != null && btc.openInterest > 0) {
           // Провенанс входных метрик сохраняется: демо-входы нельзя выдавать за фактический рынок.
           setClusterInput({
             markPrice: btc.markPrice,
