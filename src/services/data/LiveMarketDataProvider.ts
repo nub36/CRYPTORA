@@ -36,6 +36,17 @@ import { CoinGeckoAdapter } from './adapters/CoinGeckoAdapter';
 import { CandleHistoryService } from './CandleHistoryService';
 import { extractBinanceSpread } from './adapters/normalization';
 
+/** Длительность одной свечи — нужна, чтобы запросить у резервной биржи явное окно. */
+const TIMEFRAME_MS: Partial<Record<Timeframe, number>> = {
+  '5m': 5 * 60_000,
+  '15m': 15 * 60_000,
+  '30m': 30 * 60_000,
+  '1h': 3_600_000,
+  '4h': 4 * 3_600_000,
+  '1D': 24 * 3_600_000,
+  '1W': 7 * 24 * 3_600_000,
+};
+
 export interface LiveMarketDataProviderConfig {
   binanceAdapter?: BinanceSpotAdapter;
   kucoinAdapter?: KuCoinSpotAdapter;
@@ -362,13 +373,29 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       }
     }
 
-    // 2. Try KuCoin
+    // 2. Try KuCoin (резерв, когда Binance недоступен — гео-блок, 451/403, таймаут).
     if (asset.kucoinSymbol) {
       try {
-        const raw = await this.kucoin.fetchCandles(asset.kucoinSymbol, kucoinType);
+        // KuCoin без окна отдаёт свою страницу по умолчанию (глубина не гарантирована) —
+        // запрашиваем ровно нужный интервал: klineLimit + 2 бара на крайний формирующийся.
+        const spanMs = TIMEFRAME_MS[timeframe] ?? 3_600_000;
+        const raw = await this.kucoin.fetchCandles(asset.kucoinSymbol, kucoinType, {
+          startAtMs: now - (klineLimit + 2) * spanMs,
+          endAtMs: now,
+        });
         const normalized = normalizeKuCoinCandles(raw, asset.symbol, true);
-        this.candleCache.set(cacheKey, { data: normalized, timestamp: now });
-        return normalized;
+        const candles = normalized.length > klineLimit ? normalized.slice(-klineLimit) : normalized;
+        if (candles.length < klineLimit) {
+          // Не подставляем ничего и не «дорисовываем»: честно сообщаем о меньшей глубине
+          // источника, чтобы LIVE-движок отчитался о нехватке истории, а не молчал.
+          console.warn(
+            `[market-data] KuCoin fallback: ${symbol} ${timeframe} — ${candles.length} свечей вместо ${klineLimit} (глубина источника)`
+          );
+        }
+        if (candles.length > 0) {
+          this.candleCache.set(cacheKey, { data: candles, timestamp: now });
+          return candles;
+        }
       } catch {
         // Both failed
       }

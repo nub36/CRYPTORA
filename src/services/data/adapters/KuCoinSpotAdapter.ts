@@ -97,13 +97,30 @@ export class KuCoinSpotAdapter {
     return res.data.ticker;
   }
 
+  /**
+   * KuCoin `market/candles`: не более 1500 свечей на запрос, порядок — новейшие первыми.
+   *
+   * Без `startAt`/`endAt` биржа отдаёт собственную страницу по умолчанию, поэтому
+   * глубина ответа не гарантирована и могла оказаться меньше запрошенной LIVE-движком.
+   * Явное окно (Unix seconds) делает резервный источник детерминированным.
+   */
   public async fetchCandles(
     kucoinSymbol: string,
-    type = '1hour'
+    type = '1hour',
+    window?: { startAtMs?: number; endAtMs?: number }
   ): Promise<KuCoinCandleItem[]> {
     const upper = kucoinSymbol.toUpperCase().trim();
+    const params = new URLSearchParams({ symbol: upper, type });
+    const startAtMs = window?.startAtMs;
+    const endAtMs = window?.endAtMs;
+    if (typeof startAtMs === 'number' && Number.isFinite(startAtMs)) {
+      params.set('startAt', String(Math.floor(startAtMs / 1000)));
+    }
+    if (typeof endAtMs === 'number' && Number.isFinite(endAtMs)) {
+      params.set('endAt', String(Math.floor(endAtMs / 1000)));
+    }
     const res = await this.request(
-      `/api/v1/market/candles?symbol=${encodeURIComponent(upper)}&type=${encodeURIComponent(type)}`,
+      `/api/v1/market/candles?${params.toString()}`,
       KuCoinCandlesResponseSchema
     );
     return res.data as KuCoinCandleItem[];
