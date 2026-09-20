@@ -43,12 +43,20 @@ function toOhlcv(c: ArchiveCandle): OHLCV {
   return { time: c.openTime / 1000, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume };
 }
 
+/** Провенанс как у реального провайдера: биржа + признак резервного источника. */
+function binanceProvenance(symbol: string, timeSec: number) {
+  return { exchange: 'binance' as const, market: 'spot' as const, symbol, timestamp: timeSec, isFallback: false };
+}
+
 /**
  * Провайдер «как биржа»: отдаёт последние `limit` свечей, чей openTime ≤ now,
  * включая ещё формирующуюся (её OHLC — усечённая версия настоящей свечи, чтобы
  * look-ahead был бы заметен, если бы движок её использовал).
  */
-function exchangeLikeProvider(nowRef: { ms: number }, opts?: { failSymbols?: string[] }) {
+function exchangeLikeProvider(
+  nowRef: { ms: number },
+  opts?: { failSymbols?: string[]; fallbackSymbols?: string[] },
+) {
   const calls: { symbol: string; tf: Timeframe; limit: number | undefined; nowMs: number }[] = [];
   const getCandles = vi.fn(async (symbol: string, tf: Timeframe, limit?: number): Promise<OHLCV[]> => {
     calls.push({ symbol, tf, limit, nowMs: nowRef.ms });
@@ -56,10 +64,15 @@ function exchangeLikeProvider(nowRef: { ms: number }, opts?: { failSymbols?: str
     const src = tf === '1h' ? H1 : tf === '4h' ? H4 : [];
     const span = tf === '1h' ? H : 4 * H;
     const visible = src.filter((c) => c.openTime <= nowRef.ms);
+    const fallback = opts?.fallbackSymbols?.includes(symbol) ?? false;
     const out = visible.slice(-(limit ?? 500)).map((c) => {
-      if (c.openTime + span - 1 < nowRef.ms) return toOhlcv(c);
+      const base = toOhlcv(c);
+      const provenance = fallback
+        ? { exchange: 'kucoin' as const, market: 'spot' as const, symbol, timestamp: base.time, isFallback: true }
+        : binanceProvenance(symbol, base.time);
+      if (c.openTime + span - 1 < nowRef.ms) return { ...base, provenance };
       // forming: намеренно искажённая свеча (экстремумы за пределами настоящих)
-      return { ...toOhlcv(c), high: c.high * 1.5, low: c.low * 0.5, close: c.open };
+      return { ...base, high: c.high * 1.5, low: c.low * 0.5, close: c.open, provenance };
     });
     return out;
   });
@@ -153,6 +166,7 @@ describe('LiveSignalEngine × archive replay × ledger lifecycle (mock exchange,
     expect(status.perSymbol.BTC!.lastEvaluatedBarOpenTime).toBe(record.setupOpenTime);
     expect(status.perSymbol.BTC!.replays[STRATEGY_IDS['V3.0']]!.records).toBeGreaterThan(0);
     expect(status.perSymbol.BTC!.closedBars['1h']).toBe(CANDLE_LIMIT_1H - 1);   // 1000 запрошено, последняя — forming
+    expect(status.perSymbol.BTC!.source).toEqual({ exchange: 'binance', isFallback: false });
 
     // Повторный скан на том же баре: ничего нового, дублей нет.
     const before = ledger.getSetups().length;
@@ -228,6 +242,37 @@ describe('LiveSignalEngine × archive replay × ledger lifecycle (mock exchange,
     const summary = ledger.getSummary();
     expect(summary.totalSetups).toBeGreaterThanOrEqual(chosen.length);
     expect(summary.tradesClosed).toBe(chosen.filter((c) => c.record.fill).length);
+  });
+
+  it('surfaces the candle source honestly: KuCoin fallback is marked as such, unknown provenance stays null', async () => {
+    const scenarios = pickScenarios();
+    const nowRef = { ms: justAfterClose(scenarios[0]!.setupIndex) };
+    const { provider } = exchangeLikeProvider(nowRef, { fallbackSymbols: ['ETH'] });
+    const engine = LiveSignalEngine.getInstance({
+      provider, symbols: ['BTC', 'ETH'], strategies: ['V3.0'], now: () => nowRef.ms, yieldBetweenSymbols: false,
+    })!;
+    await engine.scanNow();
+    const st = engine.getStatus();
+    expect(st.perSymbol.BTC!.source).toEqual({ exchange: 'binance', isFallback: false });
+    expect(st.perSymbol.ETH!.source).toEqual({ exchange: 'kucoin', isFallback: true });
+
+    // Провайдер без провенанса (демо/мок) — честный null, а не выдуманная биржа.
+    const nowRef2 = { ms: justAfterClose(scenarios[0]!.setupIndex) };
+    LiveSignalEngine.resetInstance();
+    const bare = exchangeLikeProvider(nowRef2);
+    const bareProvider = {
+      ...bare.provider,
+      getCandles: vi.fn(async (symbol: string, tf: Timeframe, limit?: number) => (
+        (await (bare.provider as unknown as {
+          getCandles: (s: string, t: Timeframe, l?: number) => Promise<OHLCV[]>;
+        }).getCandles(symbol, tf, limit)).map(({ provenance: _drop, ...rest }) => rest as OHLCV)
+      )),
+    } as unknown as MarketDataProvider;
+    const bareEngine = LiveSignalEngine.getInstance({
+      provider: bareProvider, symbols: ['BTC'], strategies: ['V3.0'], now: () => nowRef2.ms, yieldBetweenSymbols: false,
+    })!;
+    await bareEngine.scanNow();
+    expect(bareEngine.getStatus().perSymbol.BTC!.source).toBeNull();
   });
 
   it('records provider failures per symbol in the status instead of swallowing them', async () => {

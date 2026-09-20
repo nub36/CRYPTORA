@@ -95,6 +95,12 @@ export interface SymbolScanStatus {
   lastEvaluatedBarOpenTime: number | null;
   /** Есть ли пропуски в 1h-серии окна (движок продолжает работу, но честно сообщает). */
   gaps1h: number;
+  /**
+   * Источник закрытых 1h-свечей окна (провенанс последней свечи от провайдера):
+   * Binance — основной, KuCoin — резерв при недоступности Binance. Пользователь
+   * должен видеть, чьи данные попали в сигнал, а не догадываться.
+   */
+  source: { exchange: string; isFallback: boolean } | null;
   replays: Record<string, ReplaySummary>;
   publishedTotal: number;
 }
@@ -135,6 +141,20 @@ export function setupId(strategyId: string, symbol: string, setupOpenTime: numbe
 function errMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   return typeof e === 'string' ? e : 'unknown error';
+}
+
+/**
+ * Провенанс серии, которой пользовался скан: берём его у последней свечи,
+ * у которой он есть (Binance — основной источник, KuCoin — резерв).
+ * Если провайдер провенанс не отдаёт (демо/моки) — честный `null`, без догадок.
+ */
+function sourceOf(raw: readonly OHLCV[] | null | undefined): { exchange: string; isFallback: boolean } | null {
+  if (!Array.isArray(raw)) return null;
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const p = raw[i]?.provenance;
+    if (p?.exchange) return { exchange: p.exchange, isFallback: Boolean(p.isFallback) };
+  }
+  return null;
 }
 
 /** Закрытые свечи по возрастанию времени, без дублей. */
@@ -334,7 +354,8 @@ export class LiveSignalEngine {
     return {
       status: {
         symbol, pair: toPair(symbol), lastScanAt: null, lastError: null,
-        closedBars: { '1h': 0, '4h': 0, '1d': 0 }, lastEvaluatedBarOpenTime: null, gaps1h: 0, replays: {}, publishedTotal: 0,
+        closedBars: { '1h': 0, '4h': 0, '1d': 0 }, lastEvaluatedBarOpenTime: null, gaps1h: 0,
+        source: null, replays: {}, publishedTotal: 0,
       },
       retrospective: {},
     };
@@ -382,6 +403,7 @@ export class LiveSignalEngine {
 
     const nowMs = this.now();
     const h1Raw = await this.provider.getCandles(symbol, '1h', CANDLE_LIMIT_1H);
+    st.status.source = sourceOf(h1Raw);
     const h1 = toClosedArchive(h1Raw, '1h', nowMs);
     st.status.closedBars['1h'] = h1.length;
     st.status.gaps1h = countGaps(h1, 3_600_000);

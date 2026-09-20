@@ -241,6 +241,7 @@ export const SignalsPage: React.FC = () => {
                 <thead>
                   <tr className="text-left text-slate-500">
                     <th className="py-1 pr-3 font-normal">Инструмент</th>
+                    <th className="py-1 pr-3 font-normal">Источник свечей</th>
                     <th className="py-1 pr-3 font-normal">Закрытых 1h / 4h / 1d</th>
                     <th className="py-1 pr-3 font-normal">Последний бар</th>
                     <th className="py-1 pr-3 font-normal">V3.0 окно</th>
@@ -264,6 +265,13 @@ export const SignalsPage: React.FC = () => {
                     return (
                       <tr key={s.symbol} className="border-t border-surface-border/60">
                         <td className="py-1 pr-3 font-mono text-slate-200">{s.pair}</td>
+                        <td className="py-1 pr-3 font-mono text-slate-300">
+                          {s.source
+                            ? (s.source.isFallback
+                              ? <span className="text-amber-300" title="Binance недоступен — свечи взяты из резервного источника">{s.source.exchange} (резерв)</span>
+                              : s.source.exchange)
+                            : <span className="text-slate-600">—</span>}
+                        </td>
                         <td className="py-1 pr-3 font-mono text-slate-300">{s.closedBars['1h']} / {s.closedBars['4h']} / {s.closedBars['1d']}{s.gaps1h > 0 ? ` · пропусков ${s.gaps1h}` : ''}</td>
                         <td className="py-1 pr-3 font-mono text-slate-300">{fmtUtc(s.lastEvaluatedBarOpenTime)}</td>
                         <td className="py-1 pr-3">{cell('V3_0_HTF_LIQUIDATION_TRAP')}</td>
@@ -285,6 +293,11 @@ export const SignalsPage: React.FC = () => {
               «Окно» — сколько сетапов стратегия нашла бы на последних закрытых барах (реплей архивного раннера) и их исходы по правилам
               стратегии, net R по модели 2/5 bps. Это диагностика того, что стратегии считаются на фактических данных, а не трек-рекорд:
               в журнал попадают только сетапы, сформированные после запуска движка.
+            </p>
+            <p className="ui-helper mt-1">
+              «Источник свечей» — чьи данные использовал скан: Binance (основной) или KuCoin (резерв при недоступности Binance).
+              Если резерв отдал меньше запрошенной истории, это видно по числу закрытых баров, и движок сообщает о нехватке истории
+              вместо молчания; данные при этом не подставляются и не дорисовываются.
             </p>
           </Collapsible>
         </div>
