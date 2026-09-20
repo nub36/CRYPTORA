@@ -30,7 +30,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - name: Run e2e (capture output)
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee /tmp/e2e.log
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -38,3 +42,12 @@ jobs:
           name: playwright-report
           path: playwright-report
           retention-days: 7
+      # Логи/артефакты недоступны из части сред — дублируем причину падения в аннотации
+      # check-run (читаются через API без blob-хранилища).
+      - name: Emit e2e failure details as annotations
+        if: failure()
+        shell: bash
+        run: |
+          grep -aE "✘|passed|failed|Error|Timed out|timed out|timeout|Error:" /tmp/e2e.log | tail -30 | while IFS= read -r line; do
+            echo "::error::${line:0:180}"
+          done
