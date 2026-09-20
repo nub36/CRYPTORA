@@ -185,11 +185,14 @@ export const MarketDataProviderComponent: React.FC<{
         feedManager.subscribeSymbol(sym);
       }
 
-      // Start live signal engine (V3.0 strategy on 6 symbols)
+      // LIVE-движок сигналов: V3.0 / V3.3 / V2.8 на 6 инструментах, только закрытые свечи.
+      // start() идемпотентен — повторный запуск эффекта в StrictMode не создаёт второй таймер.
       try {
         const signalEngine = LiveSignalEngine.getInstance({ provider: singletonLiveProvider });
         signalEngine?.start();
-      } catch { /* non-fatal */ }
+      } catch (e) {
+        console.error('[CRYPTORA] LiveSignalEngine failed to start', e);
+      }
     } else {
       feedManager.disconnect();
       setRealtimeStatus('idle');
@@ -199,6 +202,8 @@ export const MarketDataProviderComponent: React.FC<{
     return () => {
       unsubscribeConnection();
       unsubscribeTickers();
+      // Останавливаем таймеры движка при размонтировании провайдера (тесты, StrictMode).
+      LiveSignalEngine.getInstance()?.stop();
     };
   }, [dataMode]);
 

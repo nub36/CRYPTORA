@@ -266,4 +266,33 @@ describe('KuCoin Adapter & DTO Validation', () => {
     const adapter = new KuCoinSpotAdapter({ fetchFn: mockFetch as any });
     await expect(adapter.fetch24hrStats('BTC-USDT')).rejects.toThrow(AdapterNetworkError);
   });
+
+  it('requests an explicit candle window (startAt/endAt in seconds) so fallback depth is deterministic', async () => {
+    const urls: string[] = [];
+    const mockFetch = async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(KUCOIN_CANDLES_RESPONSE_FIXTURE), { status: 200 });
+    };
+
+    const adapter = new KuCoinSpotAdapter({ fetchFn: mockFetch as any });
+    const candles = await adapter.fetchCandles('btc-usdt', '1hour', {
+      startAtMs: 1_726_000_000_000,
+      endAtMs: 1_726_003_600_000,
+    });
+    expect(candles.length).toBe(2);
+    expect(urls[0]).toContain('symbol=BTC-USDT');
+    expect(urls[0]).toContain('type=1hour');
+    expect(urls[0]).toContain('startAt=1726000000'); // ms → seconds
+    expect(urls[0]).toContain('endAt=1726003600');
+
+    // Без окна параметры не добавляются (обратная совместимость).
+    await adapter.fetchCandles('BTC-USDT', '1hour');
+    expect(urls[1]).not.toContain('startAt');
+    expect(urls[1]).not.toContain('endAt');
+
+    // Нечисловое окно игнорируется, а не превращается в NaN в запросе.
+    await adapter.fetchCandles('BTC-USDT', '1hour', { startAtMs: NaN, endAtMs: Number.POSITIVE_INFINITY });
+    expect(urls[2]).not.toContain('startAt');
+    expect(urls[2]).not.toContain('endAt');
+  });
 });

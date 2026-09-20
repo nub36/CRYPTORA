@@ -151,6 +151,39 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     expect(fallbackCandles[0].provenance?.isFallback).toBe(true);
   });
 
+  it('KuCoin fallback: запрашивает явное окно и обрезает глубину до запрошенного limit', async () => {
+    const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchKlines').mockRejectedValue(new AdapterNetworkError('binance'));
+
+    const kucoinMock = new KuCoinSpotAdapter();
+    const windows: Array<{ startAtMs?: number; endAtMs?: number } | undefined> = [];
+    // KuCoin отдаёт новейшие первыми: 5 баров, из них последний — формирующийся.
+    const rows = [4, 3, 2, 1, 0].map((i) => [
+      String(1_726_358_400 + i * 3600), '63800.0', '64950.0', '65400.0', '63500.0', '980.0', '63000000.0',
+    ]);
+    vi.spyOn(kucoinMock, 'fetchCandles').mockImplementation(async (_s: string, _t?: string, w?: any) => {
+      windows.push(w);
+      return rows as any;
+    });
+
+    const provider = new LiveMarketDataProvider({
+      binanceAdapter: binanceMock,
+      kucoinAdapter: kucoinMock,
+      cacheTtlMs: 0,
+    });
+    const candles = await provider.getCandles('BTC', '1h', 3);
+
+    expect(candles.length).toBe(3);
+    // Обрезаем слева: остаются три самых свежих бара в хронологическом порядке.
+    expect(candles[0].time).toBe(1_726_358_400 + 2 * 3600);
+    expect(candles[2].time).toBe(1_726_358_400 + 4 * 3600);
+    expect(candles.every((c) => c.provenance?.exchange === 'kucoin')).toBe(true);
+
+    // Окно запроса = limit + 2 бара «с запасом» на формирующийся бар.
+    expect(windows).toHaveLength(1);
+    expect(windows[0]!.endAtMs! - windows[0]!.startAtMs!).toBe((3 + 2) * 3_600_000);
+  });
+
   it('aggregates live market overview over active spot assets', async () => {
     const binanceMock = new BinanceSpotAdapter();
     vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue(mockBulkTickers());

@@ -1,63 +1,244 @@
 /**
- * LiveSignalEngine — runs archived strategy cores on LIVE candle data.
+ * LiveSignalEngine — три архивные стратегии на LIVE-свечах биржи.
  *
- * V3.0 — HTF Liquidation Trap (validated, flagship)
- * V3.3 — HTF Zone Mitigation (4H swing zone + 1H wick rejection)
- * V2.8 — Sniper (liquidity sweep + impulse reclaim)
+ *   V3.0 — HTF Liquidation Trap      (VALIDATED в источнике; флагман)
+ *   V3.3 — HTF Zone Mitigation        (TRAIN-only; headline-вариант while-protective-displacement)
+ *   V2.8 — Zero-fee Sniper + Trailing (VALIDATED_GROSS_ONLY; замороженный движок V2 @4839074)
  *
- * ⚠️ SIGNALS ONLY — CRYPTORA does NOT execute trades.
+ * Как это работает (без переписывания правил стратегий):
+ *
+ *   1. Раз в `scanIntervalMs` движок запрашивает у LIVE-провайдера закрытые свечи
+ *      1h (+ 4h для структуры, + 1d для HTF-контекста V2.8) по каждому символу.
+ *      Незакрытая (формирующаяся) свеча отбрасывается по `nowMs` — стратегия
+ *      никогда не видит неполный бар.
+ *   2. Когда появляется НОВЫЙ закрытый 1h-бар, для каждой стратегии запускается
+ *      её LIVE-реплей — тот же цикл, что и в исследовательском раннере, на окне
+ *      последних ~1000 закрытых баров (`replays/*`). Сетапы, сформированные на
+ *      последнем закрытом баре, публикуются в журнал аудита (latency 0 баров).
+ *      Остальные записи окна доступны как ретроспектива — диагностика, не журнал.
+ *   3. На каждом скане опубликованные сетапы (ACTIVE/FILLED) ведутся по закрытым
+ *      свечам теми же frozen-функциями (`lifecycle.ts`): исполнение коридора,
+ *      отмена, истечение, TP/SL/таймаут/трейлинг. Исход пишется в журнал один раз.
+ *
+ * Ошибки провайдера не глотаются молча: они попадают в `getStatus().lastError`
+ * и в статус символа. Движок идемпотентен к повторному `start()` (StrictMode).
+ *
+ * ⚠️ ТОЛЬКО СИГНАЛЫ — CRYPTORA НЕ исполняет сделки.
  */
 
 import type { MarketDataProvider } from '@/services/data/MarketDataProvider';
-import type { Timeframe } from '@/types/market';
-import type { ArchiveCandle } from '@/services/strategyArchive/types';
-import { SignalsAuditLedger } from '@/services/signals/SignalsAuditLedger';
+import type { OHLCV, Timeframe } from '@/types/market';
+import type { ArchiveCandle, ArchiveTimeframe } from '@/services/strategyArchive/types';
+import { SignalsAuditLedger, type AnalyticalSetup, type SetupInput } from '@/services/signals/SignalsAuditLedger';
 import { ohlcvToArchive } from '@/services/signals/live/ohlcvAdapter';
-import {
-  V30_CONSTANTS,
-  confirmedLevels,
-  detectTrap,
-  buildPending,
-} from '@/services/strategyArchive/definitions/v3_0-htf-liquidation-trap/v30Core';
-import { V33_CONSTANTS, bodyRatio as v33BodyRatio, rejectionWick } from '@/services/strategyArchive/definitions/v3_3-htf-zone-mitigation/v33Core';
-import { atrAt, rvolAt, findSwingsV2 } from '@/services/strategyArchive/shared/primitives';
-import { FROZEN_ENGINE } from '@/services/strategyArchive/shared/frozenSettings';
+import { runV30LiveReplay, V30_STRATEGY_ID } from './replays/v30LiveReplay';
+import { runV33LiveReplay, V33_STRATEGY_ID } from './replays/v33LiveReplay';
+import { runV28LiveReplay, V28_STRATEGY_ID } from './replays/v28LiveReplay';
+import type { ReplayOutput, ReplayRecord } from './replays/types';
+import { trackPublishedSetup } from './lifecycle';
 
 export type SignalStrategy = 'V3.0' | 'V3.3' | 'V2.8';
+
+export const STRATEGY_IDS: Readonly<Record<SignalStrategy, string>> = Object.freeze({
+  'V3.0': V30_STRATEGY_ID,
+  'V3.3': V33_STRATEGY_ID,
+  'V2.8': V28_STRATEGY_ID,
+});
+
+export const DEFAULT_SIGNAL_SYMBOLS: readonly string[] = Object.freeze(['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE']);
+export const DEFAULT_SCAN_INTERVAL_MS = 60_000;
+export const DEFAULT_INITIAL_DELAY_MS = 5_000;
+/** Binance /api/v3/klines отдаёт не более 1000 свечей за запрос. */
+export const CANDLE_LIMIT_1H = 1000;
+export const CANDLE_LIMIT_4H = 1000;
+export const CANDLE_LIMIT_1D = 400;
+export const EXEC_TIMEFRAME: Timeframe = '1h';
 
 export interface LiveSignalConfig {
   provider: MarketDataProvider;
   symbols?: readonly string[];
   strategies?: SignalStrategy[];
+  scanIntervalMs?: number;
+  initialDelayMs?: number;
+  /** Источник времени (тесты). */
+  now?: () => number;
+  /** Уступать событийному циклу между символами (по умолчанию да — UI не замирает). */
+  yieldBetweenSymbols?: boolean;
+}
+
+export interface ReplaySummary {
+  strategyId: string;
+  records: number;
+  awaiting: number;
+  filled: number;
+  closed: number;
+  noTrade: number;
+  /** Pending, отклонённые геометрией на баре сетапа (в журнал не публикуются, в воронке исследования = rejected). */
+  unpublishable: number;
+  positiveR: number;
+  negativeR: number;
+  netRSum: number;
+  grossRSum: number;
+  evaluatedBars: number;
+  firstEvaluatedOpenTime: number | null;
+  lastEvaluatedOpenTime: number | null;
+  notes: string[];
+}
+
+export interface SymbolScanStatus {
+  symbol: string;
+  pair: string;
+  lastScanAt: string | null;
+  lastError: string | null;
+  closedBars: { '1h': number; '4h': number; '1d': number };
+  /** openTime последнего закрытого 1h-бара, по которому запускалось обнаружение. */
+  lastEvaluatedBarOpenTime: number | null;
+  /** Есть ли пропуски в 1h-серии окна (движок продолжает работу, но честно сообщает). */
+  gaps1h: number;
+  /**
+   * Источник закрытых 1h-свечей окна (провенанс последней свечи от провайдера):
+   * Binance — основной, KuCoin — резерв при недоступности Binance. Пользователь
+   * должен видеть, чьи данные попали в сигнал, а не догадываться.
+   */
+  source: { exchange: string; isFallback: boolean } | null;
+  replays: Record<string, ReplaySummary>;
+  publishedTotal: number;
+}
+
+export interface EngineStatus {
+  running: boolean;
+  scanning: boolean;
+  scanCount: number;
+  lastScanStartedAt: string | null;
+  lastScanFinishedAt: string | null;
+  lastScanDurationMs: number | null;
+  lastError: string | null;
+  nextScanAt: string | null;
+  scanIntervalMs: number;
+  symbols: readonly string[];
+  strategies: readonly SignalStrategy[];
+  perSymbol: Record<string, SymbolScanStatus>;
+  providerIsDemo: boolean;
 }
 
 interface SymbolState {
-  lastCheckedBarTime: number;
+  status: SymbolScanStatus;
+  retrospective: Record<string, ReplayRecord[]>;
 }
 
-const DEFAULT_SYMBOLS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE'];
+type Listener = () => void;
 
-function fmtPrice(p: number): number {
-  return Number(p.toFixed(p > 100 ? 2 : p > 1 ? 4 : 6));
+/** BASE → BASE/USDT (котировка LIVE-провайдера — USDT-спот Binance/KuCoin). */
+export function toPair(symbol: string): string {
+  const upper = symbol.toUpperCase();
+  return upper.includes('/') ? upper : `${upper}/USDT`;
+}
+
+export function setupId(strategyId: string, symbol: string, setupOpenTime: number): string {
+  return `${strategyId}-${symbol.toUpperCase()}-${setupOpenTime}`;
+}
+
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return typeof e === 'string' ? e : 'unknown error';
+}
+
+/**
+ * Провенанс серии, которой пользовался скан: берём его у последней свечи,
+ * у которой он есть (Binance — основной источник, KuCoin — резерв).
+ * Если провайдер провенанс не отдаёт (демо/моки) — честный `null`, без догадок.
+ */
+function sourceOf(raw: readonly OHLCV[] | null | undefined): { exchange: string; isFallback: boolean } | null {
+  if (!Array.isArray(raw)) return null;
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const p = raw[i]?.provenance;
+    if (p?.exchange) return { exchange: p.exchange, isFallback: Boolean(p.isFallback) };
+  }
+  return null;
+}
+
+/** Закрытые свечи по возрастанию времени, без дублей. */
+function toClosedArchive(raw: readonly OHLCV[] | null | undefined, tf: ArchiveTimeframe, nowMs: number): ArchiveCandle[] {
+  const conv = (Array.isArray(raw) ? raw : []).map((c) => ohlcvToArchive(c, tf, nowMs)).filter((c) => c.isClosed);
+  conv.sort((a, b) => a.openTime - b.openTime);
+  const out: ArchiveCandle[] = [];
+  for (const c of conv) {
+    const last = out[out.length - 1];
+    if (last && last.openTime === c.openTime) out[out.length - 1] = c;
+    else out.push(c);
+  }
+  return out;
+}
+
+function countGaps(candles: readonly ArchiveCandle[], spanMs: number): number {
+  let gaps = 0;
+  for (let i = 1; i < candles.length; i++) {
+    if (candles[i]!.openTime - candles[i - 1]!.openTime !== spanMs) gaps++;
+  }
+  return gaps;
+}
+
+export function summarizeReplay(strategyId: string, out: ReplayOutput): ReplaySummary {
+  const s: ReplaySummary = {
+    strategyId, records: out.records.length, awaiting: 0, filled: 0, closed: 0, noTrade: 0, unpublishable: 0,
+    positiveR: 0, negativeR: 0, netRSum: 0, grossRSum: 0,
+    evaluatedBars: out.evaluatedBars, firstEvaluatedOpenTime: out.firstEvaluatedOpenTime,
+    lastEvaluatedOpenTime: out.lastEvaluatedOpenTime, notes: [...out.notes],
+  };
+  for (const r of out.records) {
+    if (!r.publishable) s.unpublishable++;
+    if (r.fill) s.filled++;
+    if (!r.outcome) { if (!r.fill) s.awaiting++; continue; }
+    if (r.fill && r.outcome.grossR !== null) {
+      s.closed++;
+      s.grossRSum += r.outcome.grossR;
+      s.netRSum += r.outcome.netR ?? r.outcome.grossR;
+      if (r.outcome.grossR > 0) s.positiveR++; else s.negativeR++;
+    } else {
+      s.noTrade++;
+    }
+  }
+  s.netRSum = Math.round(s.netRSum * 1000) / 1000;
+  s.grossRSum = Math.round(s.grossRSum * 1000) / 1000;
+  return s;
 }
 
 export class LiveSignalEngine {
   private static instance: LiveSignalEngine | null = null;
 
-  private provider: MarketDataProvider;
-  private symbols: readonly string[];
-  private strategies: SignalStrategy[];
-  private ledger: SignalsAuditLedger;
+  private readonly provider: MarketDataProvider;
+  private readonly symbols: readonly string[];
+  private readonly strategies: SignalStrategy[];
+  private readonly ledger: SignalsAuditLedger;
+  private readonly scanIntervalMs: number;
+  private readonly initialDelayMs: number;
+  private readonly now: () => number;
+  private readonly yieldBetweenSymbols: boolean;
+
   private state = new Map<string, SymbolState>();
+  private listeners = new Set<Listener>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  private initialTimer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
-  private scanInFlight = false;
+  private scanning = false;
+  private scanCount = 0;
+  private lastScanStartedAt: string | null = null;
+  private lastScanFinishedAt: string | null = null;
+  private lastScanDurationMs: number | null = null;
+  private lastError: string | null = null;
+  private nextScanAtMs: number | null = null;
+  private currentScan: Promise<void> | null = null;
 
   constructor(config: LiveSignalConfig) {
     this.provider = config.provider;
-    this.symbols = config.symbols ?? DEFAULT_SYMBOLS;
+    this.symbols = config.symbols ?? DEFAULT_SIGNAL_SYMBOLS;
     this.strategies = config.strategies ?? ['V3.0', 'V3.3', 'V2.8'];
+    this.scanIntervalMs = config.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
+    this.initialDelayMs = config.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
+    this.now = config.now ?? (() => Date.now());
+    this.yieldBetweenSymbols = config.yieldBetweenSymbols ?? true;
     this.ledger = SignalsAuditLedger.getInstance();
+    for (const symbol of this.symbols) this.state.set(symbol, this.freshState(symbol));
   }
 
   public static getInstance(config?: LiveSignalConfig): LiveSignalEngine | null {
@@ -74,252 +255,275 @@ export class LiveSignalEngine {
     LiveSignalEngine.instance = null;
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Жизненный цикл движка                                               */
+  /* ------------------------------------------------------------------ */
+
   public start(): void {
     if (this.running) return;
     this.running = true;
-    this.timer = setInterval(() => this.scan(), 60_000);
-    setTimeout(() => this.scan(), 5_000);
+    this.initialTimer = setTimeout(() => {
+      this.initialTimer = null;
+      void this.scan(false);
+    }, this.initialDelayMs);
+    this.timer = setInterval(() => { void this.scan(false); }, this.scanIntervalMs);
+    this.nextScanAtMs = this.now() + this.initialDelayMs;
+    this.emit();
   }
 
   public stop(): void {
     this.running = false;
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    if (this.initialTimer) { clearTimeout(this.initialTimer); this.initialTimer = null; }
+    this.nextScanAtMs = null;
+    this.emit();
   }
 
   public isActive(): boolean { return this.running; }
 
-  private async scan(): Promise<void> {
-    // Н8: guard от наложения сканов — если предыдущий ещё идёт (медленная сеть),
-    // новый тик пропускается. Без этого запросы свечей множились каждый тик.
-    if (this.scanInFlight) return;
-    // Н8: фоновая вкладка не сканируется — лимиты источников не сжигаются.
-    if (typeof document !== 'undefined' && document.hidden) return;
-    this.scanInFlight = true;
-    try {
-      // Expire signals older than 4 hours
-      this.ledger.expireStale();
+  public subscribe(listener: Listener): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
 
-      for (const symbol of this.symbols) {
-        try { await this.scanSymbol(symbol); } catch { /* non-fatal */ }
-      }
-    } finally {
-      this.scanInFlight = false;
+  private emit(): void {
+    for (const l of this.listeners) {
+      try { l(); } catch { /* слушатель не должен ломать движок */ }
     }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Статус и ретроспектива                                              */
+  /* ------------------------------------------------------------------ */
+
+  public getStatus(): EngineStatus {
+    const perSymbol: Record<string, SymbolScanStatus> = {};
+    for (const [symbol, st] of this.state) {
+      perSymbol[symbol] = {
+        ...st.status,
+        closedBars: { ...st.status.closedBars },
+        replays: Object.fromEntries(Object.entries(st.status.replays).map(([k, v]) => [k, { ...v, notes: [...v.notes] }])),
+      };
+    }
+    return {
+      running: this.running,
+      scanning: this.scanning,
+      scanCount: this.scanCount,
+      lastScanStartedAt: this.lastScanStartedAt,
+      lastScanFinishedAt: this.lastScanFinishedAt,
+      lastScanDurationMs: this.lastScanDurationMs,
+      lastError: this.lastError,
+      nextScanAt: this.nextScanAtMs !== null ? new Date(this.nextScanAtMs).toISOString() : null,
+      scanIntervalMs: this.scanIntervalMs,
+      symbols: this.symbols,
+      strategies: [...this.strategies],
+      perSymbol,
+      providerIsDemo: this.provider.isDemo,
+    };
+  }
+
+  /**
+   * Ретроспектива окна: все сетапы, которые реплей стратегии нашёл на последних
+   * закрытых барах (включая исходы по закрытым свечам). Диагностика того, что
+   * стратегии действительно считаются на фактических данных. НЕ журнал аудита,
+   * не хэшируется и не является трек-рекордом.
+   */
+  public getRetrospective(filter?: { symbol?: string; strategyId?: string }): ReplayRecord[] {
+    const out: ReplayRecord[] = [];
+    for (const [symbol, st] of this.state) {
+      if (filter?.symbol && filter.symbol !== symbol) continue;
+      for (const [strategyId, records] of Object.entries(st.retrospective)) {
+        if (filter?.strategyId && filter.strategyId !== strategyId) continue;
+        out.push(...records);
+      }
+    }
+    out.sort((a, b) => b.setupOpenTime - a.setupOpenTime);
+    return out;
+  }
+
+  /** Выполнить один скан немедленно (кнопка «Проверить сейчас», тесты) — работает и без start(). */
+  public async scanNow(): Promise<void> {
+    await this.scan(true);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Скан                                                                */
+  /* ------------------------------------------------------------------ */
+
+  private freshState(symbol: string): SymbolState {
+    return {
+      status: {
+        symbol, pair: toPair(symbol), lastScanAt: null, lastError: null,
+        closedBars: { '1h': 0, '4h': 0, '1d': 0 }, lastEvaluatedBarOpenTime: null, gaps1h: 0,
+        source: null, replays: {}, publishedTotal: 0,
+      },
+      retrospective: {},
+    };
+  }
+
+  private async scan(manual = false): Promise<void> {
+    if (this.currentScan) return this.currentScan;
+    // Н8 (v0.9.0): фоновая вкладка не сканируется — лимиты источников данных
+    // не сжигаются в фоне. Пропущенный таймерный тик не планируется заново:
+    // следующий тик интервала выполнится после возврата видимости.
+    if (typeof document !== 'undefined' && document.hidden && !manual) return;
+    this.currentScan = this.runScan(manual).finally(() => { this.currentScan = null; });
+    return this.currentScan;
+  }
+
+  private async runScan(manual: boolean): Promise<void> {
+    const startedMs = this.now();
+    this.scanning = true;
+    this.lastScanStartedAt = new Date(startedMs).toISOString();
+    this.emit();
+    let firstError: string | null = null;
+    for (const symbol of this.symbols) {
+      // Скан по таймеру прерывается, если движок остановили во время обхода; ручной — доводится до конца.
+      if (!manual && !this.running) break;
+      try {
+        await this.scanSymbol(symbol);
+      } catch (e) {
+        const msg = errMessage(e);
+        const st = this.state.get(symbol);
+        if (st) st.status.lastError = msg;
+        if (!firstError) firstError = `${symbol}: ${msg}`;
+      }
+      if (this.yieldBetweenSymbols) await new Promise<void>((r) => setTimeout(r, 0));
+    }
+    this.scanCount++;
+    this.lastError = firstError;
+    const finishedMs = this.now();
+    this.lastScanFinishedAt = new Date(finishedMs).toISOString();
+    this.lastScanDurationMs = finishedMs - startedMs;
+    this.nextScanAtMs = this.running ? finishedMs + this.scanIntervalMs : null;
+    this.scanning = false;
+    this.emit();
   }
 
   private async scanSymbol(symbol: string): Promise<void> {
-    const [h1Raw, h4Raw] = await Promise.all([
-      this.provider.getCandles(symbol, '1h' as Timeframe),
-      this.provider.getCandles(symbol, '4h' as Timeframe),
-    ]);
+    const st = this.state.get(symbol) ?? this.freshState(symbol);
+    this.state.set(symbol, st);
+    const pair = st.status.pair;
 
-    if (h1Raw.length < V30_CONSTANTS.WARMUP_BARS) return;
+    const nowMs = this.now();
+    const h1Raw = await this.provider.getCandles(symbol, '1h', CANDLE_LIMIT_1H);
+    st.status.source = sourceOf(h1Raw);
+    const h1 = toClosedArchive(h1Raw, '1h', nowMs);
+    st.status.closedBars['1h'] = h1.length;
+    st.status.gaps1h = countGaps(h1, 3_600_000);
+    st.status.lastScanAt = new Date(nowMs).toISOString();
 
-    // P0 look-ahead guard: pass the current instant so the adapter can mark the
-    // still-forming candle as isClosed=false. Binance REST returns the forming
-    // candle in the array; without this the closedBars filter below would let
-    // strategies evaluate incomplete data as if it were final.
-    const nowMs = Date.now();
-    const h1 = h1Raw.map((c) => ohlcvToArchive(c, '1h', nowMs));
-    const h4 = h4Raw.map((c) => ohlcvToArchive(c, '4h', nowMs));
+    // 1. Ведение опубликованных сетапов по закрытым свечам (всегда — дёшево).
+    this.trackOpenSetups(pair, h1);
 
-    let symState = this.state.get(symbol);
-    if (!symState) {
-      symState = { lastCheckedBarTime: 0 };
-      this.state.set(symbol, symState);
-    }
-
-    const lastBar = h1[h1.length - 1];
-    if (!lastBar || lastBar.openTime === symState.lastCheckedBarTime) return;
-    symState.lastCheckedBarTime = lastBar.openTime;
-
-    const closedBars = h1.filter((c) => c.isClosed);
-    if (closedBars.length < 2) return;
-    const bar = closedBars[closedBars.length - 1];
-    const barIndex = closedBars.length - 1;
-
-    if (this.strategies.includes('V3.0')) this.runV30(symbol, bar, barIndex, closedBars, h4);
-    if (this.strategies.includes('V3.3')) this.runV33(symbol, bar, barIndex, closedBars, h4);
-    if (this.strategies.includes('V2.8')) this.runV28(symbol, bar, barIndex, closedBars);
-  }
-
-  /* ===== V3.0 — HTF Liquidation Trap ===== */
-
-  private runV30(symbol: string, bar: ArchiveCandle, barIndex: number, h1: ArchiveCandle[], h4: ArchiveCandle[]): void {
-    const strength = FROZEN_ENGINE.swingLookback;
-    const atr = atrAt(h1, barIndex, FROZEN_ENGINE.atrPeriod);
-    const rvol = rvolAt(h1, barIndex, FROZEN_ENGINE.volumePeriod);
-    if (!atr || atr <= 0) return;
-
-    const levels = confirmedLevels(h4, bar.closeTime, strength);
-    if (levels.swingHigh === null || levels.swingLow === null) return;
-
-    const trap = detectTrap(bar, levels as { swingHigh: number; swingLow: number }, rvol);
-    if (!trap) return;
-
-    const pending = buildPending(trap, bar, levels as { swingHigh: number; swingLow: number }, atr, barIndex);
-
-    this.publish({
-      id: `v30-${symbol}-${bar.openTime}`, strategy: 'V3.0', symbol, direction: pending.dir,
-      entryLow: pending.zoneLow, entryHigh: pending.zoneHigh, stop: pending.stop,
-      tp1: pending.tp1, tp2: pending.tp2,
-      confirmingFactors: [
-        `Ложный пробой 4H ${pending.dir === 'SHORT' ? 'максимума' : 'минимума'} (${trap.level.toFixed(2)})`,
-        `Тело ${(trap.bodyRatio * 100).toFixed(1)}% (мин 35%)`,
-        `RVOL ${trap.rvol.toFixed(2)}x (мин 1.25x)`,
-      ],
-      invalidationFactors: [
-        'Ложный пробой не подтвердился',
-        '⚠️ V3.0 (валидирована), не инвест-совет',
-      ],
-    });
-  }
-
-  /* ===== V3.3 — HTF Zone Mitigation ===== */
-
-  private runV33(symbol: string, bar: ArchiveCandle, barIndex: number, h1: ArchiveCandle[], h4: ArchiveCandle[]): void {
-    const atr = atrAt(h1, barIndex, FROZEN_ENGINE.atrPeriod);
-    const rvol = rvolAt(h1, barIndex);
-    if (!atr || atr <= 0 || rvol === null || !(rvol > V33_CONSTANTS.MIN_RVOL)) return;
-
-    const br = v33BodyRatio(bar);
-    if (br < V33_CONSTANTS.WICK_FRAC_MIN) return;
-
-    // Find 4H swing zones
-    const strength = FROZEN_ENGINE.swingLookback;
-    const swings4 = findSwingsV2(h4, strength);
-    if (swings4.length < 2) return;
-
-    // Check each recent swing as a zone
-    for (let i = swings4.length - 1; i >= Math.max(0, swings4.length - 4); i--) {
-      const sw = swings4[i];
-      if (!sw) continue;
-
-      const zoneHalf = 0.5 * atr;
-      const zoneLow = sw.price - zoneHalf;
-      const zoneHigh = sw.price + zoneHalf;
-      const dir = sw.kind === 'LOW' ? 'LONG' as const : 'SHORT' as const;
-
-      // Does the bar enter this zone?
-      if (bar.low > zoneHigh || bar.high < zoneLow) continue;
-
-      // Wick rejection?
-      const wick = rejectionWick(bar, dir);
-      if (wick < V33_CONSTANTS.WICK_FRAC_MIN) continue;
-
-      const entryMid = (zoneLow + zoneHigh) / 2;
-      const half = V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr;
-      const stop = dir === 'LONG' ? bar.low - V33_CONSTANTS.STOP_BUFFER_ATR * atr : bar.high + V33_CONSTANTS.STOP_BUFFER_ATR * atr;
-      const eq = (bar.high + bar.low) / 2;
-      const tp1 = dir === 'LONG' ? eq + Math.abs(eq - entryMid) : eq - Math.abs(entryMid - eq);
-      const risk = Math.abs(entryMid - stop);
-      const tp2 = dir === 'LONG' ? entryMid + 2 * risk : entryMid - 2 * risk;
-
-      this.publish({
-        id: `v33-${symbol}-${bar.openTime}`, strategy: 'V3.3', symbol, direction: dir,
-        entryLow: entryMid - half, entryHigh: entryMid + half, stop, tp1, tp2,
-        confirmingFactors: [
-          `4H зона (${sw.kind === 'LOW' ? 'спрос' : 'предложение'}) ${sw.price.toFixed(2)}`,
-          `Отбой: тень ${(wick * 100).toFixed(1)}% (мин 35%)`,
-          `RVOL ${rvol.toFixed(2)}x (мин 1.25x)`,
-        ],
-        invalidationFactors: [
-          'Зона пробита',
-          '⚠️ V3.3 (TRAIN ONLY), не инвест-совет',
-        ],
-      });
-      return; // one signal per bar
-    }
-  }
-
-  /* ===== V2.8 — Sniper (liquidity sweep + reclaim) ===== */
-
-  private runV28(symbol: string, bar: ArchiveCandle, barIndex: number, h1: ArchiveCandle[]): void {
-    const atr = atrAt(h1, barIndex, FROZEN_ENGINE.atrPeriod);
-    const rvol = rvolAt(h1, barIndex);
-    if (!atr || atr <= 0 || rvol === null || !(rvol > 1.2)) return;
-
-    const range = bar.high - bar.low;
-    if (!(range > 0)) return;
-    const br = Math.abs(bar.close - bar.open) / range;
-    if (br < 0.35) return;
-
-    const strength = Math.min(5, Math.floor(barIndex / 4));
-    if (strength < 2) return;
-    const swings = findSwingsV2(h1.slice(0, barIndex), strength);
-    if (swings.length < 2) return;
-
-    const lastSwing = swings[swings.length - 1];
-    if (!lastSwing) return;
-
-    // Bullish: sweep below swing low, close back above
-    if (lastSwing.kind === 'LOW' && bar.low < lastSwing.price && bar.close > lastSwing.price) {
-      const entry = bar.close;
-      const stop = bar.low - V30_CONSTANTS.STOP_BUFFER_ATR * atr;
-      const risk = entry - stop;
-      if (risk <= 0) return;
-
-      this.publish({
-        id: `v28-${symbol}-${bar.openTime}`, strategy: 'V2.8', symbol, direction: 'LONG',
-        entryLow: entry - V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
-        entryHigh: entry + V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
-        stop, tp1: entry + risk, tp2: entry + 2 * risk,
-        confirmingFactors: [
-          `Свинг-лоу ${lastSwing.price.toFixed(2)} вынесен → выкуп`,
-          `Тело ${(br * 100).toFixed(1)}% (мин 35%)`,
-          `RVOL ${rvol.toFixed(2)}x (мин 1.2x)`,
-        ],
-        invalidationFactors: ['Выкуп не подтвердился', '⚠️ V2.8 (gross only), не инвест-совет'],
-      });
+    const lastClosed = h1[h1.length - 1];
+    if (!lastClosed) {
+      st.status.lastError = 'нет закрытых 1h-свечей';
       return;
     }
+    if (st.status.lastEvaluatedBarOpenTime === lastClosed.openTime) {
+      st.status.lastError = null;
+      return;   // новый бар ещё не закрылся — обнаружение не повторяем
+    }
 
-    // Bearish: sweep above swing high, close back below
-    if (lastSwing.kind === 'HIGH' && bar.high > lastSwing.price && bar.close < lastSwing.price) {
-      const entry = bar.close;
-      const stop = bar.high + V30_CONSTANTS.STOP_BUFFER_ATR * atr;
-      const risk = stop - entry;
-      if (risk <= 0) return;
+    // 2. Структурные серии нужны только при появлении нового закрытого бара.
+    const needs1d = this.strategies.includes('V2.8');
+    const [h4Raw, h1dRaw] = await Promise.all([
+      this.provider.getCandles(symbol, '4h', CANDLE_LIMIT_4H),
+      needs1d ? this.provider.getCandles(symbol, '1D', CANDLE_LIMIT_1D) : Promise.resolve<OHLCV[]>([]),
+    ]);
+    const h4 = toClosedArchive(h4Raw, '4h', nowMs);
+    const h1d = toClosedArchive(h1dRaw, '1d', nowMs);
+    st.status.closedBars['4h'] = h4.length;
+    st.status.closedBars['1d'] = h1d.length;
 
-      this.publish({
-        id: `v28-${symbol}-${bar.openTime}`, strategy: 'V2.8', symbol, direction: 'SHORT',
-        entryLow: entry - V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
-        entryHigh: entry + V33_CONSTANTS.CORRIDOR_ATR_FRAC * atr,
-        stop, tp1: entry - risk, tp2: entry - 2 * risk,
-        confirmingFactors: [
-          `Свинг-хай ${lastSwing.price.toFixed(2)} вынесен → откат`,
-          `Тело ${(br * 100).toFixed(1)}% (мин 35%)`,
-          `RVOL ${rvol.toFixed(2)}x (мин 1.2x)`,
-        ],
-        invalidationFactors: ['Откат не подтвердился', '⚠️ V2.8 (gross only), не инвест-совет'],
-      });
+    // 3. Реплеи стратегий на окне закрытых свечей; публикация сетапов последнего закрытого бара.
+    let published = 0;
+    for (const strategy of this.strategies) {
+      const strategyId = STRATEGY_IDS[strategy];
+      let out: ReplayOutput;
+      try {
+        out = this.runReplay(strategy, symbol, h1, h4, h1d);
+      } catch (e) {
+        st.status.replays[strategyId] = {
+          ...summarizeReplay(strategyId, { records: [], evaluatedBars: 0, firstEvaluatedOpenTime: null, lastEvaluatedOpenTime: null, notes: [] }),
+          notes: [`Ошибка реплея: ${errMessage(e)}`],
+        };
+        st.retrospective[strategyId] = [];
+        continue;
+      }
+      st.status.replays[strategyId] = summarizeReplay(strategyId, out);
+      st.retrospective[strategyId] = out.records;
+      // Журнал аудита — только фактические сетапы: на QA-фикстуре диагностика окна остаётся
+      // видимой (ретроспектива/статус), но в журнал ничего не пишется (см. providerIsDemo).
+      if (!this.provider.isDemo) {
+        for (const rec of out.records) {
+          if (rec.setupOpenTime !== lastClosed.openTime) continue;
+          if (!rec.publishable) continue;
+          if (this.publish(rec, pair, nowMs)) published++;
+        }
+      }
+    }
+    st.status.publishedTotal += published;
+    st.status.lastEvaluatedBarOpenTime = lastClosed.openTime;
+    st.status.lastError = null;
+  }
+
+  private runReplay(
+    strategy: SignalStrategy, symbol: string,
+    h1: readonly ArchiveCandle[], h4: readonly ArchiveCandle[], h1d: readonly ArchiveCandle[],
+  ): ReplayOutput {
+    switch (strategy) {
+      case 'V3.0': return runV30LiveReplay({ symbol, h1, h4 });
+      case 'V3.3': return runV33LiveReplay({ symbol, h1, h4 });
+      case 'V2.8': return runV28LiveReplay({ symbol, h1, htf: { '4h': h4, '1d': h1d } });
+      default: return { records: [], evaluatedBars: 0, firstEvaluatedOpenTime: null, lastEvaluatedOpenTime: null, notes: [] };
     }
   }
 
-  /* ===== Publish ===== */
+  /* ------------------------------------------------------------------ */
+  /* Публикация и ведение                                                */
+  /* ------------------------------------------------------------------ */
 
-  private publish(params: {
-    id: string; strategy: string; symbol: string; direction: 'LONG' | 'SHORT';
-    entryLow: number; entryHigh: number; stop: number; tp1: number; tp2: number;
-    confirmingFactors: string[]; invalidationFactors: string[];
-  }): void {
-    const mid = (params.entryLow + params.entryHigh) / 2;
-    const risk = Math.abs(mid - params.stop);
-    const reward = Math.abs(params.tp2 - mid);
-
-    this.ledger.append({
-      id: params.id,
-      symbol: `${params.symbol}/USDT`,
-      direction: params.direction,
-      timeframe: '1h',
-      entryZone: [fmtPrice(params.entryLow), fmtPrice(params.entryHigh)],
-      invalidationLevel: fmtPrice(params.stop),
-      targets: [fmtPrice(params.tp1), fmtPrice(params.tp2)],
-      riskRewardRatio: risk > 0 ? Number((reward / risk).toFixed(2)) : 0,
-      confirmingFactors: params.confirmingFactors,
-      invalidationFactors: params.invalidationFactors,
-      createdAt: new Date().toISOString(),
+  private publish(rec: ReplayRecord, pair: string, nowMs: number): boolean {
+    const id = setupId(rec.strategyId, rec.symbol, rec.setupOpenTime);
+    if (this.ledger.getById(id)) return false;
+    const input: SetupInput = {
+      id,
+      strategyId: rec.strategyId,
+      strategyVersion: rec.strategyVersion,
+      symbol: pair,
+      direction: rec.direction,
+      timeframe: EXEC_TIMEFRAME,
+      setupOpenTime: rec.setupOpenTime,
+      entryType: rec.entryType,
+      entryZone: [rec.entryZone[0], rec.entryZone[1]],
+      invalidationLevel: rec.stop,
+      targets: [...rec.targets],
+      riskRewardRatio: rec.riskRewardRatio,
+      confirmingFactors: [...rec.confirmingFactors],
+      invalidationFactors: [...rec.invalidationFactors],
+      exitRule: rec.exitRule,
+      validForBars: rec.validForBars,
+      createdAt: new Date(nowMs).toISOString(),
+      latencyBars: 0,
       status: 'ACTIVE',
-    });
+    };
+    this.ledger.append(input);
+    return true;
+  }
+
+  private trackOpenSetups(pair: string, h1: readonly ArchiveCandle[]): void {
+    const open: AnalyticalSetup[] = this.ledger.getActiveSetups().filter((s) => s.symbol === pair && s.timeframe === EXEC_TIMEFRAME);
+    for (const entry of open) {
+      const res = trackPublishedSetup(entry, h1);
+      if (res.kind === 'UNCHANGED' || res.kind === 'SKIP') continue;
+      if (res.kind === 'FILLED') {
+        if (entry.status === 'ACTIVE') this.ledger.markFilled(entry.id, res.fill);
+        continue;
+      }
+      if (res.fill && entry.status === 'ACTIVE') this.ledger.markFilled(entry.id, res.fill);
+      this.ledger.resolve(entry.id, res.outcome, res.fill ?? undefined);
+    }
   }
 }

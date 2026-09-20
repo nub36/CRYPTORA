@@ -112,7 +112,7 @@ export const V28_DISCREPANCIES: readonly SpecResearchDiscrepancy[] = Object.free
     id: 'D-V28-005',
     specStatement: 'Entries and the SMC arm depend on the frozen V2 engine `4839074`.',
     researchBehaviour: 'Sniper entry population (317 TRAIN / 98 VALIDATION) and the SMC arm come from evaluateV2 / resolveEntry / executableLadder / trackOutcome.',
-    impact: 'Reproduced in C6 through the isolated legacy engine port (`legacy/v2`); the port is an archive dependency only, never wired to LIVE or BacktestEngine.',
+    impact: 'Reproduced in C6 through the isolated legacy engine port (`legacy/v2`). The port stays archive-internal: the LIVE signal engine (v0.8.45) consumes it only via the archive wrapper `v28Live.ts` (same evaluateV2 / resolveEntry / executableLadder / trackOutcome / simulateTrailing, unmodified) and never imports `legacy/v2` directly; BacktestEngine never uses it.',
     reproductionPolicy: 'PRESERVE_RESEARCH_BEHAVIOUR',
     evidence: ['research/v28_gross_only.ts imports'],
   },
