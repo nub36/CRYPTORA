@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { MarketDataProvider } from '@/services/data/MarketDataProvider';
 import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
+import { BinanceSpotAdapter } from '@/services/data/adapters/BinanceSpotAdapter';
+import { KuCoinSpotAdapter } from '@/services/data/adapters/KuCoinSpotAdapter';
+import { SourceHealthTracker } from '@/services/data/adapters/sourceHealth';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { LiveSignalEngine } from '@/services/signals/live/LiveSignalEngine';
 import { PlanTier, PlanManager } from '@/services/subscription/PlanManager';
@@ -73,7 +76,14 @@ interface MarketDataContextType {
 const MarketDataContext = createContext<MarketDataContextType | null>(null);
 
 const singletonDemoProvider = new DemoMarketDataProvider();
+// Circuit breaker «здоровья источников» (общий для REST-адаптеров live-провайдера):
+// после систематических отказов endpoint (CORS KuCoin, гео-блок, делистнутый символ)
+// перестаёт долбиться каждым циклом опроса — консоль не засоряется повторными
+// сетевыми ошибками, данные честно помечаются недоступными. См. sourceHealth.ts.
+const liveSourceHealth = new SourceHealthTracker();
 const singletonLiveProvider = new LiveMarketDataProvider({
+  binanceAdapter: new BinanceSpotAdapter({ health: liveSourceHealth }),
+  kucoinAdapter: new KuCoinSpotAdapter({ health: liveSourceHealth }),
   anomalyEngine: RealtimeFeedManager.getInstance().anomalyEngine,
 });
 

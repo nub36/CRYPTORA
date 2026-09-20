@@ -1,9 +1,13 @@
 # STATUS — Текущий статус проекта CRYPTORA
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
-> **Последнее обновление:** 2026-09-17  
-> **Текущая версия:** v0.8.44 (D1-D8 + Corrective Data-Honesty Pass)  
-> **Текущий этап:** CORRECTIVE DATA-HONESTY PASS completed. OI delta null ≠ zero; portfolio beta/vol UNAVAILABLE when no candle data; no silent static fallbacks.  
+> **Последнее обновление:** 2026-09-20  
+> **Текущая версия:** v0.8.45 (Source Health — circuit breaker недоступных REST-источников)  
+> **Текущий этап:** CORRECTIVE PROD-DIAGNOSTICS PASS completed. Систематические сетевые отказы
+> (CORS KuCoin, делистнутый/недоступный на Binance инструмент, гео-блок) больше не долбятся каждым
+> циклом опроса: `SourceHealthTracker` блокирует endpoint+инструмент с backoff, диагностика — один
+> console.warn на эпизод. P11-warn дедуплицирован. Честность данных не затронута (RULES §1):
+> трекер ничего не подменяет — актив с недоступными источниками честно отсутствует/помечен «нет данных».
 > **D5 VERIFIED_NO_CHANGE:** Liquidation normalization/freshness — `LiquidationPulse`, `LiquidationPipeline`, `LiquidationHeatmap` data flow unchanged in D-series. Liquidation 24h remains ACTUAL (pipeline events) / ESTIMATED (DerivativesEngine model) / UNAVAILABLE.  
 > **D6 VERIFIED_NO_CHANGE:** Radar/Screener/Heatmap consistency — null-safe change1h/change7d from D1 already applied to ScreenerPage (D1 commit). RadarPage and HeatmapGrid now also null-safe for OI delta. No new artificial data was needed.  
 > 🏭 **ФАКТИЧЕСКИЙ PRODUCTION (исправлено по указанию владельца):** перед v0.8.5 production на VPS
@@ -15,6 +19,25 @@
 ---
 
 ## 1. Что сделано
+
+### v0.8.45 — Source Health: circuit breaker недоступных REST-источников
+- **Контекст (прод-наблюдение с cryptora.duckdns.org):** консоль DevTools заполнялась «красными»
+  CORS/`net::ERR_FAILED` по одному активу (KAS): его нет в bulk-тикере Binance → провайдер уходил
+  в персональный запрос Binance (отказ без CORS-заголовков) и в KuCoin `market/stats` (KuCoin REST
+  не отдаёт браузерам CORS вовсе) на каждом цикле опроса; фоновое обогащение добавляло 2 запроса
+  klines (1h+1D) в минуту; `[P11]` печатался на каждом цикле.
+- **`SourceHealthTracker`** (`src/services/data/adapters/sourceHealth.ts`): блокировка per
+  endpoint+инструмент. Политики: network/http — 3 подряд неудач → 10 мин (повторный эпизод — ×2,
+  кап 1 ч); invalid_symbol (400/404) — сразу 6 ч; rate_limit (429/418) — 30 с; таймауты не считаются.
+  Успех полностью восстанавливает ключ; поздние «зависшие» неудачи не стирают блокировку.
+  Диагностика — один console.warn на эпизод. `AdapterSourceBlockedError extends AdapterNetworkError`.
+- **Подключение:** адаптеры Binance/KuCoin — опциональный `health` (выключен по умолчанию —
+  детерминированность тестов); включён в `MarketDataContext` (общий трекер) и
+  `CandleHistoryService.getInstance()`. `CandleHistoryService` — обёртка `fetchKlinesWithHealth`.
+- **P11:** warn только при изменении состава отсутствующих активов (`LiveMarketDataProvider`).
+- **Честность данных (RULES §1):** без изменений — трекер не подменяет и не кэширует цены;
+  недоступный актив честно отсутствует в таблицах / помечен «ИСТОЧНИК НЕДОСТУПЕН».
+- **Тесты:** `tests/unit/sourceHealth.test.ts` — 14 новых; всего 873 (83 файла).
 
 ### v0.8.39 — Тарифы без иллюзии покупки
 - Модал тарифов: уведомление «Биллинг не подключён», кнопки «Предпросмотр: …» вместо «Переключить». e2e-проверка. Этап 8 (оплата) — решение владельца.
@@ -617,6 +640,12 @@ DEMO-режима не должно быть вообще. Оставались:
 
 ## 3. Результаты тестов (все гейты пройдены)
 
+- **Актуально на v0.8.45 (2026-09-20, песочница Arena):** typecheck (`npm run typecheck`) — 0 ошибок;
+  unit (`npm test`) — **83 файла / 873 теста passed** (859 прежних + 14 новых `sourceHealth`);
+  build (`npm run build`) — чистая production-сборка.
+- **E2E в песочнице НЕ прогонялся:** `npx playwright install chromium` недоступен (CDN Playwright
+  закрыт фаерволом контейнера, системные пакеты недоступны). E2E-набор не изменялся
+  (кроме строки версии в `e2e/uiRegression.spec.tsx`); прогнать на машине с сетью перед деплоем.
 - **Актуально на v0.8.17 (`684aa05`):** typecheck 0 ошибок; unit **34 файла / 333 теста** (из них `tests/unit/strategyArchive/*` —
   реестр 13/13, immutability, sha256-пины, детерминизм/digest, look-ahead guard, комиссии, паритет перезапусков, presentation-модель);
   build чистый; e2e **55** (в т.ч. `/strategies`: 13 карточек, verdict ≠ reproducibility, фильтры, предупреждение V2.8 vs V3.0);
@@ -653,7 +682,10 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 4. Версия, статус развертывания и Git состояние
-- **Версия:** `0.8.17` (архив стратегий C1–C8 завершён). Историческая запись v0.8.8 ниже сохранена:
+- **Версия:** `0.8.45` (Source Health — circuit breaker REST-источников). Обновлены `package.json`,
+  бейджи Header/Footer, `e2e/uiRegression.spec.tsx`, CHANGELOG.
+- **Ветка:** `arena/01a0bdd1-cryptora` (от `ed3b4f2` = merge UI-этапов в main).
+- Историческая запись v0.8.8 ниже сохранена:
 - **Версия (v0.8.8):** corrective: production = только LIVE; поверх v0.8.7 — русификация. Обновлены `package.json`,
   `package-lock.json`, health-эндпоинт `server/productionServer.js`, футер, бейдж версии в шапке, документация.
 - **Ветка:** `arena/01a0aaeb-cryptora` (продолжение `arena/01a0a997-cryptora` от `92b30ed / v0.8.6`).
@@ -697,26 +729,20 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 6. Следующий шаг
-- **STOP (v0.8.17).** Порт Strategy Research Archive завершён (C1–C8, коммиты `13548c5 17501b0 9a72ed5 af8d1a0 2bb8ab7 bf63be7 53f1afa 684aa05`).
-  Ожидается приёмка владельцем. Открытые решения владельца: (а) перезапуск V2.1a/V2.1b на машине ≥ 8 GB (`reproduce.mjs`, §4b
-  `docs/STRATEGY_ARCHIVE.md`) — только тогда статус может стать REPRODUCED; (б) обновление VPS (там v0.8.4 `6a01ce1`) — по отдельной команде.
-- Ранее открытое: приёмка владельцем пункта A (production = только LIVE, v0.8.8) и пункта 2 (русификация, v0.8.7);
-  production-oriented screenshot QA на VPS/CI (`node scripts/screenshot-qa.mjs --tag=v088 ...`);
-  обновление статики VPS (сейчас там v0.8.4 `6a01ce1`) — по отдельной команде.
-- **К пункту B (DARK / LIGHT / SYSTEM) не переходить.** Далее по порядку владельца: п. 3 типографика.
+- **STOP (v0.8.45).** Source Health circuit breaker выполнен; ожидается проверка владельцем на проде
+  (после деплоя консоль DevTools должна замолчать после ~1–2 минут: единичный diagnostics-warn вместо
+  потока CORS-ошибок; недоступный актив честно отсутствует без подстановок).
+- **Деплой на VPS не выполнялся** (как и в v0.8.5–v0.8.44 — по отдельной команде владельца).
+- Открытые решения владельца: (а) перезапуск V2.1a/V2.1b на машине ≥ 8 GB (`reproduce.mjs`, §4b
+  `docs/STRATEGY_ARCHIVE.md`); (б) обновление VPS.
+- Вернуть KuCoin-данные в браузер системно (сейчас его REST не работает из браузера по CORS) —
+  отдельное архитектурное решение: same-origin reverse-proxy в nginx/productionServer; текущая
+  архитектура client-only (`docs/DONT_DO.md` §8), поэтому без одобрения владельца не делать.
 
 ---
 
 ## 7. Commit hash и статус Git remote
-- **Актуально:** HEAD `684aa05` (v0.8.17, C8) ← `53f1afa` (C7) ← `bf63be7` (C6) ← `2bb8ab7` (C5) ← `af8d1a0` (C4) ← `9a72ed5` (C3)
-  ← `17501b0` (C2) ← `13548c5` (C1) ← `45f9ff8` (шаг 1) ← `…` v0.8.8. Всё отправлено в `origin/arena/01a0aaeb-cryptora`.
-- **База:** `ee41857` (v0.8.5) → `92b30ed` (v0.8.6) → `1d0bd95` — `feat(i18n): системная русификация интерфейса (v0.8.7)`.
-- **Текущий corrective-коммит:** `fix(prod): production = только LIVE, без пользовательского DEMO (v0.8.8)` —
-  хэш см. `git log --oneline -1`.
-- **Ветка:** `arena/01a0aaeb-cryptora` (репозиторий `nub36/CRYPTORA`).
+- **Актуально:** v0.8.45 (Source Health) на ветке `arena/01a0bdd1-cryptora`; хэш — `git log --oneline -1`.
 - Запись хэшей в файле всегда отстаёт на один коммит (самореференция невозможна) —
   актуальные значения берутся командой `git log --oneline -5` в этой ветке.
-- **Git remote / push:** ветка `arena/01a0aaeb-cryptora` отправлена в `origin`
-  (`git push origin arena/01a0aaeb-cryptora`).
-- **Production VPS:** НЕ обновлялся в рамках v0.8.5–v0.8.8; фактически стоит **v0.8.4 (`6a01ce1`)**.
-  Deployment-инфраструктура не менялась.
+- **Git remote / push:** ветка отправляется в `origin` (`git push origin arena/01a0bdd1-cryptora`).

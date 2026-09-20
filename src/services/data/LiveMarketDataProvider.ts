@@ -68,6 +68,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   /** Исторический OI обновляется на бирже раз в 5 мин — кэшируем отдельно, чтобы не грузить 25 запросов каждые 10 с. */
   private oiHistCache: { data: Map<string, BinanceFuturesOpenInterestHistItem[]>; timestamp: number } | null = null;
   private readonly oiHistTtlMs = 5 * 60 * 1000;
+  /** P11: подпись последнего набора отсутствующих активов (дедупликация warn). */
+  private p11LastSignature: string | null = null;
 
   constructor(config: LiveMarketDataProviderConfig = {}) {
     this.binance = config.binanceAdapter ?? new BinanceSpotAdapter();
@@ -142,11 +144,18 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       throw new Error('Live market data unavailable from both Binance and KuCoin gateways');
     }
 
-    // P11: Log missing assets for diagnostics
+    // P11: Log missing assets for diagnostics (один warn на изменение состава —
+    // без повторов на каждом цикле опроса, чтобы не засорять консоль).
     if (results.length < canonicalList.length) {
       const found = new Set(results.map((r) => r.symbol));
       const missing = canonicalList.filter((a) => !found.has(a.symbol));
-      console.warn(`[P11] ${missing.length} asset(s) missing from live data:`, missing.map((a) => `${a.symbol} (${a.binanceSymbol} / ${a.kucoinSymbol})`));
+      const signature = missing.map((a) => a.symbol).join(',');
+      if (signature !== this.p11LastSignature) {
+        console.warn(`[P11] ${missing.length} asset(s) missing from live data:`, missing.map((a) => `${a.symbol} (${a.binanceSymbol} / ${a.kucoinSymbol})`));
+        this.p11LastSignature = signature;
+      }
+    } else {
+      this.p11LastSignature = null;
     }
 
     // AnomalyEngine: fed exclusively by WebSocket (BinanceWebSocketClient.handleTickerPayload)

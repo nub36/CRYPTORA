@@ -19,6 +19,23 @@ export class AdapterNetworkError extends AdapterError {
   }
 }
 
+/**
+ * Запрос не был выполнен: SourceHealthTracker временно заблокировал endpoint
+ * после систематических неудач (CORS / гео-блокировка / делистинг инструмента).
+ * Наследует AdapterNetworkError, чтобы существующие catch-ветки реагировали
+ * как на сетевой отказ («источник недоступен», без подстановок).
+ */
+export class AdapterSourceBlockedError extends AdapterNetworkError {
+  constructor(
+    exchange: AdapterSource,
+    public readonly endpointKey: string,
+    public readonly retryAfterMs: number
+  ) {
+    super(exchange, new Error(`Endpoint временно заблокирован circuit breaker'ом источника: ${endpointKey}`));
+    this.name = 'AdapterSourceBlockedError';
+  }
+}
+
 export class AdapterTimeoutError extends AdapterError {
   constructor(exchange: AdapterSource) {
     super(`Таймаут запроса к API ${exchange.toUpperCase()}`, exchange);
