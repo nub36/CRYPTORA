@@ -14,12 +14,19 @@ test.describe('Браузерные e2e (Chromium)', () => {
     expect(pageErrors, `pageerror: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
-  test('Навигация: «Рынок» ведёт на /market', async ({ page }) => {
+  test('Навигация: пункт «Рынок» доступен, /market рендерит таблицу рынка', async ({ page }) => {
     await page.goto('/');
-    const marketLink = page.getByRole('link', { name: 'Рынок' }).first();
-    await expect(marketLink).toBeVisible();
-    await marketLink.click();
-    await expect(page).toHaveURL(/\/market$/);
+    // «Рынок» — объединённый пункт с подпунктами: ссылка ИЛИ dropdown-кнопка (зависит от брейкпоинта).
+    const market = page
+      .getByRole('link', { name: 'Рынок' })
+      .or(page.getByRole('button', { name: 'Рынок' }))
+      .first();
+    await expect(market).toBeVisible();
+
+    await page.goto('/market');
+    // Таблица рынка: заголовок «Монета» и строки активов (BTC присутствует в каноническом реестре).
+    await expect(page.getByText('Монета', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('BTC', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('/strategies: заголовок архива исследований', async ({ page }) => {
