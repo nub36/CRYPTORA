@@ -15,9 +15,14 @@ import '@fontsource-variable/jetbrains-mono';
 
 import './index.css';
 
+// basename синхронизирован с vite.config.ts `base` (/CRYPTORA/ для Project Pages, "/" для custom domain / dev).
+// Vite подставляет import.meta.env.BASE_URL = base из конфига.
+const _baseUrl = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL || '/';
+const routerBasename = _baseUrl === '/' ? '/' : _baseUrl.replace(/\/$/, '');
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename}>
       <ThemeProvider>
         <AuthProvider>
           <MarketDataProviderComponent>
