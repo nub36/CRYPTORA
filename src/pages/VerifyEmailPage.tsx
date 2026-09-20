@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useRef, useState, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, XCircle, ShieldAlert, Send } from 'lucide-react';
+import { apiUrl, isStaticHostingWithoutApi } from '@/config/api';
 
 type Status = 'checking' | 'ok' | 'invalid' | 'error';
 
@@ -44,8 +45,13 @@ export const VerifyEmailPage: React.FC = () => {
     }
 
     (async () => {
+      if (isStaticHostingWithoutApi) {
+        setStatus('error');
+        setMessage('Подтверждение email недоступно в статической сборке (GitHub Pages). Требуется бэкенд.');
+        return;
+      }
       try {
-        const res = await fetch('/api/auth/verify-email', {
+        const res = await fetch(apiUrl('/api/auth/verify-email'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -76,7 +82,7 @@ export const VerifyEmailPage: React.FC = () => {
     setSending(true);
     setMessage('');
     try {
-      await fetch('/api/auth/resend-verification', {
+      await fetch(apiUrl('/api/auth/resend-verification'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

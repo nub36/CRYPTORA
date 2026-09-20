@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, maskEmail } from '@/context/AuthContext';
+import { apiUrl, isStaticHostingWithoutApi } from '@/config/api';
 import { UserPlus, Mail, RefreshCw, Lock } from 'lucide-react';
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -35,8 +36,9 @@ export const RegisterPage: React.FC = () => {
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (isStaticHostingWithoutApi) return;
     let active = true;
-    fetch('/api/auth/registration-status', { credentials: 'same-origin' })
+    fetch(apiUrl('/api/auth/registration-status'), { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (active && body && typeof body.registrationOpen === 'boolean') {

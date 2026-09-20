@@ -7,6 +7,7 @@
  */
 
 import React, { createContext, useCallback, useContext, useEffect, useState, useRef } from 'react';
+import { apiUrl, isStaticHostingWithoutApi } from '@/config/api';
 
 export interface AuthUser {
   id: string;
@@ -63,8 +64,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const mountedRef = useRef(true);
 
   const fetchSession = useCallback(async () => {
+    // На GitHub Pages без VITE_API_BASE_URL не стучим в /api — бэкенда нет, будет 404.html
+    if (isStaticHostingWithoutApi) {
+      setUser(null);
+      setError(null);
+      if (mountedRef.current) setIsLoading(false);
+      return;
+    }
     try {
-      const res = await fetch('/api/auth/session', {
+      const res = await fetch(apiUrl('/api/auth/session'), {
         credentials: 'include',
       });
 
@@ -106,7 +114,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [fetchSession]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch('/api/auth/login', {
+    if (isStaticHostingWithoutApi) throw new Error('Авторизация недоступна в статической сборке (GitHub Pages). Настройте VITE_API_BASE_URL.');
+    const res = await fetch(apiUrl('/api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -129,7 +138,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const register = useCallback(async (email: string, displayName: string, password: string) => {
-    const res = await fetch('/api/auth/register', {
+    if (isStaticHostingWithoutApi) throw new Error('Регистрация недоступна в статической сборке (GitHub Pages). Настройте VITE_API_BASE_URL.');
+    const res = await fetch(apiUrl('/api/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -148,7 +158,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const resendVerification = useCallback(async (email: string) => {
-    const res = await fetch('/api/auth/resend-verification', {
+    if (isStaticHostingWithoutApi) throw new Error('Отправка письма недоступна в статической сборке.');
+    const res = await fetch(apiUrl('/api/auth/resend-verification'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -163,10 +174,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
+      if (!isStaticHostingWithoutApi) {
+        await fetch(apiUrl('/api/auth/logout'), {
+          method: 'POST',
+          credentials: 'include',
+        });
+      }
     } finally {
       setUser(null);
     }

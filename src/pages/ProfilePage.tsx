@@ -7,6 +7,7 @@
 import React, { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { apiUrl } from '@/config/api';
 import { User, Mail, Calendar, Shield, BadgeCheck } from 'lucide-react';
 
 export const ProfilePage: React.FC = () => {
@@ -33,7 +34,7 @@ export const ProfilePage: React.FC = () => {
     setError('');
 
     try {
-      const res = await fetch('/api/me', {
+      const res = await fetch(apiUrl('/api/me'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

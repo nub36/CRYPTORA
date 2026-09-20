@@ -13,6 +13,7 @@ import type { StructuredFacts } from './StructuredFacts';
 import type { AiExplanation, AiExplainResponse, AiExplainStatus } from './AiOutputContract';
 import { validateAiExplanation } from './AiOutputContract';
 import type { MarketContextFact } from './AiExplanationEngine';
+import { apiUrl, isStaticHostingWithoutApi } from '@/config/api';
 
 // Re-export for convenience
 export type { AiExplanation, AiExplainResponse, AiExplainStatus };
@@ -187,10 +188,15 @@ export function buildCoinDetailFacts(params: {
 export async function requestLlmExplanation(
   facts: StructuredFacts,
   fetchFn: typeof fetch = (...args) => globalThis.fetch(...args),
-  endpoint = '/api/ai/explain',
+  endpoint = apiUrl('/api/ai/explain'),
 ): Promise<AiExplainResponse> {
+  // На GitHub Pages без бэкенда LLM недоступен — не делаем сети, отдаём честный статус
+  if (isStaticHostingWithoutApi && endpoint === apiUrl('/api/ai/explain')) {
+    return { status: 'NOT_CONFIGURED', configured: false };
+  }
   try {
-    const res = await fetchFn(endpoint, {
+    const resolvedEndpoint = endpoint.startsWith('/api/') ? apiUrl(endpoint) : endpoint;
+    const res = await fetchFn(resolvedEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(facts),

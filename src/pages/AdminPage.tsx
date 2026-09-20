@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { apiUrl, isStaticHostingWithoutApi } from '@/config/api';
 import {
   LayoutDashboard,
   Users,
@@ -82,8 +83,9 @@ export const AdminPage: React.FC = () => {
   const [error, setError] = useState('');
 
   const fetchDashboard = useCallback(async () => {
+    if (isStaticHostingWithoutApi) return;
     try {
-      const res = await fetch('/api/admin/dashboard', { credentials: 'include' });
+      const res = await fetch(apiUrl('/api/admin/dashboard'), { credentials: 'include' });
       if (res.ok) {
         setDashboard(await res.json());
       }
@@ -97,7 +99,7 @@ export const AdminPage: React.FC = () => {
       const params = new URLSearchParams({ page: page.toString(), pageSize: '20' });
       if (search) params.set('search', search);
 
-      const res = await fetch(`/api/admin/users?${params}`, { credentials: 'include' });
+      const res = await fetch(apiUrl(`/api/admin/users?${params}`), { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users);
@@ -110,7 +112,7 @@ export const AdminPage: React.FC = () => {
 
   const fetchSystem = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/system', { credentials: 'include' });
+      const res = await fetch(apiUrl('/api/admin/system'), { credentials: 'include' });
       if (res.ok) {
         setSystem(await res.json());
       }
@@ -134,7 +136,7 @@ export const AdminPage: React.FC = () => {
     if (!confirm('Заблокировать пользователя?')) return;
 
     try {
-      const res = await fetch(`/api/admin/users/${userId}/block`, {
+      const res = await fetch(apiUrl(`/api/admin/users/${userId}/block`), {
         method: 'PATCH',
         credentials: 'include',
       });
@@ -155,7 +157,7 @@ export const AdminPage: React.FC = () => {
     if (!confirm('Разблокировать пользователя?')) return;
 
     try {
-      const res = await fetch(`/api/admin/users/${userId}/unblock`, {
+      const res = await fetch(apiUrl(`/api/admin/users/${userId}/unblock`), {
         method: 'PATCH',
         credentials: 'include',
       });
