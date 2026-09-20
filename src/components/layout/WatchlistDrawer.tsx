@@ -61,7 +61,7 @@ export const WatchlistDrawer: React.FC = () => {
           <div className="flex-1 overflow-y-auto py-4 space-y-2">
             {sourceUnavailable ? (
               <div className="text-center py-12 text-slate-400 text-sm" data-qa="watchlist-unavailable">
-                <Star className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <Star className="w-8 h-8 text-slate-500 mx-auto mb-2" />
                 <p>Фактический источник недоступен.</p>
                 <p className="text-xs text-slate-500 mt-1">
                   Значения из другого датасета вместо рыночных не подставляются.
@@ -69,7 +69,7 @@ export const WatchlistDrawer: React.FC = () => {
               </div>
             ) : watchedAssets.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-sm">
-                <Star className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <Star className="w-8 h-8 text-slate-500 mx-auto mb-2" />
                 <p>Ваш список наблюдения пуст.</p>
                 <p className="text-xs text-slate-500 mt-1">
                   Нажимайте на звездочку рядом с активом в таблице рынка, чтобы добавить сюда.

@@ -347,7 +347,7 @@ export const CoinDetailPage: React.FC = () => {
               </span>
               {asset.change1h != null && (
                 <>
-                  <span aria-hidden className="text-slate-600 text-xs">•</span>
+                  <span aria-hidden className="text-slate-500 text-xs">•</span>
                   <span
                     className={`text-xs font-semibold ${
                       asset.change1h >= 0 ? 'text-brand-green' : 'text-brand-red'

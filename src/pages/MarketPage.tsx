@@ -123,7 +123,7 @@ export const MarketPage: React.FC = () => {
               <ArrowDown className="h-3 w-3 shrink-0 text-cyan-400" aria-hidden />
             )
           ) : (
-            <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-600" aria-hidden />
+            <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-500" aria-hidden />
           )}
         </span>
       </th>
@@ -250,7 +250,7 @@ export const MarketPage: React.FC = () => {
                         }}
                       >
                         <button
-                          className="text-slate-600 hover:text-amber-400 transition-colors p-1.5"
+                          className="text-slate-500 hover:text-amber-400 transition-colors p-1.5"
                           title={isStarred ? 'Удалить из избранного' : 'Добавить в избранное'}
                           aria-label={`Избранное ${asset.symbol}`}
                         >

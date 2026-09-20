@@ -228,7 +228,7 @@ export const AiExplanationPanel: React.FC<AiExplanationPanelProps> = ({
           </div>
 
           {/* Disclaimer */}
-          <p className="text-[11px] text-slate-600 leading-tight">
+          <p className="text-[11px] text-slate-500 leading-tight">
             CRYPTORA — аналитический терминал. AI-разбор не является инвестиционной рекомендацией или торговым сигналом.
             Решения принимаются пользователем самостоятельно.
           </p>

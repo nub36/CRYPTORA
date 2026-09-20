@@ -122,7 +122,7 @@ export const Footer: React.FC = () => {
         {/* Bottom bar */}
         <div className="pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-sans">
           <div>
-            © 2026 CRYPTORA Terminal. Все права защищены. Версия v0.8.51.
+            © 2026 CRYPTORA Terminal. Все права защищены. Версия v0.8.52.
           </div>
           <div className="mt-2 sm:mt-0 flex items-center space-x-3">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>

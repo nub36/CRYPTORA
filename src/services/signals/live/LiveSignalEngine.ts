@@ -51,6 +51,7 @@ export class LiveSignalEngine {
   private state = new Map<string, SymbolState>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private scanInFlight = false;
 
   constructor(config: LiveSignalConfig) {
     this.provider = config.provider;
@@ -88,11 +89,21 @@ export class LiveSignalEngine {
   public isActive(): boolean { return this.running; }
 
   private async scan(): Promise<void> {
-    // Expire signals older than 4 hours
-    this.ledger.expireStale();
+    // Н8: guard от наложения сканов — если предыдущий ещё идёт (медленная сеть),
+    // новый тик пропускается. Без этого запросы свечей множились каждый тик.
+    if (this.scanInFlight) return;
+    // Н8: фоновая вкладка не сканируется — лимиты источников не сжигаются.
+    if (typeof document !== 'undefined' && document.hidden) return;
+    this.scanInFlight = true;
+    try {
+      // Expire signals older than 4 hours
+      this.ledger.expireStale();
 
-    for (const symbol of this.symbols) {
-      try { await this.scanSymbol(symbol); } catch { /* non-fatal */ }
+      for (const symbol of this.symbols) {
+        try { await this.scanSymbol(symbol); } catch { /* non-fatal */ }
+      }
+    } finally {
+      this.scanInFlight = false;
     }
   }
 

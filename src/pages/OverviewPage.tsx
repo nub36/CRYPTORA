@@ -403,7 +403,7 @@ export const OverviewPage: React.FC = () => {
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 flex items-center space-x-2 tabular-nums">
             <span className="text-emerald-400">{overview.marketBreadth.advancing}▲</span>
-            <span aria-hidden className="text-slate-600">/</span>
+            <span aria-hidden className="text-slate-500">/</span>
             <span className="text-rose-400">{overview.marketBreadth.declining}▼</span>
           </div>
           <div className="text-[11px] text-slate-400 font-sans mt-1">

@@ -140,7 +140,7 @@ export const DataSourcesBadge: React.FC<DataSourcesBadgeProps> = ({
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-slate-600 pt-1 border-t border-slate-700/40">
+          <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-700/40">
             Индикаторы рассчитываются детерминированным движком CRYPTORA из фактических свечей.
           </p>
         </div>

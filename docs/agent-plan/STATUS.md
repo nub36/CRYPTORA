@@ -2,8 +2,13 @@
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
 > **Последнее обновление:** 2026-09-20  
-> **Текущая версия:** v0.8.51 (Б1: авто-обновление страниц — useAutoRefresh)  
-> **Текущий этап:** FRESHNESS PASS completed. Все рыночные страницы (/ , /market, /futures,
+> **Текущая версия:** v0.8.52 (Audit Remediation Pass 2: Н13/Н12/Н8/Д2–Д4 + Н10 CI/браузерные e2e)  
+> **Текущий этап:** AUDIT REMEDIATION PASS 2 completed. Мёртвый AlertService удалён (Н13); беты
+> портфеля пересчитываются каждые 60с (Н12); LiveSignalEngine — guard сканов + пауза в фоне (Н8);
+> CoinIcon AA-палитра с юнит-проверкой контраста (Д2); slate-600→500 в 7 файлах (Д4); тач-таргеты
+> ≥28px на ≤640px (Д3); CI-workflow + первые настоящие Chromium-e2e (Н10). Осознанно отложено:
+> react-router 7 (breaking, после e2e в CI), CSP nonce, Н5 TLS (VPS владельца), 44px-таргеты.
+> Предыдущие: v0.8.51 (Б1 авто-обновление), v0.8.50 (Н6/З3/З4/З6/З7/Б3), v0.8.45 (Source Health). Все рыночные страницы (/ , /market, /futures,
 > /heatmaps, /screener) обновляют данные сами каждые 30с; в фоновой вкладке запросы на паузе,
 > возврат видимости/сети — внеочередной рефреш. Хук: src/hooks/useAutoRefresh.ts (8 тестов).
 > Предыдущие этапы: AUDIT REMEDIATION PASS 1 (v0.8.50: Н6/З3/З4/З6/З7/Б3+Н9/Н11), Source Health (v0.8.45). По независимому аудиту (PR #1,
@@ -30,6 +35,17 @@
 ---
 
 ## 1. Что сделано
+
+### v0.8.52 — Audit Remediation Pass 2 + CI
+- Н13: удалены `AlertService.ts` + его тест; пометки в SITE_REPORT/10-ALERTS.
+- Н12: PortfolioRiskPage — пересчёт бет/волов через useAutoRefresh(60с).
+- Н8: LiveSignalEngine.scan() — in-flight guard + document.hidden пауза (тесты).
+- Д2: CoinIcon — новая 20-цветная палитра ≥4.5:1 к белому (юнит-тест WCAG-формулой).
+- Д4: text-slate-600 → text-slate-500 (7 файлов; slate-600 не проходит AA в обеих темах).
+- Д3: index.css — min-height 28px для интерактива на ≤640px.
+- Н10: .github/workflows/ci.yml (quality + browser-e2e) + e2e/browser.spec.ts (4 Chromium-теста).
+- Отложено: react-router 7 (после e2e в CI), CSP nonce, Н5 TLS (VPS), 44px-таргеты.
+- Тесты: +5, −8 (alerts.test); всего 890 / 85 файлов.
 
 ### v0.8.51 — Б1: авто-обновление страниц
 - `useAutoRefresh` (см. CHANGELOG 0.8.51): цикл 30с на /, /market, /futures, /heatmaps, /screener;
