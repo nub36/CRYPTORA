@@ -9,6 +9,7 @@ import {
   RadarEvent,
   MarketOverviewData,
   ScreenerFilters,
+  TechnicalIndicators,
 } from '@/types/market';
 import { MarketDataProvider } from './MarketDataProvider';
 import {
@@ -28,13 +29,24 @@ import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
 import { AdapterNetworkError } from './adapters/errors';
 import { AlternativeMeAdapter, type FearGreedReading } from './adapters/AlternativeMeAdapter';
 import { AGGREGATE_HISTORY_KEY, appendPoint, marketCapChange24hFromAssets, parseHistory, volumeChange24h } from '../analytics/aggregateHistory';
-import type { BinanceFuturesOpenInterestHistItem } from './adapters/derivativesSchemas';
+import type { BinanceFuturesOpenInterest, BinanceFuturesOpenInterestHistItem } from './adapters/derivativesSchemas';
 import { LiquidationPipeline } from '../liquidations/LiquidationPipeline';
 import { DerivativesEngine } from '../derivatives/DerivativesEngine';
-import { IndicatorEngine } from '../indicators/IndicatorEngine';
+import { IndicatorEngine, type CompleteIndicatorsResult } from '../indicators/IndicatorEngine';
 import { CoinGeckoAdapter } from './adapters/CoinGeckoAdapter';
 import { CandleHistoryService } from './CandleHistoryService';
 import { extractBinanceSpread } from './adapters/normalization';
+
+/** Длительность одной свечи — нужна, чтобы запросить у резервной биржи явное окно. */
+const TIMEFRAME_MS: Partial<Record<Timeframe, number>> = {
+  '5m': 5 * 60_000,
+  '15m': 15 * 60_000,
+  '30m': 30 * 60_000,
+  '1h': 3_600_000,
+  '4h': 4 * 3_600_000,
+  '1D': 24 * 3_600_000,
+  '1W': 7 * 24 * 3_600_000,
+};
 
 export interface LiveMarketDataProviderConfig {
   binanceAdapter?: BinanceSpotAdapter;
@@ -68,6 +80,10 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   /** Исторический OI обновляется на бирже раз в 5 мин — кэшируем отдельно, чтобы не грузить 25 запросов каждые 10 с. */
   private oiHistCache: { data: Map<string, BinanceFuturesOpenInterestHistItem[]>; timestamp: number } | null = null;
   private readonly oiHistTtlMs = 5 * 60 * 1000;
+  /** З4: фактический spot-OI (/fapi/v1/openInterest) с коротким кэшем — вместо эвристики ×0.15. */
+  private oiSpotCache: { data: Map<string, BinanceFuturesOpenInterest>; timestamp: number } | null = null;
+  /** P11: подпись последнего набора отсутствующих активов (дедупликация warn). */
+  private p11LastSignature: string | null = null;
 
   constructor(config: LiveMarketDataProviderConfig = {}) {
     this.binance = config.binanceAdapter ?? new BinanceSpotAdapter();
@@ -142,11 +158,18 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       throw new Error('Live market data unavailable from both Binance and KuCoin gateways');
     }
 
-    // P11: Log missing assets for diagnostics
+    // P11: Log missing assets for diagnostics (один warn на изменение состава —
+    // без повторов на каждом цикле опроса, чтобы не засорять консоль).
     if (results.length < canonicalList.length) {
       const found = new Set(results.map((r) => r.symbol));
       const missing = canonicalList.filter((a) => !found.has(a.symbol));
-      console.warn(`[P11] ${missing.length} asset(s) missing from live data:`, missing.map((a) => `${a.symbol} (${a.binanceSymbol} / ${a.kucoinSymbol})`));
+      const signature = missing.map((a) => a.symbol).join(',');
+      if (signature !== this.p11LastSignature) {
+        console.warn(`[P11] ${missing.length} asset(s) missing from live data:`, missing.map((a) => `${a.symbol} (${a.binanceSymbol} / ${a.kucoinSymbol})`));
+        this.p11LastSignature = signature;
+      }
+    } else {
+      this.p11LastSignature = null;
     }
 
     // AnomalyEngine: fed exclusively by WebSocket (BinanceWebSocketClient.handleTickerPayload)
@@ -233,17 +256,13 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     const high24h = summary.high24h ?? (candles.length > 0 ? Math.max(...candles.map((c) => c.high)) : summary.price);
     const low24h = summary.low24h ?? (candles.length > 0 ? Math.min(...candles.map((c) => c.low)) : summary.price);
 
-    // DERIVED: вычисляем индикаторы из фактических свечей через IndicatorEngine
-    const indicators = candles.length >= 26
-      ? IndicatorEngine.computeCompleteIndicators(candles)
-      : {
-          rsi14: candles.length > 0 ? IndicatorEngine.calculateRSI(candles.map((c) => c.close), 14).slice(-1)[0] ?? 50 : 50,
-          macd: { macd: 0, signal: 0, hist: 0 },
-          sma20: summary.price,
-          sma50: summary.price,
-          sma200: summary.price,
-          bollinger: { upper: summary.price, middle: summary.price, lower: summary.price, bandwidthPct: 0 },
-        };
+    // З3 (честность данных): полный набор индикаторов — только когда истории хватает
+    // на SMA200 (>= 200 фактических свечей). Иначе indicators = null → UI показывает
+    // «—». Никаких заглушек RSI=50 / MACD=0 / SMA=текущая цена / Bollinger=цена.
+    const indicators: TechnicalIndicators | null =
+      candles.length >= 200
+        ? this.buildTechnicalIndicators(IndicatorEngine.computeCompleteIndicators(candles))
+        : null;
 
     // FACTUAL: ATH/ATL + supply из CoinGecko (supplementary metadata, не заменяет биржевую цену)
     let ath: number | undefined;
@@ -266,24 +285,19 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       }
     }
 
-    // FACTUAL: реальный спред из Binance bid/ask через extractBinanceSpread()
-    let spreadPct = 0.01;
-    if (rawBinanceTicker) {
-      const spread = extractBinanceSpread(rawBinanceTicker);
-      if (spread) {
-        spreadPct = Number((spread.spreadBps / 100).toFixed(4));
-      }
-    }
-
-    // P0: Build pairs from factual exchange data (no stubs)
+    // З7 (честность данных): спред — только из фактических bid/ask биржи.
+    // Нет bid/ask → null («—» в UI); выдуманные дефолты 0.01% / 0.02% удалены.
+    // Ветка «fallback-пара» удалена как недостижимая: summary существует только
+    // при успешном raw-ответе одной из бирж.
     const pairs = [];
     if (rawBinanceTicker) {
+      const spread = extractBinanceSpread(rawBinanceTicker);
       pairs.push({
         exchange: 'Binance',
         pair: `${asset.symbol}/USDT`,
         price: parseFloat(rawBinanceTicker.lastPrice) || summary.price,
         volume24h: parseFloat(rawBinanceTicker.quoteVolume) || summary.volume24h,
-        spreadPct,
+        spreadPct: spread ? Number((spread.spreadBps / 100).toFixed(4)) : null,
       });
     }
     if (rawKucoinStats) {
@@ -292,16 +306,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
         pair: `${asset.symbol}/USDT`,
         price: parseFloat(rawKucoinStats.last) || summary.price,
         volume24h: parseFloat(rawKucoinStats.volValue) || 0,
-        spreadPct: 0.02,
-      });
-    }
-    if (pairs.length === 0) {
-      pairs.push({
-        exchange: 'Binance',
-        pair: `${asset.symbol}/USDT`,
-        price: summary.price,
-        volume24h: summary.volume24h,
-        spreadPct,
+        spreadPct: this.computeSpreadPctFromBidAsk(rawKucoinStats.buy, rawKucoinStats.sell),
       });
     }
 
@@ -316,24 +321,15 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       low24h,
       totalSupply: totalSupply ?? undefined,
       maxSupply: maxSupply ?? undefined,
-      indicators: {
-        rsi14: Number.isFinite(indicators.rsi14) ? Number(indicators.rsi14.toFixed(2)) : 50,
-        macd: indicators.macd,
-        sma20: Number(indicators.sma20.toFixed(2)),
-        sma50: Number(indicators.sma50.toFixed(2)),
-        sma200: Number(indicators.sma200.toFixed(2)),
-        bollinger: {
-          upper: Number(indicators.bollinger.upper.toFixed(2)),
-          middle: Number(indicators.bollinger.middle.toFixed(2)),
-          lower: Number(indicators.bollinger.lower.toFixed(2)),
-        },
-      },
+      indicators,
       pairs,
     };
   }
 
-  public async getCandles(symbol: string, timeframe: Timeframe): Promise<OHLCV[]> {
-    const cacheKey = `${symbol}_${timeframe}`;
+  public async getCandles(symbol: string, timeframe: Timeframe, limit = 500): Promise<OHLCV[]> {
+    // Binance /api/v3/klines принимает limit ≤ 1000 (вес 2 до 500 свечей, 5 до 1000).
+    const klineLimit = Math.max(1, Math.min(1000, Math.floor(limit)));
+    const cacheKey = `${symbol}_${timeframe}_${klineLimit}`;
     const now = Date.now();
     const cached = this.candleCache.get(cacheKey);
     if (cached && now - cached.timestamp < this.cacheTtlMs * 3) {
@@ -351,7 +347,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     // 1. Try Binance
     if (asset.binanceSymbol) {
       try {
-        const raw = await this.binance.fetchKlines(asset.binanceSymbol, binanceInterval, 500);
+        const raw = await this.binance.fetchKlines(asset.binanceSymbol, binanceInterval, klineLimit);
         const normalized = normalizeBinanceKlines(raw, asset.symbol);
         this.candleCache.set(cacheKey, { data: normalized, timestamp: now });
         return normalized;
@@ -360,13 +356,29 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       }
     }
 
-    // 2. Try KuCoin
+    // 2. Try KuCoin (резерв, когда Binance недоступен — гео-блок, 451/403, таймаут).
     if (asset.kucoinSymbol) {
       try {
-        const raw = await this.kucoin.fetchCandles(asset.kucoinSymbol, kucoinType);
+        // KuCoin без окна отдаёт свою страницу по умолчанию (глубина не гарантирована) —
+        // запрашиваем ровно нужный интервал: klineLimit + 2 бара на крайний формирующийся.
+        const spanMs = TIMEFRAME_MS[timeframe] ?? 3_600_000;
+        const raw = await this.kucoin.fetchCandles(asset.kucoinSymbol, kucoinType, {
+          startAtMs: now - (klineLimit + 2) * spanMs,
+          endAtMs: now,
+        });
         const normalized = normalizeKuCoinCandles(raw, asset.symbol, true);
-        this.candleCache.set(cacheKey, { data: normalized, timestamp: now });
-        return normalized;
+        const candles = normalized.length > klineLimit ? normalized.slice(-klineLimit) : normalized;
+        if (candles.length < klineLimit) {
+          // Не подставляем ничего и не «дорисовываем»: честно сообщаем о меньшей глубине
+          // источника, чтобы LIVE-движок отчитался о нехватке истории, а не молчал.
+          console.warn(
+            `[market-data] KuCoin fallback: ${symbol} ${timeframe} — ${candles.length} свечей вместо ${klineLimit} (глубина источника)`
+          );
+        }
+        if (candles.length > 0) {
+          this.candleCache.set(cacheKey, { data: candles, timestamp: now });
+          return candles;
+        }
       } catch {
         // Both failed
       }
@@ -503,6 +515,50 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     });
   }
 
+  /** З7: спред только из фактических bid/ask биржи; null — биржа их не отдала. */
+  private computeSpreadPctFromBidAsk(bid?: string | null, ask?: string | null): number | null {
+    const b = parseFloat(String(bid ?? ''));
+    const a = parseFloat(String(ask ?? ''));
+    if (!Number.isFinite(b) || !Number.isFinite(a) || b <= 0 || a <= 0) return null;
+    const mid = (a + b) / 2;
+    return Number((((a - b) / mid) * 100).toFixed(4));
+  }
+
+  /** З3: проекция полного расчёта движка на контракт TechnicalIndicators. */
+  private buildTechnicalIndicators(c: CompleteIndicatorsResult): TechnicalIndicators {
+    return {
+      rsi14: c.rsi14,
+      macd: { macd: c.macd.macd, signal: c.macd.signal, hist: c.macd.hist },
+      sma20: c.sma20,
+      sma50: c.sma50,
+      sma200: c.sma200,
+      bollinger: { upper: c.bollinger.upper, middle: c.bollinger.middle, lower: c.bollinger.lower },
+    };
+  }
+
+  /**
+   * З4: фактический OI spot-запросами (/fapi/v1/openInterest, weight 1) с кэшем 60 с.
+   * Ранее spot-OI не запрашивался вовсе: при недоступном hist-ряде OI молча считался
+   * эвристикой quoteVolume×0.15 и попадал в UI как факт. Частичный успех кэшируется;
+   * отказ по символу → openInterest = null → «—» в UI (RULES §1, без подстановок).
+   */
+  private async fetchOpenInterestSpot(
+    symbols: string[],
+    now: number
+  ): Promise<Map<string, BinanceFuturesOpenInterest>> {
+    const TTL_MS = 60_000;
+    if (this.oiSpotCache && now - this.oiSpotCache.timestamp < TTL_MS) {
+      return this.oiSpotCache.data;
+    }
+    const settled = await Promise.allSettled(symbols.map((s) => this.futuresAdapter.fetchOpenInterest(s)));
+    const map = new Map<string, BinanceFuturesOpenInterest>();
+    settled.forEach((r, i) => {
+      if (r.status === 'fulfilled') map.set(symbols[i], r.value);
+    });
+    this.oiSpotCache = { data: map, timestamp: now };
+    return map;
+  }
+
   public async getFuturesList(): Promise<FuturesAsset[]> {
     const now = Date.now();
     if (this.futuresCache && now - this.futuresCache.timestamp < this.cacheTtlMs) {
@@ -518,6 +574,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       const tickerMap = new Map(tickers.map((t) => [t.symbol.toUpperCase(), t]));
       const canonicalList = getCanonicalAssets().filter((a) => a.binanceSymbol);
       const oiHistMap = await this.fetchOpenInterestHistory(canonicalList.map((a) => a.binanceSymbol as string), now);
+      const oiSpotMap = await this.fetchOpenInterestSpot(canonicalList.map((a) => a.binanceSymbol as string), now);
       const results: FuturesAsset[] = [];
 
       for (const asset of canonicalList) {
@@ -528,7 +585,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
             asset,
             premium,
             ticker,
-            undefined,
+            oiSpotMap.get(asset.binanceSymbol as string),
             oiHistMap.get(asset.binanceSymbol as string)
           );
           results.push(futuresAsset);

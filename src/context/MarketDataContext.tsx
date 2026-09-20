@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { MarketDataProvider } from '@/services/data/MarketDataProvider';
 import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
+import { BinanceSpotAdapter } from '@/services/data/adapters/BinanceSpotAdapter';
+import { KuCoinSpotAdapter } from '@/services/data/adapters/KuCoinSpotAdapter';
+import { SourceHealthTracker } from '@/services/data/adapters/sourceHealth';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { LiveSignalEngine } from '@/services/signals/live/LiveSignalEngine';
 import { PlanTier, PlanManager } from '@/services/subscription/PlanManager';
@@ -73,7 +76,14 @@ interface MarketDataContextType {
 const MarketDataContext = createContext<MarketDataContextType | null>(null);
 
 const singletonDemoProvider = new DemoMarketDataProvider();
+// Circuit breaker «здоровья источников» (общий для REST-адаптеров live-провайдера):
+// после систематических отказов endpoint (CORS KuCoin, гео-блок, делистнутый символ)
+// перестаёт долбиться каждым циклом опроса — консоль не засоряется повторными
+// сетевыми ошибками, данные честно помечаются недоступными. См. sourceHealth.ts.
+const liveSourceHealth = new SourceHealthTracker();
 const singletonLiveProvider = new LiveMarketDataProvider({
+  binanceAdapter: new BinanceSpotAdapter({ health: liveSourceHealth }),
+  kucoinAdapter: new KuCoinSpotAdapter({ health: liveSourceHealth }),
   anomalyEngine: RealtimeFeedManager.getInstance().anomalyEngine,
 });
 
@@ -175,11 +185,14 @@ export const MarketDataProviderComponent: React.FC<{
         feedManager.subscribeSymbol(sym);
       }
 
-      // Start live signal engine (V3.0 strategy on 6 symbols)
+      // LIVE-движок сигналов: V3.0 / V3.3 / V2.8 на 6 инструментах, только закрытые свечи.
+      // start() идемпотентен — повторный запуск эффекта в StrictMode не создаёт второй таймер.
       try {
         const signalEngine = LiveSignalEngine.getInstance({ provider: singletonLiveProvider });
         signalEngine?.start();
-      } catch { /* non-fatal */ }
+      } catch (e) {
+        console.error('[CRYPTORA] LiveSignalEngine failed to start', e);
+      }
     } else {
       feedManager.disconnect();
       setRealtimeStatus('idle');
@@ -189,6 +202,8 @@ export const MarketDataProviderComponent: React.FC<{
     return () => {
       unsubscribeConnection();
       unsubscribeTickers();
+      // Останавливаем таймеры движка при размонтировании провайдера (тесты, StrictMode).
+      LiveSignalEngine.getInstance()?.stop();
     };
   }, [dataMode]);
 
@@ -311,7 +326,15 @@ export const MarketDataProviderComponent: React.FC<{
 
   const toggleWatchlist = (symbol: string) => {
     const s = symbol.toUpperCase();
+    const isAdd = !watchlist.includes(s);
     setWatchlist((prev) => (prev.includes(s) ? prev.filter((item) => item !== s) : [...prev, s]));
+    // Б3: WS-подписка следует за watchlist сразу (раньше добавленный символ не
+    // стримился до переподключения потока — эффект подписки зависит только от dataMode).
+    if (dataMode === 'live') {
+      const feedManager = RealtimeFeedManager.getInstance();
+      if (isAdd) feedManager.subscribeSymbol(s);
+      else feedManager.unsubscribeSymbol(s);
+    }
   };
 
   const isWatchlisted = (symbol: string) => {

@@ -1,21 +1,24 @@
 import React from 'react';
 
 /**
- * Deterministic color from symbol string (no randomness).
- * All colors have ≥ 4.5:1 contrast with white text (WCAG AA).
+ * Палитра фонов иконок: детерминированный выбор по хэшу символа (без random).
+ * Д2 (v0.8.52): прежняя палитра содержала светлые цвета (#F7931A, #D4A017, #EA580C…),
+ * дающие 1.8–3.3:1 с белым текстом буквы — ниже порога WCAG AA (4.5:1).
+ * Каждый цвет здесь проверен юнит-тестом на >= 4.5:1 с белым.
  */
+export const COIN_ICON_PALETTE = [
+  '#B45309', '#4F46E5', '#047857', '#92400E', '#2563EB',
+  '#1D4ED8', '#854D0E', '#DC2626', '#4338CA', '#BE185D',
+  '#7C3AED', '#E11D48', '#0E7490', '#C2410C', '#065F46',
+  '#6D28D9', '#9F1239', '#A16207', '#1E40AF', '#86198F',
+] as const;
+
 function symbolColor(symbol: string): string {
-  const COLORS = [
-    '#F7931A', '#627EEA', '#00A87D', '#D4A017', '#2563EB',
-    '#1D4ED8', '#B8860B', '#DC2626', '#4338CA', '#DB2777',
-    '#1D4ED8', '#7C3AED', '#E11D48', '#0891B2', '#EA580C',
-    '#059669', '#4F46E5', '#BE185D', '#6D28D9', '#0E7490',
-  ];
   let hash = 0;
   for (let i = 0; i < symbol.length; i++) {
     hash = ((hash << 5) - hash + symbol.charCodeAt(i)) | 0;
   }
-  return COLORS[Math.abs(hash) % COLORS.length];
+  return COIN_ICON_PALETTE[Math.abs(hash) % COIN_ICON_PALETTE.length];
 }
 
 interface CoinIconProps {
@@ -25,7 +28,7 @@ interface CoinIconProps {
 }
 
 /**
- * Coin icon: deterministic colored circle with first letter of ticker.
+ * Coin icon: deterministic colored circle with first letter of ticker (AA-контраст буквы, Д2).
  * No external API requests. No CoinGecko/Binance metadata calls.
  */
 export const CoinIcon: React.FC<CoinIconProps> = ({ symbol, size = 24, className = '' }) => {

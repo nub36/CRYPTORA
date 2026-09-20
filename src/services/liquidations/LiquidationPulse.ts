@@ -49,7 +49,8 @@ export interface AssetPulse {
   liquidation: AssetLiquidationPulse;
   imbalance: AssetImbalance | null;
   derivatives: {
-    openInterestUsd: number;
+    /** null = фактический OI недоступен (источник не ответил) — UI показывает «—». */
+    openInterestUsd: number | null;
     openInterestChange1h: number | null;
     openInterestChange24h: number | null;
     openInterestChangeSource?: 'ACTUAL' | 'ESTIMATED' | 'UNAVAILABLE';
@@ -255,7 +256,7 @@ export class LiquidationPulse {
       : 0;
 
     // Funding: available if non-zero (Binance always returns, even if 0.0000)
-    const hasFunding = futures.fundingRate !== 0 || futures.openInterest > 0;
+    const hasFunding = futures.fundingRate !== 0 || (futures.openInterest != null && futures.openInterest > 0);
     if (hasFunding) available.push('funding'); else missing.push('funding');
 
     const fundingComponent =

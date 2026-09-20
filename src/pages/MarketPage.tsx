@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary, AssetCategory } from '@/types/market';
@@ -33,7 +34,11 @@ export const MarketPage: React.FC = () => {
   });
   const navigate = useNavigate();
 
-  useEffect(() => {
+  // Б1: список рынка обновляется сам (30с; пауза в фоновой вкладке;
+  // возврат видимости/сети — внеочередной рефреш).
+  const MARKET_REFRESH_MS = 30_000;
+
+  const load = useCallback(() => {
     provider
       .getAssets()
       .then((data) => {
@@ -42,6 +47,8 @@ export const MarketPage: React.FC = () => {
       })
       .catch(() => setSourceUnavailable(true));
   }, [provider]);
+
+  useAutoRefresh(load, MARKET_REFRESH_MS);
 
   // Handle column sort toggle
   const handleSort = (key: keyof AssetSummary) => {
@@ -116,7 +123,7 @@ export const MarketPage: React.FC = () => {
               <ArrowDown className="h-3 w-3 shrink-0 text-cyan-400" aria-hidden />
             )
           ) : (
-            <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-600" aria-hidden />
+            <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-500" aria-hidden />
           )}
         </span>
       </th>
@@ -243,7 +250,7 @@ export const MarketPage: React.FC = () => {
                         }}
                       >
                         <button
-                          className="text-slate-600 hover:text-amber-400 transition-colors p-1.5"
+                          className="text-slate-500 hover:text-amber-400 transition-colors p-1.5"
                           title={isStarred ? 'Удалить из избранного' : 'Добавить в избранное'}
                           aria-label={`Избранное ${asset.symbol}`}
                         >

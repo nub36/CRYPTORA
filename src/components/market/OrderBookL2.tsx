@@ -11,27 +11,9 @@ interface OrderBookL2Props {
 export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPrice, symbol }) => {
   const depthData = useMemo(() => {
     if (!orderBook || orderBook.bids.length === 0 || orderBook.asks.length === 0) {
-      // Fallback synthetic depth around currentPrice if realtime depth snapshot hasn't arrived
-      const p = currentPrice > 0 ? currentPrice : 65000;
-      const bids: [number, number][] = [
-        [p * 0.9998, 0.85],
-        [p * 0.9995, 1.42],
-        [p * 0.9992, 2.15],
-        [p * 0.9988, 3.8],
-        [p * 0.9982, 5.2],
-        [p * 0.9975, 7.5],
-        [p * 0.9965, 12.0],
-      ];
-      const asks: [number, number][] = [
-        [p * 1.0002, 0.72],
-        [p * 1.0005, 1.15],
-        [p * 1.0008, 1.95],
-        [p * 1.0012, 3.2],
-        [p * 1.0018, 4.8],
-        [p * 1.0025, 6.9],
-        [p * 1.0035, 11.2],
-      ];
-      return { bids, asks, isSynthetic: true };
+      // З6: данных потока ещё нет — НИКАКИХ выдуманных уровней. Рендерим скелетон
+      // «ожидание потока» (см. ниже); числа появятся только из фактического WS-снапшота.
+      return { bids: [] as [number, number][], asks: [] as [number, number][], isSynthetic: true };
     }
 
     return {
@@ -56,10 +38,10 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
       });
 
       const maxCumulative = Math.max(bidTotal, askTotal, 1);
-      const bestBid = depthData.bids[0] ? depthData.bids[0][0] : currentPrice * 0.9995;
-      const bestAsk = depthData.asks[0] ? depthData.asks[0][0] : currentPrice * 1.0005;
-      const spreadUsd = Math.max(0, bestAsk - bestBid);
-      const mid = (bestBid + bestAsk) / 2;
+      const bestBid = depthData.bids[0] ? depthData.bids[0][0] : 0;
+      const bestAsk = depthData.asks[0] ? depthData.asks[0][0] : 0;
+      const spreadUsd = bestBid > 0 && bestAsk > 0 ? Math.max(0, bestAsk - bestBid) : 0;
+      const mid = bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : 0;
       const spreadBps = mid > 0 ? (spreadUsd / mid) * 10000 : 0;
 
       return {
@@ -88,7 +70,7 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
               : 'bg-brand-green/10 text-brand-green border border-brand-green/30'
           }`}
         >
-          {depthData.isSynthetic ? 'СИНТЕТИЧЕСКАЯ ГЛУБИНА' : 'BINANCE L2 · LIVE'}
+          {depthData.isSynthetic ? 'ОЖИДАНИЕ ПОТОКА (WS)' : 'BINANCE L2 · LIVE'}
         </span>
       </div>
 
@@ -101,7 +83,17 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
 
       {/* Asks (Sell Orders, Red, reversed so lowest ask is closest to mid price) */}
       <div className="space-y-0.5 py-1">
-        {asksWithTotal
+        {depthData.isSynthetic ? (
+          // З6: скелетон без чисел — ждём фактический снапшот глубины из WS-потока.
+          Array.from({ length: 7 }).map((_, idx) => (
+            <div key={`ask-skeleton-${idx}`} className="grid grid-cols-3 py-0.5 px-1">
+              <div className="h-3 rounded-sm bg-surface-elevated animate-pulse" style={{ width: `${78 - idx * 6}%` }} />
+              <div className="h-3 rounded-sm bg-surface-elevated animate-pulse w-12 justify-self-end" />
+              <div className="h-3 rounded-sm bg-surface-elevated animate-pulse w-12 justify-self-end" />
+            </div>
+          ))
+        ) : (
+        asksWithTotal
           .slice()
           .reverse()
           .map((item, idx) => {
@@ -127,7 +119,8 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
                 </span>
               </div>
             );
-          })}
+          })
+        )}
       </div>
 
       {/* Mid Price & Spread Bar */}
@@ -139,14 +132,30 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
           <span className="text-[11px] text-slate-400 font-normal">Средняя цена</span>
         </div>
         <div className="text-[11px] text-slate-400 font-sans">
-          СПРЕД: <span className="text-slate-200 font-bold">${spreadUsd.toFixed(2)}</span>{' '}
-          <span className="text-brand-cyan">({spreadBps.toFixed(1)} bps)</span>
+          {depthData.isSynthetic ? (
+            'СПРЕД: —'
+          ) : (
+            <>
+              СПРЕД: <span className="text-slate-200 font-bold">${spreadUsd.toFixed(2)}</span>{' '}
+              <span className="text-brand-cyan">({spreadBps.toFixed(1)} bps)</span>
+            </>
+          )}
         </div>
       </div>
 
       {/* Bids (Buy Orders, Green) */}
       <div className="space-y-0.5 py-1">
-        {bidsWithTotal.map((item, idx) => {
+        {depthData.isSynthetic ? (
+          // З6: скелетон без чисел — ждём фактический снапшот глубины из WS-потока.
+          Array.from({ length: 7 }).map((_, idx) => (
+            <div key={`bid-skeleton-${idx}`} className="grid grid-cols-3 py-0.5 px-1">
+              <div className="h-3 rounded-sm bg-surface-elevated animate-pulse" style={{ width: `${78 - idx * 6}%` }} />
+              <div className="h-3 rounded-sm bg-surface-elevated animate-pulse w-12 justify-self-end" />
+              <div className="h-3 rounded-sm bg-surface-elevated animate-pulse w-12 justify-self-end" />
+            </div>
+          ))
+        ) : (
+        bidsWithTotal.map((item, idx) => {
           const depthWidth = Math.min(100, (item.total / maxCumulative) * 100);
           return (
             <div
@@ -167,9 +176,10 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
               <span className="text-right text-slate-500 group-hover:text-slate-300 z-10">
                 {item.total.toFixed(item.total < 1 ? 4 : 2)}
               </span>
-            </div>
-          );
-        })}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

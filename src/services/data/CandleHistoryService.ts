@@ -8,6 +8,8 @@
  */
 
 import { getCanonicalAssets } from './registry/assetRegistry';
+import { SourceHealthTracker, exchangeEndpointKey, type SourceFailureKind } from './adapters/sourceHealth';
+import { AdapterSourceBlockedError, type AdapterSource } from './adapters/errors';
 
 export interface CandlePoint {
   time: number; // Unix seconds
@@ -90,14 +92,20 @@ export class CandleHistoryService {
   private cache: CacheEntry | null = null;
   private pending: Promise<Map<string, AssetCandleDerived>> | null = null;
   private fetchFn: typeof fetch;
+  /** Circuit breaker: не долбить мёртвые klines-endpoints каждым циклом обогащения. */
+  private readonly health?: SourceHealthTracker;
 
-  constructor(fetchFn?: typeof fetch) {
+  constructor(fetchFn?: typeof fetch, health?: SourceHealthTracker) {
     this.fetchFn = fetchFn ?? ((...args) => globalThis.fetch(...args));
+    this.health = health;
   }
 
   static getInstance(): CandleHistoryService {
     if (!this.instance) {
-      this.instance = new CandleHistoryService();
+      // Боевой синглтон: включённый circuit breaker. Без него недоступный символ
+      // (например, после делистинга на Binance) генерировал бы 2 «красных» запроса
+      // (1h + 1D klines) на каждом цикле обогащения — каждую минуту.
+      this.instance = new CandleHistoryService(undefined, new SourceHealthTracker());
     }
     return this.instance;
   }
@@ -130,6 +138,44 @@ export class CandleHistoryService {
     }
   }
 
+  /**
+   * Klines-запрос с учётом circuit breaker'а. Ключ endpoint'а — ресурс + символ,
+   * без interval/limit: 1h- и 1D-свечи одного символа делят одну запись здоровья,
+   * чтобы недоступный символ блокировался после порога неудач, а не долбился вечно.
+   */
+  private async fetchKlinesWithHealth(
+    symbol: string,
+    interval: string,
+    limit: number
+  ): Promise<Array<[number, string, string, string, string, string, number]>> {
+    const key = exchangeEndpointKey(`/api/v3/klines?symbol=${encodeURIComponent(symbol)}`);
+    if (this.health && !this.health.canAttempt(key)) {
+      throw new AdapterSourceBlockedError('binance', key, this.health.retryInMs(key));
+    }
+
+    try {
+      const raw = await fetchBinanceKlines(symbol, interval, limit, this.fetchFn);
+      this.health?.recordSuccess(key);
+      return raw;
+    } catch (err: any) {
+      // Таймаут транзиентен — не учитывается circuit breaker'ом.
+      if (err?.name === 'AbortError') throw err;
+      if (this.health) {
+        const status = /HTTP (\d+)/.exec(String(err?.message ?? ''))?.[1];
+        const kind: SourceFailureKind =
+          status === '400' || status === '404'
+            ? 'invalid_symbol'
+            : status === '429' || status === '418'
+              ? 'rate_limit'
+              : status
+                ? 'http'
+                : 'network';
+        this.health.recordFailure('binance' as AdapterSource, key, kind, err?.message);
+      }
+      throw err;
+    }
+  }
+
   private async fetchAll(): Promise<Map<string, AssetCandleDerived>> {
     const assets = getCanonicalAssets().filter((a) => a.binanceSymbol);
     const result = new Map<string, AssetCandleDerived>();
@@ -154,7 +200,7 @@ export class CandleHistoryService {
       // 1h klines: 25 candles for sparkline + 1h change
       tasks.push(async () => {
         try {
-          const raw = await fetchBinanceKlines(bs, '1h', 25, this.fetchFn);
+          const raw = await this.fetchKlinesWithHealth(bs, '1h', 25);
           const entry = result.get(asset.symbol)!;
 
           if (raw.length >= 2) {
@@ -179,7 +225,7 @@ export class CandleHistoryService {
       // 1D klines: 8 candles for 7d change + daily closes for beta computation
       tasks.push(async () => {
         try {
-          const raw = await fetchBinanceKlines(bs, '1d', 8, this.fetchFn);
+          const raw = await this.fetchKlinesWithHealth(bs, '1d', 8);
           const entry = result.get(asset.symbol)!;
 
           // Store raw daily closes for beta/volatility computation (D7)

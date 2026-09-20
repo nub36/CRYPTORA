@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import {
   PortfolioRiskEngine,
   PortfolioAssetAllocation,
@@ -22,43 +23,44 @@ export const PortfolioRiskPage: React.FC = () => {
     { symbol: 'USDT', amountUsd: 10000 },
   ]);
 
-  // Real betas from candle data (computed once on mount, cached 60s)
+  // Н12: беты/волатильности из фактических дневных свечей — ПЕРЕСЧИТЫВАЮТСЯ каждые 60с
+  // (раньше считались один раз при монтировании и застывали). CandleHistoryService
+  // кэширует свечи на 60с — цикл почти не создаёт сетевых запросов.
   const [riskOverrides, setRiskOverrides] = useState<PortfolioRiskOverrides | undefined>();
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchRiskOverrides = useCallback(async () => {
     const candleService = CandleHistoryService.getInstance();
-    candleService.getAll().then((candles) => {
-      if (cancelled) return;
-      const btcCandles = candles.get('BTC');
-      if (!btcCandles || btcCandles.dailyCloses.length < 5) return;
+    const candles = await candleService.getAll().catch(() => null);
+    if (!candles) return;
+    const btcCandles = candles.get('BTC');
+    if (!btcCandles || btcCandles.dailyCloses.length < 5) return;
 
-      const btcReturns = IndicatorEngine.calculateReturns(btcCandles.dailyCloses);
-      if (btcReturns.length < 4) return;
+    const btcReturns = IndicatorEngine.calculateReturns(btcCandles.dailyCloses);
+    if (btcReturns.length < 4) return;
 
-      const realBetas: Record<string, number> = {};
-      const realVols: Record<string, number> = {};
+    const realBetas: Record<string, number> = {};
+    const realVols: Record<string, number> = {};
 
-      for (const [sym, entry] of candles) {
-        if (sym === 'BTC' || entry.dailyCloses.length < 5) continue;
-        const returns = IndicatorEngine.calculateReturns(entry.dailyCloses);
-        const beta = IndicatorEngine.calculateBeta(returns, btcReturns);
-        if (beta != null && Number.isFinite(beta)) {
-          realBetas[sym] = Number(beta.toFixed(2));
-        }
-        if (returns.length >= 4) {
-          const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-          const variance = returns.reduce((acc, r) => acc + (r - mean) ** 2, 0) / (returns.length - 1);
-          realVols[sym] = Number((Math.sqrt(variance) * Math.sqrt(365)).toFixed(2));
-        }
+    for (const [sym, entry] of candles) {
+      if (sym === 'BTC' || entry.dailyCloses.length < 5) continue;
+      const returns = IndicatorEngine.calculateReturns(entry.dailyCloses);
+      const beta = IndicatorEngine.calculateBeta(returns, btcReturns);
+      if (beta != null && Number.isFinite(beta)) {
+        realBetas[sym] = Number(beta.toFixed(2));
       }
-
-      if (!cancelled && Object.keys(realBetas).length > 0) {
-        setRiskOverrides({ betas: realBetas, volatilities: realVols });
+      if (returns.length >= 4) {
+        const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+        const variance = returns.reduce((acc, r) => acc + (r - mean) ** 2, 0) / (returns.length - 1);
+        realVols[sym] = Number((Math.sqrt(variance) * Math.sqrt(365)).toFixed(2));
       }
-    }).catch(() => { /* non-critical */ });
-    return () => { cancelled = true; };
+    }
+
+    if (Object.keys(realBetas).length > 0) {
+      setRiskOverrides({ betas: realBetas, volatilities: realVols });
+    }
   }, []);
+
+  useAutoRefresh(fetchRiskOverrides, 60_000);
 
   const report = useMemo(
     () => PortfolioRiskEngine.calculateRiskReport(allocations, riskOverrides),

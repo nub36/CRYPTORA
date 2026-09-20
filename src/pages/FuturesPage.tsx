@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
@@ -21,7 +22,11 @@ export const FuturesPage: React.FC = () => {
   });
   const navigate = useNavigate();
 
-  useEffect(() => {
+  // Б1: фьючерсы обновляются сами (30с; spot-OI кэшируется 60с, OI-ряд 5мин —
+  // цикл почти не создаёт запросов; пауза в фоновой вкладке).
+  const FUTURES_REFRESH_MS = 30_000;
+
+  const load = useCallback(() => {
     provider
       .getFuturesList()
       .then((data) => {
@@ -30,6 +35,8 @@ export const FuturesPage: React.FC = () => {
       })
       .catch(() => setSourceUnavailable(true));
   }, [provider]);
+
+  useAutoRefresh(load, FUTURES_REFRESH_MS);
 
   const handleSort = (key: keyof FuturesAsset) => {
     setSortConfig((prev) => {
@@ -310,7 +317,7 @@ export const FuturesPage: React.FC = () => {
                     </td>
 
                     <td className="py-2.5 px-3 text-right font-bold text-white font-mono tabular-nums">
-                      {formatCurrency(f.openInterest, { compact: true })}
+                      {f.openInterest != null ? formatCurrency(f.openInterest, { compact: true }) : '—'}
                     </td>
 
                     <td

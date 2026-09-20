@@ -76,7 +76,8 @@ export const TradingPairSchema = z.object({
   pair: z.string(),
   price: z.number(),
   volume24h: z.number(),
-  spreadPct: z.number(),
+  /** Реальный спред из bid/ask биржи; null = биржа не отдала bid/ask (не выдумываем значение). */
+  spreadPct: z.number().nullable(),
 });
 
 export type TradingPair = z.infer<typeof TradingPairSchema>;
@@ -89,7 +90,9 @@ export const AssetDetailSchema = AssetSummarySchema.extend({
   atlDate: z.string().optional(),
   high24h: z.number(),
   low24h: z.number(),
-  indicators: TechnicalIndicatorsSchema,
+  // З3: null = недостаточно фактических свечей для полного набора — «нет данных» в UI,
+  // никакой подстановки RSI=50 / SMA=цена / Bollinger=цена.
+  indicators: TechnicalIndicatorsSchema.nullable(),
   pairs: z.array(TradingPairSchema),
   /** CoinGecko supply data — runtime validated, null→"—" in UI */
   totalSupply: z.number().nullable().optional(),
@@ -111,7 +114,8 @@ export const FuturesAssetSchema = z.object({
   /** Unix ms ближайшего начисления фандинга (из источника). */
   nextFundingTime: z.number().optional(),
   annualizedFundingRate: z.number(),
-  openInterest: z.number(), // USD
+  /** OI в USD: фактический (spot-запрос или последняя точка ряда); null = источник не ответил («—», не эвристика ×0.15). */
+  openInterest: z.number().nullable(),
   openInterestChange1h: z.number().nullable(), // %; null = history unavailable, not zero
   openInterestChange24h: z.number().nullable(), // %; null = history unavailable, not zero
   /** Происхождение Δ OI: ACTUAL — из ряда OI биржи; ESTIMATED — ряд недоступен (нет эвристики); UNAVAILABLE — не рассчитано. */

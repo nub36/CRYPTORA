@@ -202,3 +202,79 @@ describe('BinanceWebSocketClient Unit Tests', () => {
     client.disconnect();
   });
 });
+
+describe('BinanceWebSocketClient — бесконечный реконнект (Н6, v0.8.50)', () => {
+  let eventBus: EventBus;
+  let anomalyEngine: AnomalyEngine;
+
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+    eventBus = new EventBus({ throttleIntervalMs: 50 });
+    anomalyEngine = new AnomalyEngine({ cooldownMs: 0 });
+  });
+
+  it('после maxReconnectAttempts поток НЕ умирает: попытки продолжаются (delay насыщается)', async () => {
+    const client = new BinanceWebSocketClient(eventBus, anomalyEngine, {
+      webSocketClass: MockWebSocket,
+      reconnectInitialDelayMs: 1,
+      reconnectMaxDelayMs: 3,
+      maxReconnectAttempts: 2, // старое поведение: после 2 попыток — терминальный 'error'
+    });
+
+    client.connect();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Рвём соединение 12 раз подряд (в старом коде после ~10 поток умирал навсегда)
+    for (let i = 0; i < 12; i++) {
+      const last = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+      last.onclose?.();
+      await new Promise((r) => setTimeout(r, 8));
+    }
+
+    expect(MockWebSocket.instances.length).toBeGreaterThan(10);
+    const state = client.getConnectionState();
+    expect(['connected', 'connecting', 'reconnecting', 'disconnected']).toContain(state);
+    expect(state).not.toBe('error'); // терминальной тишины больше нет
+    client.disconnect();
+  });
+
+  it("'online' → мгновенный реконнект без ожидания backoff-таймера, счётчик сбрасывается", async () => {
+    const client = new BinanceWebSocketClient(eventBus, anomalyEngine, {
+      webSocketClass: MockWebSocket,
+      reconnectInitialDelayMs: 5_000, // без 'online' реконнект ждал бы 5 с
+      reconnectMaxDelayMs: 30_000,
+    });
+    client.connect();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const last = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+    last.onclose?.(); // запланирован reconnect через 5 с
+    const countAfterClose = MockWebSocket.instances.length;
+
+    window.dispatchEvent(new Event('online'));
+
+    expect(MockWebSocket.instances.length).toBe(countAfterClose + 1); // новый сокет сразу
+    expect(client.getConnectionState()).toBe('connecting');
+    client.disconnect();
+  });
+
+  it("visibilitychange (вкладка снова видима) → мгновенный реконнект", async () => {
+    const client = new BinanceWebSocketClient(eventBus, anomalyEngine, {
+      webSocketClass: MockWebSocket,
+      reconnectInitialDelayMs: 5_000,
+      reconnectMaxDelayMs: 30_000,
+    });
+    client.connect();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const last = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+    last.onclose?.();
+    const countAfterClose = MockWebSocket.instances.length;
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(MockWebSocket.instances.length).toBe(countAfterClose + 1);
+    client.disconnect();
+  });
+});

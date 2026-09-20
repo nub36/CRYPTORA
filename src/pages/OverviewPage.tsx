@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import {
@@ -76,9 +77,14 @@ export const OverviewPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
+  // Б1: Обзор обновляется сам. silent-режим (автоцикл) не мигает спиннером,
+  // но честно выставляет sourceUnavailable при отказе источника. Свечи BTC
+  // грузит отдельный эффект по timeframe (ниже) — здесь они не нужны.
+  const OVERVIEW_REFRESH_MS = 30_000;
+
+  const loadData = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
       setSourceUnavailable(false);
       try {
         const [ov, assts] = await Promise.all([provider.getMarketOverview(), provider.getAssets()]);
@@ -94,9 +100,6 @@ export const OverviewPage: React.FC = () => {
         setFutures(ftrsR.status === 'fulfilled' ? ftrsR.value : []);
         if (liqsR.status === 'fulfilled') setLiquidations(liqsR.value);
         setRadarEvents(rdrR.status === 'fulfilled' ? rdrR.value : []);
-
-        const candles = await provider.getCandles('BTC', selectedTimeframe);
-        setBtcCandles(candles);
       } catch {
         // LIVE-FIRST: источник не ответил — показываем честное состояние,
         // значения из другого датасета вместо фактических не подставляются.
@@ -104,9 +107,17 @@ export const OverviewPage: React.FC = () => {
       } finally {
         setLoading(false);
       }
-    }
-    loadData();
-  }, [provider]);
+    },
+    [provider]
+  );
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Автоцикл: 30с (провайдер кэширует списки 10с — цикл почти не создаёт запросов);
+  // пауза в фоновой вкладке, внеочередной рефреш при возврате видимости/сети.
+  useAutoRefresh(() => loadData(true), OVERVIEW_REFRESH_MS, { skipImmediate: true });
 
   // When timeframe changes for BTC chart
   useEffect(() => {
@@ -173,7 +184,8 @@ export const OverviewPage: React.FC = () => {
 
   // Aggregate futures stats
   const totalFuturesVolume = futures.reduce((acc, f) => acc + f.futuresVolume24h, 0);
-  const totalOpenInterest = futures.reduce((acc, f) => acc + f.openInterest, 0);
+  // null-OI (источник не ответил) в сумму не входит — суммируем только фактические значения
+  const totalOpenInterest = futures.reduce((acc, f) => acc + (f.openInterest ?? 0), 0);
 
   // Funding extremes
   const sortedFunding = [...futures].sort((a, b) => b.fundingRate - a.fundingRate);
@@ -391,7 +403,7 @@ export const OverviewPage: React.FC = () => {
           </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1.5 flex items-center space-x-2 tabular-nums">
             <span className="text-emerald-400">{overview.marketBreadth.advancing}▲</span>
-            <span aria-hidden className="text-slate-600">/</span>
+            <span aria-hidden className="text-slate-500">/</span>
             <span className="text-rose-400">{overview.marketBreadth.declining}▼</span>
           </div>
           <div className="text-[11px] text-slate-400 font-sans mt-1">
@@ -523,12 +535,12 @@ export const OverviewPage: React.FC = () => {
                 </div>
                 {(() => {
                   // DERIVED: взвешенный Δ OI 24ч по фьючерсам с ACTUAL-источником
-                  const actualOi = futures.filter((f) => f.openInterestChangeSource === 'ACTUAL' && f.openInterest > 0 && f.openInterestChange24h != null);
+                  const actualOi = futures.filter((f) => f.openInterestChangeSource === 'ACTUAL' && f.openInterest != null && f.openInterest > 0 && f.openInterestChange24h != null);
                   if (actualOi.length === 0) {
                     return <div className="ui-helper mt-0.5">Δ24ч — нет фактических данных OI</div>;
                   }
-                  const weightedChange = actualOi.reduce((s, f) => s + f.openInterestChange24h! * f.openInterest, 0)
-                    / actualOi.reduce((s, f) => s + f.openInterest, 0);
+                  const weightedChange = actualOi.reduce((s, f) => s + f.openInterestChange24h! * (f.openInterest ?? 0), 0)
+                    / actualOi.reduce((s, f) => s + (f.openInterest ?? 0), 0);
                   return (
                     <div className={`text-[11px] font-mono mt-0.5 font-semibold ${weightedChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {formatPercent(weightedChange)} за 24h
@@ -565,7 +577,7 @@ export const OverviewPage: React.FC = () => {
                 >
                   <span className="font-bold text-white">{f.symbol}</span>
                   <span className="text-slate-300 tabular-nums font-mono">
-                    OI: {formatCurrency(f.openInterest, { compact: true })}
+                    OI: {f.openInterest != null ? formatCurrency(f.openInterest, { compact: true }) : '—'}
                   </span>
                   <span
                     className={`font-semibold tabular-nums  font-mono${

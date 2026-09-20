@@ -198,7 +198,8 @@ export function normalizeKuCoinCandles(
 export function extractBinanceSpread(ticker: BinanceTicker24hr): { spreadBps: number; bestBid: number; bestAsk: number } | null {
   const bid = parseFloat(ticker.bidPrice ?? '0');
   const ask = parseFloat(ticker.askPrice ?? '0');
-  if (bid <= 0 || ask <= 0 || ask <= bid) return null;
+  // NaN-гвард: parseFloat('') = NaN, а NaN <= 0 ложно — иначе NaN-спред утекал бы в UI.
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask <= bid) return null;
   const mid = (bid + ask) / 2;
   if (mid <= 0) return null;
   return {

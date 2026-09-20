@@ -1,9 +1,33 @@
 # STATUS — Текущий статус проекта CRYPTORA
 
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
-> **Последнее обновление:** 2026-09-17  
-> **Текущая версия:** v0.8.44 (D1-D8 + Corrective Data-Honesty Pass)  
-> **Текущий этап:** CORRECTIVE DATA-HONESTY PASS completed. OI delta null ≠ zero; portfolio beta/vol UNAVAILABLE when no candle data; no silent static fallbacks.  
+> **Последнее обновление:** 2026-09-20  
+> **Текущая версия:** v0.9.0 — ИНТЕГРАЦИОННЫЙ РЕЛИЗ (LIVE-сигналы PR #2 + Source Health + Audit Remediation 1–2)  
+> **Текущий этап:** INTEGRATION RELEASE completed. Main объединяет ветку сигналов (LIVE V3.0/V3.3/V2.8
+> на закрытых свечах, статус-панель /signals, валидация, KuCoin-окна, навигация «Сигналы»), Source
+> Health circuit breaker и оба Audit Remediation прохода. Интеграционные решения: guard сканов = их
+> currentScan + наша document.hidden-пауза; AlertService удалён (Н13); deploy.yml — только ручной
+> запуск (прод = VPS); версия 0.9.0 (коллизия локальных 0.8.45–0.8.49 ветки сигналов задокументирована). Мёртвый AlertService удалён (Н13); беты
+> портфеля пересчитываются каждые 60с (Н12); LiveSignalEngine — guard сканов + пауза в фоне (Н8);
+> CoinIcon AA-палитра с юнит-проверкой контраста (Д2); slate-600→500 в 7 файлах (Д4); тач-таргеты
+> ≥28px на ≤640px (Д3); CI-workflow + первые настоящие Chromium-e2e (Н10). Осознанно отложено:
+> react-router 7 (breaking, после e2e в CI), CSP nonce, Н5 TLS (VPS владельца), 44px-таргеты.
+> Предыдущие: v0.8.51 (Б1 авто-обновление), v0.8.50 (Н6/З3/З4/З6/З7/Б3), v0.8.45 (Source Health). Все рыночные страницы (/ , /market, /futures,
+> /heatmaps, /screener) обновляют данные сами каждые 30с; в фоновой вкладке запросы на паузе,
+> возврат видимости/сети — внеочередной рефреш. Хук: src/hooks/useAutoRefresh.ts (8 тестов).
+> Предыдущие этапы: AUDIT REMEDIATION PASS 1 (v0.8.50: Н6/З3/З4/З6/З7/Б3+Н9/Н11), Source Health (v0.8.45). По независимому аудиту (PR #1,
+> DEEP_AUDIT_2026-09-18 + AUDIT_REPORT_2026-09-17) верифицирован каждый пункт по актуальному коду:
+> Н1/Н2 (SSRF), Н3 (look-ahead), Н4/Н7 (реестр сигналов), Д1 (шрифты), З1/З2/З5 — оказались уже
+> исправлены в актуальном дереве; в этом проходе исправлены Н6 (WS-реконнект бесконечный +
+> online/visibility reset), З3 (индикаторы null без заглушек), З4 (фактический spot-OI вместо ×0.15),
+> З6 (стакан — скелетон), З7 (спред только из bid/ask), Б3 (watchlist WS-подписка), Н9/Н11 (мелочи).
+> ⚠️ Коллизия версий с PR #2 (0.8.45–0.8.49): эта ветка использует 0.8.45 и 0.8.50 — при merge
+> одну из сторон перенумеровать (см. CHANGELOG 0.8.50).
+> Предыдущий этап: CORRECTIVE PROD-DIAGNOSTICS PASS (v0.8.45 Source Health). Систематические сетевые отказы
+> (CORS KuCoin, делистнутый/недоступный на Binance инструмент, гео-блок) больше не долбятся каждым
+> циклом опроса: `SourceHealthTracker` блокирует endpoint+инструмент с backoff, диагностика — один
+> console.warn на эпизод. P11-warn дедуплицирован. Честность данных не затронута (RULES §1):
+> трекер ничего не подменяет — актив с недоступными источниками честно отсутствует/помечен «нет данных».
 > **D5 VERIFIED_NO_CHANGE:** Liquidation normalization/freshness — `LiquidationPulse`, `LiquidationPipeline`, `LiquidationHeatmap` data flow unchanged in D-series. Liquidation 24h remains ACTUAL (pipeline events) / ESTIMATED (DerivativesEngine model) / UNAVAILABLE.  
 > **D6 VERIFIED_NO_CHANGE:** Radar/Screener/Heatmap consistency — null-safe change1h/change7d from D1 already applied to ScreenerPage (D1 commit). RadarPage and HeatmapGrid now also null-safe for OI delta. No new artificial data was needed.  
 > 🏭 **ФАКТИЧЕСКИЙ PRODUCTION (исправлено по указанию владельца):** перед v0.8.5 production на VPS
@@ -15,6 +39,137 @@
 ---
 
 ## 1. Что сделано
+
+### v0.9.0 — Интеграционный релиз (merge ветки сигналов → main)
+- Влита `arena/01a0b8cc-cryptora` (6 коммитов): LIVE-сигналы V3.0/V3.3/V2.8 на фактических закрытых
+  свечах, реплеи/lifecycle/статус движка, тесты signals/* (~800 строк), навигация «Сигналы».
+- Разрешения конфликтов: версии → 0.9.0; main.tsx (basename + future-флаги); LiveSignalEngine (их
+  рефакторинг + наша hidden-пауза); AlertService удалён; deploy.yml → workflow_dispatch-only.
+- Гейты после слияния — в записи коммита интеграции.
+
+### v0.8.52 — Audit Remediation Pass 2 + CI
+- Н13: удалены `AlertService.ts` + его тест; пометки в SITE_REPORT/10-ALERTS.
+- Н12: PortfolioRiskPage — пересчёт бет/волов через useAutoRefresh(60с).
+- Н8: LiveSignalEngine.scan() — in-flight guard + document.hidden пауза (тесты).
+- Д2: CoinIcon — новая 20-цветная палитра ≥4.5:1 к белому (юнит-тест WCAG-формулой).
+- Д4: text-slate-600 → text-slate-500 (7 файлов; slate-600 не проходит AA в обеих темах).
+- Д3: index.css — min-height 28px для интерактива на ≤640px.
+- Н10: .github/workflows/ci.yml (quality + browser-e2e) + e2e/browser.spec.ts (4 Chromium-теста).
+- Отложено: react-router 7 (после e2e в CI), CSP nonce, Н5 TLS (VPS), 44px-таргеты.
+- Тесты: +5, −8 (alerts.test); всего 890 / 85 файлов.
+
+### v0.8.51 — Б1: авто-обновление страниц
+- `useAutoRefresh` (см. CHANGELOG 0.8.51): цикл 30с на /, /market, /futures, /heatmaps, /screener;
+  пауза в фоновой вкладке, внеочередной рефреш на visible/online, защита от наложений.
+- Screener: catch отказа скрининга (было — необработанный rejection).
+- Тесты: +8 (`tests/unit/useAutoRefresh.test.tsx`).
+- Остаток из аудита (не сделано): Н5 TLS (VPS), Н8 (зона PR #2), Н12 (пересчёт бет портфеля),
+  Н13 (мёртвый AlertService), Д2–Д6 (контраст/тач), Н10 (браузерные e2e + CI), зависимости (react-router 7.x — breaking).
+
+### v0.8.50 — Audit Remediation Pass 1 (по аудиту PR #1)
+- **Верификация аудита:** все находки DEEP_AUDIT_2026-09-18/AUDIT_REPORT_2026-09-17 проверены по
+  актуальному коду (аудит делался на `arena/01a0aeee @ e08acb0` до merge). Уже исправлены ранее:
+  Н1/Н2 SSRF-прокси (удалён, `proxyRemoval.test.ts`), Н3 look-ahead (isClosed + closedBars), Н4
+  персистенция реестра, Н7 реактивность /signals, Д1 шрифты (@fontsource), З1/З2/З5.
+- **Н6:** `BinanceWebSocketClient` + `LiquidationStreamTransport` — бесконечный реконнект с
+  насыщением delay (30 с); `window.online`/`visibilitychange` → мгновенный reconnect + сброс счётчика.
+- **З3:** `getAssetDetail` → `indicators: null` при <200 свечей; UI «—» (RSI=50/MACD=0/SMA=цена удалены).
+- **З4:** spot-OI `/fapi/v1/openInterest` (кэш 60 с) в `getFuturesList`; эвристика ×0.15 удалена;
+  `FuturesAsset.openInterest` nullable, потребители null-safe (Futures/Overview/Heatmap/Pulse/Liquidations).
+- **З6:** `OrderBookL2` — скелетон «ОЖИДАНИЕ ПОТОКА (WS)» вместо выдуманных уровней.
+- **З7:** спред только из bid/ask (Binance/KuCoin), `spreadPct: null` без bid/ask; NaN-гвард
+  `extractBinanceSpread`; мёртвая fallback-ветка пары удалена.
+- **Б3:** `toggleWatchlist` сразу подписывает/отписывает WS-символ.
+- **Н9/Н11:** vite dev-прокси `/api` → `:3000`; React Router future-флаги.
+- **Тесты:** +8 (realtimeWs ×3, openInterestHistory ×1 + расширен, liveDataProvider ×4); версии в
+  test-фикстурах обновлены. НЕ сделано (след. проход): Б1 авто-обновление страниц, Н5 TLS (операция
+  на VPS: certbot + 443/редирект/HSTS), Н8 guard сканов (зона PR #2), Н13 AlertService (зона PR #2),
+  контраст/тач (Д2–Д6), браузерные e2e (Н10), зависимости.
+
+### v0.8.45 — Source Health: circuit breaker недоступных REST-источников
+- **Контекст (прод-наблюдение с cryptora.duckdns.org):** консоль DevTools заполнялась «красными»
+  CORS/`net::ERR_FAILED` по одному активу (KAS): его нет в bulk-тикере Binance → провайдер уходил
+  в персональный запрос Binance (отказ без CORS-заголовков) и в KuCoin `market/stats` (KuCoin REST
+  не отдаёт браузерам CORS вовсе) на каждом цикле опроса; фоновое обогащение добавляло 2 запроса
+  klines (1h+1D) в минуту; `[P11]` печатался на каждом цикле.
+- **`SourceHealthTracker`** (`src/services/data/adapters/sourceHealth.ts`): блокировка per
+  endpoint+инструмент. Политики: network/http — 3 подряд неудач → 10 мин (повторный эпизод — ×2,
+  кап 1 ч); invalid_symbol (400/404) — сразу 6 ч; rate_limit (429/418) — 30 с; таймауты не считаются.
+  Успех полностью восстанавливает ключ; поздние «зависшие» неудачи не стирают блокировку.
+  Диагностика — один console.warn на эпизод. `AdapterSourceBlockedError extends AdapterNetworkError`.
+- **Подключение:** адаптеры Binance/KuCoin — опциональный `health` (выключен по умолчанию —
+  детерминированность тестов); включён в `MarketDataContext` (общий трекер) и
+  `CandleHistoryService.getInstance()`. `CandleHistoryService` — обёртка `fetchKlinesWithHealth`.
+- **P11:** warn только при изменении состава отсутствующих активов (`LiveMarketDataProvider`).
+- **Честность данных (RULES §1):** без изменений — трекер не подменяет и не кэширует цены;
+  недоступный актив честно отсутствует в таблицах / помечен «ИСТОЧНИК НЕДОСТУПЕН».
+- **Тесты:** `tests/unit/sourceHealth.test.ts` — 14 новых; всего 873 (83 файла).
+
+### Ветка сигналов (слито в v0.9.0, локальные версии ветки 0.8.45–0.8.49)
+### v0.8.49 — конфигурация GitHub Pages (2026-09-20)
+- `.github/workflows/deploy.yml` (push в main / вручную): build с `GITHUB_BASE_PATH=/CRYPTORA/`, копия `index.html` →
+  `404.html` (SPA-фолбэк), `.nojekyll`, публикация `actions/deploy-pages`. Включать: Settings → Pages → Source:
+  GitHub Actions. Статический фронтенд без Node-бэкенда: auth/AI остаются в режиме «гостя» с честным сообщением;
+  рыночные данные и сигналы — клиентские запросы к публичным API бирж, работают.
+- `vite.config.ts` — `base` из `GITHUB_BASE_PATH` (по умолчанию `/`, VPS/dev не затронуты); `BrowserRouter` —
+  `basename={import.meta.env.BASE_URL}`. Docs: `docs/DEPLOY_GH_PAGES.md`.
+
+### v0.8.48 — журнал аудита без QA-данных + детерминированные id (2026-09-20)
+- Публикация в журнал запрещена при `provider.isDemo`: на QA-фикстуре стратегии считаются для диагностики (окно,
+  ретроспектива), но в `cryptora_signals_ledger_v2` ничего не пишется; на `/signals` — предупреждение. В production
+  провайдер всегда LIVE, поведение не меняется.
+- `Math.random()` убран из `AlertService.createRule` и `JournalService.addEntry` (DONT_DO #2): id = время + монотонный
+  счётчик; у журнала счётчик продолжается от сохранённых записей. Тесты: 50 правил и 30 записей в одну миллисекунду —
+  id уникальны.
+- Верификация: `tsc` 0 ошибок; vitest 85 файлов / 889 тестов; Playwright 66/66; `npm run build` OK.
+
+### v0.8.47 — наблюдаемость источника данных в /signals (2026-09-20)
+- `SymbolScanStatus.source` (`{ exchange, isFallback }`) + колонка «Источник свечей» на `/signals`: видно, чьи свечи
+  использовал скан — Binance или KuCoin (резерв). Провайдер без провенанса → честный `—`. Тесты в
+  `liveSignalEngineE2E.test.ts` (основной, резервный, отсутствие провенанса). Версия 0.8.47 синхронизирована.
+
+### v0.8.46 — проверка LIVE на реальных данных + глубина резервного источника (2026-09-20)
+- **Проверка на реальных данных (офлайн, датасет Binance spot `c3c1dce`, 2022-01 → 2025-12-31, 6 пар; датасет вне
+  репозитория).** Прогон **через сам движок** (241 скан, скользящее окно ≤1000 баров, 10 суток) дал 121
+  опубликованный сетап; журнал — 96 закрытых сделок, accuracy 86.5 %, avg RR 3.38, Σ net R +50.30. Сверка с полным
+  реплеем: 50/50 сетапов совпали по времени/направлению/входу, V3.0 `runV30Series` vs журнал — 0 расхождений в обе
+  стороны. Полная история: V3.0 ≈540–600 записей на пару за 4 года, V3.3 ≈4.2–4.9 тыс.; Q4-2025 публикуемых
+  V3.0 — 23–40, V3.3 — 93–127 на пару. Подробно: `docs/SIGNALS.md` §7, ADR-007.
+- **V2.8 «молчит» — это редкость, а не отказ.** На 4 годах 1h-истории: 65 сетапов на 6 пар (≈1 на пару в 3–5
+  месяцев) при 1150–1250 отсечённых sniper-фильтром actionable-сетапов; в окне 1000 баров ни один сетап полной
+  истории не потерян (31 из 65 отличаются на один тик по входу/стопу — квантование коридора при ATR от начала ряда).
+- **Задокументировано свойство замороженной V3.3 (не дефект):** зона, образованная последним закрытым 4h-баром,
+  становится видимой только после закрытия следующего 4h-бара (`buildZones`, `i < h4.length-1`) → задержка до 4 часов,
+  и уровни «на момент скана» могут отличаться от ретроспективного прогона (Amendment-1 берёт новейшую зону).
+- **Исправлено:** резервный KuCoin-источник вызывался без окна (произвольная страница по умолчанию при недоступном
+  Binance) — теперь `fetchCandles(symbol, type, { startAtMs, endAtMs })`, запрос `limit + 2` бара, обрезка до
+  запрошенной глубины и честный `console.warn` при меньшей глубине; +2 теста. Версия 0.8.46 синхронизирована
+  (package.json/lock, Header, Footer, e2e-инвариант, uxCleanup, CHANGELOG).
+- **Верификация:** `tsc --noEmit` — 0 ошибок; vitest 85 файлов / 885 тестов; Playwright 66/66; `npm run build` OK.
+
+### v0.8.45 — LIVE-сигналы: три архивные стратегии на фактических данных (2026-09-19)
+- **Аудит репозитория:** typecheck/vitest/build были зелёными, но Playwright e2e падал 46/66 (в харнесе не было
+  `AuthProvider`) и ещё 14 тестов держали устаревшие ожидания UI. Заглушек/TODO/`Math.random` в бизнес-логике нет;
+  демо-данные только в `DemoMarketDataProvider`, production-путь — `LiveMarketDataProvider` (Binance/KuCoin REST+WS).
+- **Главный дефект:** `LiveSignalEngine` не воспроизводил стратегии: V3.0 без ведения коридора, V3.3/V2.8 — упрощённые
+  эвристики, исходы не отслеживались (точность всегда 0 %), `catch {}` глотал ошибки, движок не останавливался.
+- **Сделано (стратегии не тронуты):** `live/replays/{v30,v33,v28}LiveReplay.ts` — реплей архивных раннеров теми же
+  frozen-функциями; `v28Live.ts` внутри архива (единственное место вне `legacy/`, импортирующее `legacy/v2`);
+  `live/lifecycle.ts` — исход по опубликованным уровням; `SignalsAuditLedger` v2 (prevHash, outcomeHash, netResultR,
+  без `expireStale`); `/signals` со статусом движка, покрытием, ретроспективой окна; `getCandles(..., limit)`;
+  движок останавливается при размонтировании контекста.
+- **Верификация:** `tsc` 0 ошибок; vitest 85 файлов / 883 теста (новые: паритет реплеев с раннерами бар в бар,
+  паритет V2.8 со `runSniperEntryLoop`+`simulateTrailing`, сквозной движок×журнал на mock-«бирже»); Playwright 66/66;
+  `npm run build` OK. Перф: полный реплей 3 стратегий × 6 символов укладывается в секунды (evaluateV2 ≈ 0.43 мс/бар).
+- **Не проверено (честно):** фактическая эмиссия на бирже — песочница без доступа к сети; журнал живёт в localStorage.
+- **Docs:** `docs/SIGNALS.md` переписан, `14-SIGNALS.md` §3, `DONT_DO.md` (строки 4/8/9/11), README, CHANGELOG,
+  D-V28-005 и комментарии `legacy/v2` приведены к факту (порт остаётся архивным, LIVE идёт через обёртку архива).
+
+### Git-статус (v0.8.45)
+- Ветка `arena/01a0b8cc-cryptora` с коммитом `v0.8.45: LIVE signals — three archived strategies run on real closed
+  candles` запушена в `origin` (в начале сессии доступа к GitHub не было; он появился к моменту пуша). Слияние в `main` —
+  через pull request, решение владельца.
+
 
 ### v0.8.39 — Тарифы без иллюзии покупки
 - Модал тарифов: уведомление «Биллинг не подключён», кнопки «Предпросмотр: …» вместо «Переключить». e2e-проверка. Этап 8 (оплата) — решение владельца.
@@ -617,6 +772,13 @@ DEMO-режима не должно быть вообще. Оставались:
 
 ## 3. Результаты тестов (все гейты пройдены)
 
+- **Актуально на v0.8.50 (2026-09-20, песочница Arena):** typecheck (`npm run typecheck`) — 0 ошибок;
+  unit (`npm test`) — **passed без регрессий** (873 → 881 с новыми тестами: финальные цифры в CHANGELOG 0.8.50);
+  build (`npm run build`) — чистая production-сборка. (Фактический прогон перед commit; e2e по-прежнему
+  не прогонялся — CDN Playwright закрыт в песочнице.)
+- **E2E в песочнице НЕ прогонялся:** `npx playwright install chromium` недоступен (CDN Playwright
+  закрыт фаерволом контейнера, системные пакеты недоступны). E2E-набор не изменялся
+  (кроме строки версии в `e2e/uiRegression.spec.tsx`); прогнать на машине с сетью перед деплоем.
 - **Актуально на v0.8.17 (`684aa05`):** typecheck 0 ошибок; unit **34 файла / 333 теста** (из них `tests/unit/strategyArchive/*` —
   реестр 13/13, immutability, sha256-пины, детерминизм/digest, look-ahead guard, комиссии, паритет перезапусков, presentation-модель);
   build чистый; e2e **55** (в т.ч. `/strategies`: 13 карточек, verdict ≠ reproducibility, фильтры, предупреждение V2.8 vs V3.0);
@@ -653,7 +815,10 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 4. Версия, статус развертывания и Git состояние
-- **Версия:** `0.8.17` (архив стратегий C1–C8 завершён). Историческая запись v0.8.8 ниже сохранена:
+- **Версия:** `0.8.45` (Source Health — circuit breaker REST-источников). Обновлены `package.json`,
+  бейджи Header/Footer, `e2e/uiRegression.spec.tsx`, CHANGELOG.
+- **Ветка:** `arena/01a0bdd1-cryptora` (от `ed3b4f2` = merge UI-этапов в main).
+- Историческая запись v0.8.8 ниже сохранена:
 - **Версия (v0.8.8):** corrective: production = только LIVE; поверх v0.8.7 — русификация. Обновлены `package.json`,
   `package-lock.json`, health-эндпоинт `server/productionServer.js`, футер, бейдж версии в шапке, документация.
 - **Ветка:** `arena/01a0aaeb-cryptora` (продолжение `arena/01a0a997-cryptora` от `92b30ed / v0.8.6`).
@@ -697,26 +862,24 @@ DEMO-режима не должно быть вообще. Оставались:
 ---
 
 ## 6. Следующий шаг
-- **STOP (v0.8.17).** Порт Strategy Research Archive завершён (C1–C8, коммиты `13548c5 17501b0 9a72ed5 af8d1a0 2bb8ab7 bf63be7 53f1afa 684aa05`).
-  Ожидается приёмка владельцем. Открытые решения владельца: (а) перезапуск V2.1a/V2.1b на машине ≥ 8 GB (`reproduce.mjs`, §4b
-  `docs/STRATEGY_ARCHIVE.md`) — только тогда статус может стать REPRODUCED; (б) обновление VPS (там v0.8.4 `6a01ce1`) — по отдельной команде.
-- Ранее открытое: приёмка владельцем пункта A (production = только LIVE, v0.8.8) и пункта 2 (русификация, v0.8.7);
-  production-oriented screenshot QA на VPS/CI (`node scripts/screenshot-qa.mjs --tag=v088 ...`);
-  обновление статики VPS (сейчас там v0.8.4 `6a01ce1`) — по отдельной команде.
-- **К пункту B (DARK / LIGHT / SYSTEM) не переходить.** Далее по порядку владельца: п. 3 типографика.
+- **STOP (v0.8.50).** Audit Remediation Pass 1 выполнен; далее по приоритетам аудита: Б1
+  авто-обновление страниц (P1), Н5 TLS — операция владельца на VPS (certbot, раскомментировать
+  443/redirect/HSTS в `nginx/cryptora.conf`), Н8/Н13 (после судьбы PR #2 — там те же строки),
+  контраст/тач-таргеты (Д2–Д6, P2), браузерные e2e + CI (Н10, P3).
+- Предыдущая остановка (v0.8.45): Source Health circuit breaker выполнен; ожидается проверка владельцем на проде
+  (после деплоя консоль DevTools должна замолчать после ~1–2 минут: единичный diagnostics-warn вместо
+  потока CORS-ошибок; недоступный актив честно отсутствует без подстановок).
+- **Деплой на VPS не выполнялся** (как и в v0.8.5–v0.8.44 — по отдельной команде владельца).
+- Открытые решения владельца: (а) перезапуск V2.1a/V2.1b на машине ≥ 8 GB (`reproduce.mjs`, §4b
+  `docs/STRATEGY_ARCHIVE.md`); (б) обновление VPS.
+- Вернуть KuCoin-данные в браузер системно (сейчас его REST не работает из браузера по CORS) —
+  отдельное архитектурное решение: same-origin reverse-proxy в nginx/productionServer; текущая
+  архитектура client-only (`docs/DONT_DO.md` §8), поэтому без одобрения владельца не делать.
 
 ---
 
 ## 7. Commit hash и статус Git remote
-- **Актуально:** HEAD `684aa05` (v0.8.17, C8) ← `53f1afa` (C7) ← `bf63be7` (C6) ← `2bb8ab7` (C5) ← `af8d1a0` (C4) ← `9a72ed5` (C3)
-  ← `17501b0` (C2) ← `13548c5` (C1) ← `45f9ff8` (шаг 1) ← `…` v0.8.8. Всё отправлено в `origin/arena/01a0aaeb-cryptora`.
-- **База:** `ee41857` (v0.8.5) → `92b30ed` (v0.8.6) → `1d0bd95` — `feat(i18n): системная русификация интерфейса (v0.8.7)`.
-- **Текущий corrective-коммит:** `fix(prod): production = только LIVE, без пользовательского DEMO (v0.8.8)` —
-  хэш см. `git log --oneline -1`.
-- **Ветка:** `arena/01a0aaeb-cryptora` (репозиторий `nub36/CRYPTORA`).
+- **Актуально:** v0.8.45 (Source Health) на ветке `arena/01a0bdd1-cryptora`; хэш — `git log --oneline -1`.
 - Запись хэшей в файле всегда отстаёт на один коммит (самореференция невозможна) —
   актуальные значения берутся командой `git log --oneline -5` в этой ветке.
-- **Git remote / push:** ветка `arena/01a0aaeb-cryptora` отправлена в `origin`
-  (`git push origin arena/01a0aaeb-cryptora`).
-- **Production VPS:** НЕ обновлялся в рамках v0.8.5–v0.8.8; фактически стоит **v0.8.4 (`6a01ce1`)**.
-  Deployment-инфраструктура не менялась.
+- **Git remote / push:** ветка отправляется в `origin` (`git push origin arena/01a0bdd1-cryptora`).

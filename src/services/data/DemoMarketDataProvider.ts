@@ -1037,12 +1037,14 @@ export class DemoMarketDataProvider implements MarketDataProvider {
     };
   }
 
-  async getCandles(symbol: string, timeframe: Timeframe): Promise<OHLCV[]> {
+  async getCandles(symbol: string, timeframe: Timeframe, limit?: number): Promise<OHLCV[]> {
     const asset = DEMO_ASSETS.find(
       (a) => a.symbol.toUpperCase() === symbol.toUpperCase() || a.id.toLowerCase() === symbol.toLowerCase()
     );
     const basePrice = asset ? asset.price : 64850.25;
-    return generateDeterministicCandles(basePrice, timeframe);
+    const candles = generateDeterministicCandles(basePrice, timeframe);
+    // Демо-датасет конечен: `limit` только усекает хвост (как REST биржи), никогда не дорисовывает историю.
+    return typeof limit === 'number' && limit > 0 && limit < candles.length ? candles.slice(-limit) : candles;
   }
 
   async getFuturesList(): Promise<FuturesAsset[]> {

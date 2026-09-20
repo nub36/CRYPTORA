@@ -4,7 +4,9 @@ import { test, expect } from '@playwright/test';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
+import { AuthProvider } from '@/context/AuthContext';
 import App from '@/App';
+import { PRIMARY_NAV_ITEMS } from '@/components/layout/navigation';
 
 // Контрольные брейкпоинты терминала. 1280 и 1366 добавлены после реального
 // UI-регресса в шапке (переполнение правой части), который прежний набор не ловил.
@@ -41,9 +43,11 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
 
       const { container } = render(
         <MemoryRouter initialEntries={['/']}>
-          <MarketDataProviderComponent>
-            <App />
-          </MarketDataProviderComponent>
+          <AuthProvider>
+            <MarketDataProviderComponent>
+              <App />
+            </MarketDataProviderComponent>
+          </AuthProvider>
         </MemoryRouter>
       );
 
@@ -61,11 +65,15 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
         const menuBtn = screen.getByLabelText(/Меню/i);
         expect(menuBtn).toBeInTheDocument();
       } else {
-        // Desktop: полная прямая навигация из 6 разделов без переносов
-        for (const label of ['Обзор', 'Рынок', 'Фьючерсы', 'Ликвидации', 'Скринер', 'Радар']) {
-          const links = screen.getAllByRole('link', { name: new RegExp(label, 'i') });
-          expect(links.length).toBeGreaterThan(0);
-          expect(links[0].className).toContain('whitespace-nowrap');
+        // Desktop: прямая навигация — фактический список PRIMARY_NAV_ITEMS без переносов
+        // («Рынок» — группа с dropdown, рендерится кнопкой; остальные — ссылки).
+        for (const item of PRIMARY_NAV_ITEMS) {
+          const matcher = { name: new RegExp(item.label, 'i') };
+          const controls = item.children
+            ? screen.getAllByRole('button', matcher)
+            : screen.getAllByRole('link', matcher);
+          expect(controls.length).toBeGreaterThan(0);
+          expect(controls[0].className).toContain('whitespace-nowrap');
         }
       }
     });
@@ -76,9 +84,11 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
 
     render(
       <MemoryRouter initialEntries={['/']}>
-        <MarketDataProviderComponent>
-          <App />
-        </MarketDataProviderComponent>
+        <AuthProvider>
+          <MarketDataProviderComponent>
+            <App />
+          </MarketDataProviderComponent>
+        </AuthProvider>
       </MemoryRouter>
     );
 

@@ -140,4 +140,35 @@ describe('JournalService Unit Tests (Trade Journal / Manual Reflection Log)', ()
     expect(deleted).toBe(true);
     expect(journal.getEntries().length).toBe(initialEntries.length);
   });
+
+  it('ids записей детерминированы (без Math.random) и уникальны при добавлении в одну миллисекунду', () => {
+    const journal = JournalService.getInstance();
+    const before = journal.getEntries().map((e) => e.id);
+    const base = {
+      date: new Date().toISOString(),
+      symbol: 'BTC',
+      direction: 'LONG' as const,
+      entryPrice: 1,
+      exitPrice: 2,
+      positionSizeUsd: 10,
+      pnlUsd: 1,
+      pnlPct: 1,
+      setupReason: 'test',
+      reflection: 'test',
+      disciplineScore: 3,
+      tags: [],
+    };
+    const created = Array.from({ length: 30 }, () => journal.addEntry({ ...base }));
+    const ids = created.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.some((id) => before.includes(id))).toBe(false);
+    for (const id of ids) expect(id).toMatch(/^journal-\d+-\d+$/);
+    // Счётчик продолжается от сохранённых записей: новый id больше любого прежнего по суффиксу.
+    const maxBefore = Math.max(0, ...before.map((id) => Number.parseInt(id.split('-').pop() ?? '0', 10)));
+    for (const id of ids) {
+      expect(Number.parseInt(id.split('-').pop()!, 10)).toBeGreaterThan(maxBefore);
+    }
+    for (const id of ids) journal.deleteEntry(id);
+    expect(journal.getEntries().map((e) => e.id)).toEqual(before);
+  });
 });

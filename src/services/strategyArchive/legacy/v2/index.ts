@@ -11,8 +11,11 @@
  * `Settings` class (replaced by a read-only snapshot reader).
  *
  * Hard rules:
- *   • Used ONLY by `strategyArchive/definitions/v2_*` reproduction runners.
- *   • NEVER imported by LIVE signals, `services/backtest/BacktestEngine`, workers or UI.
+ *   • Imported ONLY from inside `strategyArchive/` (`definitions/v2_*` reproduction runners and the
+ *     V2.8 LIVE wrapper `definitions/v2_8-zero-fee-sniper-trailing/v28Live.ts`). LIVE signals reach the
+ *     engine exclusively through the archive's public API (`@/services/strategyArchive`), never directly —
+ *     enforced by tests/unit/strategyArchive/legacyV2.test.ts.
+ *   • NEVER imported by `services/backtest/BacktestEngine`, workers or UI.
  *   • No orders, no exchange, no keys, no database. EXECUTION_CODE_PORTED = NONE.
  *   • Never "improved": a bug here is a discrepancy record, not a fix.
  */

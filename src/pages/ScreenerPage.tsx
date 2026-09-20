@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary, AssetCategory, ScreenerFilters } from '@/types/market';
@@ -21,31 +22,51 @@ export const ScreenerPage: React.FC = () => {
   const [minVolume, setMinVolume] = useState<string>('');
   const [fundingFilter, setFundingFilter] = useState<'all' | 'positive' | 'negative'>('all');
 
-  // Trigger query
-  useEffect(() => {
-    async function runScreen() {
-      const filters: ScreenerFilters = {
-        query: query.trim() || undefined,
-        category: category !== 'all' ? category : undefined,
-        minPriceChange24h: minPriceChange ? Number(minPriceChange) : undefined,
-        maxPriceChange24h: maxPriceChange ? Number(maxPriceChange) : undefined,
-        minVolume24h: minVolume ? Number(minVolume) * 1e6 : undefined,
-        fundingFilter: fundingFilter !== 'all' ? fundingFilter : undefined,
-      };
+  // Trigger query (по изменению фильтров)
+  const runScreen = useCallback(async () => {
+    const filters: ScreenerFilters = {
+      query: query.trim() || undefined,
+      category: category !== 'all' ? category : undefined,
+      minPriceChange24h: minPriceChange ? Number(minPriceChange) : undefined,
+      maxPriceChange24h: maxPriceChange ? Number(maxPriceChange) : undefined,
+      minVolume24h: minVolume ? Number(minVolume) * 1e6 : undefined,
+      fundingFilter: fundingFilter !== 'all' ? fundingFilter : undefined,
+    };
 
+    try {
       const res = await provider.getScreenerResults(filters);
       setResults(res);
+    } catch {
+      // Источник не ответил — результаты не трогаем/показываем честную недоступность ниже по состоянию.
+      setSourceUnavailable(true);
     }
-
-    runScreen();
   }, [query, category, minPriceChange, maxPriceChange, minVolume, fundingFilter, provider]);
 
   useEffect(() => {
+    void runScreen();
+  }, [runScreen]);
+
+  const refreshCount = useCallback(() => {
     provider
       .getAssets()
       .then((a) => setTotalCount(a.length))
       .catch(() => setSourceUnavailable(true));
   }, [provider]);
+
+  useEffect(() => {
+    refreshCount();
+  }, [refreshCount]);
+
+  // Б1: скринер обновляется сам по текущим фильтрам (30с; пауза в фоновой вкладке).
+  const SCREENER_REFRESH_MS = 30_000;
+  useAutoRefresh(
+    () => {
+      void runScreen();
+      void refreshCount();
+    },
+    SCREENER_REFRESH_MS,
+    { skipImmediate: true }
+  );
 
   const handleReset = () => {
     setQuery('');
@@ -283,7 +304,7 @@ export const ScreenerPage: React.FC = () => {
                         }}
                       >
                         <button
-                          className="text-slate-600 hover:text-amber-400 transition-colors p-1.5"
+                          className="text-slate-500 hover:text-amber-400 transition-colors p-1.5"
                           title={isStarred ? 'Удалить из избранного' : 'Добавить в избранное'}
                         >
                           <Star

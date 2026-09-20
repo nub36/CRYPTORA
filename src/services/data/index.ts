@@ -13,3 +13,4 @@ export * from './adapters/KuCoinSpotAdapter';
 export * from './adapters/schemas';
 export * from './adapters/normalization';
 export * from './adapters/errors';
+export * from './adapters/sourceHealth';
