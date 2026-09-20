@@ -24,9 +24,15 @@ test.describe('Браузерные e2e (Chromium)', () => {
     await expect(market).toBeVisible();
 
     await page.goto('/market');
-    // ВАЖНО: на CI-раннерах биржи часто недоступны (451 для облачных IP) —
-    // ассертим каркас страницы (заголовок), а не наличие рыночных данных.
-    await expect(page.getByRole('heading', { name: 'Рынок' })).toBeVisible({ timeout: 15_000 });
+    // ВАЖНО: на CI-раннерах биржи часто недоступны (451 для облачных IP) — валидны
+    // ОБА честных состояния: заголовок страницы с таблицей ИЛИ плашка
+    // «ИСТОЧНИК НЕДОСТУПЕН» (RULES §1: данные не подменяются). Данные проверяют
+    // юнит-тесты провайдера, не браузерные смоки.
+    await expect(
+      page
+        .getByRole('heading', { name: 'Рынок' })
+        .or(page.getByText('ИСТОЧНИК НЕДОСТУПЕН').first())
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test('/strategies: заголовок архива исследований', async ({ page }) => {
