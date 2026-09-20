@@ -199,7 +199,7 @@ describe('Footer', () => {
   it('не показывает внутреннюю формулировку «Рабочая версия»', async () => {
     renderWithProviders(<Footer />);
 
-    expect(await screen.findByText(/Версия v0\.8\.47/)).toBeInTheDocument();
+    expect(await screen.findByText(/Версия v0\.8\.48/)).toBeInTheDocument();
     expect(screen.queryByText(/Рабочая версия/)).not.toBeInTheDocument();
   });
 });
@@ -376,7 +376,7 @@ describe('AdminPage', () => {
         health: {
           status: 'ok',
           database: 'connected',
-          version: '0.8.47',
+          version: '0.8.48',
           nodeVersion: 'v22',
           environment: 'test',
           uptimeSeconds: 10,
@@ -387,7 +387,7 @@ describe('AdminPage', () => {
         timestamp: new Date().toISOString(),
       },
       '/api/admin/system': {
-        version: '0.8.47',
+        version: '0.8.48',
         nodeVersion: 'v22',
         environment: 'test',
         uptimeSeconds: 10,

@@ -45,6 +45,16 @@ describe('AlertService Unit Tests', () => {
     expect(events2.length).toBe(0);
   });
 
+  it('ids правил детерминированы (без Math.random): уникальны, даже если правила созданы в одну миллисекунду', () => {
+    const created = Array.from({ length: 50 }, (_v, i) => service.addRule('BTC', 'PRICE_ABOVE', 60_000 + i));
+    const ids = created.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^alert-\d+-\d+$/);
+    // Монотонность счётчика в рамках одной миллисекунды — id не зависят от случайности.
+    const stillUnique = Array.from({ length: 20 }, (_v, i) => service.addRule('ETH', 'PRICE_ABOVE', 3_000 + i).id);
+    expect(new Set([...ids, ...stillUnique]).size).toBe(ids.length + stillUnique.length);
+  });
+
   it('manages adding, listing, and removing alert rules', () => {
     const r1 = service.addRule('BTC', 'PRICE_ABOVE', 70000);
     const r2 = service.addRule('SOL', 'CHANGE_24H_ABOVE', 10);

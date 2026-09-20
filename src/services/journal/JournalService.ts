@@ -28,6 +28,7 @@ const STORAGE_KEY = 'cryptora_trade_journal';
 export class JournalService {
   private static instance: JournalService | null = null;
   private entries: JournalEntry[] = [];
+  private idCounter = 0;
 
   constructor() {
     this.loadEntries();
@@ -46,6 +47,11 @@ export class JournalService {
         const saved = window.localStorage.getItem(STORAGE_KEY);
         if (saved) {
           this.entries = JSON.parse(saved);
+          // Счётчик id продолжается от сохранённых записей: id остаются уникальными после перезагрузки.
+          for (const e of this.entries) {
+            const suffix = Number.parseInt(String(e?.id ?? '').split('-').pop() ?? '', 10);
+            if (Number.isFinite(suffix) && suffix > this.idCounter) this.idCounter = suffix;
+          }
           return;
         }
       }
@@ -73,11 +79,25 @@ export class JournalService {
   public addEntry(entry: Omit<JournalEntry, 'id'>): JournalEntry {
     const newEntry: JournalEntry = {
       ...entry,
-      id: `journal-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: this.nextId(),
     };
     this.entries.unshift(newEntry);
     this.save();
     return newEntry;
+  }
+
+  /**
+   * Детерминированный уникальный id (DONT_DO #2: без `Math.random()` в бизнес-логике):
+   * время + монотонный счётчик, который продолжается от уже сохранённых записей,
+   * поэтому id не повторяются ни в рамках сессии, ни после перезагрузки.
+   */
+  private nextId(): string {
+    let id: string;
+    do {
+      this.idCounter += 1;
+      id = `journal-${Date.now()}-${this.idCounter}`;
+    } while (this.entries.some((e) => e.id === id));
+    return id;
   }
 
   public deleteEntry(id: string): boolean {

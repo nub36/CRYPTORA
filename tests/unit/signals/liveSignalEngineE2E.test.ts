@@ -55,7 +55,7 @@ function binanceProvenance(symbol: string, timeSec: number) {
  */
 function exchangeLikeProvider(
   nowRef: { ms: number },
-  opts?: { failSymbols?: string[]; fallbackSymbols?: string[] },
+  opts?: { failSymbols?: string[]; fallbackSymbols?: string[]; demo?: boolean },
 ) {
   const calls: { symbol: string; tf: Timeframe; limit: number | undefined; nowMs: number }[] = [];
   const getCandles = vi.fn(async (symbol: string, tf: Timeframe, limit?: number): Promise<OHLCV[]> => {
@@ -77,7 +77,7 @@ function exchangeLikeProvider(
     return out;
   });
   const provider = {
-    isDemo: false,
+    isDemo: opts?.demo ?? false,
     getAssets: vi.fn().mockResolvedValue([]),
     getAssetDetail: vi.fn().mockResolvedValue(null),
     getCandles,
@@ -273,6 +273,25 @@ describe('LiveSignalEngine × archive replay × ledger lifecycle (mock exchange,
     })!;
     await bareEngine.scanNow();
     expect(bareEngine.getStatus().perSymbol.BTC!.source).toBeNull();
+  });
+
+  it('never writes QA-fixture setups into the immutable journal, but keeps the window diagnostics visible', async () => {
+    const scenarios = pickScenarios();
+    const nowRef = { ms: justAfterClose(scenarios[0]!.setupIndex) };
+    const { provider } = exchangeLikeProvider(nowRef, { demo: true });
+    const engine = LiveSignalEngine.getInstance({
+      provider, symbols: ['BTC'], strategies: ['V3.0'], now: () => nowRef.ms, yieldBetweenSymbols: false,
+    })!;
+    await engine.scanNow();
+
+    // Журнал аудита чист: в него не попадает ничего, построенного на QA-данных.
+    expect(SignalsAuditLedger.getInstance().getSetups()).toEqual([]);
+    const st = engine.getStatus();
+    expect(st.providerIsDemo).toBe(true);
+    expect(st.perSymbol.BTC!.publishedTotal).toBe(0);
+    // Диагностика при этом честно показывает, что стратегия на этих свечах нашла сетапы.
+    expect(st.perSymbol.BTC!.replays[STRATEGY_IDS['V3.0']]!.records).toBeGreaterThan(0);
+    expect(engine.getRetrospective({ symbol: 'BTC' }).length).toBeGreaterThan(0);
   });
 
   it('records provider failures per symbol in the status instead of swallowing them', async () => {

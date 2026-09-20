@@ -57,7 +57,9 @@ export class AlertService {
     targetValue: number,
     deliveryChannel: AlertDeliveryChannel = 'IN_APP'
   ): AlertRule {
-    const id = `alert-${Date.now()}-${++this.ruleCounter}-${Math.floor(Math.random() * 10000)}`;
+    // Детерминированный id (правило DONT_DO #2: без Math.random в бизнес-логике):
+    // время + монотонный счётчик службы; повторный id в рамках процесса невозможен.
+    const id = `alert-${Date.now()}-${++this.ruleCounter}`;
     const rule: AlertRule = {
       id,
       symbol: symbol.toUpperCase(),

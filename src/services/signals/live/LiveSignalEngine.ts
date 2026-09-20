@@ -450,10 +450,14 @@ export class LiveSignalEngine {
       }
       st.status.replays[strategyId] = summarizeReplay(strategyId, out);
       st.retrospective[strategyId] = out.records;
-      for (const rec of out.records) {
-        if (rec.setupOpenTime !== lastClosed.openTime) continue;
-        if (!rec.publishable) continue;
-        if (this.publish(rec, pair, nowMs)) published++;
+      // Журнал аудита — только фактические сетапы: на QA-фикстуре диагностика окна остаётся
+      // видимой (ретроспектива/статус), но в журнал ничего не пишется (см. providerIsDemo).
+      if (!this.provider.isDemo) {
+        for (const rec of out.records) {
+          if (rec.setupOpenTime !== lastClosed.openTime) continue;
+          if (!rec.publishable) continue;
+          if (this.publish(rec, pair, nowMs)) published++;
+        }
       }
     }
     st.status.publishedTotal += published;

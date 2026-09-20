@@ -229,6 +229,12 @@ export const SignalsPage: React.FC = () => {
               Источник данных недоступен: {engineStatus.lastError}. Сетапы не подменяются — журнал ждёт фактических свечей.
             </div>
           )}
+          {engineStatus.providerIsDemo && (
+            <div data-qa="signals-qa-fixture-note" className="mt-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+              Провайдер отдаёт QA-фикстуру, а не фактические свечи: движок считает стратегии для диагностики, но в журнал аудита
+              ничего не публикует (журнал — только по фактическим данным).
+            </div>
+          )}
           <Collapsible
             testId="signals-scan-details"
             tone="muted"
