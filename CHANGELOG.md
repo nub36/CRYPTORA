@@ -4,6 +4,21 @@
 
 ---
 
+## [0.8.49] — 2026-09-20
+
+### Added — конфигурация деплоя на GitHub Pages
+
+- `.github/workflows/deploy.yml`: push в `main` (или вручную) → `npm ci` → `npm run build` с `GITHUB_BASE_PATH=/CRYPTORA/`
+  → `dist/index.html` копируется в `404.html` (SPA-фолбэк для `BrowserRouter`) + `.nojekyll` → публикация через
+  `actions/deploy-pages`. Перед первым запуском: **Settings → Pages → Source: GitHub Actions**.
+- `vite.config.ts`: `base` берётся из `GITHUB_BASE_PATH` (по умолчанию `/` — VPS и dev не затронуты);
+  `BrowserRouter` получил `basename={import.meta.env.BASE_URL}` — роутер работает и в корне, и в подкаталоге.
+- `docs/DEPLOY_GH_PAGES.md` — что возможно на Pages (терминал целиком: рынок, сигналы, статьи — данные браузер берёт
+  у публичных API бирж), и что невозможно (Node-бэкенд: логин/регистрация/админка/AI-прокси останутся в режиме
+  «гостя» с честным сообщением «Авторизация временно недоступна»).
+
+---
+
 ## [0.8.48] — 2026-09-20
 
 ### Fixed — журнал аудита не принимает сетапы по QA-данным; id без `Math.random()`

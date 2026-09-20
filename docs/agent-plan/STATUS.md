@@ -19,6 +19,14 @@
 
 ## 1. Что сделано
 
+### v0.8.49 — конфигурация GitHub Pages (2026-09-20)
+- `.github/workflows/deploy.yml` (push в main / вручную): build с `GITHUB_BASE_PATH=/CRYPTORA/`, копия `index.html` →
+  `404.html` (SPA-фолбэк), `.nojekyll`, публикация `actions/deploy-pages`. Включать: Settings → Pages → Source:
+  GitHub Actions. Статический фронтенд без Node-бэкенда: auth/AI остаются в режиме «гостя» с честным сообщением;
+  рыночные данные и сигналы — клиентские запросы к публичным API бирж, работают.
+- `vite.config.ts` — `base` из `GITHUB_BASE_PATH` (по умолчанию `/`, VPS/dev не затронуты); `BrowserRouter` —
+  `basename={import.meta.env.BASE_URL}`. Docs: `docs/DEPLOY_GH_PAGES.md`.
+
 ### v0.8.48 — журнал аудита без QA-данных + детерминированные id (2026-09-20)
 - Публикация в журнал запрещена при `provider.isDemo`: на QA-фикстуре стратегии считаются для диагностики (окно,
   ретроспектива), но в `cryptora_signals_ledger_v2` ничего не пишется; на `/signals` — предупреждение. В production
