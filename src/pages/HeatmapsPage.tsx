@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary } from '@/types/market';
@@ -10,7 +11,10 @@ export const HeatmapsPage: React.FC = () => {
   const [assets, setAssets] = useState<AssetSummary[]>([]);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
-  useEffect(() => {
+  // Б1: тепловая карта обновляется сама (30с; пауза в фоновой вкладке).
+  const HEATMAPS_REFRESH_MS = 30_000;
+
+  const load = useCallback(() => {
     provider
       .getAssets()
       .then((data) => {
@@ -19,6 +23,8 @@ export const HeatmapsPage: React.FC = () => {
       })
       .catch(() => setSourceUnavailable(true));
   }, [provider]);
+
+  useAutoRefresh(load, HEATMAPS_REFRESH_MS);
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">

@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import {
@@ -76,9 +77,14 @@ export const OverviewPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
+  // Б1: Обзор обновляется сам. silent-режим (автоцикл) не мигает спиннером,
+  // но честно выставляет sourceUnavailable при отказе источника. Свечи BTC
+  // грузит отдельный эффект по timeframe (ниже) — здесь они не нужны.
+  const OVERVIEW_REFRESH_MS = 30_000;
+
+  const loadData = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
       setSourceUnavailable(false);
       try {
         const [ov, assts] = await Promise.all([provider.getMarketOverview(), provider.getAssets()]);
@@ -94,9 +100,6 @@ export const OverviewPage: React.FC = () => {
         setFutures(ftrsR.status === 'fulfilled' ? ftrsR.value : []);
         if (liqsR.status === 'fulfilled') setLiquidations(liqsR.value);
         setRadarEvents(rdrR.status === 'fulfilled' ? rdrR.value : []);
-
-        const candles = await provider.getCandles('BTC', selectedTimeframe);
-        setBtcCandles(candles);
       } catch {
         // LIVE-FIRST: источник не ответил — показываем честное состояние,
         // значения из другого датасета вместо фактических не подставляются.
@@ -104,9 +107,17 @@ export const OverviewPage: React.FC = () => {
       } finally {
         setLoading(false);
       }
-    }
-    loadData();
-  }, [provider]);
+    },
+    [provider]
+  );
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Автоцикл: 30с (провайдер кэширует списки 10с — цикл почти не создаёт запросов);
+  // пауза в фоновой вкладке, внеочередной рефреш при возврате видимости/сети.
+  useAutoRefresh(() => loadData(true), OVERVIEW_REFRESH_MS, { skipImmediate: true });
 
   // When timeframe changes for BTC chart
   useEffect(() => {
