@@ -49,10 +49,16 @@ jobs:
           retention-days: 7
       # Логи/артефакты недоступны из части сред — дублируем причину падения в аннотации
       # check-run (читаются через API без blob-хранилища).
+      #
+      # Шум [WebServer] отфильтрован: vite dev-сервер печатает ECONNREFUSED на каждую
+      # недоступную с CI-раннера биржу, и эти строки вытесняли из `tail -30` настоящие
+      # падения тестов (✘) — в аннотациях оставался только сетевой шум.
       - name: Emit e2e failure details as annotations
         if: failure()
         shell: bash
         run: |
-          grep -aE "✘|passed|failed|Error|Timed out|timed out|timeout|Error:" /tmp/e2e.log | tail -30 | while IFS= read -r line; do
-            echo "::error::${line:0:180}"
-          done
+          grep -avE "\[WebServer\]|ECONNREFUSED|AggregateError" /tmp/e2e.log \
+            | grep -aE "✘|✓|passed|failed|flaky|Error|Timed out|timed out|timeout|Error:|expect\(" \
+            | tail -40 | while IFS= read -r line; do
+              echo "::error::${line:0:180}"
+            done
