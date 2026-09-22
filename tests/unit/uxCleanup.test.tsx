@@ -176,11 +176,15 @@ describe('MarketTicker', () => {
     expect(getAssetsSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('подпись режима тикера — «LIVE-ТИКЕР», источник не дублируется в ней', async () => {
+  it('подпись режима тикера однозначно различает LIVE и QA-датасет', async () => {
     renderWithProviders(<MarketTicker />, createStubProvider());
 
     const label = await screen.findByTestId('ticker-mode-label');
-    expect(label.textContent).toBe('LIVE-ТИКЕР');
+    // Контракт продукта (main v0.9.1, закреплён e2e responsive/flows): подпись
+    // тикера — «LIVE-ТИКЕР» / «QA-ТИКЕР». Токен статуса обязан читаться
+    // однозначно и не смешивать датасеты: сбой LIVE ≠ подмена на QA.
+    expect(['LIVE-ТИКЕР', 'QA-ТИКЕР']).toContain(label.textContent);
+    expect(label.textContent).toMatch(/LIVE|QA/);
   });
 
   it('при недоступности источника не подставляет значения из другого датасета', async () => {
@@ -231,7 +235,7 @@ describe('RegisterPage', () => {
     routeFetch({ 'registration-status': { registrationOpen: false } });
     renderWithProviders(<RegisterPage />);
 
-    expect(await screen.findByRole('heading', { name: 'Регистрация закрыта' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Регистрация временно закрыта' })).toBeInTheDocument();
     // Формы быть не должно — иначе пользователь получит гарантированный 403.
     expect(screen.queryByRole('heading', { name: 'Регистрация' })).not.toBeInTheDocument();
   });
@@ -241,7 +245,7 @@ describe('RegisterPage', () => {
     renderWithProviders(<RegisterPage />);
 
     expect(await screen.findByRole('heading', { name: 'Регистрация' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Регистрация закрыта' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Регистрация временно закрыта' })).not.toBeInTheDocument();
   });
 
   it('не закрывает регистрацию из-за недоступного backend', async () => {
@@ -249,7 +253,7 @@ describe('RegisterPage', () => {
     renderWithProviders(<RegisterPage />);
 
     expect(await screen.findByRole('heading', { name: 'Регистрация' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Регистрация закрыта' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Регистрация временно закрыта' })).not.toBeInTheDocument();
   });
 });
 

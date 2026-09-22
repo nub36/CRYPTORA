@@ -27,6 +27,12 @@ export const LiquidationsPage: React.FC = () => {
     (id) => streamStates[id] === 'connected',
   );
 
+  // Фильтры журнала (§43). События уже структурированы по бирже/стороне/размеру,
+  // поэтому фильтрация локальная и не добавляет сетевых запросов.
+  const [filterExchange, setFilterExchange] = useState<'all' | LiquidationSourceId>('all');
+  const [filterSide, setFilterSide] = useState<'all' | 'LONG' | 'SHORT'>('all');
+  const [filterMinUsd, setFilterMinUsd] = useState<0 | 1000 | 10000 | 100000>(0);
+
   // Инструмент для секции «Цена и ликвидации» + ряд 1h-свечей под него.
   const [liqSymbol, setLiqSymbol] = useState('BTC');
   const [liqCandles, setLiqCandles] = useState<OHLCV[]>([]);
@@ -147,6 +153,31 @@ export const LiquidationsPage: React.FC = () => {
   const shortPct = data.total24h > 0 ? ((data.totalShort24h / data.total24h) * 100).toFixed(1) : '0.0';
   // Масштаб оси баров выводится из фактических данных, а не из зашитой константы
   const timelineMax = Math.max(...data.timeline.map((b) => Math.max(b.longUsd, b.shortUsd)), 0);
+
+  /**
+   * Тиры по размеру (§44). Классификация чисто визуальная: входные значения
+   * событий не меняются.
+   */
+  const sizeTiers = [
+    { key: 'lt10k', label: '< $10K', min: 0, max: 10_000 },
+    { key: '10k', label: '$10K–$100K', min: 10_000, max: 100_000 },
+    { key: '100k', label: '$100K–$1M', min: 100_000, max: 1_000_000 },
+    { key: '1m', label: '$1M+', min: 1_000_000, max: Infinity },
+  ].map((tier) => {
+    const inTier = data.recentEvents.filter((e) => e.amountUsd >= tier.min && e.amountUsd < tier.max);
+    return { ...tier, events: inTier.length, usd: inTier.reduce((acc, e) => acc + e.amountUsd, 0) };
+  });
+
+  /** Журнал с фильтрами (§42, §43): DOM ограничен 50 строками, остальное — счётчиком. */
+  const FEED_LIMIT = 50;
+  const filteredEvents = data.recentEvents.filter((e) => {
+    if (filterSide !== 'all' && e.side !== filterSide) return false;
+    if (e.amountUsd < filterMinUsd) return false;
+    if (filterExchange === 'all') return true;
+    return e.exchange === LIQUIDATION_SOURCE_LABELS[filterExchange];
+  });
+  const feedEvents = filteredEvents.slice(0, FEED_LIMIT);
+  const feedHidden = Math.max(filteredEvents.length - FEED_LIMIT, 0);
 
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5 font-sans">
@@ -398,7 +429,14 @@ export const LiquidationsPage: React.FC = () => {
                 })}
               </ul>
             )}
-            {data.exchangeBreakdown.length === 0 && (
+            {/*
+              Честная подпись отсутствия данных. Условие — «нет фактических событий»,
+              а не «пустой список бирж»: после §40 пайплайн всегда перечисляет ВСЕ
+              биржи (нуль — валидное наблюдение «поток жив, событий не было»),
+              поэтому `exchangeBreakdown.length === 0` больше не наступал никогда
+              и плашка исчезла бы навсегда.
+            */}
+            {data.eventsCount24h === 0 && (
               <div className="text-xs text-slate-500 font-sans py-2">
                 Разбивка появится после первых фактических событий потока. Доли неподключённых бирж не оцениваются.
               </div>
@@ -452,6 +490,34 @@ export const LiquidationsPage: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* Size tiers (§44): классификация фактических событий, значения не меняются */}
+          {data.recentEvents.length > 0 && (
+            <div className="bg-surface border border-white/[0.08] rounded-xl p-4 space-y-2.5 shadow-panel">
+              <div className="text-xs font-bold text-white tracking-wide pb-2 border-b border-white/[0.06]">
+                Крупные ликвидации · тиры
+              </div>
+              <div className="space-y-2 text-[11px]">
+                {sizeTiers.map((t) => (
+                  <div key={t.key} className="flex items-center justify-between gap-2">
+                    <span className="text-slate-400 font-mono shrink-0">{t.label}</span>
+                    <span className="flex-1 h-1.5 rounded-full bg-surface-elevated overflow-hidden">
+                      <span
+                        className="block h-full bg-amber-400/70 rounded-full"
+                        style={{ width: `${(t.events / data.recentEvents.length) * 100}%` }}
+                      />
+                    </span>
+                    <span className="text-slate-300 font-mono tabular-nums shrink-0 text-right">
+                      {t.events} · {t.usd > 0 ? formatCurrency(t.usd, { compact: true }) : '$0'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-[11px] text-slate-500 font-sans pt-1 border-t border-white/[0.06]">
+                Тиры считаются по событиям текущего журнала и охватывают {data.recentEvents.length} из {data.eventsCount24h} событий окна.
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -540,6 +606,57 @@ export const LiquidationsPage: React.FC = () => {
           )}
         </div>
 
+        {/* Фильтры журнала (§43). Структура данных позволяет фильтровать корректно. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] font-sans">
+          <label className="flex items-center gap-1.5 text-slate-400">
+            <span>Биржа</span>
+            <select
+              value={filterExchange}
+              onChange={(e) => setFilterExchange(e.target.value as 'all' | LiquidationSourceId)}
+              className="bg-surface-elevated border border-surface-border rounded px-1.5 py-1 text-[11px] text-white font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
+              data-qa="liq-filter-exchange"
+            >
+              <option value="all">Все</option>
+              {(Object.keys(LIQUIDATION_SOURCE_LABELS) as LiquidationSourceId[]).map((id) => (
+                <option key={id} value={id}>{LIQUIDATION_SOURCE_LABELS[id]}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex items-center gap-1.5 text-slate-400">
+            <span>Сторона</span>
+            <select
+              value={filterSide}
+              onChange={(e) => setFilterSide(e.target.value as 'all' | 'LONG' | 'SHORT')}
+              className="bg-surface-elevated border border-surface-border rounded px-1.5 py-1 text-[11px] text-white font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
+              data-qa="liq-filter-side"
+            >
+              <option value="all">Все</option>
+              <option value="LONG">Long</option>
+              <option value="SHORT">Short</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-1.5 text-slate-400">
+            <span>Мин. размер</span>
+            <select
+              value={String(filterMinUsd)}
+              onChange={(e) => setFilterMinUsd(Number(e.target.value) as 0 | 1000 | 10000 | 100000)}
+              className="bg-surface-elevated border border-surface-border rounded px-1.5 py-1 text-[11px] text-white font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
+              data-qa="liq-filter-size"
+            >
+              <option value="0">Все</option>
+              <option value="1000">$1K+</option>
+              <option value="10000">$10K+</option>
+              <option value="100000">$100K+</option>
+            </select>
+          </label>
+
+          <span className="text-slate-500 font-mono tabular-nums ml-auto" data-qa="liq-feed-count">
+            {feedEvents.length} из {data.recentEvents.length}
+          </span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="text-slate-400 text-[11px] border-b border-surface-border">
@@ -553,18 +670,20 @@ export const LiquidationsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-border">
-              {data.recentEvents.length === 0 && (
+              {feedEvents.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-slate-500 font-sans">
-                    {data.dataStatus === 'AWAITING_STREAM'
-                      ? 'Журнал пуст: поток подключен, фактические события принудительного закрытия ещё не поступали.'
-                      : 'Журнал пуст: фактический поток ликвидаций недоступен. Плейсхолдеры-события не подставляются.'}
+                    {data.recentEvents.length === 0
+                      ? data.dataStatus === 'AWAITING_STREAM'
+                        ? 'Журнал пуст: поток подключен, фактические события принудительного закрытия ещё не поступали.'
+                        : 'Журнал пуст: фактический поток ликвидаций недоступен. Плейсхолдеры-события не подставляются.'
+                      : 'Под текущие фильтры не подходит ни одно событие.'}
                   </td>
                 </tr>
               )}
-              {data.recentEvents.map((event) => (
+              {feedEvents.map((event) => (
                 <tr key={event.id} className="hover:bg-surface-hover">
-                  <td className="py-2 text-slate-400">{formatTimestamp(event.timestamp)}</td>
+                  <td className="py-2 text-slate-400 font-mono tabular-nums whitespace-nowrap">{formatTimestamp(event.timestamp)}</td>
                   <td className="py-2 font-bold text-white">{event.symbol}</td>
                   <td className="py-2">
                     <span
@@ -589,6 +708,13 @@ export const LiquidationsPage: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* DOM ограничен (§42): не более 50 строк, остальное — счётчиком. */}
+        {feedHidden > 0 && (
+          <div className="text-[11px] text-slate-500 font-sans pt-1 border-t border-surface-border">
+            Показаны последние {FEED_LIMIT} событий, ещё {feedHidden} не отображаются.
+          </div>
+        )}
       </div>
     </div>
   );

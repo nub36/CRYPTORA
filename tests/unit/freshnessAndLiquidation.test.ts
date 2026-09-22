@@ -129,7 +129,9 @@ describe('Partial Failure Resilience', () => {
     expect(snapshot.largestEvent).toBeNull();
     expect(snapshot.eventsCount24h).toBe(0);
     expect(snapshot.assetBreakdown).toEqual([]);
-    expect(snapshot.exchangeBreakdown).toEqual([]);
+    // §40: биржи перечислены, но все нулевые — суммы не выдумываются.
+    expect(snapshot.exchangeBreakdown).toHaveLength(3);
+    expect(snapshot.exchangeBreakdown.every((e) => e.totalUsd === 0 && e.eventCount === 0)).toBe(true);
   });
 
   it('pipeline handles duplicate events idempotently', () => {

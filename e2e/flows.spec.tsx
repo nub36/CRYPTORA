@@ -141,7 +141,15 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
 
     // Snapshots
     expect(screen.getByText(/ФЬЮЧЕРСНЫЙ СРЕЗ/i)).toBeInTheDocument();
-    expect(screen.getByText(/ЛИКВИДАЦИИ ЗА 24H/i)).toBeInTheDocument();
+    // Заголовок снапшота ликвидаций (§31/§50/§51/§55): «24ч» заявляется только
+    // при фактически покрытом окне наблюдения, иначе — честная подпись периода.
+    // На QA-фикстуре окно не покрыто, поэтому прежний жёсткий ассерт
+    // «ЛИКВИДАЦИИ ЗА 24H» недопустим: он требовал ровно того заявления,
+    // которое приложение не имеет права делать без данных.
+    const liqTitle = document.querySelector('[data-qa="overview-liq-title"]');
+    expect(liqTitle).not.toBeNull();
+    expect(liqTitle!.textContent ?? '').toMatch(/Ликвидации/i);
+    expect(liqTitle!.textContent ?? '').toMatch(/24ч|с момента подключения/i);
     expect(screen.getByText(/^Тепловая карта$/i)).toBeInTheDocument();
     expect(screen.getByText(/РЫНОЧНЫЙ РАДАР: ПОСЛЕДНЕЕ/i)).toBeInTheDocument();
     expect(screen.getByText(/АНАЛИТИЧЕСКИЕ СЕТАПЫ \(ПРЕВЬЮ\)/i)).toBeInTheDocument();

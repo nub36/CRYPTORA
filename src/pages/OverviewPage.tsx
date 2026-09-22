@@ -12,7 +12,7 @@ import {
   LiquidationData,
   RadarEvent,
 } from '@/types/market';
-import { formatCurrency, formatPercent, formatTimestamp } from '@/utils/formatters';
+import { formatDuration, formatCurrency, formatPercent, formatTimestamp } from '@/utils/formatters';
 import { radarEventTypeLabel } from '@/utils/labels';
 import { CandleChart } from '@/components/common/CandleChart';
 import type { ChartIndicatorData } from '@/components/common/CandleChart';
@@ -604,8 +604,18 @@ export const OverviewPage: React.FC = () => {
             <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
               <div className="flex items-center space-x-2">
                 <Flame className="w-4 h-4 text-rose-400" />
-                <span className="font-bold text-sm text-white font-sans tracking-wide">
-                  Ликвидации за 24h
+                {/*
+                  Единый источник с /liquidations (§51): и заголовок, и суммы берутся
+                  из того же `getLiquidationSnapshot()`. «24ч» показывается только
+                  когда окно наблюдения действительно покрыто — иначе честная
+                  подпись периода (§31, §50, §55).
+                */}
+                <span className="font-bold text-sm text-white font-sans tracking-wide" data-qa="overview-liq-title">
+                  {liquidations?.hasFullObservationWindow
+                    ? 'Ликвидации · 24ч'
+                    : liquidations && liquidations.observationDurationMs > 0
+                      ? 'Ликвидации · с момента подключения'
+                      : 'Ликвидации'}
                 </span>
               </div>
               <Link
@@ -621,6 +631,20 @@ export const OverviewPage: React.FC = () => {
               <div>
                 {liquidations.total24h > 0 ? (
                   <>
+                    {/* Total + фактический период наблюдения (§51) */}
+                    <div className="flex items-center justify-between mb-1.5 text-[11px] font-sans" data-qa="overview-liq-total">
+                      <span className="text-white font-bold font-mono tabular-nums">
+                        Всего: {formatCurrency(liquidations.total24h, { compact: true })}
+                      </span>
+                      <span className="text-slate-500 font-mono tabular-nums">
+                        {liquidations.eventsCount24h} событий ·{' '}
+                        {liquidations.hasFullObservationWindow
+                          ? '24ч'
+                          : liquidations.observationDurationMs > 0
+                            ? formatDuration(liquidations.observationDurationMs)
+                            : '—'}
+                      </span>
+                    </div>
                     <div className="flex items-center justify-between mb-2 font-mono text-xs">
                       <span className="text-emerald-400 font-semibold tabular-nums font-mono">
                         Long: {formatCurrency(liquidations.totalLong24h, { compact: true })} (

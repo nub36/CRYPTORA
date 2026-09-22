@@ -24,14 +24,32 @@ const files = fs
   .sort();
 
 describe('migration discovery', () => {
-  it('numbers are contiguous and 005 is the newest', () => {
-    expect(files).toEqual([
-      '001_create_users.sql',
-      '002_create_sessions.sql',
-      '003_create_user_preferences.sql',
-      '004_create_audit_log.sql',
-      '005_email_verification.sql',
-    ]);
+  /**
+   * Свойство, которое здесь важно, — номера идут БЕЗ ПРОПУСКОВ и сортировка по
+   * имени совпадает с сортировкой по номеру (иначе `migrate.mjs` применит их в
+   * неверном порядке). Раньше тут лежал жёсткий список файлов, из-за чего любое
+   * добавление новой миграции роняло тест, ничего не проверяя по существу.
+   */
+  it('numbers are contiguous, zero-padded and sort in numeric order', () => {
+    expect(files.length).toBeGreaterThanOrEqual(7);
+
+    const numbers = files.map((f) => {
+      const m = f.match(/^(\d{3})_/);
+      expect(m, `${f} must start with a 3-digit prefix`).not.toBeNull();
+      return Number(m![1]);
+    });
+
+    // 1..N без пропусков и без дублей.
+    expect(numbers).toEqual(numbers.map((_, i) => i + 1));
+    // Лексикографическая сортировка имён == числовая сортировка номеров.
+    expect([...files].sort()).toEqual(files);
+  });
+
+  it('005_email_verification.sql is present and untouched by later migrations', () => {
+    expect(files).toContain('005_email_verification.sql');
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, '005_email_verification.sql'), 'utf8');
+    expect(sql).toContain('email_verified');
+    expect(sql).toContain('email_verification_tokens');
   });
 
   it('scripts/migrate.mjs picks migrations up from the directory (no hardcoded list)', () => {

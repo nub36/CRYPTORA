@@ -109,7 +109,7 @@ export const RegisterPage: React.FC = () => {
               <Lock className="h-6 w-6 text-white" />
             </div>
 
-            <h1 className="text-xl font-bold text-white">Регистрация закрыта</h1>
+            <h1 className="text-xl font-bold text-white">Регистрация временно закрыта</h1>
             <p className="mt-2 text-sm text-slate-400">
               Сейчас мы не создаём новые аккаунты. Уже зарегистрированные пользователи
               могут войти как обычно.
