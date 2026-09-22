@@ -337,12 +337,27 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     }
 
     const asset = getAssetBySymbol(symbol);
-    if (!asset) {
-      throw new Error(`Symbol ${symbol} not in canonical registry`);
-    }
 
     const binanceInterval = this.mapTimeframeToBinance(timeframe);
     const kucoinType = this.mapTimeframeToKuCoin(timeframe);
+
+    if (!asset) {
+      // Тикер вне реестра (добавлен через вселенную скана/пикер): пробуем прямой
+      // Binance-символ BASEUSDT. KuCoin-резерва нет — маппинг неизвестен.
+      // Неудача = честная ошибка символа, движок покажет её в статусе скана.
+      const base = symbol.toUpperCase().trim();
+      if (!/^[A-Z0-9]{2,12}$/.test(base)) {
+        throw new Error(`Symbol ${symbol} not in canonical registry`);
+      }
+      try {
+        const raw = await this.binance.fetchKlines(`${base}USDT`, binanceInterval, klineLimit);
+        const normalized = normalizeBinanceKlines(raw, base);
+        this.candleCache.set(cacheKey, { data: normalized, timestamp: now });
+        return normalized;
+      } catch {
+        throw new Error(`Symbol ${symbol} not available on Binance spot`);
+      }
+    }
 
     // 1. Try Binance
     if (asset.binanceSymbol) {

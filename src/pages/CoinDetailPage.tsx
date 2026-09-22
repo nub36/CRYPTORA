@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetDetail, OHLCV, Timeframe, FuturesAsset, RadarEvent } from '@/types/market';
 import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters';
 import { radarEventTypeLabel, radarSeverityLabel } from '@/utils/labels';
 import { CandleChart } from '@/components/common/CandleChart';
-import type { ChartIndicatorData } from '@/components/common/CandleChart';
+import type { ChartIndicatorData, CandleChartType } from '@/components/common/CandleChart';
+import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
 import { CoinIcon } from '@/components/common/CoinIcon';
 import { Badge } from '@/components/common/Badge';
 import { OrderBookL2 } from '@/components/market/OrderBookL2';
@@ -50,6 +51,7 @@ const formatUntil = (ts: number): string => {
 
 export const CoinDetailPage: React.FC = () => {
   const { symbol } = useParams<{ symbol: string }>();
+  const navigate = useNavigate();
   const { provider, watchlist, toggleWatchlist, livePrices, subscribeSymbol } = useMarketData();
   const workspace = useCoinWorkspaceLayout();
 
@@ -65,6 +67,9 @@ export const CoinDetailPage: React.FC = () => {
   const [realtimeKline, setRealtimeKline] = useState<KlineTick | null>(null);
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
+  const [chartType, setChartType] = useState<CandleChartType>('candles');
+  const [showMA, setShowMA] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [btcCandles, setBtcCandles] = useState<OHLCV[]>([]);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>('idle');
 
@@ -439,9 +444,15 @@ export const CoinDetailPage: React.FC = () => {
       <div data-qa="coin-chart-card" className="space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
           <div className="flex items-center space-x-3">
-            <span className="font-sans font-bold text-sm text-white">
-              {asset.symbol}/USDT Свечной график
-            </span>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              data-qa="coin-picker-open"
+              className="font-sans font-bold text-sm text-white hover:text-brand-cyan transition-colors"
+              title="Выбрать другую монету"
+            >
+              {asset.symbol}/USDT {chartType === 'candles' ? 'Свечной' : chartType === 'bars' ? 'Барный' : 'Линейный'} график ▾
+            </button>
             <div className="hidden sm:flex items-center space-x-2 text-xs font-sans text-slate-400">
               <span>Макс. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.high24h)}</strong></span>
               <span>Мин. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.low24h)}</strong></span>
@@ -491,8 +502,56 @@ export const CoinDetailPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Тип графика + MA-линии с легендой */}
+        <div className="flex flex-wrap items-center gap-2 font-sans text-xs">
+          <div
+            className="flex items-center space-x-1 bg-surface-elevated p-1 rounded border border-surface-border"
+            data-qa="chart-type-switch"
+          >
+            {([['candles', 'Свечи'], ['bars', 'Бары'], ['line', 'Линия']] as const).map(([t, label]) => (
+              <button
+                key={t}
+                onClick={() => setChartType(t)}
+                className={`px-2.5 py-1 rounded transition-colors ${
+                  chartType === t ? 'bg-brand-cyan text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowMA((v) => !v)}
+            data-qa="chart-ma-toggle"
+            title="SMA 20/50/200 и полосы Боллинджера поверх цены"
+            className={`px-2.5 py-1 rounded transition-colors border ${
+              showMA
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold'
+                : 'border-surface-border text-slate-400 hover:text-white'
+            }`}
+          >
+            MA {showMA ? 'вкл' : 'выкл'}
+          </button>
+          {showMA && chartIndicators && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400" data-qa="chart-ma-legend">
+              <span className="flex items-center gap-1" title="Скользящее среднее за 20 свечей">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#f59e0b' }} /> SMA 20
+              </span>
+              <span className="flex items-center gap-1" title="Скользящее среднее за 50 свечей">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#3b82f6' }} /> SMA 50
+              </span>
+              <span className="flex items-center gap-1" title="Скользящее среднее за 200 свечей">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#a855f7' }} /> SMA 200
+              </span>
+              <span className="flex items-center gap-1" title="Полосы Боллинджера (20, 2σ)">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: 'rgba(99, 102, 241, 0.8)' }} /> BB 20
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Interactive TradingView Lightweight Chart */}
-        <CandleChart data={candles} symbol={`${asset.symbol}/USDT`} height={chartHeight} indicators={chartIndicators} realtimeKline={realtimeKline} showRSI={showRSI} showMACD={showMACD} />
+        <CandleChart data={candles} symbol={`${asset.symbol}/USDT`} height={chartHeight} indicators={chartIndicators} realtimeKline={realtimeKline} showRSI={showRSI} showMACD={showMACD} chartType={chartType} showMA={showMA} />
       </div>
 
         <div className="xl:sticky xl:top-[70px] self-start">
@@ -925,6 +984,14 @@ export const CoinDetailPage: React.FC = () => {
         futures={futuresData}
         radarEvents={radarEvents}
         liquidations={liquidations}
+      />
+
+      <SymbolPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(base) => navigate(`/coin/${base}`)}
+        current={asset.symbol}
+        title="Выбор монеты для графика"
       />
     </div>
   );

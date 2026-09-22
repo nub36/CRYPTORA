@@ -17,9 +17,11 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Coins,
 } from 'lucide-react';
+import { ScanUniverseManager } from '@/components/admin/ScanUniverseManager';
 
-type Tab = 'dashboard' | 'users' | 'system';
+type Tab = 'dashboard' | 'users' | 'coins' | 'system';
 
 interface DashboardData {
   health: {
@@ -222,6 +224,7 @@ export const AdminPage: React.FC = () => {
         {[
           { id: 'dashboard' as Tab, label: 'Обзор', icon: LayoutDashboard },
           { id: 'users' as Tab, label: 'Пользователи', icon: Users },
+          { id: 'coins' as Tab, label: 'Монеты', icon: Coins },
           { id: 'system' as Tab, label: 'Система', icon: Server },
         ].map((t) => (
           <button
@@ -450,6 +453,13 @@ export const AdminPage: React.FC = () => {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Coins Tab — вселенная LIVE-скана сигналов */}
+      {tab === 'coins' && (
+        <div id="admin-coins" data-testid="admin-coins">
+          <ScanUniverseManager />
         </div>
       )}
 

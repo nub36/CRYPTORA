@@ -15,6 +15,9 @@ export interface ChartIndicatorData {
   bollingerLower?: number[];
 }
 
+/** Тип отображения цены: свечи / бары OHLC / линия закрытия. */
+export type CandleChartType = 'candles' | 'bars' | 'line';
+
 interface CandleChartProps {
   data: OHLCV[];
   symbol?: string;
@@ -26,6 +29,10 @@ interface CandleChartProps {
   showRSI?: boolean;
   /** Show MACD sub-panel (line + signal + histogram). Default: false. */
   showMACD?: boolean;
+  /** Тип отображения цены. Default: 'candles'. */
+  chartType?: CandleChartType;
+  /** Показывать MA-линии поверх цены (SMA20/50/200 + полосы Боллинджера). Default: true. */
+  showMA?: boolean;
 }
 
 /**
@@ -61,12 +68,16 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   realtimeKline,
   showRSI = false,
   showMACD = false,
+  chartType = 'candles',
+  showMA = true,
 }) => {
   const candleSource = data[0]?.provenance?.exchange;
   const isDemoCandles = candleSource === 'synthetic-demo' || (data.length > 0 && !candleSource);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const barSeriesRef = useRef<ISeriesApi<'Bar'> | null>(null);
+  const lineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const sma20Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const sma50Ref = useRef<ISeriesApi<'Line'> | null>(null);
@@ -160,6 +171,21 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       wickDownColor: '#f43f5e',
     });
 
+    // Альтернативные типы отображения (виден один — по chartType).
+    const barSeries = chart.addBarSeries({
+      upColor: '#10b981',
+      downColor: '#f43f5e',
+      visible: false,
+    });
+    const lineSeries = chart.addLineSeries({
+      color: '#38bdf8',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      crosshairMarkerVisible: true,
+      visible: false,
+    });
+
     const volumeSeries = chart.addHistogramSeries({
       color: '#38bdf8',
       priceFormat: { type: 'volume' },
@@ -189,6 +215,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
+    barSeriesRef.current = barSeries;
+    lineSeriesRef.current = lineSeries;
     volumeSeriesRef.current = volumeSeries;
     sma20Ref.current = sma20;
     sma50Ref.current = sma50;
@@ -285,21 +313,26 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         setCrosshair(null);
         return;
       }
-      const candle = param.seriesData.get(candleSeries) as { open: number; high: number; low: number; close: number } | undefined;
+      const candle = (param.seriesData.get(candleSeries) ?? param.seriesData.get(barSeries)) as
+        | { open: number; high: number; low: number; close: number }
+        | undefined;
+      const linePt = param.seriesData.get(lineSeries) as { value: number } | undefined;
       const vol = param.seriesData.get(volumeSeries) as { value: number } | undefined;
-      if (!candle) {
+      const ohlc = candle
+        ?? (linePt ? { open: linePt.value, high: linePt.value, low: linePt.value, close: linePt.value } : undefined);
+      if (!ohlc) {
         setCrosshair(null);
         return;
       }
       const volVal = vol?.value ?? 0;
       setCrosshair({
         time: formatCrosshairTime(param.time as Time),
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
+        open: ohlc.open,
+        high: ohlc.high,
+        low: ohlc.low,
+        close: ohlc.close,
         volume: volVal,
-        change: candle.open !== 0 ? ((candle.close - candle.open) / candle.open) * 100 : 0,
+        change: ohlc.open !== 0 ? ((ohlc.close - ohlc.open) / ohlc.open) * 100 : 0,
       });
     });
 
@@ -345,6 +378,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     }));
 
     candleSeriesRef.current.setData(chartCandles);
+    barSeriesRef.current?.setData(chartCandles);
+    lineSeriesRef.current?.setData(data.map((c) => ({ time: c.time as unknown as Time, value: c.close })));
     volumeSeriesRef.current.setData(chartVolumes);
 
     // Current price line (last close)
@@ -386,6 +421,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       low: k.low,
       close: k.close,
     });
+    barSeriesRef.current?.update({ time, open: k.open, high: k.high, low: k.low, close: k.close });
+    lineSeriesRef.current?.update({ time, value: k.close });
 
     // Update volume bar
     volumeSeriesRef.current.update({
@@ -411,8 +448,11 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     }
   }, [realtimeKline]);
 
-  // Update indicator overlays
+  // Update indicator overlays (MA-линии; видимость — тумблер showMA)
   useEffect(() => {
+    for (const r of [sma20Ref, sma50Ref, sma200Ref, bbUpperRef, bbMiddleRef, bbLowerRef]) {
+      r.current?.applyOptions({ visible: showMA });
+    }
     if (!indicators || !data || data.length === 0) return;
     const times = data.map((c) => c.time as unknown as Time);
 
@@ -437,7 +477,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     if (indicators.bollingerLower && bbLowerRef.current) {
       bbLowerRef.current.setData(toLineData(indicators.bollingerLower));
     }
-  }, [indicators, data]);
+  }, [indicators, data, showMA]);
+
+  // Переключение типа отображения без пересоздания графика
+  useEffect(() => {
+    candleSeriesRef.current?.applyOptions({ visible: chartType === 'candles' });
+    barSeriesRef.current?.applyOptions({ visible: chartType === 'bars' });
+    lineSeriesRef.current?.applyOptions({ visible: chartType === 'line' });
+  }, [chartType]);
 
   // RSI sub-panel data + level lines (70/50/30)
   useEffect(() => {

@@ -7,6 +7,8 @@ import { KuCoinSpotAdapter } from '@/services/data/adapters/KuCoinSpotAdapter';
 import { SourceHealthTracker } from '@/services/data/adapters/sourceHealth';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { LiveSignalEngine } from '@/services/signals/live/LiveSignalEngine';
+import { getScanUniverse, subscribeScanUniverse } from '@/services/signals/scanUniverse';
+import { signalNotifications, type SignalNotification } from '@/services/signals/signalNotifications';
 import { PlanTier, PlanManager } from '@/services/subscription/PlanManager';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
 
@@ -55,6 +57,11 @@ interface MarketDataContextType {
   clearAlertHistory: () => void;
   unreadAlertCount: number;
   markAlertsRead: () => void;
+  /** Лента событий журнала сигналов (колокольчик): только факты движка. */
+  signalNotifications: SignalNotification[];
+  signalUnreadCount: number;
+  markSignalsRead: () => void;
+  clearSignalNotifications: () => void;
   alertChannels: AlertChannelsConfig;
   setAlertChannels: (cfg: AlertChannelsConfig) => void;
   deliveryLog: DeliveryRecord[];
@@ -137,6 +144,10 @@ export const MarketDataProviderComponent: React.FC<{
     }
   });
   const [unreadAlertCount, setUnreadAlertCount] = useState(0);
+  const [signalFeed, setSignalFeed] = useState<SignalNotification[]>(() =>
+    signalNotifications.getNotifications(),
+  );
+  const [signalUnreadCount, setSignalUnreadCount] = useState(() => signalNotifications.getUnreadCount());
   const [alertChannels, setAlertChannelsState] = useState<AlertChannelsConfig>(() => {
     try {
       return parseChannelsConfig(localStorage.getItem(ALERT_CHANNELS_STORAGE_KEY));
@@ -185,10 +196,13 @@ export const MarketDataProviderComponent: React.FC<{
         feedManager.subscribeSymbol(sym);
       }
 
-      // LIVE-движок сигналов: V3.0 / V3.3 / V2.8 на 6 инструментах, только закрытые свечи.
+      // LIVE-движок сигналов: V3.0 / V3.3 / V2.8 по вселенной скана (админка → Монеты), только закрытые свечи.
       // start() идемпотентен — повторный запуск эффекта в StrictMode не создаёт второй таймер.
       try {
-        const signalEngine = LiveSignalEngine.getInstance({ provider: singletonLiveProvider });
+        const signalEngine = LiveSignalEngine.getInstance({
+          provider: singletonLiveProvider,
+          symbols: getScanUniverse(),
+        });
         signalEngine?.start();
       } catch (e) {
         console.error('[CRYPTORA] LiveSignalEngine failed to start', e);
@@ -206,6 +220,25 @@ export const MarketDataProviderComponent: React.FC<{
       LiveSignalEngine.getInstance()?.stop();
     };
   }, [dataMode]);
+
+  // Вселенная скана → движок (только live): применяется сразу, без перезапуска.
+  useEffect(() => {
+    if (dataMode !== 'live') return;
+    return subscribeScanUniverse(() => {
+      LiveSignalEngine.getInstance()?.updateSymbols(getScanUniverse());
+    });
+  }, [dataMode]);
+
+  // Лента событий журнала сигналов (колокольчик): старт синглтона + подписка.
+  useEffect(() => {
+    signalNotifications.start();
+    const sync = () => {
+      setSignalFeed(signalNotifications.getNotifications());
+      setSignalUnreadCount(signalNotifications.getUnreadCount());
+    };
+    sync();
+    return signalNotifications.subscribe(sync);
+  }, []);
 
   const subscribeSymbol = useCallback((symbol: string) => {
     if (dataMode === 'live') {
@@ -390,6 +423,10 @@ export const MarketDataProviderComponent: React.FC<{
         clearAlertHistory: () => setAlertHistory([]),
         unreadAlertCount,
         markAlertsRead: () => setUnreadAlertCount(0),
+        signalNotifications: signalFeed,
+        signalUnreadCount,
+        markSignalsRead: () => signalNotifications.markAllRead(),
+        clearSignalNotifications: () => signalNotifications.clear(),
         alertChannels,
         setAlertChannels,
         deliveryLog,

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
 import { Bell, X, Plus, Trash2, CheckCircle2, Pause, Play, AlertTriangle, Send, Webhook, History } from 'lucide-react';
 import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
@@ -7,7 +8,7 @@ import type { AlertChannelId, UserAlertCondition } from '@/services/alerts/alert
 import { conditionLabelRu } from '@/services/alerts/alertEvaluator';
 import { isPlausibleBotToken, isValidWebhookUrl, maskToken } from '@/services/alerts/deliveryChannels';
 
-type Tab = 'rules' | 'history' | 'channels';
+type Tab = 'rules' | 'signals' | 'history' | 'channels';
 
 const inputCls =
   'w-full bg-surface border border-surface-border rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-brand-cyan';
@@ -38,6 +39,10 @@ export const AlertsModal: React.FC = () => {
     clearAlertHistory,
     markAlertsRead,
     unreadAlertCount,
+    signalNotifications,
+    signalUnreadCount,
+    markSignalsRead,
+    clearSignalNotifications,
     alertChannels,
     setAlertChannels,
     deliveryLog,
@@ -61,7 +66,8 @@ export const AlertsModal: React.FC = () => {
 
   useEffect(() => {
     if (isAlertsModalOpen && tab === 'history') markAlertsRead();
-  }, [isAlertsModalOpen, tab, markAlertsRead]);
+    if (isAlertsModalOpen && tab === 'signals') markSignalsRead();
+  }, [isAlertsModalOpen, tab, markAlertsRead, markSignalsRead]);
 
   if (!isAlertsModalOpen) return null;
 
@@ -177,6 +183,7 @@ export const AlertsModal: React.FC = () => {
 
         <div className="flex items-end gap-1 border-b border-surface-border mb-4">
           {tabBtn('rules', `Правила (${alerts.length}/${maxAlerts})`)}
+          {tabBtn('signals', 'Сигналы', signalUnreadCount)}
           {tabBtn('history', 'История', unreadAlertCount)}
           {tabBtn('channels', 'Каналы')}
         </div>
@@ -313,6 +320,60 @@ export const AlertsModal: React.FC = () => {
               )}
             </div>
           </>
+        )}
+
+        {tab === 'signals' && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-semibold text-slate-400 tracking-wide">
+                События журнала сигналов ({signalNotifications.length})
+              </div>
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/signals"
+                  onClick={closeAlertsModal}
+                  className="text-[11px] text-brand-cyan hover:underline"
+                >
+                  Открыть журнал →
+                </Link>
+                {signalNotifications.length > 0 && (
+                  <button onClick={clearSignalNotifications} className="text-[11px] text-slate-500 hover:text-rose-400">
+                    Очистить
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 font-sans mb-2">
+              Новый сигнал, исполнение входа и исходы стратегий V3.0 / V3.3 / V2.8 — только факты журнала этого браузера.
+            </p>
+            <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+              {signalNotifications.length === 0 ? (
+                <div className="text-center py-6 text-slate-500 text-xs">
+                  Событий пока не было — движок публикует сетапы только на закрытых барах.
+                </div>
+              ) : (
+                [...signalNotifications].reverse().map((n) => (
+                  <div key={n.id} data-qa="signal-notification" className="p-2 rounded bg-surface border border-surface-border text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`font-bold ${
+                          n.kind === 'NEW_SIGNAL'
+                            ? 'text-brand-cyan'
+                            : n.kind === 'FILL'
+                              ? 'text-amber-300'
+                              : 'text-emerald-300'
+                        }`}
+                      >
+                        {n.title}
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500">{new Date(n.at).toLocaleString('ru-RU')}</span>
+                    </div>
+                    <div className="text-slate-300 font-sans mt-0.5">{n.detail}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         )}
 
         {tab === 'history' && (

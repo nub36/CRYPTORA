@@ -207,7 +207,8 @@ export class LiveSignalEngine {
   private static instance: LiveSignalEngine | null = null;
 
   private readonly provider: MarketDataProvider;
-  private readonly symbols: readonly string[];
+  /** Вселенная скана; меняется в runtime через updateSymbols (админка → Монеты). */
+  private symbols: readonly string[];
   private readonly strategies: SignalStrategy[];
   private readonly ledger: SignalsAuditLedger;
   private readonly scanIntervalMs: number;
@@ -253,6 +254,21 @@ export class LiveSignalEngine {
       LiveSignalEngine.instance.stop();
     }
     LiveSignalEngine.instance = null;
+  }
+
+  /**
+   * Обновить вселенную скана в runtime (админка → Монеты). Пустой список
+   * игнорируется — движок не должен сканировать «ничего». Состояния и
+   * ретроспектива существующих символов сохраняются; новые получают чистое
+   * состояние. Следующий скан уже идёт по новому списку.
+   */
+  public updateSymbols(symbols: readonly string[]): void {
+    const next = [...new Set(symbols.map((s) => s.toUpperCase().trim()).filter(Boolean))];
+    if (next.length === 0) return;
+    this.symbols = next;
+    for (const symbol of next) {
+      if (!this.state.has(symbol)) this.state.set(symbol, this.freshState(symbol));
+    }
   }
 
   /* ------------------------------------------------------------------ */
