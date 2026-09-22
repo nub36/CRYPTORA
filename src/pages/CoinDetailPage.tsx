@@ -57,7 +57,7 @@ export const CoinDetailPage: React.FC = () => {
 
   const [asset, setAsset] = useState<AssetDetail | null>(null);
   const [candles, setCandles] = useState<OHLCV[]>([]);
-  const [timeframe, setTimeframe] = useState<Timeframe>('1h');
+  const [timeframe, setTimeframe] = useState<Timeframe>('15m');
   const [futuresData, setFuturesData] = useState<FuturesAsset | null>(null);
   const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
   const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
@@ -111,7 +111,14 @@ export const CoinDetailPage: React.FC = () => {
   // Fetch BTC candles for correlation context (compact, not a big module)
   useEffect(() => {
     if (!symbol || symbol.toUpperCase() === 'BTC') return;
-    provider.getCandles('BTC', timeframe).then((cl) => setBtcCandles(cl)).catch(() => setBtcCandles([]));
+    // Отмена устаревшего запроса: при уходе со страницы или смене символа/TF
+    // ответ не должен применяться к размонтированному компоненту.
+    const controller = new AbortController();
+    provider
+      .getCandles('BTC', timeframe)
+      .then((cl) => { if (!controller.signal.aborted) setBtcCandles(cl); })
+      .catch(() => { if (!controller.signal.aborted) setBtcCandles([]); });
+    return () => controller.abort();
   }, [symbol, timeframe, provider]);
 
   // Correlation context: BTC correlation, Beta, lookback
@@ -143,6 +150,16 @@ export const CoinDetailPage: React.FC = () => {
     setLoading(true);
     setSourceUnavailable(false);
 
+    /**
+     * Зависание графика сигнала при навигации: страница уходила в `loading=true`,
+     * а ответы запросов применялись уже к размонтированному компоненту — состояние
+     * оставалось «загружается», и при возврате график не оживал. Теперь каждый
+     * запрос сопровождается AbortController: при размонтировании (или смене
+     * символа) сигнал помечается aborted, и setState не вызывается.
+     */
+    const controller = new AbortController();
+    const { signal } = controller;
+
     async function fetchData() {
       try {
         // Ядро страницы — актив и свечи. Деривативы/радар/ликвидации — вспомогательные:
@@ -160,6 +177,7 @@ export const CoinDetailPage: React.FC = () => {
         const rdr = rdrR.status === 'fulfilled' ? rdrR.value : [];
         const liqs = liqsR.status === 'fulfilled' ? liqsR.value : null;
 
+        if (signal.aborted) return;
         setAsset(detail);
         setCandles(candleList);
         if (candleList.length > 0) {
@@ -174,24 +192,30 @@ export const CoinDetailPage: React.FC = () => {
         setLiquidations(liqs);
       } catch {
         // LIVE-FIRST: актив не получен от источника — честное состояние без демо-подстановки.
-        setSourceUnavailable(true);
+        if (!signal.aborted) setSourceUnavailable(true);
       } finally {
-        setLoading(false);
+        if (!signal.aborted) setLoading(false);
       }
     }
 
     fetchData();
+    return () => controller.abort();
   }, [symbol, provider]);
 
   useEffect(() => {
     if (symbol) {
       setRealtimeKline(null); // Reset realtime kline on timeframe/symbol change
+      const controller = new AbortController();
       provider.getCandles(symbol, timeframe).then((cl) => {
+        // Устаревший ответ (смена TF/символа или уход со страницы) отбрасывается:
+        // иначе в график прилетает ряд другого таймфрейма и он «зависает».
+        if (controller.signal.aborted) return;
         setCandles(cl);
         if (cl.length > 0) {
           MemoryTimeSeriesRepository.getInstance().saveCandles(symbol, timeframe, cl);
         }
       });
+      return () => controller.abort();
     }
   }, [symbol, timeframe, provider]);
 
@@ -451,7 +475,7 @@ export const CoinDetailPage: React.FC = () => {
               className="font-sans font-bold text-sm text-white hover:text-brand-cyan transition-colors"
               title="Выбрать другую монету"
             >
-              {asset.symbol}/USDT {chartType === 'candles' ? 'Свечной' : chartType === 'bars' ? 'Барный' : 'Линейный'} график ▾
+              {asset.symbol}/USDT {chartType === 'candles' ? 'Свечной' : 'Линейный'} график ▾
             </button>
             <div className="hidden sm:flex items-center space-x-2 text-xs font-sans text-slate-400">
               <span>Макс. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.high24h)}</strong></span>
@@ -508,7 +532,7 @@ export const CoinDetailPage: React.FC = () => {
             className="flex items-center space-x-1 bg-surface-elevated p-1 rounded border border-surface-border"
             data-qa="chart-type-switch"
           >
-            {([['candles', 'Свечи'], ['bars', 'Бары'], ['line', 'Линия']] as const).map(([t, label]) => (
+            {([['candles', 'Свечи'], ['line', 'Линия']] as const).map(([t, label]) => (
               <button
                 key={t}
                 onClick={() => setChartType(t)}

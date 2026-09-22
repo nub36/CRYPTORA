@@ -23,6 +23,26 @@ describe('Навигационная модель терминала CRYPTORA', 
     expect(PRIMARY_NAV_ITEMS.length).toBeGreaterThanOrEqual(4);
   });
 
+  it('v0.9.3: в прямой навигации — Статьи и Новости, а Ликвидации и Радар — в «Инструментах»', () => {
+    // Основной запрос UX-прохода по скриншотам владельца. Порядок закреплён:
+    // он определяет визуальную раскладку шапки на 1280px.
+    expect(PRIMARY_NAV_ITEMS.map((i) => i.label)).toEqual([
+      'Обзор',
+      'Рынок',
+      'Скринер',
+      'Статьи',
+      'Новости',
+    ]);
+    expect(PRIMARY_NAV_ITEMS.map((i) => i.path)).toContain('/news');
+    // Перенесённые разделы не потеряны и не задвоены: они только в «Инструментах».
+    const toolsPaths = TOOLS_NAV_ITEMS.map((i) => i.path);
+    expect(toolsPaths).toContain('/liquidations');
+    expect(toolsPaths).toContain('/radar');
+    expect(PRIMARY_NAV_ITEMS.map((i) => i.path)).not.toContain('/liquidations');
+    expect(PRIMARY_NAV_ITEMS.map((i) => i.path)).not.toContain('/radar');
+    expect(toolsPaths).not.toContain('/articles');
+  });
+
   it('все пути уникальны и начинаются со слеша', () => {
     const paths = ALL_NAV_PATHS;
     expect(new Set(paths).size).toBe(paths.length);
@@ -43,13 +63,16 @@ describe('Навигационная модель терминала CRYPTORA', 
       'Экосистемы',
       'Календарь',
     ]);
+    // v0.9.3: «Ликвидации» и «Радар» перенесены из primary в «Инструменты»,
+    // «Статьи» — наоборот, подняты в primary (вместе с новыми «Новостями»).
     expect(tools.map((i) => i.label)).toEqual([
       'Инструменты',
+      'Ликвидации',
+      'Радар',
       'Портфель',
       'Журнал',
       'Стратегии',
       'Сигналы',
-      'Статьи',
     ]);
 
     for (const item of [...analytics, ...tools]) {
@@ -67,6 +90,9 @@ describe('Навигационная модель терминала CRYPTORA', 
 
   it('навигация покрывает все статические разделы терминала ровно один раз', () => {
     // Статические роуты App.tsx (без 404 и без динамического /coin/:symbol).
+    // Инвариант «ровно один раз» ловит дублирование раздела одновременно
+    // в primary и в группированном меню — поэтому при переносе пункта
+    // из одного списка в другой он обязан исчезнуть из прежнего.
     const STATIC_APP_ROUTES = [
       '/',
       '/market',
@@ -85,6 +111,7 @@ describe('Навигационная модель терминала CRYPTORA', 
       '/ecosystem',
       '/portfolio',
       '/articles',
+      '/news',
     ];
 
     for (const route of STATIC_APP_ROUTES) {
