@@ -2,12 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
 import { LiquidationPipeline, LIQUIDATION_SOURCE_LABELS, type LiquidationSourceId, type LiquidationStreamState } from '@/services/liquidations/LiquidationPipeline';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
-import { LiquidationData } from '@/types/market';
+import { LiquidationData, OHLCV } from '@/types/market';
 import { formatCurrency, formatTimestamp, formatDuration } from '@/utils/formatters';
 import { sideLabel } from '@/utils/labels';
 import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
 import { LiquidationHeatmap } from '@/components/market/LiquidationHeatmap';
 import { Flame, ShieldAlert, Clock, Layers } from 'lucide-react';
+import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
+import { LiquidationPriceChart } from '@/components/market/LiquidationPriceChart';
 
 export const LiquidationsPage: React.FC = () => {
   const { provider } = useMarketData();
@@ -24,6 +26,11 @@ export const LiquidationsPage: React.FC = () => {
   const connectedSources = (Object.keys(LIQUIDATION_SOURCE_LABELS) as LiquidationSourceId[]).filter(
     (id) => streamStates[id] === 'connected',
   );
+
+  // Инструмент для секции «Цена и ликвидации» + ряд 1h-свечей под него.
+  const [liqSymbol, setLiqSymbol] = useState('BTC');
+  const [liqCandles, setLiqCandles] = useState<OHLCV[]>([]);
+  const [liqPickerOpen, setLiqPickerOpen] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -94,6 +101,22 @@ export const LiquidationsPage: React.FC = () => {
       isActive = false;
     };
   }, [provider]);
+
+  // Свечи для графика «цена + ликвидации» (честное пустое состояние при ошибке).
+  useEffect(() => {
+    let isActive = true;
+    provider
+      .getCandles(liqSymbol, '1h', 120)
+      .then((candles) => {
+        if (isActive) setLiqCandles(candles);
+      })
+      .catch(() => {
+        if (isActive) setLiqCandles([]);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [provider, liqSymbol]);
 
   const estimatedClusters = useMemo(() => {
     if (!clusterInput) return [];
@@ -195,6 +218,36 @@ export const LiquidationsPage: React.FC = () => {
           <strong>Расчётный ликвидационный уровень:</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">MODEL / ESTIMATED</code> (расчётная модель).
         </p>
       </details>
+
+      {/* Цена и ликвидации на одном графике */}
+      <div className="bg-surface border border-white/[0.08] rounded-xl p-4 shadow-panel">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
+          <div>
+            <div className="text-xs font-bold text-white tracking-wide">Цена и ликвидации</div>
+            <p className="text-[11px] text-slate-400 font-sans mt-0.5">
+              Свечи и фактические события потока на одном графике. Метки полупрозрачные и не закрывают свечи:
+              зелёные — ликвидированные лонги, красные — шорты.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLiqPickerOpen(true)}
+            data-qa="liq-picker-open"
+            className="font-mono font-bold text-sm text-white border border-surface-border rounded px-3 py-1.5 bg-surface-elevated hover:text-brand-cyan hover:border-brand-cyan/40 transition-colors"
+            title="Выбрать инструмент для графика"
+          >
+            {liqSymbol}/USDT ▾
+          </button>
+        </div>
+        <LiquidationPriceChart candles={liqCandles} events={data.recentEvents} symbol={liqSymbol} />
+      </div>
+      <SymbolPickerModal
+        open={liqPickerOpen}
+        onClose={() => setLiqPickerOpen(false)}
+        onSelect={setLiqSymbol}
+        current={liqSymbol}
+        title="Инструмент для графика ликвидаций"
+      />
 
       {/* Aggregate Long/Short Ratio Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

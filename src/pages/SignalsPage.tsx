@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BarChart3, AlertOctagon, CheckCircle2, Shield, Lock, Filter, Check, Radio, Activity, RefreshCw, History,
 } from 'lucide-react';
@@ -11,19 +12,21 @@ import {
 } from '@/services/signals/SignalsAuditLedger';
 import { LiveSignalEngine, type EngineStatus } from '@/services/signals/live/LiveSignalEngine';
 import type { ReplayRecord } from '@/services/signals/live/replays/types';
+import {
+  SIGNAL_STATUS_FILTERS,
+  countTradeOutcomes,
+  describeSetupOutcome,
+  exitReasonLabelRu,
+  matchesStatusFilter,
+  strategyShortLabel,
+  type SignalStatusFilter,
+} from '@/utils/signalText';
 
-type StatusFilter = 'ALL' | 'OPEN' | 'TARGET_REACHED' | 'INVALIDATED' | 'CLOSED' | 'NO_TRADE';
 
 const STRATEGY_LABELS: Record<string, string> = {
   V3_0_HTF_LIQUIDATION_TRAP: 'V3.0 · HTF Liquidation Trap',
   V3_3_HTF_ZONE_MITIGATION: 'V3.3 · HTF Zone Mitigation',
   V2_8_ZERO_FEE_SNIPER_TRAILING: 'V2.8 · Sniper + Trailing (gross-only)',
-};
-
-const STRATEGY_SHORT: Record<string, string> = {
-  V3_0_HTF_LIQUIDATION_TRAP: 'V3.0',
-  V3_3_HTF_ZONE_MITIGATION: 'V3.3',
-  V2_8_ZERO_FEE_SNIPER_TRAILING: 'V2.8',
 };
 
 const STRATEGY_VERDICT: Record<string, { label: string; variant: 'green' | 'amber' | 'purple' }> = {
@@ -57,26 +60,6 @@ function statusVariant(status: SetupStatus): 'green' | 'red' | 'cyan' | 'amber' 
   }
 }
 
-function exitReasonLabel(reason: string | undefined): string {
-  switch (reason) {
-    case 'SL': return 'стоп';
-    case 'TP2': return 'TP2';
-    case 'TP1_THEN_BE': return 'TP1 → безубыток';
-    case 'TP1_THEN_SL': return 'TP1 → стоп';
-    case 'TP1_THEN_TIMEOUT': return 'TP1 → таймаут';
-    case 'TIMEOUT': return 'таймаут';
-    case 'TRAIL': return 'трейлинг-стоп';
-    case 'BE': return 'безубыток';
-    case 'EXPIRED': return 'коридор истёк';
-    case 'CANCELLED': return 'стоп задет до входа';
-    case 'REJECTED_GEOMETRY': return 'геометрия отклонена при исполнении';
-    case 'NO_CONTIGUOUS_NEXT_BAR': return 'нет примыкающего бара N+1';
-    case 'LADDER_INVALID_AT_FILL': return 'лестница целей невалидна при исполнении';
-    case 'OUT_OF_DATA_WINDOW': return 'бар сетапа вышел за окно данных';
-    default: return reason ?? '—';
-  }
-}
-
 function fmtPrice(p: number): string {
   const abs = Math.abs(p);
   const digits = abs >= 1000 ? 1 : abs >= 100 ? 2 : abs >= 1 ? 4 : abs >= 0.01 ? 5 : 6;
@@ -93,18 +76,6 @@ function fmtUtc(ms: number | string | null | undefined): string {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return '—';
   return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-}
-
-function matchesFilter(s: AnalyticalSetup, f: StatusFilter): boolean {
-  switch (f) {
-    case 'ALL': return true;
-    case 'OPEN': return s.status === 'ACTIVE' || s.status === 'FILLED';
-    case 'TARGET_REACHED': return s.status === 'TARGET_REACHED';
-    case 'INVALIDATED': return s.status === 'INVALIDATED';
-    case 'CLOSED': return s.status === 'CLOSED';
-    case 'NO_TRADE': return s.status === 'EXPIRED' || s.status === 'CANCELLED' || s.status === 'UNRESOLVED';
-    default: return true;
-  }
 }
 
 export const SignalsPage: React.FC = () => {
@@ -137,13 +108,14 @@ export const SignalsPage: React.FC = () => {
 
   const summary = useMemo(() => ledger.getSummary(), [ledger, tick]);
   const isIntegrityVerified = useMemo(() => ledger.verifyIntegrity(), [ledger, tick]);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [statusFilter, setStatusFilter] = useState<SignalStatusFilter>('OPEN');
   const [strategyFilter, setStrategyFilter] = useState<string>('ALL');
   const [scanRequested, setScanRequested] = useState(false);
 
   const allSetups = useMemo(() => [...ledger.getSetups()].reverse(), [ledger, tick]);
+  const tradeOutcomes = useMemo(() => countTradeOutcomes(allSetups), [allSetups]);
   const setups = useMemo(
-    () => allSetups.filter((s) => matchesFilter(s, statusFilter) && (strategyFilter === 'ALL' || s.strategyId === strategyFilter)),
+    () => allSetups.filter((s) => matchesStatusFilter(s.status, statusFilter) && (strategyFilter === 'ALL' || s.strategyId === strategyFilter)),
     [allSetups, statusFilter, strategyFilter],
   );
 
@@ -324,7 +296,7 @@ export const SignalsPage: React.FC = () => {
       )}
 
       {/* Метрики */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-3">
         <div className="bg-surface border border-surface-border rounded-lg p-3">
           <div className="text-[11px] font-sans text-slate-400">Всего сетапов в журнале</div>
           <div className="text-lg font-bold font-mono text-white mt-1">{summary.totalSetups}</div>
@@ -354,6 +326,18 @@ export const SignalsPage: React.FC = () => {
           <div className="text-lg font-bold font-mono text-amber-400 mt-1">{summary.tradesClosed === 0 ? '—' : `${summary.accuracyRatePct}%`}</div>
           <div className="text-[11px] text-slate-500 mt-0.5">
             {summary.tradesClosed === 0 ? 'нет закрытых сделок' : `средний net R ${fmtR(summary.averageNetResultR)} · Σ ${fmtR(summary.totalNetResultR)}`}
+          </div>
+        </div>
+
+        <div className="bg-surface border border-surface-border rounded-lg p-3">
+          <div className="text-[11px] font-sans text-slate-400">Плюсовые / минусовые</div>
+          <div className="text-lg font-bold font-mono mt-1">
+            <span className="text-brand-green">{tradeOutcomes.positive}</span>
+            <span className="text-slate-500"> / </span>
+            <span className="text-rose-400">{tradeOutcomes.negative}</span>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {tradeOutcomes.total === 0 ? 'нет закрытых сделок' : `по чистому R · в ноль ${tradeOutcomes.flat}`}
           </div>
         </div>
 
@@ -411,22 +395,17 @@ export const SignalsPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 font-sans text-xs">
           <Filter className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-400 text-xs">Статус:</span>
-          {(['ALL', 'OPEN', 'TARGET_REACHED', 'INVALIDATED', 'CLOSED', 'NO_TRADE'] as const).map((tab) => (
+          {SIGNAL_STATUS_FILTERS.map(({ id, label }) => (
             <button
-              key={tab}
-              onClick={() => setStatusFilter(tab)}
+              key={id}
+              onClick={() => setStatusFilter(id)}
               className={`px-3 py-1 rounded border transition-all ${
-                statusFilter === tab
+                statusFilter === id
                   ? 'bg-brand-cyan/15 text-brand-cyan border-brand-cyan/40 font-bold'
                   : 'bg-surface text-slate-400 border-surface-border hover:text-white'
               }`}
             >
-              {tab === 'ALL' && 'Все'}
-              {tab === 'OPEN' && 'Открытые'}
-              {tab === 'TARGET_REACHED' && 'Цель достигнута'}
-              {tab === 'INVALIDATED' && 'Инвалидированы'}
-              {tab === 'CLOSED' && 'Закрыты по правилу'}
-              {tab === 'NO_TRADE' && 'Без сделки'}
+              {label}
             </button>
           ))}
         </div>
@@ -442,7 +421,7 @@ export const SignalsPage: React.FC = () => {
                   : 'bg-surface text-slate-400 border-surface-border hover:text-white'
               }`}
             >
-              {id === 'ALL' ? 'Все' : STRATEGY_SHORT[id]}
+              {id === 'ALL' ? 'Все' : strategyShortLabel(id)}
             </button>
           ))}
         </div>
@@ -470,7 +449,13 @@ export const SignalsPage: React.FC = () => {
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-base font-bold text-white">{setup.symbol}</span>
+                  <Link
+                    to={`/coin/${setup.symbol.split('/')[0]}`}
+                    className="text-base font-bold text-white hover:text-brand-cyan hover:underline"
+                    title="Открыть карточку монеты"
+                  >
+                    {setup.symbol}
+                  </Link>
                   <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
                     {setup.timeframe}
                   </span>
@@ -523,7 +508,8 @@ export const SignalsPage: React.FC = () => {
                       <div className={`text-sm font-bold ${typeof setup.resultR === 'number' ? (setup.resultR > 0 ? 'text-brand-green' : 'text-rose-400') : 'text-slate-300'}`}>
                         {hadTrade ? `${fmtR(setup.resultR)} gross · ${fmtR(setup.netResultR)} net` : 'сделки не было'}
                       </div>
-                      <div className="ui-helper mt-0.5">{exitReasonLabel(setup.exitReason)} · {fmtUtc(setup.closedAt)}</div>
+                      <div className="ui-helper mt-0.5">{describeSetupOutcome(setup)}</div>
+                      <div className="ui-helper">{fmtUtc(setup.closedAt)}</div>
                     </div>
                   ) : hadTrade ? (
                     <div className="mt-0.5">
@@ -639,7 +625,7 @@ export const SignalsPage: React.FC = () => {
                     <tr key={`${r.strategyId}-${r.symbol}-${r.setupOpenTime}`} data-qa="signal-retro-row" className="border-t border-surface-border/60">
                       <td className="py-1 pr-3 font-mono text-slate-300">{fmtUtc(r.setupOpenTime)}</td>
                       <td className="py-1 pr-3 font-mono text-slate-200">{r.symbol}/USDT</td>
-                      <td className="py-1 pr-3 text-slate-300">{STRATEGY_SHORT[r.strategyId] ?? r.strategyId}</td>
+                      <td className="py-1 pr-3 text-slate-300">{strategyShortLabel(r.strategyId)}</td>
                       <td className={`py-1 pr-3 font-mono ${r.direction === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`}>{sideLabel(r.direction).toUpperCase()}</td>
                       <td className="py-1 pr-3 font-mono text-slate-300">
                         {r.entryType === 'LIMIT_CORRIDOR' ? `${fmtPrice(r.entryZone[0])}–${fmtPrice(r.entryZone[1])}` : `open N+1 (≈${fmtPrice(r.entryZone[0])})`}
@@ -650,7 +636,7 @@ export const SignalsPage: React.FC = () => {
                       <td className="py-1 font-mono">
                         {r.outcome ? (
                           <span className={typeof r.outcome.grossR === 'number' ? (r.outcome.grossR > 0 ? 'text-emerald-400' : 'text-rose-400') : 'text-slate-400'}>
-                            {exitReasonLabel(r.outcome.exitReason)}
+                            {exitReasonLabelRu(r.outcome.exitReason)}
                             {typeof r.outcome.grossR === 'number' ? ` · ${fmtR(r.outcome.grossR)} gross / ${fmtR(r.outcome.netR)} net` : ''}
                           </span>
                         ) : r.fill ? <span className="text-brand-cyan">в позиции</span> : <span className="text-slate-400">ждёт входа</span>}

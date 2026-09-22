@@ -199,7 +199,7 @@ describe('Footer', () => {
   it('не показывает внутреннюю формулировку «Рабочая версия»', async () => {
     renderWithProviders(<Footer />);
 
-    expect(await screen.findByText(/Версия v0\.9\.0/)).toBeInTheDocument();
+    expect(await screen.findByText(/Версия v0\.9\.1/)).toBeInTheDocument();
     expect(screen.queryByText(/Рабочая версия/)).not.toBeInTheDocument();
   });
 });

@@ -10,6 +10,8 @@ vi.mock('lightweight-charts', () => {
     applyOptions: vi.fn(),
     createPriceLine: vi.fn(() => ({})),
     removePriceLine: vi.fn(),
+    // LiquidationPriceChart ставит метки событий поверх свечей.
+    setMarkers: vi.fn(),
     priceScale: () => ({ applyOptions: vi.fn() }),
   });
   return {
@@ -20,6 +22,8 @@ vi.mock('lightweight-charts', () => {
       addHistogramSeries: makeSeries,
       // CandleChart рисует оверлеи (EMA/зоны) линейной серией.
       addLineSeries: makeSeries,
+      // CandleChart: альтернативный тип отображения «бары».
+      addBarSeries: makeSeries,
       priceScale: () => ({ applyOptions: vi.fn() }),
       subscribeCrosshairMove: vi.fn(),
       timeScale: () => ({ fitContent: vi.fn(), applyOptions: vi.fn() }),
