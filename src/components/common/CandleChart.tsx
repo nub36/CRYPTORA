@@ -151,14 +151,16 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       },
       rightPriceScale: {
         borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
-        scaleMargins: { top: 0.08, bottom: 0.40 },
+        // Отступ сверху, чтобы свечи/линия цены не прижимались к верхней подписи
+        // оси и к последней цене (визуальный проход владельца по скринам).
+        scaleMargins: { top: 0.12, bottom: 0.40 },
       },
       timeScale: {
         borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 5,
-        barSpacing: 8,
+        barSpacing: 10, // свечи шире — плотность как на TradingView
       },
       height,
     });

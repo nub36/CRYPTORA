@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
@@ -180,7 +181,7 @@ describe('MarketTicker', () => {
     renderWithProviders(<MarketTicker />, createStubProvider());
 
     const label = await screen.findByTestId('ticker-mode-label');
-    // Контракт продукта (main v0.9.1, закреплён e2e responsive/flows): подпись
+    // Контракт продукта (закреплён e2e responsive/flows): подпись
     // тикера — «LIVE-ТИКЕР» / «QA-ТИКЕР». Токен статуса обязан читаться
     // однозначно и не смешивать датасеты: сбой LIVE ≠ подмена на QA.
     expect(['LIVE-ТИКЕР', 'QA-ТИКЕР']).toContain(label.textContent);
@@ -203,7 +204,11 @@ describe('Footer', () => {
   it('не показывает внутреннюю формулировку «Рабочая версия»', async () => {
     renderWithProviders(<Footer />);
 
-    expect(await screen.findByText(/Версия v0\.9\.1/)).toBeInTheDocument();
+    // Версия берётся из package.json, а не хардкодится: иначе тест молча
+    // расходится с продуктом при каждом bump (versionConsistency его не покрывает).
+    const version = JSON.parse(fs.readFileSync('package.json', 'utf8')).version as string;
+    const versionRe = new RegExp(`Версия v${version.replace(/\./g, '\\.')}`);
+    expect(await screen.findByText(versionRe)).toBeInTheDocument();
     expect(screen.queryByText(/Рабочая версия/)).not.toBeInTheDocument();
   });
 });

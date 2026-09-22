@@ -20,6 +20,8 @@ const ROUTES = [
   '/calendar',
   '/ecosystem',
   '/portfolio',
+  '/articles',
+  '/news',
 ];
 
 test.describe('Terminal Server & Route Availability', () => {

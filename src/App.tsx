@@ -29,6 +29,7 @@ const CalendarPage = React.lazy(() => import('@/pages/CalendarPage').then(m => (
 const EcosystemPage = React.lazy(() => import('@/pages/EcosystemPage').then(m => ({ default: m.EcosystemPage })));
 const PortfolioRiskPage = React.lazy(() => import('@/pages/PortfolioRiskPage').then(m => ({ default: m.PortfolioRiskPage })));
 const ArticlesPage = React.lazy(() => import('@/pages/ArticlesPage').then(m => ({ default: m.ArticlesPage })));
+const NewsPage = React.lazy(() => import('@/pages/NewsPage').then(m => ({ default: m.NewsPage })));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 const LoginPage = React.lazy(() => import('@/pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const RegisterPage = React.lazy(() => import('@/pages/RegisterPage').then(m => ({ default: m.RegisterPage })));
@@ -69,6 +70,7 @@ export const App: React.FC = () => {
             <Route path="/ecosystem" element={<EcosystemPage />} />
             <Route path="/portfolio" element={<PortfolioRiskPage />} />
             <Route path="/articles" element={<ArticlesPage />} />
+            <Route path="/news" element={<NewsPage />} />
             <Route path="/articles/:slug" element={<ArticlesPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
