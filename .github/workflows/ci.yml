@@ -50,15 +50,23 @@ jobs:
       # Логи/артефакты недоступны из части сред — дублируем причину падения в аннотации
       # check-run (читаются через API без blob-хранилища).
       #
-      # Шум [WebServer] отфильтрован: vite dev-сервер печатает ECONNREFUSED на каждую
-      # недоступную с CI-раннера биржу, и эти строки вытесняли из `tail -30` настоящие
-      # падения тестов (✘) — в аннотациях оставался только сетевой шум.
+      # Отбор строгий, иначе нужное вытесняется шумом:
+      #   ✗ [WebServer] — vite dev печатает ECONNREFUSED на каждую недоступную с
+      #     CI-раннера биржу (сотни строк);
+      #   ✗ «✓ … passed» — список пройденших тестов от list-reporter;
+      #   ✗ «Error Context: …/error-context.md» — путь к контексту, не причина.
+      # Остаются: ✘ (упавшие тесты), строки «N failed», «Error name/value/source»,
+      # ассерты и хвосты «at …» с номерами строк спеков.
       - name: Emit e2e failure details as annotations
         if: failure()
         shell: bash
         run: |
-          grep -avE "\[WebServer\]|ECONNREFUSED|AggregateError" /tmp/e2e.log \
-            | grep -aE "✘|✓|passed|failed|flaky|Error|Timed out|timed out|timeout|Error:|expect\(" \
-            | tail -40 | while IFS= read -r line; do
-              echo "::error::${line:0:180}"
-            done
+          {
+            grep -aE "✘|[0-9]+ (failed|flaky)|Error (name|value|message|source):|Unable to find|TestingLibraryElementError|expect\(received|Expected pattern|Received string| Timed out [0-9]+ms" /tmp/e2e.log \
+              | grep -avE "\[WebServer\]|✓|Error Context|ECONNREFUSED|AggregateError" \
+              | head -50
+            echo "--- last failing frames ---"
+            grep -aE "^\s+at .*\.(tsx?|jsx?):[0-9]+" /tmp/e2e.log | tail -20
+          } | while IFS= read -r line; do
+            echo "::error::${line:0:180}"
+          done
