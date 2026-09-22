@@ -36,6 +36,7 @@ import { runV33LiveReplay, V33_STRATEGY_ID } from './replays/v33LiveReplay';
 import { runV28LiveReplay, V28_STRATEGY_ID } from './replays/v28LiveReplay';
 import type { ReplayOutput, ReplayRecord } from './replays/types';
 import { trackPublishedSetup } from './lifecycle';
+import { pairLabel } from '@/utils/labels';
 
 export type SignalStrategy = 'V3.0' | 'V3.3' | 'V2.8';
 
@@ -128,10 +129,18 @@ interface SymbolState {
 
 type Listener = () => void;
 
-/** BASE → BASE/USDT (котировка LIVE-провайдера — USDT-спот Binance/KuCoin). */
+/**
+ * BASE → BASE/USDT (котировка LIVE-провайдера — USDT-спот Binance/KuCoin).
+ *
+ * Делегирует `pairLabel` — единой идемпотентной нормализации пары. Важно, что
+ * нормализация применяется ДО записи в ledger: `SignalsPage` рендерит
+ * `setup.symbol` как есть, и повторное добавление `/USDT` на слое карточки
+ * давало на проде «ETH/USDT/USDT». `pairLabel` дополнительно разбирает
+ * биржевой формат без слэша («ETHUSDT» → «ETH/USDT»), который прежняя
+ * реализация оставляла без нормализации.
+ */
 export function toPair(symbol: string): string {
-  const upper = symbol.toUpperCase();
-  return upper.includes('/') ? upper : `${upper}/USDT`;
+  return pairLabel(symbol).toUpperCase();
 }
 
 export function setupId(strategyId: string, symbol: string, setupOpenTime: number): string {

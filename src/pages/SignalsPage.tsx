@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { Collapsible } from '@/components/common/Collapsible';
-import { sideLabel } from '@/utils/labels';
+import { sideLabel, stopComparator } from '@/utils/labels';
 import { useMarketData } from '@/context/MarketDataContext';
 import {
   SignalsAuditLedger, CLOSED_STATUSES, type AnalyticalSetup, type SetupStatus,
@@ -488,7 +488,7 @@ export const SignalsPage: React.FC = () => {
                 <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">
                   <div className="ui-label">Стоп (инвалидация)</div>
                   <div className="text-sm font-bold text-rose-400 mt-0.5">
-                    {setup.direction === 'LONG' ? '<' : '>'} {fmtPrice(setup.fill?.stop ?? setup.invalidationLevel)}
+                    {stopComparator(setup.direction)} {fmtPrice(setup.fill?.stop ?? setup.invalidationLevel)}
                   </div>
                 </div>
                 <div className="bg-surface-elevated/70 p-3 rounded border border-surface-border">

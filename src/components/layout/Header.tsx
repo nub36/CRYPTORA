@@ -213,7 +213,7 @@ export const Header: React.FC = () => {
                   ? 'border-cyan-500/40 bg-cyan-500/20 font-bold text-cyan-300'
                   : 'border-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white'
               }`
-            : `relative flex shrink-0 items-center gap-x-1.5 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
+            : `relative flex min-w-0 shrink items-center gap-x-1.5 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
                 isActive
                   ? 'border-cyan-500/35 bg-cyan-500/15 font-semibold text-cyan-300 shadow-sm shadow-cyan-950/40'
                   : 'border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white'
@@ -229,7 +229,7 @@ export const Header: React.FC = () => {
                   : `hidden h-3.5 w-3.5 nav2xl:block ${isActive ? 'text-cyan-400' : 'text-slate-400'}`
               }
             />
-            <span className={inDrawer ? 'truncate' : ''}>{item.label}</span>
+            <span className={inDrawer ? 'truncate' : 'truncate'}>{item.label}</span>
             {!inDrawer && isActive && (
               <span className="absolute -bottom-1 left-2 right-2 h-[2px] rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 xl:left-2.5 xl:right-2.5" />
             )}
@@ -275,13 +275,13 @@ export const Header: React.FC = () => {
     }[accent];
 
     return (
-      <div className="relative shrink-0" ref={ref} key={`dropdown-${kind}`}>
+      <div className="relative min-w-0 shrink" ref={ref} key={`dropdown-${kind}`}>
         <button
           type="button"
           onClick={() => setActiveDropdown(isOpen ? null : kind)}
           aria-expanded={isOpen}
           aria-haspopup="true"
-          className={`relative flex shrink-0 items-center gap-x-1 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
+          className={`relative flex min-w-0 shrink items-center gap-x-1 whitespace-nowrap rounded-md border px-2 py-1.5 transition-all duration-150 xl:px-2.5 ${
             isActive
               ? accentClasses.active
               : isOpen
@@ -292,7 +292,7 @@ export const Header: React.FC = () => {
           <TriggerIcon
             className={`hidden h-3.5 w-3.5 nav2xl:block ${isActive ? accentClasses.icon : 'text-slate-400'}`}
           />
-          <span>{label}</span>
+          <span className="truncate">{label}</span>
           <ChevronDown
             className={`h-3 w-3 transition-transform duration-200 ${
               isOpen ? `rotate-180 ${accentClasses.icon}` : 'text-slate-400'
