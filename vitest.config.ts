@@ -14,6 +14,14 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
-    include: ['tests/unit/**/*.{test,spec}.{ts,tsx}'],
+    // tests/unit — быстрые тесты. tests/integration — миграции на настоящем
+    // PostgreSQL (embedded-postgres); если бинарник недоступен, они честно
+    // помечаются skipped и печатают причину.
+    include: [
+      'tests/unit/**/*.{test,spec}.{ts,tsx}',
+      'tests/integration/**/*.{test,spec}.{ts,tsx}',
+    ],
+    testTimeout: 60000,
+    hookTimeout: 180000,
   },
 })

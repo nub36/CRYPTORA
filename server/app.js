@@ -23,6 +23,8 @@ import healthRouter from './routes/health.js';
 import authRouter from './routes/auth.js';
 import meRouter from './routes/me.js';
 import adminRouter from './routes/admin.js';
+import strategiesRouter from './routes/strategies.js';
+import signalsRouter from './routes/signals.js';
 
 const PgStore = connectPgSimple(session);
 
@@ -107,6 +109,9 @@ export function createApp(options = {}) {
   app.use('/api/auth', authRouter);
   app.use('/api/me', meRouter);
   app.use('/api/admin', adminRouter);
+  // Публичное чтение: состояние стратегий и сигналы серверного движка.
+  app.use('/api/strategies', strategiesRouter);
+  app.use('/api/signals', signalsRouter);
 
   // 404 for unmatched API routes
   app.use('/api', apiNotFound);

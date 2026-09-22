@@ -169,7 +169,19 @@ describe('LiquidationPipeline honesty invariants (RULES §1, §3; AGENTS §3.1)'
     expect(snapshot.largestEvent).toBeNull();
     expect(snapshot.recentEvents).toEqual([]);
     expect(snapshot.assetBreakdown).toEqual([]);
-    expect(snapshot.exchangeBreakdown).toEqual([]);
+    // §40: разбивка по биржам перечисляет все подключённые биржи, включая нулевые.
+    // Ноль — валидное наблюдение, а не отсутствие данных; суммы при этом не выдумываются.
+    expect(snapshot.exchangeBreakdown.map((e) => e.exchange)).toEqual([
+      'Binance Futures',
+      'Bybit',
+      'OKX',
+    ]);
+    for (const ex of snapshot.exchangeBreakdown) {
+      expect(ex.totalUsd).toBe(0);
+      expect(ex.eventCount).toBe(0);
+      expect(ex.percentage).toBe(0);
+      expect(ex.lastEventAt).toBeNull();
+    }
     expect(snapshot.eventsCount24h).toBe(0);
     expect(snapshot.lastEventAt).toBeNull();
   });
@@ -223,13 +235,26 @@ describe('LiquidationPipeline honesty invariants (RULES §1, §3; AGENTS §3.1)'
     expect(snapshot.totalLong24h).toBe(longLiq!.amountUsd);
     expect(snapshot.totalShort24h).toBe(shortLiq!.amountUsd);
     expect(snapshot.total24h).toBe(longLiq!.amountUsd + shortLiq!.amountUsd);
-    expect(snapshot.exchangeBreakdown).toHaveLength(1);
-    expect(snapshot.exchangeBreakdown[0].exchange).toBe('Binance Futures');
-    expect(snapshot.exchangeBreakdown[0].percentage).toBe(100);
+    // §40: в списке все биржи; ненулевая только та, что реально дала события.
+    expect(snapshot.exchangeBreakdown).toHaveLength(3);
+    const nonZero = snapshot.exchangeBreakdown.filter((e) => e.totalUsd > 0);
+    expect(nonZero).toHaveLength(1);
+    expect(nonZero[0].exchange).toBe('Binance Futures');
+    expect(nonZero[0].percentage).toBe(100);
+    expect(nonZero[0].eventCount).toBe(2);
     expect(snapshot.assetBreakdown.map((a) => a.symbol).sort()).toEqual(['BTC', 'ETH']);
-    expect(snapshot.timeline).toHaveLength(8);
+    // §38: бакет адаптивный, а не зашитые 8 трёхчасовых баров.
+    expect(snapshot.timeline.length).toBeGreaterThan(0);
+    // Бары вне наблюдения не строятся; первый выровненный бар может быть
+    // частично ненаблюдавшимся и тогда честно помечен observed: false.
+    expect(snapshot.timeline.filter((b) => b.observed).length).toBeGreaterThan(0);
+    for (const b of snapshot.timeline) {
+      if (b.startMs < snapshot.observationStartedAt!) expect(b.observed).toBe(false);
+    }
     const timelineSum = snapshot.timeline.reduce((acc, b) => acc + b.longUsd + b.shortUsd, 0);
     expect(timelineSum).toBeCloseTo(snapshot.total24h, 2);
+    // §39: число событий в барах сходится с общим числом событий окна.
+    expect(snapshot.timeline.reduce((acc, b) => acc + b.eventCount, 0)).toBe(snapshot.eventsCount24h);
   });
 
   it('excludes events older than the 24h rolling window from aggregates', () => {

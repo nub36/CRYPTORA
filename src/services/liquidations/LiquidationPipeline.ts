@@ -13,8 +13,6 @@ export const LIQUIDATION_SOURCE_LABELS: Record<LiquidationSourceId, string> = {
 };
 
 const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
-const TIMELINE_BUCKETS = 8;
-const BUCKET_MS = WINDOW_24H_MS / TIMELINE_BUCKETS;
 const STORAGE_KEY = 'cryptora_liq_events';
 const OBS_STORAGE_KEY = 'cryptora_liq_observation';
 
@@ -123,9 +121,12 @@ export class LiquidationPipeline {
     }
   }
 
-  /** Получить метаданные наблюдения для UI. */
-  public getObservationMeta(): { startedAt: number | null; durationMs: number; hasFullWindow: boolean } {
-    const now = Date.now();
+  /**
+   * Получить метаданные наблюдения для UI.
+   * `now` прокидывается из среза: метаданные и агрегаты обязаны считаться по
+   * одним и тем же часам, иначе длительность наблюдения и окно событий разъезжаются.
+   */
+  public getObservationMeta(now = Date.now()): { startedAt: number | null; durationMs: number; hasFullWindow: boolean } {
     const startedAt = this.observationStartedAt;
     const durationMs = startedAt != null ? now - startedAt : 0;
     if (!this.hasFullWindow && durationMs >= WINDOW_24H_MS) {
@@ -346,6 +347,29 @@ export class LiquidationPipeline {
   }
 
   /* ------------------------------------------------------------------ */
+  /* Адаптивный бакет хронологии (§38)                                    */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Размер бакета подбирается по фактической длительности наблюдения, а не
+   * зашивается: 3-часовые бары при 40-минутном наблюдении создавали ложное
+   * впечатление точности и рисовали пустые «наблюдённые» часы.
+   *
+   *   < 1ч  → 5м    1–2ч → 15м    2–6ч → 30м    6–24ч → 1ч    ≥ 24ч → 3ч
+   */
+  public static pickBucketMinutes(observedMs: number): number {
+    const MIN = 60 * 1000;
+    if (observedMs < 60 * MIN) return 5;
+    if (observedMs < 2 * 60 * MIN) return 15;
+    if (observedMs < 6 * 60 * MIN) return 30;
+    if (observedMs < WINDOW_24H_MS) return 60;
+    return 180;
+  }
+
+  /** Максимум баров в хронологии — защита от раздувания DOM на длинном окне. */
+  private static readonly MAX_TIMELINE_BARS = 48;
+
+  /* ------------------------------------------------------------------ */
   /* Честный срез фактических данных                                      */
   /* ------------------------------------------------------------------ */
 
@@ -358,46 +382,80 @@ export class LiquidationPipeline {
 
     let totalLong24h = 0;
     let totalShort24h = 0;
-    const assetTotals = new Map<string, { longUsd: number; shortUsd: number }>();
-    const exchangeTotals = new Map<string, number>();
+    type AssetAcc = { longUsd: number; shortUsd: number; longEvents: number; shortEvents: number; largestUsd: number };
+    const assetTotals = new Map<string, AssetAcc>();
+    const exchangeTotals = new Map<string, { usd: number; events: number; lastEventAt: string | null }>();
     let largestEvent: LiquidationEvent | null = null;
 
     for (const event of windowEvents) {
-      if (event.side === 'LONG') totalLong24h += event.amountUsd;
+      const isLong = event.side === 'LONG';
+      if (isLong) totalLong24h += event.amountUsd;
       else totalShort24h += event.amountUsd;
 
-      const asset = assetTotals.get(event.symbol) || { longUsd: 0, shortUsd: 0 };
-      if (event.side === 'LONG') asset.longUsd += event.amountUsd;
-      else asset.shortUsd += event.amountUsd;
+      const asset = assetTotals.get(event.symbol) || { longUsd: 0, shortUsd: 0, longEvents: 0, shortEvents: 0, largestUsd: 0 };
+      if (isLong) { asset.longUsd += event.amountUsd; asset.longEvents += 1; }
+      else { asset.shortUsd += event.amountUsd; asset.shortEvents += 1; }
+      asset.largestUsd = Math.max(asset.largestUsd, event.amountUsd);
       assetTotals.set(event.symbol, asset);
 
-      exchangeTotals.set(event.exchange, (exchangeTotals.get(event.exchange) || 0) + event.amountUsd);
+      const ex = exchangeTotals.get(event.exchange) || { usd: 0, events: 0, lastEventAt: null };
+      ex.usd += event.amountUsd;
+      ex.events += 1;
+      if (ex.lastEventAt === null || event.timestamp > ex.lastEventAt) ex.lastEventAt = event.timestamp;
+      exchangeTotals.set(event.exchange, ex);
 
-      if (!largestEvent || event.amountUsd > largestEvent.amountUsd) {
-        largestEvent = event;
-      }
+      if (!largestEvent || event.amountUsd > largestEvent.amountUsd) largestEvent = event;
     }
 
     const total24h = totalLong24h + totalShort24h;
 
     const assetBreakdown = Array.from(assetTotals.entries())
-      .map(([symbol, totals]) => ({
+      .map(([symbol, t]) => ({
         symbol,
-        totalUsd: Number((totals.longUsd + totals.shortUsd).toFixed(2)),
-        longUsd: Number(totals.longUsd.toFixed(2)),
-        shortUsd: Number(totals.shortUsd.toFixed(2)),
+        // Инвариант: total === long + short (округление до 2 знаков по каждой компоненте).
+        totalUsd: Number((t.longUsd + t.shortUsd).toFixed(2)),
+        longUsd: Number(t.longUsd.toFixed(2)),
+        shortUsd: Number(t.shortUsd.toFixed(2)),
+        eventCount: t.longEvents + t.shortEvents,
+        longEvents: t.longEvents,
+        shortEvents: t.shortEvents,
+        largestEventUsd: t.longEvents + t.shortEvents > 0 ? Number(t.largestUsd.toFixed(2)) : null,
       }))
       .sort((a, b) => b.totalUsd - a.totalUsd);
 
-    const exchangeBreakdown = Array.from(exchangeTotals.entries())
-      .map(([exchange, totalUsd]) => ({
-        exchange,
-        totalUsd: Number(totalUsd.toFixed(2)),
-        percentage: total24h > 0 ? Number(((totalUsd / total24h) * 100).toFixed(1)) : 0,
-      }))
-      .sort((a, b) => b.totalUsd - a.totalUsd);
+    const obs = this.getObservationMeta(now);
+    const states = this.getStreamStates();
 
-    const obs = this.getObservationMeta();
+    /**
+     * Разбивка по биржам (§40): перечисляем ВСЕ подключённые биржи, включая
+     * нулевые. Ноль — валидное наблюдение («поток жив, событий не было»),
+     * а не отсутствие данных, поэтому биржа со нулём не скрывается.
+     */
+    const allExchanges = (Object.keys(LIQUIDATION_SOURCE_LABELS) as LiquidationSourceId[]).map(
+      (id) => LIQUIDATION_SOURCE_LABELS[id]
+    );
+    const exchangeNames = Array.from(new Set([...allExchanges, ...Array.from(exchangeTotals.keys())]));
+
+    const exchangeBreakdown = exchangeNames
+      .map((exchange) => {
+        const acc = exchangeTotals.get(exchange);
+        const totalUsd = acc ? Number(acc.usd.toFixed(2)) : 0;
+        const sourceId = (Object.keys(LIQUIDATION_SOURCE_LABELS) as LiquidationSourceId[]).find(
+          (id) => LIQUIDATION_SOURCE_LABELS[id] === exchange
+        );
+        return {
+          exchange,
+          totalUsd,
+          percentage: total24h > 0 ? Number(((totalUsd / total24h) * 100).toFixed(1)) : 0,
+          eventCount: acc ? acc.events : 0,
+          state: (sourceId ? states[sourceId] : undefined) ?? 'idle',
+          lastEventAt: acc?.lastEventAt ?? null,
+        };
+      })
+      // Сначала по объёму; биржи без событий остаются в списке, но идут последними.
+      .sort((a, b) => b.totalUsd - a.totalUsd || a.exchange.localeCompare(b.exchange));
+
+    const { buckets, bucketMinutes, rangeLabel } = this.buildTimeline(windowEvents, now);
 
     return {
       totalLong24h: Number(totalLong24h.toFixed(2)),
@@ -407,10 +465,12 @@ export class LiquidationPipeline {
       eventsCount24h: windowEvents.length,
       lastEventAt: windowEvents.length > 0 ? windowEvents[0].timestamp : null,
       dataStatus: this.resolveDataStatus(windowEvents.length),
-      recentEvents: this.events.slice(0, 50),
+      recentEvents: this.events.slice(0, 100),
       assetBreakdown,
       exchangeBreakdown,
-      timeline: this.buildTimeline(windowEvents, now),
+      timeline: buckets,
+      timelineBucketMinutes: bucketMinutes,
+      timelineRangeLabel: rangeLabel,
       isDemo: false,
       observationStartedAt: obs.startedAt,
       observationDurationMs: obs.durationMs,
@@ -424,36 +484,108 @@ export class LiquidationPipeline {
     return 'UNAVAILABLE';
   }
 
-  /** 8 трёхчасовых UTC-баров за последние 24 часа, построенных из фактических событий. */
+  /**
+   * Хронология фактических событий с адаптивным бакетом.
+   *
+   * ЧЕСТНОСТЬ ПЕРИОДА (§31, §37, §55): бары строятся только по фактически
+   * наблюдаемому интервалу — от `effectiveStart` (начало наблюдения ИЛИ
+   * самое раннее событие, что раньше) до текущего момента, и не длиннее
+   * скользящего 24-часового окна. Период, в котором наблюдение ещё не шло,
+   * в хронологию не попадает вовсе: он не выдаётся за «ноль наблюдений».
+   * Бакет, попавший в диапазон, помечается `observed: true`.
+   */
   private buildTimeline(
     windowEvents: LiquidationEvent[],
     now: number
-  ): Array<{ timestamp: string; longUsd: number; shortUsd: number }> {
-    const buckets = Array.from({ length: TIMELINE_BUCKETS }, (_, index) => {
-      const bucketEnd = now - (TIMELINE_BUCKETS - 1 - index) * BUCKET_MS;
-      const date = new Date(bucketEnd);
-      return {
-        timestamp: `${String(date.getUTCHours()).padStart(2, '0')}:00`,
-        longUsd: 0,
-        shortUsd: 0,
-        startMs: bucketEnd - BUCKET_MS,
-        endMs: bucketEnd,
-      };
+  ): { buckets: Array<{ timestamp: string; longUsd: number; shortUsd: number; totalUsd: number; eventCount: number; observed: boolean; startMs: number; endMs: number }>; bucketMinutes: number; rangeLabel: string } {
+    const earliestEventMs = windowEvents.reduce<number | null>((min, e) => {
+      const ts = Date.parse(e.timestamp);
+      if (!Number.isFinite(ts)) return min;
+      return min === null ? ts : Math.min(min, ts);
+    }, null);
+
+    const candidates = [this.observationStartedAt, earliestEventMs].filter(
+      (v): v is number => typeof v === 'number' && Number.isFinite(v)
+    );
+    if (candidates.length === 0) {
+      return { buckets: [], bucketMinutes: LiquidationPipeline.pickBucketMinutes(0), rangeLabel: '' };
+    }
+
+    // Начало фактического наблюдения, но не раньше границы 24h-окна.
+    const windowFloor = now - WINDOW_24H_MS;
+    const effectiveStart = Math.max(Math.min(...candidates), windowFloor);
+    const observedMs = Math.max(now - effectiveStart, 0);
+    const bucketMinutes = LiquidationPipeline.pickBucketMinutes(observedMs);
+    const bucketMs = bucketMinutes * 60 * 1000;
+
+    /**
+     * Начало первого бара — ровно старт фактического наблюдения, БЕЗ выравнивания
+     * назад по сетке. Выравнивание вниз создавало бар, частично лежащий до начала
+     * наблюдения: при коротком окне такой бар оказывался единственным и весь период
+     * выглядел ненаблюдавшимся. Теперь каждый построенный бар покрывается
+     * наблюдением целиком (§31, §37, §55).
+     */
+    const firstBucketStart = effectiveStart;
+    const rawCount = Math.max(Math.ceil((now - firstBucketStart) / bucketMs), 1);
+    // Если баров больше лимита — сдвигаем начало вперёд, сохраняя «сейчас» справа.
+    const barCount = Math.min(rawCount, LiquidationPipeline.MAX_TIMELINE_BARS);
+    const alignedStart =
+      rawCount > LiquidationPipeline.MAX_TIMELINE_BARS
+        ? firstBucketStart + (rawCount - LiquidationPipeline.MAX_TIMELINE_BARS) * bucketMs
+        : firstBucketStart;
+
+    const buckets = Array.from({ length: barCount }, (_, index) => {
+      const startMs = alignedStart + index * bucketMs;
+      const endMs = startMs + bucketMs;
+      const date = new Date(startMs);
+      const timestamp =
+        bucketMinutes >= 60
+          ? `${String(date.getUTCHours()).padStart(2, '0')}:00`
+          : `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+      // Бар строится только внутри фактически наблюдавшегося интервала.
+      // `observed` остаётся в схеме для будущего серверного 24h-хранилища,
+      // где между бакетами возможны реальные пропуски наблюдения.
+      // Бар строится только внутри наблюдавшегося интервала, поэтому все бары
+      // среза наблюдавшиеся. Последний бар при этом ещё заполняется (его конец
+      // в будущем) — это нормальное состояние текущего бакета, а не пропуск.
+      const observed = startMs >= alignedStart;
+      return { timestamp, longUsd: 0, shortUsd: 0, totalUsd: 0, eventCount: 0, observed, startMs, endMs };
     });
 
     for (const event of windowEvents) {
       const ts = Date.parse(event.timestamp);
-      const bucket = buckets.find((b) => ts > b.startMs && ts <= b.endMs);
-      if (!bucket) continue;
-      if (event.side === 'LONG') bucket.longUsd += event.amountUsd;
-      else bucket.shortUsd += event.amountUsd;
+      if (!Number.isFinite(ts)) continue;
+      const bucket = buckets.find((b) => ts >= b.startMs && ts < b.endMs);
+      // Событие правее последнего бара (пришло между тиками) — учитываем в последнем.
+      const target = bucket ?? (ts >= alignedStart ? buckets[buckets.length - 1] : undefined);
+      if (!target) continue;
+      if (event.side === 'LONG') target.longUsd += event.amountUsd;
+      else target.shortUsd += event.amountUsd;
+      target.eventCount += 1;
     }
 
-    return buckets.map(({ timestamp, longUsd, shortUsd }) => ({
-      timestamp,
-      longUsd: Number(longUsd.toFixed(2)),
-      shortUsd: Number(shortUsd.toFixed(2)),
-    }));
+    const rangeLabel = LiquidationPipeline.formatRange(alignedStart, now, bucketMinutes, barCount);
+
+    return {
+      buckets: buckets.map((b) => ({
+        ...b,
+        longUsd: Number(b.longUsd.toFixed(2)),
+        shortUsd: Number(b.shortUsd.toFixed(2)),
+        totalUsd: Number((b.longUsd + b.shortUsd).toFixed(2)),
+      })),
+      bucketMinutes,
+      rangeLabel,
+    };
+  }
+
+  /** Подпись фактического периода: «Наблюдение: 05:12 UTC — сейчас · 15м × 9 баров». */
+  private static formatRange(startMs: number, now: number, bucketMinutes: number, barCount: number): string {
+    const hm = (ms: number) => {
+      const d = new Date(ms);
+      return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    };
+    const step = bucketMinutes >= 60 ? `${bucketMinutes / 60}ч` : `${bucketMinutes}м`;
+    return `Наблюдение: ${hm(startMs)} UTC — ${hm(now)} UTC · шаг ${step}, ${barCount} бар.`;
   }
 
   /* ------------------------------------------------------------------ */

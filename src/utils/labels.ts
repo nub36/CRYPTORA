@@ -63,3 +63,33 @@ export function sideLabel(side: PositionSide, plural = false): string {
 export function impactLabel(impact: ImpactLevel): string {
   return IMPACT_LABELS[impact] ?? impact;
 }
+
+/**
+ * Пара для отображения: «ETH» → «ETH/USDT», «ETHUSDT» → «ETH/USDT».
+ *
+ * Зачем: `SignalsAuditLedger` хранит symbol УЖЕ с котировочной валютой
+ * (`LiveSignalEngine.publish()` добавляет `/USDT`), а карточка сигнала
+ * добавляла суффикс второй раз — так на проде появился «ETH/USDT/USDT».
+ * Функция идемпотентна: уже нормализованная пара возвращается без изменений.
+ */
+export function pairLabel(symbol: string, quote = 'USDT'): string {
+  const s = symbol.trim();
+  const upper = s.toUpperCase();
+  const q = quote.toUpperCase();
+  if (upper === q) return s;
+  if (upper.endsWith(`/${q}`)) return s;
+  if (!upper.includes('/') && upper.endsWith(q) && s.length > q.length) {
+    return `${s.slice(0, s.length - q.length)}/${quote}`;
+  }
+  return `${s}/${quote}`;
+}
+
+/**
+ * Знак сравнения для Stop Loss.
+ *
+ * Для LONG стоп ниже входа («< $X»), для SHORT — выше («> $X»). Раньше знак
+ * был захардкожен как «<», из-за чего SHORT-стоп читался противоречиво.
+ */
+export function stopComparator(direction: 'LONG' | 'SHORT'): '<' | '>' {
+  return direction === 'SHORT' ? '>' : '<';
+}

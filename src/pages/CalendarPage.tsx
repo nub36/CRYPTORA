@@ -66,7 +66,7 @@ export const CalendarPage: React.FC = () => {
             report ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-slate-400 bg-white/[0.06] border-white/[0.12]'
           }`}
         >
-          {report ? `LIVE · BINANCE · ${new Date(report.fetchedAt).toLocaleTimeString('ru-RU')}` : loading ? 'Загрузка…' : 'ИСТОЧНИК НЕДОСТУПЕН'}
+          {report ? `BINANCE • LIVE · ${new Date(report.fetchedAt).toLocaleTimeString('ru-RU')}` : loading ? 'Загрузка…' : 'ИСТОЧНИК НЕДОСТУПЕН'}
         </div>
       </div>
 

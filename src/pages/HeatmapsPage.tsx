@@ -39,11 +39,11 @@ export const HeatmapsPage: React.FC = () => {
             </h1>
             {dataMode === 'live' ? (
               <span className="text-[11px] font-mono font-semibold text-brand-green bg-brand-green/10 px-2 py-0.5 rounded border border-brand-green/30">
-                LIVE-ПЛИТКИ · BINANCE / KUCOIN
+                BINANCE / KUCOIN • LIVE
               </span>
             ) : (
               <span className="text-[11px] font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                QA-ДАТАСЕТ
+                QA
               </span>
             )}
           </div>

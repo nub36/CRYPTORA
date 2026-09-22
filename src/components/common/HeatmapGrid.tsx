@@ -136,11 +136,11 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
           </span>
           {isAnyLive ? (
             <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold">
-              LIVE-ПЛИТКИ
+              LIVE
             </span>
           ) : (
             <span className="text-[11px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-semibold">
-              QA-СЕТКА
+              QA
             </span>
           )}
         </div>
@@ -155,7 +155,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
-            Изм. 24ч
+            24ч Change
           </button>
           <button
             onClick={() => setMetric('volume')}
@@ -165,7 +165,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
-            Объём
+            Volume
           </button>
           <button
             onClick={() => setMetric('oi')}
@@ -175,7 +175,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
-            Открытый интерес
+            Open Interest
           </button>
           <button
             onClick={() => setMetric('funding')}
@@ -185,7 +185,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
                 : 'bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white border border-white/[0.06]'
             }`}
           >
-            Фандинг
+            Funding
           </button>
         </div>
       </div>

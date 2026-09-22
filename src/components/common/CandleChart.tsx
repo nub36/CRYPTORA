@@ -169,6 +169,23 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       borderVisible: false,
       wickUpColor: '#10b981',
       wickDownColor: '#f43f5e',
+      /**
+       * Дубликат подписи текущей цены на правой оси.
+       *
+       * Ниже по коду текущая цена рисуется осознанно — `createPriceLine` по
+       * `lastCandle.close` с `axisLabelVisible: true` (линия окрашивается по
+       * направлению свечи и обновляется в реальном времени из WS). Встроенные
+       * механизмы lightweight-charts показывают ТУ ЖЕ самую цену:
+       *   • lastValueVisible — маркер последнего значения на оси;
+       *   • priceLineVisible — собственная линия серии на том же уровне.
+       * Оба по умолчанию true, поэтому на проде справа стояли две одинаковые
+       * подписи (81 086,84 / 81 086,84) одна над другой.
+       *
+       * Осознанную линию оставляем, встроенные дубликаты выключаем — так же,
+       * как уже сделано для volume и RSI ниже.
+       */
+      lastValueVisible: false,
+      priceLineVisible: false,
     });
 
     // Альтернативные типы отображения (виден один — по chartType).
@@ -580,7 +597,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
                 : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
             }`}
           >
-            {isDemoCandles ? 'QA-СВЕЧИ' : `LIVE · ${(candleSource || 'binance').toUpperCase()}`}
+            {isDemoCandles ? 'QA' : `${(candleSource || 'binance').toUpperCase()} • LIVE`}
           </span>
         </div>
 

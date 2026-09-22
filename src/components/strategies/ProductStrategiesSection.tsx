@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { StrategyOpsPanel } from '@/components/strategies/StrategyOpsPanel';
+import { fetchStrategies, type StrategyStateDto } from '@/services/strategyOps';
 import { AlertTriangle, Cpu, FileCode2, Info, Layers } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { Collapsible } from '@/components/common/Collapsible';
@@ -86,6 +88,50 @@ const RULE_ORDER = [
 ];
 
 export const ProductStrategiesSection: React.FC = () => {
+  /**
+   * Операционное состояние стратегий берётся с сервера (PostgreSQL), а не из
+   * localStorage и не из реестра: реестр описывает математику, а ВКЛ/ВЫКЛ,
+   * последний скан и число активных сигналов существуют только в БД.
+   */
+  const [states, setStates] = useState<Record<string, StrategyStateDto>>({});
+  const [opsError, setOpsError] = useState<string | null>(null);
+
+  const applyState = useCallback((strategyId: string, enabled: boolean) => {
+    setStates((prev) => {
+      const cur = prev[strategyId];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [strategyId]: {
+          ...cur,
+          enabled,
+          // Статус пересчитывается по тому же правилу, что и на сервере:
+          // выключено → OFF, включено и без ошибки → ON.
+          status: !enabled ? 'OFF' : cur.lastError ? 'ERROR' : 'ON',
+        },
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStrategies()
+      .then((list) => {
+        if (cancelled) return;
+        setStates(Object.fromEntries(list.map((s) => [s.strategyId, s])));
+        setOpsError(null);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        // Без состояния сервера панель не показывается вовсе — выдумывать
+        // «Работает»/«Выключена» нельзя.
+        setOpsError(e instanceof Error ? e.message : 'Состояние стратегий недоступно');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const cards = useMemo(
     () =>
       buildArchiveCards()
@@ -105,14 +151,28 @@ export const ProductStrategiesSection: React.FC = () => {
       aria-label="Стратегии CRYPTORA"
       className="grid grid-cols-1 gap-3 lg:grid-cols-3"
     >
+      {opsError && (
+        <p data-testid="product-strategies-ops-error" className="text-sm text-rose-400 lg:col-span-3">
+          Не удалось получить состояние серверного движка: {opsError}
+        </p>
+      )}
       {cards.map((card) => (
-        <ProductStrategyCard key={card.id} card={card} />
+        <ProductStrategyCard
+          key={card.id}
+          card={card}
+          opsState={states[card.id] ?? null}
+          onOpsChanged={applyState}
+        />
       ))}
     </section>
   );
 };
 
-const ProductStrategyCard: React.FC<{ card: ArchiveCardModel }> = ({ card: c }) => {
+const ProductStrategyCard: React.FC<{
+  card: ArchiveCardModel;
+  opsState: StrategyStateDto | null;
+  onOpsChanged: (strategyId: string, enabled: boolean) => void;
+}> = ({ card: c, opsState, onOpsChanged }) => {
   const status = STATUS_UI[c.verdict] ?? {
     label: c.verdictLabelRu,
     tone: 'neutral' as const,
@@ -177,6 +237,10 @@ const ProductStrategyCard: React.FC<{ card: ArchiveCardModel }> = ({ card: c }) 
 
         <p className="ui-secondary text-slate-400">{description}</p>
       </header>
+
+      {/* Реальное состояние серверного движка и переключатель ВКЛ/ВЫКЛ.
+          Рендерится только когда состояние получено с сервера. */}
+      {opsState && <StrategyOpsPanel state={opsState} onChanged={onOpsChanged} />}
 
       {/* ── Действие ─────────────────────────────────────────────────
           Переключателя ВКЛ/ВЫКЛ намеренно нет: это следующий backend-этап.
