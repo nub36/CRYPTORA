@@ -91,7 +91,7 @@ export const CorrelationsPage: React.FC = () => {
               : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30'
           }`}
         >
-          {report ? `${isQaFixture ? 'СВЕЧИ 1D • QA' : 'СВЕЧИ 1D • LIVE'} · окно ${report.windowDays} дн. лог-доходностей` : 'Окно 30 дн. дневных лог-доходностей'}
+          {report ? `${isQaFixture ? 'QA-СВЕЧИ' : 'LIVE-СВЕЧИ 1D'} · окно ${report.windowDays} дн. лог-доходностей` : 'Окно 30 дн. дневных лог-доходностей'}
         </div>
       </div>
 

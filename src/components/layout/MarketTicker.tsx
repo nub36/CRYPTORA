@@ -127,7 +127,7 @@ export const MarketTicker: React.FC = () => {
               isLiveMode ? 'text-emerald-400/90' : 'text-amber-300/90'
             }`}
           >
-            {isLiveMode ? 'LIVE' : 'QA'}
+            {isLiveMode ? 'LIVE-ТИКЕР' : 'QA-ТИКЕР'}
           </span>
         </div>
 

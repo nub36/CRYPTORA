@@ -597,7 +597,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
                 : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
             }`}
           >
-            {isDemoCandles ? 'QA' : `${(candleSource || 'binance').toUpperCase()} • LIVE`}
+            {isDemoCandles ? 'QA-СВЕЧИ' : `LIVE · ${(candleSource || 'binance').toUpperCase()}`}
           </span>
         </div>
 

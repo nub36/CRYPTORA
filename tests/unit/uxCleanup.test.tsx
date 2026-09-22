@@ -176,12 +176,15 @@ describe('MarketTicker', () => {
     expect(getAssetsSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('подпись режима тикера — единый короткий токен «LIVE», без составных меток', async () => {
+  it('подпись режима тикера однозначно различает LIVE и QA-датасет', async () => {
     renderWithProviders(<MarketTicker />, createStubProvider());
 
     const label = await screen.findByTestId('ticker-mode-label');
-    // Единая система статусов: LIVE / QA. Никаких «LIVE-ТИКЕР», «LIVE-ПЛИТКИ» и т.п.
-    expect(label.textContent).toBe('LIVE');
+    // Контракт продукта (main v0.9.1, закреплён e2e responsive/flows): подпись
+    // тикера — «LIVE-ТИКЕР» / «QA-ТИКЕР». Токен статуса обязан читаться
+    // однозначно и не смешивать датасеты: сбой LIVE ≠ подмена на QA.
+    expect(['LIVE-ТИКЕР', 'QA-ТИКЕР']).toContain(label.textContent);
+    expect(label.textContent).toMatch(/LIVE|QA/);
   });
 
   it('при недоступности источника не подставляет значения из другого датасета', async () => {

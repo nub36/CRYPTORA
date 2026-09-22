@@ -293,7 +293,7 @@ export const CoinDetailPage: React.FC = () => {
             </Badge>
           ) : (
             <Badge variant="demo" size="xs">
-              QA
+              QA-ДАТАСЕТ
             </Badge>
           )}
           <DataSourcesBadge

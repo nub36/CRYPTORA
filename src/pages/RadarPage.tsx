@@ -127,7 +127,7 @@ export const RadarPage: React.FC = () => {
               </span>
             ) : (
               <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                QA
+                QA-СТРИМ
               </span>
             )}
           </div>
@@ -282,7 +282,7 @@ export const RadarPage: React.FC = () => {
 
                   {!event.isDemo && (
                     <span className="text-[11px] font-mono text-brand-green bg-brand-green/10 px-1.5 py-0.5 rounded border border-brand-green/30">
-                      LIVE
+                      LIVE-ДЕТЕКЦИЯ
                     </span>
                   )}
                 </div>

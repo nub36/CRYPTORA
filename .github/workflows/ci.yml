@@ -9,7 +9,12 @@ jobs:
     name: Typecheck + Unit + Build
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 — нужен origin/main для guard «миграции 001–005 не изменялись»
+      # в tests/integration/migrationsPostgres.test.ts. С дефолтным depth=1 checkout
+      # не создаёт origin/main, и проверка сравнивать не с чем.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22

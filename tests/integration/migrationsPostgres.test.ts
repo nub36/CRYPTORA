@@ -342,11 +342,32 @@ describe('Миграции идемпотентны и не ломают сос�
 
   run('миграции 001–005 не изменялись', async () => {
     // Защита от соблазна «поправить» уже применённые миграции.
+    //
+    // Базовый ref берётся из CRYPTORA_BASE_REF (по умолчанию origin/main).
+    // В CI после `actions/checkout@v4` его может не быть — checkout создаёт
+    // только ref проверяемой ветки. Тогда guard честно пропускается с видимой
+    // причиной, а не роняет весь прогон: падать из-за отсутствия git-метадаанных
+    // в раннере — не тот сигнал, ради которого существует эта проверка.
     const { execSync } = await import('node:child_process');
-    const changed = execSync(
-      `git diff --name-only ${process.env.CRYPTORA_BASE_REF ?? 'origin/main'} -- server/db/migrations/`,
-      { cwd: ROOT, encoding: 'utf8' },
-    );
+    const baseRef = process.env.CRYPTORA_BASE_REF ?? 'origin/main';
+    const git = (args: string): string | null => {
+      try {
+        return execSync(`git ${args}`, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      } catch {
+        return null;
+      }
+    };
+
+    if (git(`rev-parse --verify --quiet ${baseRef}`) === null) {
+      console.warn(
+        `[migrationsPostgres] guard «001–005 не изменялись» пропущен: базовый ref ${baseRef} недоступен.\n` +
+          '  Задайте CRYPTORA_BASE_REF (например, CRYPTORA_BASE_REF=HEAD~1) или сделайте\n' +
+          '  полный checkout/fetch, чтобы проверка сравнивала с реальной базой.',
+      );
+      return;
+    }
+
+    const changed = git(`diff --name-only ${baseRef} -- server/db/migrations/`) ?? '';
     const files = changed.split('\n').filter(Boolean);
     for (const f of files) {
       expect(f, 'нельзя менять существующую миграцию').toMatch(

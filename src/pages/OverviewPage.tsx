@@ -432,7 +432,7 @@ export const OverviewPage: React.FC = () => {
                     }`}
                   >
                     {dataMode === 'live'
-                      ? `СПОТ • LIVE${btcAsset?.provenance?.exchange ? ` · ${btcAsset.provenance.exchange.toUpperCase()}` : ' · BINANCE / KUCOIN'}`
+                      ? `LIVE СПОТ${btcAsset?.provenance?.exchange ? `: ${btcAsset.provenance.exchange.toUpperCase()}` : ' · BINANCE / KUCOIN'}`
                       : 'QA-датасет · только Spot (без Futures)'}
                   </span>
                 </div>
@@ -529,7 +529,7 @@ export const OverviewPage: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div className="bg-surface-elevated p-3 rounded-lg border border-white/[0.06]">
-                <div className="text-[11px] text-slate-400 font-sans">Open Interest</div>
+                <div className="text-[11px] text-slate-400 font-sans">Агрегированный OI</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalOpenInterest, { compact: true })}
                 </div>
@@ -551,17 +551,17 @@ export const OverviewPage: React.FC = () => {
               </div>
 
               <div className="bg-surface-elevated p-3 rounded-lg border border-white/[0.06]">
-                <div className="text-[11px] text-slate-400 font-sans">24ч Futures Volume</div>
+                <div className="text-[11px] text-slate-400 font-sans">Суточный объём Futures</div>
                 <div className="text-lg font-bold text-white font-mono mt-0.5 tabular-nums">
                   {formatCurrency(totalFuturesVolume, { compact: true })}
                 </div>
                 {(() => {
                   // DERIVED: фактический BTC basis из среза деривативов
                   const btcFut = futures.find((f) => f.symbol.startsWith('BTC'));
-                  if (!btcFut) return <div className="ui-helper mt-0.5">BTC Basis — нет данных</div>;
+                  if (!btcFut) return <div className="ui-helper mt-0.5">Базис BTC — нет данных</div>;
                   return (
                     <div className={`text-[11px] font-mono mt-0.5 ${btcFut.basisPct >= 0 ? 'text-slate-400' : 'text-rose-400'}`}>
-                      BTC Basis: {btcFut.basisPct >= 0 ? '+' : ''}{btcFut.basisPct.toFixed(3)}%
+                      Базис BTC: {btcFut.basisPct >= 0 ? '+' : ''}{btcFut.basisPct.toFixed(3)}%
                     </div>
                   );
                 })()}
@@ -634,7 +634,7 @@ export const OverviewPage: React.FC = () => {
                     {/* Total + фактический период наблюдения (§51) */}
                     <div className="flex items-center justify-between mb-1.5 text-[11px] font-sans" data-qa="overview-liq-total">
                       <span className="text-white font-bold font-mono tabular-nums">
-                        Total: {formatCurrency(liquidations.total24h, { compact: true })}
+                        Всего: {formatCurrency(liquidations.total24h, { compact: true })}
                       </span>
                       <span className="text-slate-500 font-mono tabular-nums">
                         {liquidations.eventsCount24h} событий ·{' '}
