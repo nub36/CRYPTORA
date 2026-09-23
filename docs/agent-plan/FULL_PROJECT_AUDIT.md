@@ -1750,6 +1750,10 @@ This PR contains **only** `docs/agent-plan/FULL_PROJECT_AUDIT.md`. CI ran three 
 | `011045a` (the audit document) | ✅ pass 1m42s | ✅ pass 57s |
 | `ca4105c` (+34 lines of markdown) | ❌ **fail 1m32s** — step `Run npm test`, exit 1 | ✅ pass 57s |
 | `08cfce1` (+markdown) | ❌ **fail 1m39s** — step `Run npm test`, exit 1 | ✅ pass 1m2s |
+| `4a50e9b` (+ this §13.6 root cause) | ✅ pass 1m29s | ✅ pass 59s |
+
+So the unit job went **red twice out of four runs on commits that change nothing but this file** —
+and green the other two times, with the identical test outcome every time: 1176/1176 passing.
 
 The raw job log is retrievable even though `gh run view --log` cannot reach the blob host from this
 sandbox: `gh api repos/nub36/CRYPTORA/actions/jobs/<id>/logs` prints the signed blob URL in its error
@@ -2259,7 +2263,8 @@ CI `Typecheck + Unit + Build`: ✅ pass on `011045a`, ❌ exit 1 on `ca4105c` an
 **116 files / 1176 tests passed and `Errors 2 errors`**: two unhandled `pg` `FATAL 57P01
 admin_shutdown` errors from the embedded-postgres teardown, caused by the missing `pool.on('error')`
 listener (F-17). Not caused by this PR (markdown-only diff); reproduced nowhere locally in five runs.
-Full log evidence and the fix in §13.6.
+Full log evidence and the fix in §13.6. Tally on this PR: **2 red / 2 green** across four
+markdown-only commits, every run reporting 1176/1176 tests passing.
 
 ### 16.7 Bug list (ordered)
 
