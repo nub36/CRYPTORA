@@ -326,24 +326,33 @@ export class IndicatorEngine {
 
     const poc = Number((minPrice + (pocIndex + 0.5) * bucketSize).toFixed(4));
 
-    // Calculate 70% Value Area around POC
+    // Calculate 70% Value Area around POC.
+    //
+    // Every iteration MUST consume exactly one still-available bucket index.
+    // The previous implementation compared `upVol >= downVol` using 0 for an
+    // exhausted side, so once `upIdx` ran past the last bucket an empty
+    // (zero-volume) bucket below the POC produced `0 >= 0` → it kept
+    // incrementing the already-exhausted `upIdx` while `downIdx >= 0` stayed
+    // true. That spun forever and froze the renderer thread (a gapped volume
+    // distribution — e.g. a POC in the top bucket with an empty bucket beneath
+    // it — is ordinary for real OHLCV, so this was reachable in production).
     const targetVolume = totalVolume * 0.7;
     let accumulatedVolume = buckets[pocIndex];
     let upIdx = pocIndex + 1;
     let downIdx = pocIndex - 1;
 
-    while (
-      accumulatedVolume < targetVolume &&
-      (upIdx < bucketsCount || downIdx >= 0)
-    ) {
-      const upVol = upIdx < bucketsCount ? buckets[upIdx] : 0;
-      const downVol = downIdx >= 0 ? buckets[downIdx] : 0;
+    while (accumulatedVolume < targetVolume && (upIdx < bucketsCount || downIdx >= 0)) {
+      const upAvailable = upIdx < bucketsCount;
+      const downAvailable = downIdx >= 0;
+      // Expand the richer side, but only ever a side that still exists, so each
+      // pass strictly advances one cursor and the loop always terminates.
+      const takeUp = upAvailable && (!downAvailable || buckets[upIdx] >= buckets[downIdx]);
 
-      if (upVol >= downVol) {
-        accumulatedVolume += upVol;
+      if (takeUp) {
+        accumulatedVolume += buckets[upIdx];
         upIdx++;
       } else {
-        accumulatedVolume += downVol;
+        accumulatedVolume += buckets[downIdx];
         downIdx--;
       }
     }

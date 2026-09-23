@@ -254,3 +254,13 @@ class SignalNotificationCenter {
 }
 
 export const signalNotifications = new SignalNotificationCenter();
+
+/**
+ * Maps a signal symbol to the /coin/:symbol route segment.
+ * Signals carry pair notation ("FET/USDT", "ARB/USDT", "NEAR/USDT") while the
+ * coin route expects the base asset ("FET", "ARB", "NEAR").
+ */
+export function signalSymbolToRoute(symbol: string): string {
+  const base = (symbol ?? '').trim().toUpperCase().split(/[/:\-_]/)[0] ?? '';
+  return base.replace(/(USDT|USDC|BUSD|PERP)$/, '') || base;
+}

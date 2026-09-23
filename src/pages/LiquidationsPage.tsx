@@ -4,6 +4,7 @@ import { LiquidationPipeline, LIQUIDATION_SOURCE_LABELS, type LiquidationSourceI
 import { LiquidationData, OHLCV, Timeframe } from '@/types/market';
 import { formatCurrency, formatTimestamp, formatDuration } from '@/utils/formatters';
 import { sideLabel } from '@/utils/labels';
+import { formatEpochTime, localTimeZoneLabel } from '@/utils/timePresentation';
 import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
 import { LiquidationHeatmap } from '@/components/market/LiquidationHeatmap';
 import { Flame, ShieldAlert, Clock, Layers } from 'lucide-react';
@@ -453,7 +454,9 @@ export const LiquidationsPage: React.FC = () => {
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
               <span>Хронология ликвидаций по 3-часовым барам за 24ч</span>
             </span>
-            <span className="text-[11px] text-slate-400">Бары по UTC</span>
+            <span className="text-[11px] text-slate-400" title={`Часовой пояс браузера: ${localTimeZoneLabel()}`}>
+              Бары по местному времени ({localTimeZoneLabel()})
+            </span>
           </div>
 
           {/* Bar Chart: фактическое распределение событий по 3-часовым барам */}
@@ -486,7 +489,8 @@ export const LiquidationsPage: React.FC = () => {
                     />
                   </div>
                   <span className="text-[11px] text-slate-400 group-hover:text-white tabular-nums font-mono">
-                    {bar.timestamp}
+                    {/* Bucket boundaries are stored as UTC epoch ms; only the label is localized. */}
+                    {bar.startMs > 0 ? formatEpochTime(bar.startMs) : bar.timestamp}
                   </span>
                 </div>
               );

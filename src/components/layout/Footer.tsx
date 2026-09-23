@@ -4,17 +4,26 @@ import { Link } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
 import { useMarketData } from '@/context/MarketDataContext';
 import { Collapsible } from '@/components/common/Collapsible';
+import { localTimeZoneLabel } from '@/utils/timePresentation';
 
 export const Footer: React.FC = () => {
   const { dataMode } = useMarketData();
-  const [utcNow, setUtcNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
-    const id = window.setInterval(() => setUtcNow(new Date()), 1000);
+    const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
 
-  const utcClock = utcNow.toISOString().slice(11, 19);
+  /**
+   * The instant itself stays UTC internally; only the presentation is localized.
+   * The zone label is read from the browser, never hardcoded to a fixed offset.
+   */
+  const localClock = new Intl.DateTimeFormat('ru-RU', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).format(now);
+  const zoneLabel = localTimeZoneLabel();
+  const utcClock = now.toISOString().slice(11, 19);
 
 
   return (
@@ -135,7 +144,9 @@ export const Footer: React.FC = () => {
               'Слой данных: QA-датасет'
             )}</span>
             <span>•</span>
-            <span>UTC {utcClock}</span>
+            <span data-qa="footer-clock" title={`Местное время браузера · ${utcClock} UTC`}>
+              {zoneLabel} {localClock}
+            </span>
           </div>
         </div>
       </div>
