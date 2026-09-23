@@ -1751,9 +1751,14 @@ This PR contains **only** `docs/agent-plan/FULL_PROJECT_AUDIT.md`. CI ran four t
 | `ca4105c` (+34 lines of markdown) | ❌ **fail 1m32s** — step `Run npm test`, exit 1 | ✅ pass 57s |
 | `08cfce1` (+markdown) | ❌ **fail 1m39s** — step `Run npm test`, exit 1 | ✅ pass 1m2s |
 | `4a50e9b` (+ this §13.6 root cause) | ✅ pass 1m29s | ✅ pass 59s |
+| `d2614cc` (+ the 4-run tally) | ✅ pass 1m28s | ✅ pass 58s |
+| `35f9849` (one word changed: "three"→"four") | ❌ **fail 1m32s** — `Run npm test`, exit 1 | ✅ pass 1m4s |
 
-So the unit job went **red twice out of four runs on commits that change nothing but this file** —
-and green the other two times, with the identical test outcome every time: 1176/1176 passing.
+**Tally: 3 red / 3 green across six runs of the same markdown-only diff**, and every single run —
+red or green — reported *116 files / 1176 tests passed*. The sixth run's commit changes one word in
+one sentence of this document and still drew a red unit job; that is the clearest possible
+demonstration that red/green here is decided by a teardown race (F-17), not by the contents of the PR.
+`Browser e2e (Chromium)` passed on all six runs, including the P0 `timeframeHang` BTC/SOL spec.
 
 The raw job log is retrievable even though `gh run view --log` cannot reach the blob host from this
 sandbox: `gh api repos/nub36/CRYPTORA/actions/jobs/<id>/logs` prints the signed blob URL in its error
@@ -2263,8 +2268,8 @@ CI `Typecheck + Unit + Build`: ✅ pass on `011045a`, ❌ exit 1 on `ca4105c` an
 **116 files / 1176 tests passed and `Errors 2 errors`**: two unhandled `pg` `FATAL 57P01
 admin_shutdown` errors from the embedded-postgres teardown, caused by the missing `pool.on('error')`
 listener (F-17). Not caused by this PR (markdown-only diff); reproduced nowhere locally in five runs.
-Full log evidence and the fix in §13.6. Tally on this PR: **2 red / 2 green** across four
-markdown-only commits, every run reporting 1176/1176 tests passing.
+Full log evidence and the fix in §13.6. Tally on this PR: **3 red / 3 green** across six
+markdown-only commits, every run reporting 1176/1176 tests passing (F-17).
 
 ### 16.7 Bug list (ordered)
 
