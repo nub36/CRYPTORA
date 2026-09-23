@@ -1,10 +1,13 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { useLivePriceMap } from '@/hooks/useLivePrices';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary, AssetCategory } from '@/types/market';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
-import { sortData, SortConfig } from '@/utils/sorting';
+import type { SortConfig } from '@/utils/sorting';
+import { buildMarketUniverse, sortMarketUniverse } from '@/services/data/registry/marketUniverse';
+import type { MarketUniverseAsset } from '@/services/data/registry/marketUniverse';
 import { Sparkline } from '@/components/common/Sparkline';
 import { CoinIcon } from '@/components/common/CoinIcon';
 import { Star, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
@@ -20,11 +23,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   defi: 'DeFi',
   ai: 'ИИ и данные',
   meme: 'Мемкоины',
+  other: 'Прочее',
 };
 
 export const MarketPage: React.FC = () => {
-  const { provider, watchlist, toggleWatchlist, livePrices, dataMode } = useMarketData();
+  const { provider, watchlist, toggleWatchlist, dataMode } = useMarketData();
+  const livePrices = useLivePriceMap();
   const [assets, setAssets] = useState<AssetSummary[]>([]);
+  const marketUniverse = useMemo(
+    () => buildMarketUniverse(assets, dataMode === 'live'),
+    [assets, dataMode],
+  );
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('all');
@@ -65,7 +74,7 @@ export const MarketPage: React.FC = () => {
 
   // Filtered & sorted list
   const filteredAssets = useMemo(() => {
-    let result = assets;
+    let result: MarketUniverseAsset[] = marketUniverse;
 
     if (selectedCategory !== 'all') {
       result = result.filter((a) => a.category === selectedCategory);
@@ -78,11 +87,12 @@ export const MarketPage: React.FC = () => {
       );
     }
 
-    return sortData(result, sortConfig);
-  }, [assets, selectedCategory, search, sortConfig]);
+    return sortMarketUniverse(result, sortConfig.key, sortConfig.direction);
+  }, [marketUniverse, selectedCategory, search, sortConfig]);
 
   const categories: { label: string; value: AssetCategory }[] = [
     { label: 'Все активы', value: 'all' },
+    { label: 'Прочие Spot-активы', value: 'other' },
     { label: 'Layer-1', value: 'l1' },
     { label: 'DeFi', value: 'defi' },
     { label: 'Layer-2', value: 'l2' },
@@ -133,6 +143,11 @@ export const MarketPage: React.FC = () => {
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
       {sourceUnavailable && <DataSourceUnavailable subject="рыночные данные" />}
+      {dataMode === 'live' && marketUniverse.some((asset) => !asset.quote) && (
+        <div role="status" className="rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 font-sans text-xs text-amber-200">
+          Каталог содержит {marketUniverse.length} поддерживаемых Spot-активов; котировки отсутствуют для {marketUniverse.filter((asset) => !asset.quote).length}. Для них показываются метаданные и тире — без подстановки цен.
+        </div>
+      )}
       {/* Top Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between pb-3 border-b border-white/[0.08] gap-3">
         <div>
@@ -285,46 +300,49 @@ export const MarketPage: React.FC = () => {
                       </td>
 
                       <td className="py-2.5 px-3 text-right text-slate-100 font-semibold font-mono tabular-nums">
-                        {formatCurrency(livePrices[asset.symbol] ?? asset.price, {
-                          decimals: (livePrices[asset.symbol] ?? asset.price) > 10 ? 2 : 4,
-                        })}
+                        {(() => {
+                          const price = livePrices[asset.symbol] ?? asset.quote?.price;
+                          return price != null
+                            ? formatCurrency(price, { decimals: price > 10 ? 2 : 4 })
+                            : '—';
+                        })()}
                       </td>
 
                       <td
                         className={`py-2.5 px-3 text-right font-semibold ${
-                          asset.change1h == null ? 'text-slate-500' : asset.change1h >= 0 ? 'text-brand-green' : 'text-brand-red'
+                          asset.quote?.change1h == null ? 'text-slate-500' : asset.quote.change1h >= 0 ? 'text-brand-green' : 'text-brand-red'
                         }`}
                       >
-                        {asset.change1h != null ? formatPercent(asset.change1h) : '—'}
+                        {asset.quote?.change1h != null ? formatPercent(asset.quote.change1h) : '—'}
                       </td>
 
                       <td
                         className={`py-2.5 px-3 text-right font-bold ${
-                          asset.change24h >= 0 ? 'text-brand-green' : 'text-brand-red'
+                          asset.quote == null ? 'text-slate-500' : asset.quote.change24h >= 0 ? 'text-brand-green' : 'text-brand-red'
                         }`}
                       >
-                        {formatPercent(asset.change24h)}
+                        {asset.quote != null ? formatPercent(asset.quote.change24h) : '—'}
                       </td>
 
                       <td
                         className={`py-2.5 px-3 text-right font-semibold hidden md:table-cell ${
-                          asset.change7d == null ? 'text-slate-500' : asset.change7d >= 0 ? 'text-brand-green' : 'text-brand-red'
+                          asset.quote?.change7d == null ? 'text-slate-500' : asset.quote.change7d >= 0 ? 'text-brand-green' : 'text-brand-red'
                         }`}
                       >
-                        {asset.change7d != null ? formatPercent(asset.change7d) : '—'}
+                        {asset.quote?.change7d != null ? formatPercent(asset.quote.change7d) : '—'}
                       </td>
 
                       <td className="py-2.5 px-3 text-right text-slate-300 hidden sm:table-cell font-mono tabular-nums">
-                        {formatCurrency(asset.volume24h, { compact: true })}
+                        {asset.quote ? formatCurrency(asset.quote.volume24h, { compact: true }) : '—'}
                       </td>
 
                       <td className="py-2.5 px-3 text-right text-slate-300 font-mono tabular-nums">
-                        {formatCurrency(asset.marketCap, { compact: true })}
+                        {asset.quote && asset.quote.marketCap > 0 ? formatCurrency(asset.quote.marketCap, { compact: true }) : '—'}
                       </td>
 
                       <td className="py-2.5 px-3 text-right hidden lg:table-cell">
                         <div className="flex justify-end">
-                          <Sparkline data={asset.sparkline} width={90} height={22} />
+                          <Sparkline data={asset.quote?.sparkline ?? []} width={90} height={22} />
                         </div>
                       </td>
                     </tr>
@@ -337,7 +355,7 @@ export const MarketPage: React.FC = () => {
 
         {/* Footer info in table */}
         <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-sans">
-          <div>Показано: {filteredAssets.length} из {assets.length} активов{assets.length < 25 ? ` (из канонических 25)` : ''}</div>
+          <div>Показано: {filteredAssets.length} из {marketUniverse.length} активов каталога</div>
           <div
             className={`flex items-center space-x-1 text-[11px] ${
               dataMode === 'live' ? (sourceUnavailable ? 'text-rose-400/90' : 'text-brand-green/90') : 'text-amber-400/90'

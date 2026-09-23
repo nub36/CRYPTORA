@@ -1,10 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { getCoinLogoUrl } from '@/services/data/registry/coinLogoRegistry';
 
 /**
- * Палитра фонов иконок: детерминированный выбор по хэшу символа (без random).
- * Д2 (v0.8.52): прежняя палитра содержала светлые цвета (#F7931A, #D4A017, #EA580C…),
- * дающие 1.8–3.3:1 с белым текстом буквы — ниже порога WCAG AA (4.5:1).
- * Каждый цвет здесь проверен юнит-тестом на >= 4.5:1 с белым.
+ * Палитра letter-avatar fallback с контрастом AA; применяется только пока логотип
+ * не найден, не загрузился, или у актива нет CoinGecko metadata.
  */
 export const COIN_ICON_PALETTE = [
   '#B45309', '#4F46E5', '#047857', '#92400E', '#2563EB',
@@ -15,9 +14,7 @@ export const COIN_ICON_PALETTE = [
 
 function symbolColor(symbol: string): string {
   let hash = 0;
-  for (let i = 0; i < symbol.length; i++) {
-    hash = ((hash << 5) - hash + symbol.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < symbol.length; i++) hash = ((hash << 5) - hash + symbol.charCodeAt(i)) | 0;
   return COIN_ICON_PALETTE[Math.abs(hash) % COIN_ICON_PALETTE.length];
 }
 
@@ -25,25 +22,61 @@ interface CoinIconProps {
   symbol: string;
   size?: number;
   className?: string;
+  /** Optional metadata override; normal use resolves CoinGecko's shared catalog cache. */
+  logoUrl?: string | null;
 }
 
-/**
- * Coin icon: deterministic colored circle with first letter of ticker (AA-контраст буквы, Д2).
- * No external API requests. No CoinGecko/Binance metadata calls.
- */
-export const CoinIcon: React.FC<CoinIconProps> = ({ symbol, size = 24, className = '' }) => {
-  const bg = symbolColor(symbol);
+export const CoinIcon: React.FC<CoinIconProps> = ({ symbol, size = 24, className = '', logoUrl }) => {
+  const [metadataLogoUrl, setMetadataLogoUrl] = useState<string | null>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const normalizedSymbol = (symbol || '?').split('/')[0].toUpperCase().replace(/USDT$/, '');
+  const resolvedLogoUrl = logoUrl === undefined ? metadataLogoUrl : logoUrl;
+  const imageFailed = resolvedLogoUrl != null && failedUrl === resolvedLogoUrl;
+
+  useEffect(() => {
+    let active = true;
+    if (logoUrl !== undefined) {
+      setMetadataLogoUrl(logoUrl);
+      return () => { active = false; };
+    }
+    setMetadataLogoUrl(null);
+    void getCoinLogoUrl(normalizedSymbol).then((url) => {
+      if (active) setMetadataLogoUrl(url);
+    });
+    return () => { active = false; };
+  }, [normalizedSymbol, logoUrl]);
+
   const fontSize = Math.max(11, size * 0.45);
-  const letter = (symbol || '?')[0].toUpperCase();
+  const commonStyle: React.CSSProperties = { width: size, height: size };
+
+  if (resolvedLogoUrl && !imageFailed) {
+    return (
+      <img
+        src={resolvedLogoUrl}
+        alt={`${normalizedSymbol} logo`}
+        title={normalizedSymbol}
+        width={size}
+        height={size}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailedUrl(resolvedLogoUrl)}
+        className={`rounded-full object-contain flex-shrink-0 bg-white ${className}`}
+        style={commonStyle}
+        data-testid="coin-logo-image"
+      />
+    );
+  }
 
   return (
     <div
       className={`rounded-full flex items-center justify-center font-bold text-white flex-shrink-0 select-none ${className}`}
-      style={{ width: size, height: size, backgroundColor: bg, fontSize }}
-      title={symbol}
-      aria-label={symbol}
+      style={{ ...commonStyle, backgroundColor: symbolColor(normalizedSymbol), fontSize }}
+      title={normalizedSymbol}
+      aria-label={normalizedSymbol}
+      role="img"
+      data-testid="coin-logo-fallback"
     >
-      {letter}
+      {normalizedSymbol[0] || '?'}
     </div>
   );
 };

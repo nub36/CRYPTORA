@@ -34,7 +34,7 @@ export class BinanceSpotAdapter {
   private readonly health?: SourceHealthTracker;
 
   constructor(config: BinanceAdapterConfig = {}) {
-    this.baseUrl = config.baseUrl ?? 'https://api.binance.com';
+    this.baseUrl = config.baseUrl ?? '/api/market/binance/spot';
     this.timeoutMs = config.timeoutMs ?? 8000;
     this.fetchFn = config.fetchFn ?? fetch.bind(globalThis);
     this.health = config.health;

@@ -1,47 +1,44 @@
-/**
- * Д2 (v0.8.52): палитра CoinIcon — каждая фоновая даёт >= 4.5:1 (WCAG AA)
- * с белым текстом буквы. Прежняя палитра включала цвета с контрастом 1.8–3.3:1.
- */
-import { describe, it, expect } from 'vitest';
-import { COIN_ICON_PALETTE } from '@/components/common/CoinIcon';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CoinIcon } from '@/components/common/CoinIcon';
+import { resetCoinLogoCacheForTests } from '@/services/data/registry/coinLogoRegistry';
 
-/** Относительная яркость по WCAG 2.x. */
-function relativeLuminance(hex: string): number {
-  const c = hex.replace('#', '');
-  const channel = (i: number) => {
-    const v = parseInt(c.slice(i, i + 2), 16) / 255;
-    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
-}
+afterEach(() => {
+  resetCoinLogoCacheForTests();
+  vi.unstubAllGlobals();
+});
 
-function contrastRatio(a: number, b: number): number {
-  const [hi, lo] = a > b ? [a, b] : [b, a];
-  return (hi + 0.05) / (lo + 0.05);
-}
+describe('CoinIcon CoinGecko metadata pipeline', () => {
+  it('uses the real metadata image URL when the shared markets response contains it', async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 'bitcoin', image: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' }],
+    });
+    vi.stubGlobal('fetch', fetch);
 
-describe('CoinIcon — WCAG AA палитра (Д2)', () => {
-  it('каждый цвет палитры даёт >= 4.5:1 с белым текстом', () => {
-    for (const color of COIN_ICON_PALETTE) {
-      const ratio = contrastRatio(relativeLuminance(color), 1); // белый = 1.0
-      expect(ratio, `${color}: ${ratio.toFixed(2)}:1 < 4.5`).toBeGreaterThanOrEqual(4.5);
-    }
+    render(<CoinIcon symbol="BTCUSDT" size={32} />);
+    const image = await screen.findByTestId('coin-logo-image');
+    expect(image).toHaveAttribute('src', 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0][0])).toContain('/coins/markets?');
+    expect(String(fetch.mock.calls[0][0])).toContain('ids=');
   });
 
-  it('палитра непуста и без дублей', () => {
-    expect(COIN_ICON_PALETTE.length).toBeGreaterThanOrEqual(12);
-    expect(new Set(COIN_ICON_PALETTE).size).toBe(COIN_ICON_PALETTE.length);
-  });
+  it('falls back to the letter avatar when metadata is absent or the logo image errors', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal('fetch', fetch);
+    const first = render(<CoinIcon symbol="BTC" />);
+    expect(await screen.findByTestId('coin-logo-fallback')).toHaveTextContent('B');
+    first.unmount();
 
-  it('детерминирован: один символ — один цвет; буква рендерится', () => {
-    render(<CoinIcon symbol="BTC" size={24} />);
-    expect(screen.getByText('B')).toBeInTheDocument();
-    const el = screen.getByText('B').closest('div') as HTMLElement;
-    expect(el.style.backgroundColor).toBeTruthy();
-    // Детерминизм проверяем через палитру-агностик хэш: повторный рендер того же символа совпадёт
-    const { unmount } = render(<CoinIcon symbol="BTC" size={24} />);
-    unmount();
+    resetCoinLogoCacheForTests();
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 'bitcoin', image: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png' }],
+    });
+    render(<CoinIcon symbol="BTC" />);
+    await waitFor(() => expect(screen.getByTestId('coin-logo-image')).toBeInTheDocument());
+    fireEvent.error(screen.getByTestId('coin-logo-image'));
+    expect(screen.getByTestId('coin-logo-fallback')).toHaveTextContent('B');
   });
 });

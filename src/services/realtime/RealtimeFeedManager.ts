@@ -33,6 +33,9 @@ export class RealtimeFeedManager {
   public readonly okxLiquidationStream: OkxLiquidationStream;
 
   private latestPriceMap: Map<string, number> = new Map();
+  /** Persistent subscriptions (watchlist/alerts) are separate from route-scoped leases. */
+  private persistentSymbols = new Set<string>();
+  private scopedSymbolRefs = new Map<string, number>();
   private isAutoStart = false;
 
   constructor(options: RealtimeFeedManagerOptions = {}) {
@@ -112,13 +115,42 @@ export class RealtimeFeedManager {
     return this.binanceClient.getConnectionState();
   }
 
+  /** Persistent subscription used by watchlists and alerts. */
   public subscribeSymbol(symbol: string): void {
-    this.binanceClient.subscribeTicker(symbol);
-    this.binanceClient.subscribeTrades(symbol);
+    const normalized = symbol.trim().toUpperCase();
+    if (!normalized) return;
+    this.persistentSymbols.add(normalized);
+    this.binanceClient.subscribeTicker(normalized);
+    this.binanceClient.subscribeTrades(normalized);
+  }
+
+  /** Acquire a route/view-scoped ticker lease; release it on symbol change/unmount. */
+  public subscribeSymbolScoped(symbol: string): () => void {
+    const normalized = symbol.trim().toUpperCase();
+    if (!normalized) return () => undefined;
+    this.scopedSymbolRefs.set(normalized, (this.scopedSymbolRefs.get(normalized) ?? 0) + 1);
+    this.binanceClient.subscribeTicker(normalized);
+    this.binanceClient.subscribeTrades(normalized);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const refs = (this.scopedSymbolRefs.get(normalized) ?? 1) - 1;
+      if (refs > 0) {
+        this.scopedSymbolRefs.set(normalized, refs);
+        return;
+      }
+      this.scopedSymbolRefs.delete(normalized);
+      if (!this.persistentSymbols.has(normalized)) this.unsubscribeExchangeSymbol(normalized);
+    };
   }
 
   public subscribeDepth(symbol: string): void {
     this.binanceClient.subscribeDepth(symbol);
+  }
+
+  public unsubscribeDepth(symbol: string): void {
+    this.binanceClient.unsubscribeDepth(symbol);
   }
 
   public subscribeKline(symbol: string, interval: string): void {
@@ -130,7 +162,16 @@ export class RealtimeFeedManager {
   }
 
   public unsubscribeSymbol(symbol: string): void {
+    const normalized = symbol.trim().toUpperCase();
+    this.persistentSymbols.delete(normalized);
+    if ((this.scopedSymbolRefs.get(normalized) ?? 0) === 0) {
+      this.unsubscribeExchangeSymbol(normalized);
+    }
+  }
+
+  private unsubscribeExchangeSymbol(symbol: string): void {
     this.binanceClient.unsubscribeTicker(symbol);
+    this.binanceClient.unsubscribeTrades(symbol);
   }
 
   public getLatestPrice(symbol: string): number | undefined {
@@ -154,6 +195,8 @@ export class RealtimeFeedManager {
     this.eventBus.destroy();
     this.anomalyEngine.clear();
     this.latestPriceMap.clear();
+    this.persistentSymbols.clear();
+    this.scopedSymbolRefs.clear();
     if (RealtimeFeedManager.instance === this) {
       RealtimeFeedManager.instance = null;
     }

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { BinanceWebSocketClient } from '@/services/realtime/BinanceWebSocketClient';
 import { EventBus } from '@/services/realtime/EventBus';
 import { AnomalyEngine } from '@/services/realtime/AnomalyEngine';
-import { TickerTick, TradeTick, OrderBookSnapshot } from '@/types/realtime';
+import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { TickerTick, TradeTick, OrderBookSnapshot, KlineTick } from '@/types/realtime';
 
 class MockWebSocket {
   public static instances: MockWebSocket[] = [];
@@ -111,6 +112,25 @@ describe('BinanceWebSocketClient Unit Tests', () => {
     client.disconnect();
   });
 
+  it('publishes Binance klines under the canonical base symbol with millisecond UTC open time', async () => {
+    const client = new BinanceWebSocketClient(eventBus, anomalyEngine, { webSocketClass: MockWebSocket });
+    client.subscribeKline('BTC', '15m');
+    client.connect();
+    await new Promise((r) => setTimeout(r, 15));
+
+    const ticks: KlineTick[] = [];
+    eventBus.subscribe<KlineTick>('kline:BTC:15m', (tick) => ticks.push(tick));
+    MockWebSocket.instances[0].simulateServerMessage({
+      e: 'kline', E: 1_780_000_005_000,
+      k: { s: 'BTCUSDT', i: '15m', t: 1_780_000_000_000, T: 1_780_000_899_999, o: '100', h: '102', l: '99', c: '101', v: '12', x: false },
+    });
+
+    expect(ticks).toHaveLength(1);
+    expect(ticks[0]).toMatchObject({ symbol: 'BTC', interval: '15m', openTime: 1_780_000_000_000, close: 101 });
+    expect(ticks[0].provenance.symbol).toBe('BTCUSDT');
+    client.disconnect();
+  });
+
   it('parses incoming trade frames into strongly-typed TradeTick', async () => {
     const client = new BinanceWebSocketClient(eventBus, anomalyEngine, {
       webSocketClass: MockWebSocket,
@@ -200,6 +220,39 @@ describe('BinanceWebSocketClient Unit Tests', () => {
     expect(parsed.params).toContain('ethusdt@ticker');
 
     client.disconnect();
+  });
+});
+
+describe('RealtimeFeedManager route-scoped ticker leases', () => {
+  beforeEach(() => { MockWebSocket.instances = []; });
+
+  it('unsubscribes route-only ticker and trade streams when the route lease is released', async () => {
+    const manager = new RealtimeFeedManager({ wsOptions: { webSocketClass: MockWebSocket } });
+    const release = manager.subscribeSymbolScoped('ETH');
+    manager.binanceClient.connect();
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    release();
+
+    const messages = MockWebSocket.instances[0].sentMessages.map((raw) => JSON.parse(raw));
+    const removedStreams = messages.filter((message) => message.method === 'UNSUBSCRIBE').flatMap((message) => message.params);
+    expect(removedStreams).toContain('ethusdt@ticker');
+    expect(removedStreams).toContain('ethusdt@trade');
+    manager.destroy();
+  });
+
+  it('keeps a watchlist/alert subscription alive after the coin-page lease is released', async () => {
+    const manager = new RealtimeFeedManager({ wsOptions: { webSocketClass: MockWebSocket } });
+    manager.subscribeSymbol('BTC');
+    const release = manager.subscribeSymbolScoped('BTC');
+    manager.binanceClient.connect();
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    release();
+
+    const messages = MockWebSocket.instances[0].sentMessages.map((raw) => JSON.parse(raw));
+    const removedStreams = messages.filter((message) => message.method === 'UNSUBSCRIBE').flatMap((message) => message.params);
+    expect(removedStreams).not.toContain('btcusdt@ticker');
+    expect(removedStreams).not.toContain('btcusdt@trade');
+    manager.destroy();
   });
 });
 

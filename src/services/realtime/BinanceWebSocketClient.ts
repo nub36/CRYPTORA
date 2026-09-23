@@ -154,6 +154,13 @@ export class BinanceWebSocketClient {
     this.addStream(stream);
   }
 
+  public unsubscribeDepth(symbol: string): void {
+    const binanceSymbol = symbol.toLowerCase().endsWith('usdt')
+      ? symbol.toLowerCase()
+      : `${symbol.toLowerCase()}usdt`;
+    this.removeStream(`${binanceSymbol}@depth20@100ms`);
+  }
+
   /**
    * Subscribe to Binance kline (candlestick) stream for real-time candle updates.
    * Binance sends kline events for the currently forming candle on every trade.
@@ -179,8 +186,14 @@ export class BinanceWebSocketClient {
     const binanceSymbol = symbol.toLowerCase().endsWith('usdt')
       ? symbol.toLowerCase()
       : `${symbol.toLowerCase()}usdt`;
-    const stream = `${binanceSymbol}@ticker`;
-    this.removeStream(stream);
+    this.removeStream(`${binanceSymbol}@ticker`);
+  }
+
+  public unsubscribeTrades(symbol: string): void {
+    const binanceSymbol = symbol.toLowerCase().endsWith('usdt')
+      ? symbol.toLowerCase()
+      : `${symbol.toLowerCase()}usdt`;
+    this.removeStream(`${binanceSymbol}@trade`);
   }
 
   private addStream(stream: string): void {

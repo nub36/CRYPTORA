@@ -80,6 +80,44 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     expect(btc?.provenance?.isFallback).toBe(false);
   });
 
+  it('includes the full Binance USDT spot ticker universe beyond canonical metadata', async () => {
+    const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue([
+      ...mockBulkTickers(),
+      { ...SAMPLE_BINANCE_TICKER, symbol: 'PEPEUSDT', lastPrice: '0.00001', quoteVolume: '9000000.00' } as any,
+      { ...SAMPLE_BINANCE_TICKER, symbol: 'TESTUSDC' } as any,
+    ]);
+    const candleHistoryService = { getAll: vi.fn().mockResolvedValue(new Map()) } as any;
+    const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock, candleHistoryService });
+
+    const assets = await provider.getAssets();
+    expect(assets).toHaveLength(CANONICAL_ASSETS.length + 1);
+    const pepe = assets.find((entry) => entry.symbol === 'PEPE');
+    expect(pepe).toMatchObject({
+      name: 'PEPE', category: 'other', price: 0.00001, isDemo: false,
+      marketCap: 0, circulatingSupply: 0,
+      provenance: { exchange: 'binance', market: 'spot', symbol: 'PEPEUSDT' },
+    });
+    expect(assets.some((entry) => entry.symbol === 'TEST')).toBe(false);
+    expect(await provider.getAssets('other')).toEqual([pepe]);
+  });
+
+  it('loads a direct Spot snapshot for a provider-listed symbol without canonical metadata', async () => {
+    const binanceMock = new BinanceSpotAdapter();
+    const fetchTicker = vi.spyOn(binanceMock, 'fetch24hrTicker').mockResolvedValue({
+      ...SAMPLE_BINANCE_TICKER, symbol: 'PEPEUSDT', lastPrice: '0.00001', quoteVolume: '9000000.00',
+    } as any);
+    const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock });
+
+    const snapshot = await provider.getAssetSnapshot('PEPE');
+    expect(fetchTicker).toHaveBeenCalledWith('PEPEUSDT');
+    expect(snapshot).toMatchObject({
+      symbol: 'PEPE', name: 'PEPE', category: 'other', price: 0.00001,
+      marketCap: 0, circulatingSupply: 0, description: '', indicators: null,
+      pairs: [{ exchange: 'Binance', pair: 'PEPE/USDT' }],
+    });
+  });
+
   it('gracefully falls back to KuCoin when Binance request fails', async () => {
     const binanceMock = new BinanceSpotAdapter();
     vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockRejectedValue(new AdapterNetworkError('binance'));
@@ -149,6 +187,24 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     expect(fallbackCandles[0].close).toBe(64950);
     expect(fallbackCandles[0].provenance?.exchange).toBe('kucoin');
     expect(fallbackCandles[0].provenance?.isFallback).toBe(true);
+  });
+
+  it('bypasses the candle TTL cache when reconnect/gap recovery explicitly requests fresh history', async () => {
+    const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchKlines')
+      .mockResolvedValueOnce(SAMPLE_BINANCE_KLINES as any)
+      .mockResolvedValueOnce([[1726362000000, '65000.00', '66000.00', '64900.00', '65500.00', '1200.0', 1726365599999, '78000000.0', 1200, '600.0', '39000000.0', '0']] as any);
+    const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock, cacheTtlMs: 60_000 });
+
+    const first = await provider.getCandles('BTC', '1h');
+    const cached = await provider.getCandles('BTC', '1h');
+    expect(binanceMock.fetchKlines).toHaveBeenCalledTimes(1);
+    expect(cached).toEqual(first);
+
+    const refreshed = await provider.getCandles('BTC', '1h', 500, { forceRefresh: true });
+    expect(binanceMock.fetchKlines).toHaveBeenCalledTimes(2);
+    expect(refreshed[0].time).toBe(1726362000);
+    expect(refreshed[0].close).toBe(65500);
   });
 
   it('KuCoin fallback: запрашивает явное окно и обрезает глубину до запрошенного limit', async () => {

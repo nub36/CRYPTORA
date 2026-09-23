@@ -8,8 +8,8 @@
  * Architecture:
  * Internet -> Nginx (80/443) -> Node.js production server (0.0.0.0:3000)
  *
- * P0: Removed /api/proxy/binance and /api/proxy/kucoin (dead code, SSRF risk,
- * unbounded cache). Frontend connects to exchanges directly via browser.
+ * Arbitrary /api/proxy/* endpoints remain removed (SSRF risk). Public exchange
+ * reads use the narrow allowlisted /api/market gateway below.
  */
 
 import http from 'node:http';
@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleAiExplain } from './ai/explain.mjs';
+import { requestMarketData } from './services/marketDataGateway.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,9 +58,6 @@ const MIME_TYPES = {
 // Список проверяется тестом tests/unit/cspConnectSrc.test.ts против URL в src/.
 const CONNECT_SRC = [
   "'self'",
-  'https://api.binance.com',
-  'https://fapi.binance.com',
-  'https://api.kucoin.com',
   'wss://stream.binance.com:9443',
   'wss://fstream.binance.com', // фактические ликвидации Binance USD-M
   'wss://stream.bybit.com', // ликвидации Bybit V5
@@ -87,12 +85,28 @@ function applySecurityHeaders(res) {
 // P0: proxy routes removed (dead code, SSRF risk, unbounded cache).
 // Frontend connects to exchanges directly from the browser (CSP allows it).
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const startTime = Date.now();
   applySecurityHeaders(res);
 
   const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const pathname = decodeURIComponent(parsedUrl.pathname);
+
+  // Narrow same-origin exchange gateway; requestMarketData accepts only a fixed
+  // provider/endpoint allowlist and never derives an upstream host from user input.
+  if (pathname === '/api/market' || pathname.startsWith('/api/market/')) {
+    if (req.method !== 'GET') {
+      res.setHeader('Allow', 'GET');
+      res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
+    const result = await requestMarketData(pathname.slice('/api/market'.length), parsedUrl.searchParams);
+    res.setHeader('Cache-Control', result.cacheSeconds ? `public, max-age=${result.cacheSeconds}` : 'no-store');
+    res.writeHead(result.status, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(result.body));
+    return;
+  }
 
   // Endpoint: Health check
   if (pathname === '/api/health') {

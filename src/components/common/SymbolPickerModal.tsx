@@ -17,17 +17,26 @@ export interface PickerEntry {
   custom: boolean;
 }
 
-const TICKER_RE = /^[A-Z0-9]{2,12}$/;
+const TICKER_RE = /^[A-Z0-9]{2,20}$/;
 
 /** Чистая фильтрация для списка + опция «свой тикер». Покрыта юнит-тестами. */
-export function filterPickerSymbols(query: string): PickerEntry[] {
+export function filterPickerSymbols(
+  query: string,
+  availableAssets: readonly { symbol: string; name: string }[] = [],
+): PickerEntry[] {
   const q = query.trim().toUpperCase();
-  const matches: PickerEntry[] = CANONICAL_ASSETS.filter(
-    (a) => !q || a.symbol.includes(q) || a.name.toUpperCase().includes(q),
-  ).map((a) => ({ symbol: a.symbol, name: a.name, custom: false }));
+  const universe = new Map<string, { symbol: string; name: string }>();
+  for (const asset of CANONICAL_ASSETS) universe.set(asset.symbol, { symbol: asset.symbol, name: asset.name });
+  for (const asset of availableAssets) {
+    const symbol = asset.symbol.toUpperCase().split('/')[0]!.replace(/USDT$/, '');
+    if (TICKER_RE.test(symbol) && !universe.has(symbol)) universe.set(symbol, { symbol, name: asset.name });
+  }
+  const matches: PickerEntry[] = [...universe.values()]
+    .filter((a) => !q || a.symbol.includes(q) || a.name.toUpperCase().includes(q))
+    .map((a) => ({ symbol: a.symbol, name: a.name, custom: false }));
   if (q) {
-    const base = (q.includes('/') ? q.split('/')[0]! : q).trim();
-    if (TICKER_RE.test(base) && !CANONICAL_ASSETS.some((a) => a.symbol === base)) {
+    const base = (q.includes('/') ? q.split('/')[0]! : q).trim().replace(/USDT$/, '');
+    if (TICKER_RE.test(base) && !universe.has(base)) {
       matches.push({ symbol: base, name: 'Тикер вне реестра (свечи — Binance spot)', custom: true });
     }
   }
@@ -41,6 +50,8 @@ interface SymbolPickerModalProps {
   title?: string;
   /** Подсказка-текущий выбор (подсвечивается в списке). */
   current?: string;
+  /** Extra assets from the active provider, merged with the canonical spot catalog. */
+  availableAssets?: readonly { symbol: string; name: string }[];
 }
 
 export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
@@ -49,6 +60,7 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
   onSelect,
   title = 'Выбор монеты',
   current,
+  availableAssets = [],
 }) => {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,7 +83,7 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
     return undefined;
   }, [open, onClose]);
 
-  const entries = useMemo(() => filterPickerSymbols(query), [query]);
+  const entries = useMemo(() => filterPickerSymbols(query, availableAssets), [query, availableAssets]);
 
   if (!open) return null;
 
@@ -110,6 +122,7 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
             <input
               ref={inputRef}
               type="text"
+              aria-label="Поиск монеты по тикеру или названию"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="BTC, Solana, PEPE…"

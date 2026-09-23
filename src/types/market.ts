@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export type Timeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '1D' | '1W';
 
-export type AssetCategory = 'all' | 'l1' | 'defi' | 'l2' | 'ai' | 'meme';
+export type AssetCategory = 'all' | 'l1' | 'defi' | 'l2' | 'ai' | 'meme' | 'other';
 
 export const DataProvenanceSchema = z.object({
   exchange: z.enum(['binance', 'kucoin', 'synthetic-demo']),
@@ -30,7 +30,7 @@ export const AssetSummarySchema = z.object({
   id: z.string(),
   symbol: z.string(),
   name: z.string(),
-  category: z.enum(['l1', 'defi', 'l2', 'ai', 'meme']),
+  category: z.enum(['l1', 'defi', 'l2', 'ai', 'meme', 'other']),
   rank: z.number(),
   price: z.number(),
   /** Derived from factual 1h klines; null when insufficient candle history. */
@@ -88,8 +88,8 @@ export const AssetDetailSchema = AssetSummarySchema.extend({
   athDate: z.string().optional(),
   atl: z.number().optional(),
   atlDate: z.string().optional(),
-  high24h: z.number(),
-  low24h: z.number(),
+  high24h: z.number().optional(),
+  low24h: z.number().optional(),
   // З3: null = недостаточно фактических свечей для полного набора — «нет данных» в UI,
   // никакой подстановки RSI=50 / SMA=цена / Bollinger=цена.
   indicators: TechnicalIndicatorsSchema.nullable(),
