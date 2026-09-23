@@ -1736,6 +1736,44 @@ for p in /api/health /api/strategies /api/signals /api/strategies/scan-universe 
 #                   /admin → login as admin only; never bypass auth
 ```
 
+### 13.6 CI observation on this PR (recorded honestly, unresolved)
+
+This PR contains **only** `docs/agent-plan/FULL_PROJECT_AUDIT.md`. CI ran twice:
+
+| Commit | Typecheck + Unit + Build | Browser e2e (Chromium) |
+|---|---|---|
+| `011045a` (audit document) | ✅ pass 1m42s | ✅ pass 57s |
+| `ca4105c` (+34 lines of markdown) | ❌ **fail 1m32s**, step `Run npm test`, exit 1 | ✅ pass 57s |
+
+A markdown-only diff cannot change the behaviour of `npm test`, and the same suite passes locally
+(1176/1176, twice — full run and integration-only run). The conclusion is that the second failure is
+**environmental/flaky, not caused by this PR**. The failing test could not be identified because the
+Actions log blob host (`productionresultssa13.blob.core.windows.net`) is unreachable from the audit
+sandbox, `gh run rerun --failed` refused (`run cannot be rerun`), and the only annotation published is
+`Process completed with exit code 1` on the `Run npm test` step.
+
+Most probable causes, in order — both are pre-existing fragilities, not new defects:
+
+1. **`tests/integration/migrationsPostgres.test.ts`** starts a real PostgreSQL through
+   `embedded-postgres`. The roadmap already records this failing on the VPS with `initdb EACCES`
+   (§12 of the roadmap, task 12.1). On a loaded or freshly-imaged GitHub runner the same binary can be
+   slow or fail to initialise. It passed in the previous run, which is consistent with intermittency.
+2. **`tests/unit/volumeProfileTermination.test.ts`** is deliberately **wall-clock bounded**
+   (`< 2 s` and `< 5 s` for the 22-position gap sweep) so that a re-introduced hang fails instead of
+   hanging the runner. That is the right trade for a P0 guardrail, but it also means the test can fail
+   on a slow runner without any hang. Locally the whole file takes ~1.3 s of test time.
+
+**Recommended follow-ups (both test-infrastructure only, no strategy code):**
+make the integration suite's PostgreSQL startup retry once and print `initdb` output on failure; and
+either raise the wall-clock ceilings for the termination sweep or express the bound in *iterations*
+(the loop is provably bounded by `bucketsCount`, so an iteration counter is a stronger and
+machine-independent assertion). Also worth adding: `retry: 1` for the unit job, or splitting
+`tests/integration` into its own job so a PostgreSQL-runner hiccup does not red-flag a documentation PR.
+
+Until this is understood, **a red `Typecheck + Unit + Build` on a docs-only commit should be treated as
+suspect and re-run**, not as a regression — but it should never be ignored either, because the same job
+is what protects the P0 hang guardrail.
+
 ---
 
 ## 14. Roadmap gap analysis (`docs/PRODUCTION_ROADMAP.md`, re-graded with evidence)
