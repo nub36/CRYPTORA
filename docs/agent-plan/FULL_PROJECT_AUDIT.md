@@ -1743,7 +1743,7 @@ for p in /api/health /api/strategies /api/signals /api/strategies/scan-universe 
 
 ### 13.6 CI on this PR: a red job with 1176/1176 tests passing — root cause found (F-17)
 
-This PR contains **only** `docs/agent-plan/FULL_PROJECT_AUDIT.md`. CI ran three times:
+This PR contains **only** `docs/agent-plan/FULL_PROJECT_AUDIT.md`. CI ran four times:
 
 | Commit | Typecheck + Unit + Build | Browser e2e (Chromium) |
 |---|---|---|
