@@ -698,12 +698,18 @@ export const LiquidationsPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Flame className="w-4 h-4 text-rose-500" />
             <span className="text-xs font-bold text-white tracking-wide">
-              {data.dataStatus === 'DEMO'
-                ? 'Журнал событий ликвидаций QA-датасета'
-                : 'Журнал фактических событий ликвидаций'}
+              {loading
+                ? 'Загрузка журнала событий ликвидаций…'
+                : data.dataStatus === 'DEMO'
+                  ? 'Журнал событий ликвидаций QA-датасета'
+                  : 'Журнал фактических событий ликвидаций'}
             </span>
           </div>
-          {data.dataStatus === 'DEMO' ? (
+          {loading ? (
+            <span className="text-[11px] font-mono text-slate-400 bg-slate-500/10 px-1.5 py-0.5 rounded border border-slate-400/20">
+              ЗАГРУЗКА
+            </span>
+          ) : data.dataStatus === 'DEMO' ? (
             <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
               QA-ДАТАСЕТ
             </span>
