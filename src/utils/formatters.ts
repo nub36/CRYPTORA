@@ -90,18 +90,17 @@ export function formatNumber(
   return parts.join('.');
 }
 
-export function formatTimestamp(isoString: string): string {
-  try {
-    const date = new Date(isoString);
-    return date.toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZone: 'UTC',
-    }) + ' UTC';
-  } catch {
-    return isoString;
-  }
+export function formatTimestamp(isoString: string, mode: 'LOCAL' | 'UTC' = 'LOCAL'): string {
+  const epochMs = Date.parse(isoString);
+  if (!Number.isFinite(epochMs)) return isoString;
+  const time = new Intl.DateTimeFormat('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    ...(mode === 'UTC' ? { timeZone: 'UTC' } : {}),
+  }).format(new Date(epochMs));
+  return mode === 'UTC' ? `${time} UTC` : time;
 }
 
 /** Format milliseconds as human-readable duration: "42 мин", "2 ч 15 мин", "1 д 5 ч". */

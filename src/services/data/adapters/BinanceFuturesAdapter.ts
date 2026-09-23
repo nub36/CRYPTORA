@@ -31,7 +31,7 @@ export class BinanceFuturesAdapter {
   private readonly fetchFn: typeof fetch;
 
   constructor(config: BinanceFuturesAdapterConfig = {}) {
-    this.baseUrl = config.baseUrl ?? 'https://fapi.binance.com';
+    this.baseUrl = config.baseUrl ?? '/api/market/binance/futures';
     this.timeoutMs = config.timeoutMs ?? 8000;
     this.fetchFn = config.fetchFn ?? ((...args) => globalThis.fetch(...args));
   }

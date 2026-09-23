@@ -12,13 +12,15 @@ import {
   LiquidationData,
   RadarEvent,
 } from '@/types/market';
-import { formatDuration, formatCurrency, formatPercent, formatTimestamp } from '@/utils/formatters';
-import { radarEventTypeLabel } from '@/utils/labels';
+import { formatDuration, formatCurrency, formatPercent } from '@/utils/formatters';
 import { CandleChart } from '@/components/common/CandleChart';
 import type { ChartIndicatorData } from '@/components/common/CandleChart';
 import { HeatmapGrid } from '@/components/common/HeatmapGrid';
-import { Badge } from '@/components/common/Badge';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
+import { MarketRadarPreview } from '@/components/market/MarketRadarPreview';
+import { AnalyticsSetupsPreview } from '@/components/market/AnalyticsSetupsPreview';
+import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { mergeRadarEvents } from '@/services/realtime/radarEventFeed';
 import { Link } from 'react-router-dom';
 import { SponsorSlot } from '@/components/ads/SponsorSlot';
 import { Collapsible } from '@/components/common/Collapsible';
@@ -27,10 +29,8 @@ import {
   Activity,
   Layers,
   Flame,
-  Radio,
   ArrowUpRight,
   ArrowDownRight,
-  Sparkles,
   PieChart,
   Grid,
   Network,
@@ -74,6 +74,7 @@ export const OverviewPage: React.FC = () => {
   const [futures, setFutures] = useState<FuturesAsset[]>([]);
   const [liquidations, setLiquidations] = useState<LiquidationData | null>(null);
   const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
+  const [radarUnavailable, setRadarUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
@@ -99,7 +100,9 @@ export const OverviewPage: React.FC = () => {
         setAssets(assts);
         setFutures(ftrsR.status === 'fulfilled' ? ftrsR.value : []);
         if (liqsR.status === 'fulfilled') setLiquidations(liqsR.value);
-        setRadarEvents(rdrR.status === 'fulfilled' ? rdrR.value : []);
+        const radarSnapshot = rdrR.status === 'fulfilled' ? rdrR.value : [];
+        setRadarEvents((current) => mergeRadarEvents(current, radarSnapshot, { includeDemo: dataMode === 'demo' }));
+        setRadarUnavailable(rdrR.status === 'rejected');
       } catch {
         // LIVE-FIRST: источник не ответил — показываем честное состояние,
         // значения из другого датасета вместо фактических не подставляются.
@@ -108,8 +111,21 @@ export const OverviewPage: React.FC = () => {
         setLoading(false);
       }
     },
-    [provider]
+    [provider, dataMode]
   );
+
+  // Provider snapshot is the REST-like fallback; this subscription catches
+  // fresh real anomalies immediately instead of waiting for the 30s overview poll.
+  useEffect(() => {
+    if (dataMode !== 'live') return;
+    const feed = RealtimeFeedManager.getInstance();
+    const unsubscribe = feed.eventBus.subscribe<RadarEvent>('radar', (event) => {
+      if (event.isDemo) return;
+      setRadarEvents((current) => mergeRadarEvents(current, [event]));
+      setRadarUnavailable(false);
+    });
+    return unsubscribe;
+  }, [dataMode]);
 
   useEffect(() => {
     void loadData();
@@ -121,10 +137,27 @@ export const OverviewPage: React.FC = () => {
 
   // When timeframe changes for BTC chart
   useEffect(() => {
-    provider
-      .getCandles('BTC', selectedTimeframe)
-      .then(setBtcCandles)
-      .catch(() => setBtcCandles([]));
+    let active = true;
+    let requestInFlight = false;
+    setBtcCandles([]);
+    const loadCandles = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const candles = await provider.getCandles('BTC', selectedTimeframe);
+        if (active) setBtcCandles(candles);
+      } catch {
+        if (active) setBtcCandles([]);
+      } finally {
+        requestInFlight = false;
+      }
+    };
+    void loadCandles();
+    const timer = window.setInterval(() => void loadCandles(), 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [selectedTimeframe, provider]);
 
   // Chart indicator overlays for BTC chart — MUST be before early returns (hooks rule)
@@ -174,12 +207,50 @@ export const OverviewPage: React.FC = () => {
   const btcAsset = assets.find((a) => a.symbol === 'BTC');
   const btcIndicators = btcCandles.length > 0 ? IndicatorEngine.computeCompleteIndicators(btcCandles) : null;
 
+  const btcPriceFromTicker = Boolean(btcAsset && Number.isFinite(btcAsset.price) && btcAsset.price > 0);
   const btcPrice =
-    btcAsset && Number.isFinite(btcAsset.price) && btcAsset.price > 0
+    btcPriceFromTicker && btcAsset
       ? btcAsset.price
       : btcCandles.length > 0
         ? btcCandles[btcCandles.length - 1].close
         : null;
+  const btcPriceSource = dataMode === 'demo'
+    ? 'DemoMarketDataProvider · явный QA fixture'
+    : btcPriceFromTicker && btcAsset?.provenance?.exchange === 'binance'
+      ? 'Binance Spot /api/v3/ticker/24hr через getAssets()'
+      : btcPriceFromTicker && btcAsset?.provenance?.exchange === 'kucoin'
+        ? 'KuCoin /api/v1/market/stats через getAssets()'
+        : btcPriceFromTicker
+          ? 'MarketDataProvider.getAssets() · provenance источника не указан'
+          : btcCandles.length > 0
+            ? `${btcCandles[btcCandles.length - 1].provenance?.exchange?.toUpperCase() ?? 'Exchange'} ${selectedTimeframe} OHLCV · close`
+            : null;
+  const btcFutures = futures.find((f) => f.symbol.split('/')[0].toUpperCase() === 'BTC');
+  const btcOpenInterestUsd = typeof btcFutures?.openInterest === 'number' && Number.isFinite(btcFutures.openInterest)
+    ? btcFutures.openInterest
+    : null;
+  const btcOpenInterestSource = !btcFutures
+    ? null
+    : dataMode === 'demo' || btcFutures.isDemo
+      ? 'DemoMarketDataProvider · QA fixture'
+      : btcOpenInterestUsd == null
+        ? 'OI недоступен: /fapi/v1/openInterest и исторический fallback без ответа'
+        : 'Binance USD-M /fapi/v1/openInterest × markPrice; fallback latest /futures/data/openInterestHist value';
+  const btcOpenInterestDelta = btcFutures?.openInterestChangeSource === 'ACTUAL'
+    ? btcFutures.openInterestChange24h
+    : null;
+  const btcOpenInterestDeltaSource = btcFutures?.openInterestChangeSource === 'ACTUAL'
+    ? 'Binance /futures/data/openInterestHist · hourly series'
+    : null;
+  const btcFundingSource = !btcFutures
+    ? null
+    : dataMode === 'demo' || btcFutures.isDemo
+      ? 'DemoMarketDataProvider · QA fixture'
+      : 'Binance USD-M /fapi/v1/premiumIndex · lastFundingRate × 100 (% per 8h)';
+  const btcRsi14 = btcCandles.length >= 15 ? btcIndicators?.rsi14 ?? null : null;
+  const btcRsiSource = btcRsi14 == null
+    ? null
+    : `${btcCandles[0]?.provenance?.exchange?.toUpperCase() ?? (dataMode === 'demo' ? 'QA' : 'Exchange')} ${selectedTimeframe} closes · Wilder RSI-14`;
   const btcChange24h = btcAsset && Number.isFinite(btcAsset.change24h) ? btcAsset.change24h : null;
 
   // Aggregate futures stats
@@ -706,60 +777,7 @@ export const OverviewPage: React.FC = () => {
 
       {/* SECTION D: Radar Feed, Top Movers, Signals Preview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Column 1: Market Radar Stream */}
-        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col shadow-panel">
-          <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
-            <div className="flex items-center space-x-2">
-              <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
-              <span className="font-bold text-sm text-white font-sans tracking-wide">
-                Рыночный радар: последнее
-              </span>
-            </div>
-            <Link
-              to="/radar"
-              className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1 font-sans font-medium"
-            >
-              <span>Все события</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          <div className="space-y-2.5 flex-1 overflow-y-auto max-h-96 pr-1 font-sans">
-            {radarEvents.slice(0, 4).map((event) => (
-              <div
-                key={event.id}
-                className="p-3 rounded-lg bg-surface-elevated/80 border border-white/[0.06] text-xs space-y-1.5 hover:border-cyan-500/40 transition-colors"
-              >
-                <div className="flex items-center justify-between font-mono">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-bold text-white">{event.symbol}</span>
-                    <Badge
-                      variant={
-                        event.severity === 'HIGH'
-                          ? 'red'
-                          : event.severity === 'MEDIUM'
-                          ? 'amber'
-                          : 'cyan'
-                      }
-                      size="xs"
-                    >
-                      {radarEventTypeLabel(event.type)}
-                    </Badge>
-                  </div>
-                  <span className="text-[11px] text-slate-400 font-mono tabular-nums">
-                    {formatTimestamp(event.timestamp)}
-                  </span>
-                </div>
-                <div className="font-mono text-[11px] font-semibold text-cyan-300 tabular-nums">
-                  {event.metricValue}
-                </div>
-                <p className="text-[11px] text-slate-300 leading-tight">
-                  {event.observation}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+        <MarketRadarPreview events={radarEvents} isDemoMode={dataMode === 'demo'} sourceUnavailable={radarUnavailable} />
 
         {/* Column 2: Top Movers & Funding Extremes */}
         <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-4 shadow-panel">
@@ -845,61 +863,19 @@ export const OverviewPage: React.FC = () => {
           )}
         </div>
 
-        {/* Column 3: Signals Architecture Preview */}
-        <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 flex flex-col justify-between shadow-panel">
-          <div>
-            <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.06]">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span className="font-bold text-sm text-white font-sans tracking-wide">
-                  Аналитические сетапы (превью)
-                </span>
-              </div>
-              <Badge variant="amber" size="xs">
-                ПРОТОТИП
-              </Badge>
-            </div>
-
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs space-y-1.5 mb-3">
-              <div className="font-bold text-amber-300 flex items-center space-x-1.5">
-                <span>Прототип методологии</span>
-              </div>
-              <p className="text-slate-300 text-[11px] leading-relaxed">
-                CRYPTORA не публикует слепые кнопки «BUY/SELL». Сетапы будут создаваться строго алгоритмическим движком с открытыми аргументами, точным уровнем инвалидации и неизменяемым журналом аудита.
-              </p>
-            </div>
-
-            {/* Structured Setup Mock Card */}
-            <div className="p-3.5 bg-surface-elevated border border-white/[0.08] rounded-lg text-xs font-sans space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-white">BTC/USDT: пробой на 4ч</span>
-                <span className="text-[11px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
-                  Пример сетапа (не сигнал)
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
-                <div>Вход: <strong className="text-white">$64,200 – $64,800</strong></div>
-                <div>Инвалидация: <strong className="text-rose-400">&lt; $62,900</strong></div>
-              </div>
-
-              <div className="text-[11px] text-slate-400 space-y-1 pt-1.5 border-t border-white/[0.06]">
-                <div className="text-emerald-400 text-[11px]">✓ Подтверждение: рост OI +7.2%, фандинг &gt; 0</div>
-                <div className="text-rose-400 text-[11px]">⚠ Опровергающие: RSI-14 перегрет (68.4)</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-white/[0.06] mt-3">
-            <Link
-              to="/signals"
-              className="w-full py-2 bg-surface-elevated hover:bg-surface-hover text-cyan-400 hover:text-white text-xs font-sans font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition-colors border border-white/[0.08] hover:border-cyan-500/30 min-h-[36px]"
-            >
-              <span>Спецификация сигналов и бэктестинга</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
+        <AnalyticsSetupsPreview
+          btcPrice={btcPrice}
+          btcPriceSource={btcPriceSource}
+          openInterestUsd={btcOpenInterestUsd}
+          openInterestSource={btcOpenInterestSource}
+          openInterestDelta24h={btcOpenInterestDelta}
+          openInterestDeltaSource={btcOpenInterestDeltaSource}
+          fundingRate8h={btcFutures?.fundingRate ?? null}
+          fundingSource={btcFundingSource}
+          rsi14={btcRsi14}
+          rsiSource={btcRsiSource}
+          isDemoMode={dataMode === 'demo'}
+        />
       </div>
 
       <SponsorSlot slot="overview-sidebar" />

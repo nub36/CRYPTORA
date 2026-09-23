@@ -87,7 +87,17 @@ export class IndicatorEngine {
    * Relative Strength Index (RSI) using Wilder's Smoothing Method
    */
   public static calculateRSI(prices: number[], period = 14): number[] {
-    if (prices.length <= period || period <= 0) return [];
+    if (prices.length <= period || !Number.isInteger(period) || period <= 0) return [];
+    if (prices.some((price) => !Number.isFinite(price))) return [];
+
+    const toRsi = (gain: number, loss: number): number => {
+      if (!Number.isFinite(gain) || !Number.isFinite(loss)) return gain >= loss ? 100 : 0;
+      const scale = Math.max(gain, loss);
+      if (scale === 0) return 50;
+      const scaledGain = gain / scale;
+      const scaledLoss = loss / scale;
+      return Math.max(0, Math.min(100, (100 * scaledGain) / (scaledGain + scaledLoss)));
+    };
 
     const result: number[] = [];
     let gainsSum = 0;
@@ -106,9 +116,7 @@ export class IndicatorEngine {
     let avgGain = gainsSum / period;
     let avgLoss = lossesSum / period;
 
-    let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    let rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + rs);
-    result.push(Math.min(100, Math.max(0, rsi)));
+    result.push(toRsi(avgGain, avgLoss));
 
     // Subsequent periods using Wilder's smoothing
     for (let i = period + 1; i < prices.length; i++) {
@@ -119,13 +127,7 @@ export class IndicatorEngine {
       avgGain = (avgGain * (period - 1) + gain) / period;
       avgLoss = (avgLoss * (period - 1) + loss) / period;
 
-      if (avgLoss === 0) {
-        result.push(100);
-      } else {
-        rs = avgGain / avgLoss;
-        rsi = 100 - 100 / (1 + rs);
-        result.push(Math.min(100, Math.max(0, rsi)));
-      }
+      result.push(toRsi(avgGain, avgLoss));
     }
 
     return result;

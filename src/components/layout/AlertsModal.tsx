@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
+import { useLivePriceMap } from '@/hooks/useLivePrices';
 import { Bell, X, Plus, Trash2, CheckCircle2, Pause, Play, AlertTriangle, Send, Webhook, History } from 'lucide-react';
 import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 import { PlanManager } from '@/services/subscription/PlanManager';
@@ -48,10 +49,10 @@ export const AlertsModal: React.FC = () => {
     deliveryLog,
     userPlan,
     dataMode,
-    livePrices,
     liveFunding,
   } = useMarketData();
 
+  const livePrices = useLivePriceMap(isAlertsModalOpen);
   const [tab, setTab] = useState<Tab>('rules');
   const [symbol, setSymbol] = useState('BTC');
   const [condition, setCondition] = useState<UserAlertCondition>('ABOVE');

@@ -75,7 +75,7 @@ async function fetchBinanceKlines(
   limit: number,
   fetchFn: typeof fetch,
 ): Promise<Array<[number, string, string, string, string, string, number]>> {
-  const url = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${limit}`;
+  const url = `/api/market/binance/spot/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${limit}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {

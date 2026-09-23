@@ -2,6 +2,48 @@ import { AssetSummary, OHLCV, DataProvenance } from '@/types/market';
 import { CanonicalAsset } from '@/services/data/registry/assetRegistry';
 import { BinanceTicker24hr, BinanceKlineRaw, KuCoinStats24hrData, KuCoinCandleItem, KuCoinTickerItem } from './schemas';
 
+/** Normalize a USDT spot ticker without canonical CoinGecko metadata. Unknown
+ * supply/cap stay as zero sentinels and are rendered as unavailable, never inferred. */
+export function normalizeUnregisteredBinanceTicker(
+  ticker: BinanceTicker24hr,
+): AssetSummary | null {
+  const exchangeSymbol = ticker.symbol.toUpperCase();
+  if (!exchangeSymbol.endsWith('USDT')) return null;
+  const symbol = exchangeSymbol.slice(0, -4);
+  if (!/^[A-Z0-9]{2,20}$/.test(symbol)) return null;
+
+  const parseFinite = (value: string): number => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  return {
+    id: symbol.toLowerCase(),
+    symbol,
+    name: symbol,
+    category: 'other',
+    rank: Number.MAX_SAFE_INTEGER,
+    price: parseFinite(ticker.lastPrice),
+    change1h: null,
+    change24h: Number(parseFinite(ticker.priceChangePercent).toFixed(2)),
+    change7d: null,
+    volume24h: parseFinite(ticker.quoteVolume),
+    marketCap: 0,
+    circulatingSupply: 0,
+    sparkline: [],
+    isDemo: false,
+    provenance: {
+      exchange: 'binance',
+      market: 'spot',
+      symbol: exchangeSymbol,
+      timestamp: ticker.closeTime,
+      isFallback: false,
+    },
+    high24h: parseFinite(ticker.highPrice) || undefined,
+    low24h: parseFinite(ticker.lowPrice) || undefined,
+  };
+}
+
 export function normalizeBinanceTicker(
   ticker: BinanceTicker24hr,
   asset: CanonicalAsset,

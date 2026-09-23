@@ -25,6 +25,7 @@ import meRouter from './routes/me.js';
 import adminRouter from './routes/admin.js';
 import strategiesRouter from './routes/strategies.js';
 import signalsRouter from './routes/signals.js';
+import marketDataRouter, { marketDataLimiter } from './routes/marketData.js';
 
 const PgStore = connectPgSimple(session);
 
@@ -100,6 +101,10 @@ export function createApp(options = {}) {
 
   // CSRF protection for state-changing requests
   app.use(csrfProtection);
+
+  // Public exchange market data has a dedicated bounded budget; the background
+  // scanner can legitimately make more requests than interactive account APIs.
+  app.use('/api/market', marketDataLimiter, marketDataRouter);
 
   // General API rate limiter (applied to all /api/* except auth which has tighter limits)
   app.use('/api', apiLimiter);

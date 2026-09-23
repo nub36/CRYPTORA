@@ -22,8 +22,8 @@ export interface KuCoinAdapterConfig {
   fetchFn?: typeof fetch;
   /**
    * Circuit breaker неудачных запросов (см. sourceHealth.ts). Особенно важен
-   * для KuCoin: его REST API не отдаёт браузерам CORS-заголовки, поэтому без
-   * трекера каждый цикл опроса генерировал бы гарантированно отвалившийся запрос.
+   * для KuCoin: frontend обращается к same-origin market gateway, а circuit
+   * breaker предотвращает повторные запросы, когда сам биржевой источник недоступен.
    */
   health?: SourceHealthTracker;
 }
@@ -35,7 +35,7 @@ export class KuCoinSpotAdapter {
   private readonly health?: SourceHealthTracker;
 
   constructor(config: KuCoinAdapterConfig = {}) {
-    this.baseUrl = config.baseUrl ?? 'https://api.kucoin.com';
+    this.baseUrl = config.baseUrl ?? '/api/market/kucoin/spot';
     this.timeoutMs = config.timeoutMs ?? 8000;
     this.fetchFn = config.fetchFn ?? fetch.bind(globalThis);
     this.health = config.health;

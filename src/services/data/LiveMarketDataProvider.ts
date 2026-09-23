@@ -20,6 +20,7 @@ import { BinanceSpotAdapter } from './adapters/BinanceSpotAdapter';
 import { KuCoinSpotAdapter } from './adapters/KuCoinSpotAdapter';
 import {
   normalizeBinanceTicker,
+  normalizeUnregisteredBinanceTicker,
   normalizeKuCoinStats,
   normalizeBinanceKlines,
   normalizeKuCoinCandles,
@@ -154,6 +155,21 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       }
     }
 
+    // The canonical registry is metadata enrichment, not a whitelist. The Binance
+    // Spot ticker endpoint returns the exchange's current ticker universe; include
+    // every additional USDT-quoted spot base and leave absent cap/supply metadata blank.
+    if (bulkTickers) {
+      const knownSymbols = new Set(canonicalList.map((asset) => asset.symbol));
+      const additions = [...bulkTickers.values()]
+        .map((ticker) => normalizeUnregisteredBinanceTicker(ticker))
+        .filter((asset): asset is AssetSummary => asset !== null && !knownSymbols.has(asset.symbol))
+        .sort((a, b) => b.volume24h - a.volume24h || a.symbol.localeCompare(b.symbol));
+      additions.forEach((asset, index) => {
+        asset.rank = canonicalList.length + index + 1;
+        results.push(asset);
+      });
+    }
+
     if (results.length === 0) {
       throw new Error('Live market data unavailable from both Binance and KuCoin gateways');
     }
@@ -220,75 +236,48 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     });
   }
 
-  public async getAssetDetail(symbol: string): Promise<AssetDetail | null> {
+  /**
+   * Fast first-paint path for /coin/:symbol. Only exchange ticker requests are
+   * awaited here; candles/indicators and CoinGecko metadata must not gate the
+   * page shell or selector.
+   */
+  public async getAssetSnapshot(symbol: string): Promise<AssetDetail | null> {
     const asset = getAssetBySymbol(symbol);
-    if (!asset) return null;
+    if (!asset) {
+      const base = symbol.toUpperCase().trim();
+      if (!/^[A-Z0-9]{2,20}$/.test(base)) return null;
+      const ticker = await this.binance.fetch24hrTicker(`${base}USDT`);
+      const summary = normalizeUnregisteredBinanceTicker(ticker);
+      if (!summary || summary.symbol !== base) return null;
+      const spread = extractBinanceSpread(ticker);
+      return {
+        ...summary,
+        description: '',
+        indicators: null,
+        pairs: [{
+          exchange: 'Binance',
+          pair: `${base}/USDT`,
+          price: summary.price,
+          volume24h: summary.volume24h,
+          spreadPct: spread ? Number((spread.spreadBps / 100).toFixed(4)) : null,
+        }],
+      };
+    }
 
-    // Fetch from BOTH exchanges in parallel for real pairs data (P0)
     const [binanceResult, kucoinResult] = await Promise.allSettled([
       asset.binanceSymbol ? this.binance.fetch24hrTicker(asset.binanceSymbol) : Promise.reject('no symbol'),
       asset.kucoinSymbol ? this.kucoin.fetch24hrStats(asset.kucoinSymbol) : Promise.reject('no symbol'),
     ]);
-
     const rawBinanceTicker = binanceResult.status === 'fulfilled' ? binanceResult.value : null;
     const rawKucoinStats = kucoinResult.status === 'fulfilled' ? kucoinResult.value : null;
 
-    // Primary summary from whichever succeeded (Binance preferred)
-    let summary: AssetSummary | null = null;
-    if (rawBinanceTicker) {
-      summary = normalizeBinanceTicker(rawBinanceTicker, asset);
-    } else if (rawKucoinStats) {
-      summary = normalizeKuCoinStats(rawKucoinStats, asset, [], true);
-    }
-
-    if (!summary) {
-      throw new Error(`Live asset detail unavailable for ${symbol}`);
-    }
-
-    // Fetch candles to calculate 24h high/low and indicators
-    let candles: OHLCV[] = [];
-    try {
-      candles = await this.getCandles(symbol, '1h');
-    } catch {
-      candles = [];
-    }
-
-    const high24h = summary.high24h ?? (candles.length > 0 ? Math.max(...candles.map((c) => c.high)) : summary.price);
-    const low24h = summary.low24h ?? (candles.length > 0 ? Math.min(...candles.map((c) => c.low)) : summary.price);
-
-    // З3 (честность данных): полный набор индикаторов — только когда истории хватает
-    // на SMA200 (>= 200 фактических свечей). Иначе indicators = null → UI показывает
-    // «—». Никаких заглушек RSI=50 / MACD=0 / SMA=текущая цена / Bollinger=цена.
-    const indicators: TechnicalIndicators | null =
-      candles.length >= 200
-        ? this.buildTechnicalIndicators(IndicatorEngine.computeCompleteIndicators(candles))
+    const summary = rawBinanceTicker
+      ? normalizeBinanceTicker(rawBinanceTicker, asset)
+      : rawKucoinStats
+        ? normalizeKuCoinStats(rawKucoinStats, asset, [], true)
         : null;
+    if (!summary) throw new Error(`Live asset ticker unavailable for ${symbol}`);
 
-    // FACTUAL: ATH/ATL + supply из CoinGecko (supplementary metadata, не заменяет биржевую цену)
-    let ath: number | undefined;
-    let athDate: string | undefined;
-    let atl: number | undefined;
-    let atlDate: string | undefined;
-    let totalSupply: number | null | undefined;
-    let maxSupply: number | null | undefined;
-    if (asset.coingeckoId) {
-      try {
-        const meta = await this.coingeckoAdapter.fetchCoinMeta(asset.coingeckoId);
-        if (meta.athUsd != null) ath = meta.athUsd;
-        if (meta.athDateUsd != null) athDate = meta.athDateUsd;
-        if (meta.atlUsd != null) atl = meta.atlUsd;
-        if (meta.atlDateUsd != null) atlDate = meta.atlDateUsd;
-        totalSupply = meta.totalSupply;
-        maxSupply = meta.maxSupply;
-      } catch {
-        // CoinGecko unavailable — ATH/ATL/supply остаётся undefined → UI покажет «—»
-      }
-    }
-
-    // З7 (честность данных): спред — только из фактических bid/ask биржи.
-    // Нет bid/ask → null («—» в UI); выдуманные дефолты 0.01% / 0.02% удалены.
-    // Ветка «fallback-пара» удалена как недостижимая: summary существует только
-    // при успешном raw-ответе одной из бирж.
     const pairs = [];
     if (rawBinanceTicker) {
       const spread = extractBinanceSpread(rawBinanceTicker);
@@ -313,26 +302,74 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     return {
       ...summary,
       description: asset.description,
-      ath,
-      athDate,
-      atl,
-      atlDate,
-      high24h,
-      low24h,
-      totalSupply: totalSupply ?? undefined,
-      maxSupply: maxSupply ?? undefined,
-      indicators,
+      high24h: summary.high24h,
+      low24h: summary.low24h,
+      indicators: null,
       pairs,
     };
   }
 
-  public async getCandles(symbol: string, timeframe: Timeframe, limit = 500): Promise<OHLCV[]> {
+  public async getAssetDetail(symbol: string): Promise<AssetDetail | null> {
+    const snapshot = await this.getAssetSnapshot(symbol);
+    if (!snapshot) return null;
+
+    // Supplementary details are fetched only for callers that explicitly need them.
+    // The coin page uses getAssetSnapshot and loads its chart/indicators independently.
+    let candles: OHLCV[] = [];
+    try {
+      candles = await this.getCandles(symbol, '1h');
+    } catch {
+      candles = [];
+    }
+
+    const high24h = snapshot.high24h ?? (candles.length > 0 ? Math.max(...candles.map((c) => c.high)) : undefined);
+    const low24h = snapshot.low24h ?? (candles.length > 0 ? Math.min(...candles.map((c) => c.low)) : undefined);
+    const indicators: TechnicalIndicators | null = candles.length >= 200
+      ? this.buildTechnicalIndicators(IndicatorEngine.computeCompleteIndicators(candles))
+      : null;
+
+    let ath: number | undefined;
+    let athDate: string | undefined;
+    let atl: number | undefined;
+    let atlDate: string | undefined;
+    let totalSupply: number | null | undefined;
+    let maxSupply: number | null | undefined;
+    const asset = getAssetBySymbol(symbol);
+    if (asset?.coingeckoId) {
+      try {
+        const meta = await this.coingeckoAdapter.fetchCoinMeta(asset.coingeckoId);
+        ath = meta.athUsd ?? undefined;
+        athDate = meta.athDateUsd ?? undefined;
+        atl = meta.atlUsd ?? undefined;
+        atlDate = meta.atlDateUsd ?? undefined;
+        totalSupply = meta.totalSupply;
+        maxSupply = meta.maxSupply;
+      } catch {
+        // CoinGecko unavailable — supplementary metadata remains absent.
+      }
+    }
+
+    return {
+      ...snapshot,
+      high24h,
+      low24h,
+      indicators,
+      ath,
+      athDate,
+      atl,
+      atlDate,
+      totalSupply: totalSupply ?? undefined,
+      maxSupply: maxSupply ?? undefined,
+    };
+  }
+
+  public async getCandles(symbol: string, timeframe: Timeframe, limit = 500, options: { forceRefresh?: boolean } = {}): Promise<OHLCV[]> {
     // Binance /api/v3/klines принимает limit ≤ 1000 (вес 2 до 500 свечей, 5 до 1000).
     const klineLimit = Math.max(1, Math.min(1000, Math.floor(limit)));
     const cacheKey = `${symbol}_${timeframe}_${klineLimit}`;
     const now = Date.now();
     const cached = this.candleCache.get(cacheKey);
-    if (cached && now - cached.timestamp < this.cacheTtlMs * 3) {
+    if (!options.forceRefresh && cached && now - cached.timestamp < this.cacheTtlMs * 3) {
       return cached.data;
     }
 
@@ -342,11 +379,11 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     const kucoinType = this.mapTimeframeToKuCoin(timeframe);
 
     if (!asset) {
-      // Тикер вне реестра (добавлен через вселенную скана/пикер): пробуем прямой
-      // Binance-символ BASEUSDT. KuCoin-резерва нет — маппинг неизвестен.
+      // Тикер вне реестра (добавлен через вселенную скана/пикер): пробуем
+      // Binance-символ BASEUSDT через штатный same-origin adapter. KuCoin-резерва нет.
       // Неудача = честная ошибка символа, движок покажет её в статусе скана.
       const base = symbol.toUpperCase().trim();
-      if (!/^[A-Z0-9]{2,12}$/.test(base)) {
+      if (!/^[A-Z0-9]{2,20}$/.test(base)) {
         throw new Error(`Symbol ${symbol} not in canonical registry`);
       }
       try {

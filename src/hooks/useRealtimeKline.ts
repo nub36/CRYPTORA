@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
-import { KlineTick } from '@/types/realtime';
+import type { KlineTick, RealtimeConnectionState } from '@/types/realtime';
 import { Timeframe } from '@/types/market';
 
 /**
@@ -25,6 +25,8 @@ export interface UseRealtimeKlineOptions {
   timeframe: Timeframe;
   enabled?: boolean;
   onKlineTick: (tick: KlineTick) => void;
+  /** Called after a previously-live Binance socket reconnects, so the consumer can reconcile REST history. */
+  onReconnect?: () => void;
 }
 
 /**
@@ -39,9 +41,11 @@ export interface UseRealtimeKlineOptions {
  *  - duplicate/out-of-order: consumer (CandleChart) handles via time-based dedup
  *  - unmount cleanup
  */
-export function useRealtimeKline({ symbol, timeframe, enabled = true, onKlineTick }: UseRealtimeKlineOptions): void {
+export function useRealtimeKline({ symbol, timeframe, enabled = true, onKlineTick, onReconnect }: UseRealtimeKlineOptions): void {
   const callbackRef = useRef(onKlineTick);
+  const reconnectRef = useRef(onReconnect);
   callbackRef.current = onKlineTick;
+  reconnectRef.current = onReconnect;
 
   useEffect(() => {
     if (!symbol || !enabled) return;
@@ -58,7 +62,20 @@ export function useRealtimeKline({ symbol, timeframe, enabled = true, onKlineTic
       callbackRef.current(tick);
     });
 
+    let hasBeenConnected = feed.getConnectionState() === 'connected';
+    let wasConnected = hasBeenConnected;
+    const unsubConnection = feed.eventBus.subscribe<RealtimeConnectionState>('connection', (state) => {
+      if (state === 'connected') {
+        if (hasBeenConnected && !wasConnected) reconnectRef.current?.();
+        hasBeenConnected = true;
+        wasConnected = true;
+      } else if (state === 'reconnecting' || state === 'disconnected' || state === 'error') {
+        wasConnected = false;
+      }
+    });
+
     return () => {
+      unsubConnection();
       unsub();
       feed.unsubscribeKline(symbol, interval);
     };

@@ -16,7 +16,13 @@ vi.mock('lightweight-charts', () => {
   });
   return {
     ColorType: { Solid: 'solid' },
-    createChart: () => ({
+    TickMarkType: { Year: 0, Month: 1, DayOfMonth: 2, Time: 3, TimeWithSeconds: 4 },
+    createChart: () => {
+      const timeScale = {
+        fitContent: vi.fn(), applyOptions: vi.fn(), getVisibleLogicalRange: vi.fn(() => null),
+        setVisibleLogicalRange: vi.fn(), subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      };
+      return ({
       applyOptions: vi.fn(),
       addCandlestickSeries: makeSeries,
       addHistogramSeries: makeSeries,
@@ -26,9 +32,11 @@ vi.mock('lightweight-charts', () => {
       addBarSeries: makeSeries,
       priceScale: () => ({ applyOptions: vi.fn() }),
       subscribeCrosshairMove: vi.fn(),
-      timeScale: () => ({ fitContent: vi.fn(), applyOptions: vi.fn() }),
+      unsubscribeCrosshairMove: vi.fn(),
+      timeScale: () => timeScale,
       remove: vi.fn(),
-    }),
+    });
+    },
   };
 });
 

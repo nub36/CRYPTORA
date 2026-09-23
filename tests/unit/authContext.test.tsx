@@ -65,6 +65,9 @@ describe('AuthContext', () => {
 
     expect(screen.getByTestId('authenticated').textContent).toBe('no');
     expect(screen.getByTestId('user').textContent).toBe('none');
+    // Guest 401 is an expected terminal state, not a retry/render loop.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/session', { credentials: 'include' });
   });
 
   it('handles authenticated user', async () => {

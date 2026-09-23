@@ -996,6 +996,10 @@ export class DemoMarketDataProvider implements MarketDataProvider {
     return DEMO_ASSETS.filter((a) => a.category === category);
   }
 
+  async getAssetSnapshot(symbol: string): Promise<AssetDetail | null> {
+    return this.getAssetDetail(symbol);
+  }
+
   async getAssetDetail(symbol: string): Promise<AssetDetail | null> {
     const asset = DEMO_ASSETS.find(
       (a) => a.symbol.toUpperCase() === symbol.toUpperCase() || a.id.toLowerCase() === symbol.toLowerCase()

@@ -197,6 +197,7 @@ export const ScreenerPage: React.FC = () => {
               <option value="l2">Layer-2</option>
               <option value="ai">ИИ и данные</option>
               <option value="meme">Мемкоины</option>
+              <option value="other">Прочее</option>
             </select>
           </div>
 

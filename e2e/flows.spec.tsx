@@ -296,6 +296,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
   });
 
   test('Liquidations: verified actual vs estimated disclaimer, ratio gauge and event log', async () => {
+    window.localStorage.setItem('cryptora_qa_fixture', '1');
     renderApp('/liquidations');
 
     await screen.findByText(/КАРТА И ПОТОК ЛИКВИДАЦИЙ/i);
@@ -306,7 +307,7 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(screen.getByText(/Ликвидировано лонгов/i)).toBeInTheDocument();
     expect(screen.getByText(/Ликвидировано шортов/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Журнал событий ликвидаций QA-датасета/i)
+      await screen.findByText(/Журнал событий ликвидаций QA-датасета/i)
     ).toBeInTheDocument();
   });
 

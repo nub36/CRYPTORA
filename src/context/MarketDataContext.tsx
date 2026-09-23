@@ -43,8 +43,7 @@ interface MarketDataContextType {
   isDemo: boolean;
   dataMode: DataMode;
   realtimeStatus: RealtimeConnectionState;
-  livePrices: Record<string, number>;
-  subscribeSymbol: (symbol: string) => void;
+  subscribeSymbol: (symbol: string) => () => void;
   watchlist: string[];
   toggleWatchlist: (symbol: string) => void;
   isWatchlisted: (symbol: string) => boolean;
@@ -113,7 +112,6 @@ export const MarketDataProviderComponent: React.FC<{
   );
 
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeConnectionState>('idle');
-  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
 
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     try {
@@ -179,15 +177,8 @@ export const MarketDataProviderComponent: React.FC<{
       }
     );
 
-    const unsubscribeTickers = feedManager.eventBus.subscribe<TickerTick>(
-      'ticker:*',
-      (tick) => {
-        setLivePrices((prev) => ({
-          ...prev,
-          [tick.symbol]: tick.price,
-        }));
-      }
-    );
+    // Latest ticker values live in RealtimeFeedManager and symbol-scoped hooks;
+    // this provider intentionally does not mirror every 250ms batch into global context.
 
     if (dataMode === 'live') {
       feedManager.connect();
@@ -215,7 +206,6 @@ export const MarketDataProviderComponent: React.FC<{
 
     return () => {
       unsubscribeConnection();
-      unsubscribeTickers();
       // Останавливаем таймеры движка при размонтировании провайдера (тесты, StrictMode).
       LiveSignalEngine.getInstance()?.stop();
     };
@@ -242,8 +232,9 @@ export const MarketDataProviderComponent: React.FC<{
 
   const subscribeSymbol = useCallback((symbol: string) => {
     if (dataMode === 'live') {
-      RealtimeFeedManager.getInstance().subscribeSymbol(symbol);
+      return RealtimeFeedManager.getInstance().subscribeSymbolScoped(symbol);
     }
+    return () => undefined;
   }, [dataMode]);
 
   useEffect(() => {
@@ -410,7 +401,6 @@ export const MarketDataProviderComponent: React.FC<{
         isDemo: activeProvider.isDemo,
         dataMode,
         realtimeStatus,
-        livePrices,
         subscribeSymbol,
         watchlist,
         toggleWatchlist,

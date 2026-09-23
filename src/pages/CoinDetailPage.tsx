@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -25,7 +25,10 @@ import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { OrderBookSnapshot, KlineTick, RealtimeConnectionState } from '@/types/realtime';
 import { AiExplanationPanel } from '@/components/ai/AiExplanationPanel';
 import { DataSourcesBadge } from '@/components/common/DataSourcesBadge';
-import { useRealtimeKline } from '@/hooks/useRealtimeKline';
+import { mapTimeframeToBinanceInterval, useRealtimeKline } from '@/hooks/useRealtimeKline';
+import { detectCandleGap, klineTimeSeconds, mergeCandleHistory, mergeKlineIntoCandles, timeframeIntervalSeconds } from '@/services/realtime/candleHandoff';
+import { useLivePrice } from '@/hooks/useLivePrices';
+import { getAssetBySymbol, getCanonicalByBinanceSymbol, getCanonicalByKuCoinSymbol } from '@/services/data/registry/assetRegistry';
 import {
   Star,
   Layers,
@@ -40,6 +43,16 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+export function normalizeCoinRouteSymbol(param?: string): string {
+  const raw = (param ?? '').trim().toUpperCase();
+  const base = raw.split('/')[0]?.replace(/USDT$/, '') ?? '';
+  return getAssetBySymbol(raw)?.symbol
+    ?? getCanonicalByBinanceSymbol(raw)?.symbol
+    ?? getCanonicalByKuCoinSymbol(raw)?.symbol
+    ?? getAssetBySymbol(base)?.symbol
+    ?? base;
+}
+
 /** «через 3ч 12м» до момента ts; при прошедшем моменте — «скоро». */
 const formatUntil = (ts: number): string => {
   const diff = ts - Date.now();
@@ -51,8 +64,10 @@ const formatUntil = (ts: number): string => {
 
 export const CoinDetailPage: React.FC = () => {
   const { symbol } = useParams<{ symbol: string }>();
+  const routeSymbol = normalizeCoinRouteSymbol(symbol);
   const navigate = useNavigate();
-  const { provider, watchlist, toggleWatchlist, livePrices, subscribeSymbol } = useMarketData();
+  const { provider, watchlist, toggleWatchlist, subscribeSymbol } = useMarketData();
+  const livePrice = useLivePrice(routeSymbol);
   const workspace = useCoinWorkspaceLayout();
 
   const [asset, setAsset] = useState<AssetDetail | null>(null);
@@ -63,30 +78,48 @@ export const CoinDetailPage: React.FC = () => {
   const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
   const [liquidations, setLiquidations] = useState<LiquidationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resolvedRouteSymbol, setResolvedRouteSymbol] = useState<string | null>(null);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
+  const [candlesLoading, setCandlesLoading] = useState(true);
+  const [candlesUnavailable, setCandlesUnavailable] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [realtimeKline, setRealtimeKline] = useState<KlineTick | null>(null);
+  const [candleRecoveryUnavailable, setCandleRecoveryUnavailable] = useState(false);
+  const candlesRef = useRef(candles);
+  candlesRef.current = candles;
+  const latestCandleOpenTimeRef = useRef<number | null>(null);
+  const recoveryTargetOpenTimeRef = useRef<number | null>(null);
+  const latestWsKlineRef = useRef<KlineTick | null>(null);
+  const recoveryKeysRef = useRef(new Set<string>());
+  const candleRouteKeyRef = useRef(`${routeSymbol}:${timeframe}`);
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
   const [chartType, setChartType] = useState<CandleChartType>('candles');
   const [showMA, setShowMA] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerAssets, setPickerAssets] = useState<Array<{ symbol: string; name: string }>>([]);
+  const openPicker = useCallback(() => {
+    setPickerOpen(true);
+    void provider.getAssets()
+      .then((assets) => setPickerAssets(assets.map(({ symbol: assetSymbol, name }) => ({ symbol: assetSymbol, name }))))
+      .catch(() => { /* Keep the shared canonical catalog available if exchange lookup fails. */ });
+  }, [provider]);
   const [btcCandles, setBtcCandles] = useState<OHLCV[]>([]);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>('idle');
 
-  // P6: Chart height adapts for indicator sub-panels (RSI 130px, MACD 150px)
+  // Price chart keeps its own independent height; RSI/MACD render in separate panes below.
   const isDesktopWorkspace = useMediaQuery('(min-width: 1280px)');
-  const baseHeight = isDesktopWorkspace ? 460 : 340;
-  const indicatorExtra = (showRSI ? 130 : 0) + (showMACD ? 150 : 0);
-  const chartHeight = baseHeight + indicatorExtra;
+  const chartHeight = isDesktopWorkspace ? 460 : 340;
 
   useEffect(() => {
-    if (symbol) {
-      subscribeSymbol(symbol);
+    if (routeSymbol) {
+      setOrderBook(null);
+      const releaseSymbol = subscribeSymbol(routeSymbol);
       const feed = RealtimeFeedManager.getInstance();
-      feed.subscribeDepth(symbol);
+      feed.subscribeDepth(routeSymbol);
 
       const unsubDepth = feed.eventBus.subscribe<OrderBookSnapshot>(
-        `depth:${symbol.toUpperCase()}`,
+        `depth:${routeSymbol}`,
         (snapshot) => {
           setOrderBook(snapshot);
         }
@@ -104,120 +137,247 @@ export const CoinDetailPage: React.FC = () => {
       return () => {
         unsubDepth();
         unsubConn();
+        releaseSymbol();
+        feed.unsubscribeDepth(routeSymbol);
       };
     }
-  }, [symbol, subscribeSymbol]);
+  }, [routeSymbol, subscribeSymbol]);
 
-  // Fetch BTC candles for correlation context (compact, not a big module)
+  // BTC correlation history is optional and never blocks the main asset snapshot.
   useEffect(() => {
-    if (!symbol || symbol.toUpperCase() === 'BTC') return;
-    // Отмена устаревшего запроса: при уходе со страницы или смене символа/TF
-    // ответ не должен применяться к размонтированному компоненту.
-    const controller = new AbortController();
-    provider
-      .getCandles('BTC', timeframe)
-      .then((cl) => { if (!controller.signal.aborted) setBtcCandles(cl); })
-      .catch(() => { if (!controller.signal.aborted) setBtcCandles([]); });
-    return () => controller.abort();
-  }, [symbol, timeframe, provider]);
+    let active = true;
+    setBtcCandles([]);
+    if (!routeSymbol || routeSymbol === 'BTC') return () => { active = false; };
+    void provider.getCandles('BTC', timeframe)
+      .then((rows) => { if (active) setBtcCandles(rows); })
+      .catch(() => { if (active) setBtcCandles([]); });
+    return () => { active = false; };
+  }, [routeSymbol, timeframe, provider]);
 
-  // Correlation context: BTC correlation, Beta, lookback
+  // Correlation context is bounded by the already-loaded candle arrays (max 500 each).
   const correlationContext = useMemo(() => {
-    if (!symbol || symbol.toUpperCase() === 'BTC' || candles.length < 20 || btcCandles.length < 20) {
-      return null;
-    }
+    if (!routeSymbol || routeSymbol === 'BTC' || candles.length < 20 || btcCandles.length < 20) return null;
     const coinReturns = IndicatorEngine.calculateReturns(candles.map((c) => c.close));
     const btcReturns = IndicatorEngine.calculateReturns(btcCandles.map((c) => c.close));
     const correlation = IndicatorEngine.calculateCorrelation(coinReturns, btcReturns);
     const beta = IndicatorEngine.calculateBeta(coinReturns, btcReturns);
     const lookback = Math.min(coinReturns.length, btcReturns.length);
     return { correlation, beta, lookback, timeframe };
-  }, [candles, btcCandles, symbol, timeframe]);
+  }, [candles, btcCandles, routeSymbol, timeframe]);
 
-  // Real-time kline (candlestick) stream — updates current candle via update(), not setData()
+  const recoverCandleHistory = useCallback(async () => {
+    if (!routeSymbol) return;
+    const requestKey = `${routeSymbol}:${timeframe}`;
+    if (recoveryKeysRef.current.has(requestKey)) return;
+    recoveryKeysRef.current.add(requestKey);
+    try {
+      // Force bypass the provider's short-lived candle cache on reconnect/gap recovery.
+      const recovered = await provider.getCandles(routeSymbol, timeframe, 500, { forceRefresh: true });
+      if (candleRouteKeyRef.current !== requestKey) return;
+      let reconciled = mergeCandleHistory(candlesRef.current, recovered);
+      const latestWs = latestWsKlineRef.current;
+      if (latestWs) {
+        reconciled = mergeKlineIntoCandles(
+          reconciled,
+          latestWs,
+          routeSymbol,
+          mapTimeframeToBinanceInterval(timeframe),
+        );
+      }
+      candlesRef.current = reconciled;
+      setCandles(reconciled);
+      setCandleRecoveryUnavailable(false);
+      if (reconciled.length > 0) {
+        MemoryTimeSeriesRepository.getInstance().saveCandles(routeSymbol, timeframe, reconciled);
+        latestCandleOpenTimeRef.current = Math.max(
+          latestCandleOpenTimeRef.current ?? 0,
+          reconciled[reconciled.length - 1].time,
+        );
+        recoveryTargetOpenTimeRef.current = null;
+      }
+    } catch {
+      if (candleRouteKeyRef.current === requestKey) setCandleRecoveryUnavailable(true);
+    } finally {
+      recoveryKeysRef.current.delete(requestKey);
+    }
+  }, [provider, routeSymbol, timeframe]);
+
+  useEffect(() => {
+    const key = `${routeSymbol}:${timeframe}`;
+    candleRouteKeyRef.current = key;
+    latestCandleOpenTimeRef.current = null;
+    recoveryTargetOpenTimeRef.current = null;
+    latestWsKlineRef.current = null;
+    candlesRef.current = [];
+    setCandleRecoveryUnavailable(false);
+    setRealtimeKline(null);
+    setCandles([]);
+  }, [routeSymbol, timeframe]);
+
+  // A fresh ticker/depth connection is not treated as proof that candle klines are fresh.
+  // Kline freshness is tracked independently and a REST reconciliation follows reconnects.
   const handleKlineTick = useCallback((tick: KlineTick) => {
+    if (!routeSymbol) return;
+    if (tick.symbol.toUpperCase().replace(/USDT$/, '') !== routeSymbol || tick.interval !== mapTimeframeToBinanceInterval(timeframe)) return;
+    const openTimeSeconds = klineTimeSeconds(tick.openTime);
+    if (openTimeSeconds === null) return;
+    if (latestCandleOpenTimeRef.current !== null && openTimeSeconds < latestCandleOpenTimeRef.current) return;
+    const gap = detectCandleGap(
+      latestCandleOpenTimeRef.current,
+      tick.openTime,
+      timeframeIntervalSeconds(timeframe),
+    );
+    if (gap) {
+      if (recoveryTargetOpenTimeRef.current !== openTimeSeconds) {
+        recoveryTargetOpenTimeRef.current = openTimeSeconds;
+        void recoverCandleHistory();
+      }
+    } else {
+      latestCandleOpenTimeRef.current = Math.max(latestCandleOpenTimeRef.current ?? 0, openTimeSeconds);
+    }
+    latestWsKlineRef.current = tick;
     setRealtimeKline(tick);
-  }, []);
+  }, [routeSymbol, timeframe, recoverCandleHistory]);
+
   useRealtimeKline({
-    symbol,
+    symbol: routeSymbol || undefined,
     timeframe,
-    enabled: !loading && !!asset,
+    enabled: !loading && !!asset && asset.symbol === routeSymbol,
     onKlineTick: handleKlineTick,
+    onReconnect: recoverCandleHistory,
   });
 
+  // Primary quote only. The full getAssetDetail() path includes candles and
+  // CoinGecko metadata, so awaiting it here used to block every page control.
+  // Keep an explicit deadline for custom providers that fail to settle; the UI
+  // shell and picker render independently while this request is in flight.
   useEffect(() => {
-    if (!symbol) return;
+    if (!routeSymbol) {
+      setResolvedRouteSymbol(routeSymbol);
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    let deadlineTimer: number | undefined;
     setLoading(true);
+    setResolvedRouteSymbol(null);
+    setAsset(null);
     setSourceUnavailable(false);
 
-    /**
-     * Зависание графика сигнала при навигации: страница уходила в `loading=true`,
-     * а ответы запросов применялись уже к размонтированному компоненту — состояние
-     * оставалось «загружается», и при возврате график не оживал. Теперь каждый
-     * запрос сопровождается AbortController: при размонтировании (или смене
-     * символа) сигнал помечается aborted, и setState не вызывается.
-     */
-    const controller = new AbortController();
-    const { signal } = controller;
+    const snapshotRequest = Promise.resolve().then(() => (
+      provider.getAssetSnapshot
+        ? provider.getAssetSnapshot(routeSymbol)
+        : provider.getAssetDetail(routeSymbol)
+    ));
+    const deadline = new Promise<never>((_, reject) => {
+      deadlineTimer = window.setTimeout(() => reject(new Error('Spot quote request exceeded 9.5s')), 9_500);
+    });
 
-    async function fetchData() {
-      try {
-        // Ядро страницы — актив и свечи. Деривативы/радар/ликвидации — вспомогательные:
-        // их отказ не должен прятать страницу, а подставлять демо-значения нельзя.
-        const [detail, candleList] = await Promise.all([
-          provider.getAssetDetail(symbol || 'BTC'),
-          provider.getCandles(symbol || 'BTC', timeframe),
-        ]);
-        const [ftrsR, rdrR, liqsR] = await Promise.allSettled([
-          provider.getFuturesList(),
-          provider.getRadarEvents(symbol || 'BTC'),
-          provider.getLiquidations(),
-        ]);
-        const ftrs = ftrsR.status === 'fulfilled' ? ftrsR.value : [];
-        const rdr = rdrR.status === 'fulfilled' ? rdrR.value : [];
-        const liqs = liqsR.status === 'fulfilled' ? liqsR.value : null;
-
-        if (signal.aborted) return;
+    void Promise.race([snapshotRequest, deadline])
+      .then((detail) => {
+        if (!active) return;
         setAsset(detail);
-        setCandles(candleList);
-        if (candleList.length > 0) {
-          MemoryTimeSeriesRepository.getInstance().saveCandles(symbol || 'BTC', timeframe, candleList);
-        }
-
-        const matchFutures = ftrs.find(
-          (f) => f.symbol.split('/')[0].toUpperCase() === (symbol || '').toUpperCase()
-        );
-        setFuturesData(matchFutures || null);
-        setRadarEvents(rdr);
-        setLiquidations(liqs);
-      } catch {
-        // LIVE-FIRST: актив не получен от источника — честное состояние без демо-подстановки.
-        if (!signal.aborted) setSourceUnavailable(true);
-      } finally {
-        if (!signal.aborted) setLoading(false);
-      }
-    }
-
-    fetchData();
-    return () => controller.abort();
-  }, [symbol, provider]);
-
-  useEffect(() => {
-    if (symbol) {
-      setRealtimeKline(null); // Reset realtime kline on timeframe/symbol change
-      const controller = new AbortController();
-      provider.getCandles(symbol, timeframe).then((cl) => {
-        // Устаревший ответ (смена TF/символа или уход со страницы) отбрасывается:
-        // иначе в график прилетает ряд другого таймфрейма и он «зависает».
-        if (controller.signal.aborted) return;
-        setCandles(cl);
-        if (cl.length > 0) {
-          MemoryTimeSeriesRepository.getInstance().saveCandles(symbol, timeframe, cl);
-        }
+        setSourceUnavailable(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAsset(null);
+        setSourceUnavailable(true);
+      })
+      .finally(() => {
+        if (!active) return;
+        if (deadlineTimer !== undefined) window.clearTimeout(deadlineTimer);
+        setResolvedRouteSymbol(routeSymbol);
+        setLoading(false);
       });
-      return () => controller.abort();
-    }
-  }, [symbol, timeframe, provider]);
+
+    return () => {
+      active = false;
+      if (deadlineTimer !== undefined) window.clearTimeout(deadlineTimer);
+    };
+  }, [routeSymbol, provider, retryKey]);
+
+  // Candle history is an independent partial-data block. It is never part of
+  // the asset/header loading gate and rejects into a local empty/error state.
+  useEffect(() => {
+    if (!routeSymbol) return;
+    let active = true;
+    candlesRef.current = [];
+    latestCandleOpenTimeRef.current = null;
+    recoveryTargetOpenTimeRef.current = null;
+    latestWsKlineRef.current = null;
+    setCandles([]);
+    setRealtimeKline(null);
+    setCandlesUnavailable(false);
+    setCandlesLoading(true);
+    let candleDeadlineTimer: number | undefined;
+    const candleDeadline = new Promise<never>((_, reject) => {
+      // The live provider may use an 8s Binance request followed by an 8s
+      // KuCoin fallback. This final UI guard prevents a hung custom provider
+      // from leaving only the chart's loading state open indefinitely.
+      candleDeadlineTimer = window.setTimeout(() => reject(new Error('Spot candle request exceeded 17s')), 17_000);
+    });
+
+    void Promise.race([provider.getCandles(routeSymbol, timeframe), candleDeadline])
+      .then((rows) => {
+        if (!active) return;
+        const latestRest = rows[rows.length - 1];
+        let initialCandles = rows;
+        const latestWs = latestWsKlineRef.current;
+        if (latestWs) {
+          if (latestRest && detectCandleGap(latestRest.time, latestWs.openTime, timeframeIntervalSeconds(timeframe))) {
+            void recoverCandleHistory();
+          }
+          initialCandles = mergeKlineIntoCandles(rows, latestWs, routeSymbol, mapTimeframeToBinanceInterval(timeframe));
+        }
+        candlesRef.current = initialCandles;
+        if (initialCandles.length > 0) {
+          const finalTime = initialCandles[initialCandles.length - 1].time;
+          latestCandleOpenTimeRef.current = Math.max(latestCandleOpenTimeRef.current ?? 0, finalTime);
+          MemoryTimeSeriesRepository.getInstance().saveCandles(routeSymbol, timeframe, initialCandles);
+        }
+        setCandles(initialCandles);
+      })
+      .catch(() => {
+        if (!active) return;
+        setCandles([]);
+        setCandlesUnavailable(true);
+      })
+      .finally(() => {
+        if (candleDeadlineTimer !== undefined) window.clearTimeout(candleDeadlineTimer);
+        if (active) setCandlesLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (candleDeadlineTimer !== undefined) window.clearTimeout(candleDeadlineTimer);
+    };
+  }, [routeSymbol, timeframe, provider, recoverCandleHistory]);
+
+  // Derivatives, Radar and liquidation data are supplemental, independent requests.
+  useEffect(() => {
+    if (!routeSymbol) return;
+    let active = true;
+    setFuturesData(null);
+    setRadarEvents([]);
+    setLiquidations(null);
+    void Promise.allSettled([
+      provider.getFuturesList(),
+      provider.getRadarEvents(routeSymbol),
+      provider.getLiquidations(),
+    ]).then(([futuresResult, radarResult, liquidationResult]) => {
+      if (!active) return;
+      if (futuresResult.status === 'fulfilled') {
+        const match = futuresResult.value.find(
+          (row) => row.symbol.split('/')[0].toUpperCase() === routeSymbol,
+        );
+        setFuturesData(match ?? null);
+      }
+      if (radarResult.status === 'fulfilled') setRadarEvents(radarResult.value);
+      if (liquidationResult.status === 'fulfilled') setLiquidations(liquidationResult.value);
+    });
+    return () => { active = false; };
+  }, [routeSymbol, provider]);
 
   const dynamicIndicators = useMemo(() => {
     if (candles.length > 0) {
@@ -248,43 +408,68 @@ export const CoinDetailPage: React.FC = () => {
     };
   }, [candles]);
 
-  if (loading) {
+  if (!asset || asset.symbol !== routeSymbol) {
+    const requestPending = loading || resolvedRouteSymbol !== routeSymbol;
     return (
-      <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-sans text-sm">
-        <Activity className="w-5 h-5 animate-spin mr-2 text-brand-cyan" />
-        Загрузка аналитики монеты {symbol}...
-      </div>
-    );
-  }
+      <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-4 sm:px-4" data-qa="coin-page-shell">
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface p-4">
+          <div className="flex items-center gap-3">
+            <CoinIcon symbol={routeSymbol || '?'} size={40} />
+            <div>
+              <h1 className="font-sans text-lg font-bold text-white">{routeSymbol || 'Монета'}</h1>
+              <p className="font-sans text-xs text-slate-400">Spot-карточка · источник данных загружается отдельно</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openPicker}
+              data-qa="coin-picker-open"
+              className="rounded border border-surface-border bg-surface-elevated px-3 py-2 font-sans text-xs font-semibold text-white hover:border-brand-cyan"
+            >
+              Выбрать монету
+            </button>
+            <Link to="/market" className="rounded border border-surface-border px-3 py-2 font-sans text-xs text-brand-cyan hover:bg-white/[0.04]">
+              Рынок Spot
+            </Link>
+          </div>
+        </section>
 
-  if (!asset && sourceUnavailable) {
-    return (
-      <div className="mx-auto my-12 max-w-2xl px-4">
-        <DataSourceUnavailable subject={`данные по инструменту ${symbol}`} />
-      </div>
-    );
-  }
+        <section className="rounded-lg border border-surface-border bg-surface p-5" aria-live="polite" data-qa="coin-load-state">
+          {requestPending ? (
+            <div role="status" className="flex items-center gap-2 font-sans text-sm text-slate-300">
+              <Activity className="h-4 w-4 animate-spin text-brand-cyan" />
+              Получаем Spot ticker для {routeSymbol}. График и дополнительные источники не блокируют выбор монеты.
+            </div>
+          ) : sourceUnavailable ? (
+            <div className="space-y-3">
+              <DataSourceUnavailable subject={`Spot ticker ${routeSymbol}`} />
+              <p className="font-sans text-xs text-slate-400">Остальные блоки не подменяются demo-значениями.</p>
+              <button type="button" onClick={() => setRetryKey((n) => n + 1)} className="rounded border border-surface-border px-3 py-2 font-sans text-xs text-white hover:bg-white/[0.05]">
+                Повторить загрузку
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3 font-sans text-sm">
+              <h2 className="font-bold text-white">Актив не найден</h2>
+              <p className="text-slate-400">«{routeSymbol}» отсутствует в поддерживаемом каталоге или не имеет доступного Spot ticker.</p>
+            </div>
+          )}
+        </section>
 
-  if (!asset) {
-    return (
-      <div className="max-w-xl mx-auto my-12 p-6 bg-surface border border-surface-border rounded-lg text-center space-y-3">
-        <h2 className="text-lg font-bold text-white font-sans">Актив не найден</h2>
-        <p className="text-[13px] text-slate-400">
-          Инструмент «{symbol}» отсутствует в реестре инструментов терминала.
-        </p>
-        <Link
-          to="/market"
-          className="inline-flex items-center space-x-1 text-xs text-brand-cyan hover:underline font-sans"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          <span>Вернуться к списку рынка</span>
-        </Link>
+        <SymbolPickerModal
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onSelect={(base) => navigate(`/coin/${base.toUpperCase()}`)}
+          current={routeSymbol}
+          availableAssets={pickerAssets}
+          title="Выбор монеты"
+        />
       </div>
     );
   }
 
   const isStarred = watchlist.includes(asset.symbol);
-  const livePrice = symbol ? livePrices[symbol.toUpperCase()] : undefined;
   const currentPrice = livePrice !== undefined ? livePrice : asset.price;
 
   // Снимок «ликвидации + деривативы» строго по текущему активу.
@@ -344,17 +529,21 @@ export const CoinDetailPage: React.FC = () => {
               <span className="text-sm font-mono text-slate-400 font-semibold">
                 {asset.symbol}
               </span>
-              <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-sans">
-                Ранг #{asset.rank}
-              </span>
+              {asset.rank < Number.MAX_SAFE_INTEGER && (
+                <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-sans">
+                  Ранг #{asset.rank}
+                </span>
+              )}
               <span className="text-xs bg-brand-cyan/10 text-brand-cyan px-2 py-0.5 rounded font-sans uppercase">
                 {asset.category}
               </span>
             </div>
 
-            <p className="mt-1 max-w-3xl font-sans text-[13px] text-slate-400">
-              {asset.description}
-            </p>
+            {asset.description && (
+              <p className="mt-1 max-w-3xl font-sans text-[13px] text-slate-400">
+                {asset.description}
+              </p>
+            )}
           </div>
         </div>
 
@@ -389,6 +578,15 @@ export const CoinDetailPage: React.FC = () => {
             </div>
           </div>
 
+          <button
+            type="button"
+            onClick={openPicker}
+            data-qa="coin-picker-open"
+            className="rounded border border-surface-border bg-surface-elevated px-3 py-2 font-sans text-xs font-semibold text-white hover:border-brand-cyan"
+            title="Перейти к другой монете"
+          >
+            Выбрать монету ▾
+          </button>
           <button
             onClick={() => toggleWatchlist(asset.symbol)}
             className={`p-2.5 rounded border transition-colors ${
@@ -470,16 +668,16 @@ export const CoinDetailPage: React.FC = () => {
           <div className="flex items-center space-x-3">
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
-              data-qa="coin-picker-open"
+              onClick={openPicker}
+              data-qa="coin-picker-chart-open"
               className="font-sans font-bold text-sm text-white hover:text-brand-cyan transition-colors"
               title="Выбрать другую монету"
             >
               {asset.symbol}/USDT {chartType === 'candles' ? 'Свечной' : 'Линейный'} график ▾
             </button>
             <div className="hidden sm:flex items-center space-x-2 text-xs font-sans text-slate-400">
-              <span>Макс. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.high24h)}</strong></span>
-              <span>Мин. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{formatCurrency(asset.low24h)}</strong></span>
+              <span>Макс. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{asset.high24h != null ? formatCurrency(asset.high24h) : '—'}</strong></span>
+              <span>Мин. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{asset.low24h != null ? formatCurrency(asset.low24h) : '—'}</strong></span>
             </div>
           </div>
 
@@ -574,8 +772,12 @@ export const CoinDetailPage: React.FC = () => {
           )}
         </div>
 
+        {candlesLoading && <div role="status" className="font-sans text-xs text-slate-400">Загрузка свечей… остальные блоки доступны.</div>}
+        {candlesUnavailable && <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">Spot-источник свечей недоступен; график и индикаторы не подменяются demo-данными.</div>}
+        {candleRecoveryUnavailable && <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">Не удалось восстановить историю после разрыва kline-потока; показаны только фактически полученные свечи.</div>}
+        {!candlesLoading && !candlesUnavailable && candles.length === 0 && <div role="status" className="font-sans text-xs text-slate-400">Источник пока не вернул историю свечей.</div>}
         {/* Interactive TradingView Lightweight Chart */}
-        <CandleChart data={candles} symbol={`${asset.symbol}/USDT`} height={chartHeight} indicators={chartIndicators} realtimeKline={realtimeKline} showRSI={showRSI} showMACD={showMACD} chartType={chartType} showMA={showMA} />
+        <CandleChart data={candles} symbol={`${asset.symbol}/USDT`} timeframe={timeframe} height={chartHeight} indicators={chartIndicators} realtimeKline={realtimeKline} showRSI={showRSI} showMACD={showMACD} chartType={chartType} showMA={showMA} />
       </div>
 
         <div className="xl:sticky xl:top-[70px] self-start">
@@ -828,7 +1030,7 @@ export const CoinDetailPage: React.FC = () => {
         </div>
 
         {/* Card 4: Correlation Context (compact, BTC only) */}
-        {symbol && symbol.toUpperCase() !== 'BTC' && (
+        {routeSymbol && routeSymbol !== 'BTC' && (
           <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
             <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
               <Activity className="w-4 h-4 text-amber-400" />
@@ -1013,8 +1215,9 @@ export const CoinDetailPage: React.FC = () => {
       <SymbolPickerModal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        onSelect={(base) => navigate(`/coin/${base}`)}
+        onSelect={(base) => navigate(`/coin/${base.toUpperCase()}`)}
         current={asset.symbol}
+        availableAssets={pickerAssets}
         title="Выбор монеты для графика"
       />
     </div>

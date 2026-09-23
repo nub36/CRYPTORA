@@ -19,34 +19,35 @@
                                      ▼
                 ┌─────────────────────────────────────────┐
                 │              Nginx Proxy                │
-                │   - SSL/TLS Termination (Certbot)       │
-                │   - Static Asset Caching (1y immutable) │
-                │   - Security Headers & Strict CSP       │
-                │   - SPA Routing Fallback (/index.html)  │
-                │   - Rate Limiting (30r/s)               │
+                │   - SSL/TLS termination and security   │
+                │   - Static dist/ assets + SPA fallback  │
+                │   - Same-origin /api/* reverse proxy   │
+                │   - Per-IP rate limiting                │
                 └──────────────┬──────────────────────────┘
-                               │
-                               │ (Reverse Proxy: 127.0.0.1:3000)
+                               │ (API: 127.0.0.1:3000)
                                ▼
                 ┌─────────────────────────────────────────┐
-                │       Node.js Production Server         │
-                │       (server/productionServer.js)      │
-                │   - SPA File Serving (/dist)            │
-                │   - Health Check (/api/health)          │
-                │   - Market Data Gateway (/api/proxy/*)  │
-                │   - 10s In-Memory Response Caching      │
+                │       Node.js Express backend           │
+                │       (server/index.js / server/app.js) │
+                │   - Auth/session and application APIs   │
+                │   - Allowlisted /api/market gateway    │
+                │   - Fixed Binance/KuCoin upstreams     │
                 │   - Managed via Systemd / PM2           │
                 └─────────────────────────────────────────┘
+
+`server/productionServer.js` is the standalone static-server alternative; it also implements the
+same allowlisted `/api/market` routes. The deployed Nginx config serves static assets directly and
+forwards `/api/` to the Express backend on port 3000.
 ```
 
 ### Политика режима данных: PRODUCTION = ТОЛЬКО LIVE
 
-- **Production (`vite build`):** единственный режим — **LIVE**: прямое получение публичных котировок
-  с Binance и KuCoin через доменные адаптеры с Zod-валидацией DTO. Пользовательского DEMO-режима нет:
-  ни переключателей DEMO/LIVE, ни кнопок «включить демо», ни восстановления demo из `localStorage`
-  (устаревший ключ `cryptora_data_mode` не читается и не пишется). Если API бирж недоступны с IP
-  сервера/клиента, выводится честный статус «Источник недоступен / Нет данных» с действием
-  «Повторить запрос» — demo-fallback строго запрещён.
+- **Production (`vite build`):** единственный режим — **LIVE**. Browser REST adapters use the same-origin
+  `/api/market` gateway; the server forwards only fixed public Binance Spot/Futures and KuCoin endpoints.
+  Binance realtime WSS remains browser-to-exchange. Пользовательского DEMO-режима нет: ни переключателей
+  DEMO/LIVE, ни кнопок «включить демо», ни восстановления demo из `localStorage` (устаревший ключ
+  `cryptora_data_mode` не читается и не пишется). Если upstream API недоступен с сервера, выводится
+  честный статус «Источник недоступен / Нет данных» — demo-fallback строго запрещён.
 - **Dev / Test:** `DemoMarketDataProvider` и детерминированные фикстуры сохранены для разработки и
   автотестов. Включаются только явным механизмом, отсутствующим в production-сборке: dev-сервер Vite
   (`import.meta.env.DEV`) **или** сборка с `VITE_CRYPTORA_QA_FIXTURE=1`, **и** ключ
@@ -208,11 +209,11 @@ npm run build
 2. **Zero Secrets:** Исходный код и бандл фронтенда не содержат приватных ключей или API-токенов.
 3. **CSP (Content Security Policy):**
    ```http
-   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.binance.com https://fapi.binance.com https://api.kucoin.com wss://stream.binance.com:9443 wss://fstream.binance.com wss://stream.bybit.com wss://ws.okx.com:8443 https://www.okx.com https://api.alternative.me https://api.llama.fi https://mempool.space https://api.coingecko.com https://api.telegram.org; frame-ancestors 'self';
+   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss://stream.binance.com:9443 wss://fstream.binance.com wss://stream.bybit.com wss://ws.okx.com:8443 https://www.okx.com https://api.alternative.me https://api.llama.fi https://mempool.space https://api.coingecko.com https://api.telegram.org; frame-ancestors 'self';
    ```
-   Источник истины — массив `CONNECT_SRC` в `server/productionServer.js` (v0.8.35); тест `tests/unit/cspConnectSrc.test.ts`
-   сверяет его со всеми внешними origin в `src/`. Если nginx тоже выставляет CSP, его значение должно совпадать.
-   ```
+   Биржевые REST origins отсутствуют: страницы соединяются с `/api/market` на `'self'`; WSS и остальные
+   внешние источники перечислены отдельно. Проверка `tests/unit/cspConnectSrc.test.ts` сверяет CSP с URL в `src/`.
+
    ```
 4. **Запрет Directory Listing:** Опция `autoindex off` отключена на уровне Nginx и серверного обработчика.
 5. **Отсутствие Source Maps в Production:** В `vite.config.ts` жестко зафиксировано `build: { sourcemap: false }`.

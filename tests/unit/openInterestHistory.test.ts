@@ -93,7 +93,7 @@ describe('Δ OI по фактическому ряду openInterestHist', () => 
 
   it('адаптер: URL публичного endpoint /futures/data/openInterestHist с period=1h и валидация схемы', async () => {
     const fetchFn = vi.fn(async (url: string) => {
-      expect(url).toBe('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=25');
+      expect(url).toBe('/api/market/binance/futures/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=25');
       return new Response(JSON.stringify(hist([1, 2])), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     const adapter = new BinanceFuturesAdapter({ fetchFn: fetchFn as unknown as typeof fetch });

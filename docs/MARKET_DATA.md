@@ -76,12 +76,14 @@ export interface DataProvenance {
 ## 4. Архитектура адаптеров и Fallback
 
 1. **Primary Source (Binance):**
-   - Запросы 24h ticker, klines и метаданных направляются на `https://api.binance.com` (резервный шлюз `data-api.binance.vision`).
-   - Ответ проходит runtime-валидацию схемой Zod.
+   - Browser adapters call the same-origin `/api/market/binance/spot/*` and `/api/market/binance/futures/*` routes; the backend maps a fixed endpoint allowlist to `api.binance.com` / `fapi.binance.com`.
+   - The response passes runtime Zod validation in the frontend adapter. The browser never calls Binance REST directly.
 2. **Secondary Source / Fallback (KuCoin):**
-   - В случае сетевой ошибки, недоступности пары на Binance или превышения лимитов запросов, опрашивается KuCoin REST API (`https://api.kucoin.com`).
-   - При успешном получении устанавливается флаг `isFallback: true` и `exchange: 'kucoin'`.
-3. **Разделение DEMO и LIVE:**
+   - `/api/market/kucoin/spot/*` maps only the approved stats, all-tickers, and candles routes to `api.kucoin.com`; arbitrary hosts and paths are rejected.
+   - In case of a Binance/network failure or unavailable pair, KuCoin is tried as a fallback. Successful data gets `isFallback: true` and `exchange: 'kucoin'`.
+3. **Transport separation:**
+   - Public exchange REST goes through the same-origin HTTP gateway; realtime Binance WebSocket streams remain direct WSS connections. REST CORS changes do not alter WebSocket routing.
+4. **Разделение DEMO и LIVE:**
    - Если и первичный, и вторичный источники живых данных недоступны, Live-провайдер возвращает явную ошибку / статус недоступности (`unavailable`).
    - **Строго запрещено** скрывать сетевые сбои подмешиванием демонстрационных цифр под вывеской LIVE.
 
@@ -89,10 +91,10 @@ export interface DataProvenance {
 
 ## 5. Source Health (circuit breaker недоступных endpoints, v0.8.45)
 
-Браузерные запросы к биржам могут отказывать **систематически**: REST KuCoin не отдаёт браузерам
-CORS-заголовки; инструмент может отсутствовать на Binance (делистинг) — каждый запрос даёт отказ
-без результата. Чтобы не долбить заведомо мёртвые endpoints каждым циклом опроса (и не засорять
-консоль DevTools), используется `SourceHealthTracker`
+Биржевой gateway устраняет browser-to-exchange CORS; при этом upstream-запросы всё ещё могут
+отказывать систематически (сеть, WAF/гео-блокировка, rate limit, делистинг инструмента).
+Чтобы не повторять запросы к заведомо недоступным endpoints каждым циклом опроса, используется
+`SourceHealthTracker`
 (`src/services/data/adapters/sourceHealth.ts`):
 
 - Ключ = ресурс + инструмент (`klines?symbol=KASUSDT`), без изменчивых параметров (interval/limit).
@@ -108,3 +110,15 @@ CORS-заголовки; инструмент может отсутствова�
   рыночные данные; актив с недоступными источниками честно отсутствует/помечен «нет данных».
   Ошибка запроса — `AdapterSourceBlockedError extends AdapterNetworkError` (для catch-веток это
   обычный сетевой отказ).
+
+### Диагностика запросов KAS со страницы `/coin/BTC`
+
+`KASUSDT` candle-запросы не являются подпиской CoinPage на предыдущую монету: `CandleHistoryService`
+обогащает спарклайны для всего канонического каталога, а `LiveSignalEngine` по умолчанию сканирует
+общую scan-universe (включая KAS) циклом. KuCoin candle fallback возникает, когда Binance candle-запрос
+для этого символа неуспешен. Запрос `market/stats?symbol=KAS-USDT` может исходить из общего
+`getAssets()` fallback (если Binance bulk-ответ не получен/не содержит канонический инструмент) либо
+из явного запроса деталей KAS; по одному URL без DevTools Initiator нельзя выбрать между этими двумя
+инициаторами. Эти общие запросы не привязаны к выбранному BTC и не свидетельствуют о повторном
+рендере CoinPage. Маршрутные WS-подписки CoinPage (`ticker`, `trade`, `depth`, `kline`) освобождаются
+при смене символа/размонтировании; в частности, ticker/trade теперь используют scoped lease.

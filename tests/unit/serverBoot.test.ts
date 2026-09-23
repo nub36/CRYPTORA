@@ -75,6 +75,27 @@ describe('real routes over real HTTP', () => {
     __setPoolForTests(null);
   });
 
+  it('public market gateway is mounted and forwards only to its fixed Binance endpoint', async () => {
+    const realFetch = globalThis.fetch;
+    const upstreamFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('https://api.binance.com/')) return Response.json([]);
+      return realFetch(input, init);
+    });
+    vi.stubGlobal('fetch', upstreamFetch);
+    try {
+      const res = await client.get('/api/market/binance/spot/api/v3/ticker/24hr?symbol=BTCUSDT');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+      expect(upstreamFetch).toHaveBeenCalledWith(
+        'https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT',
+        expect.objectContaining({ method: 'GET' }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('GET /api/health → 200 with app identity', async () => {
     const res = await client.get('/api/health');
     expect(res.status).toBe(200);

@@ -46,6 +46,12 @@ describe('IndicatorEngine Mathematical Calculation Suite', () => {
       const lastDownRsi = rsiDowntrend[rsiDowntrend.length - 1];
       expect(lastDownRsi).toBeLessThan(15);
       expect(lastDownRsi).toBeGreaterThanOrEqual(0);
+      expect([...rsiUptrend, ...rsiDowntrend].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)).toBe(true);
+    });
+
+    it('returns a neutral bounded value for a flat series and rejects non-finite prices', () => {
+      expect(IndicatorEngine.calculateRSI(Array(20).fill(100), 14).every((value) => value === 50)).toBe(true);
+      expect(IndicatorEngine.calculateRSI([100, 101, Number.NaN, 103], 2)).toEqual([]);
     });
   });
 

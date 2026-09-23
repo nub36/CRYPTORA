@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
 import { LiquidationPipeline, LIQUIDATION_SOURCE_LABELS, type LiquidationSourceId, type LiquidationStreamState } from '@/services/liquidations/LiquidationPipeline';
-import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
-import { LiquidationData, OHLCV } from '@/types/market';
+import { LiquidationData, OHLCV, Timeframe } from '@/types/market';
 import { formatCurrency, formatTimestamp, formatDuration } from '@/utils/formatters';
 import { sideLabel } from '@/utils/labels';
 import { LiquidationHeatmapModelBuilder } from '@/services/liquidations/LiquidationHeatmap';
@@ -11,11 +10,38 @@ import { Flame, ShieldAlert, Clock, Layers } from 'lucide-react';
 import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
 import { LiquidationPriceChart } from '@/components/market/LiquidationPriceChart';
 
+const EMPTY_UNAVAILABLE_LIQUIDATIONS: LiquidationData = {
+  totalLong24h: 0,
+  totalShort24h: 0,
+  total24h: 0,
+  largestEvent: null,
+  eventsCount24h: 0,
+  lastEventAt: null,
+  dataStatus: 'UNAVAILABLE',
+  recentEvents: [],
+  assetBreakdown: [],
+  exchangeBreakdown: [],
+  timeline: [],
+  timelineBucketMinutes: 180,
+  timelineRangeLabel: '',
+  isDemo: false,
+  observationStartedAt: null,
+  observationDurationMs: 0,
+  hasFullObservationWindow: false,
+};
+
+const CHART_TIMEFRAMES: Array<{ value: Timeframe; label: string; seconds: number }> = [
+  { value: '5m', label: '5m', seconds: 300 },
+  { value: '15m', label: '15m', seconds: 900 },
+  { value: '1h', label: '1h', seconds: 3600 },
+  { value: '4h', label: '4h', seconds: 14_400 },
+  { value: '1D', label: '1d', seconds: 86_400 },
+];
+
 export const LiquidationsPage: React.FC = () => {
   const { provider } = useMarketData();
-  const [data, setData] = useState<LiquidationData | null>(null);
+  const [data, setData] = useState<LiquidationData>(EMPTY_UNAVAILABLE_LIQUIDATIONS);
   const [loading, setLoading] = useState(true);
-  const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [clusterInput, setClusterInput] = useState<{
     markPrice: number;
     openInterestUsd: number;
@@ -35,8 +61,15 @@ export const LiquidationsPage: React.FC = () => {
 
   // Инструмент для секции «Цена и ликвидации» + ряд 1h-свечей под него.
   const [liqSymbol, setLiqSymbol] = useState('BTC');
+  const [liqTimeframe, setLiqTimeframe] = useState<Timeframe>('1h');
   const [liqCandles, setLiqCandles] = useState<OHLCV[]>([]);
+  const [liqCandlesLoading, setLiqCandlesLoading] = useState(true);
+  const [liqCandlesError, setLiqCandlesError] = useState(false);
   const [liqPickerOpen, setLiqPickerOpen] = useState(false);
+  const liquidationEvents = useMemo(
+    () => data?.dataStatus === 'DEMO' ? [] : (data?.recentEvents ?? []).filter((event) => !event.isDemo),
+    [data],
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -47,13 +80,12 @@ export const LiquidationsPage: React.FC = () => {
           if (!isActive) return;
           setData(res);
           setStreamStates(LiquidationPipeline.getInstance().getStreamStates());
-          setSourceUnavailable(false);
           setLoading(false);
         })
         .catch(() => {
           // Поток ликвидаций недоступен: честное состояние вместо подстановки демо.
           if (!isActive) return;
-          setSourceUnavailable(true);
+          // State already contains an honest zero/unavailable snapshot; candles stay visible.
           setLoading(false);
         });
     };
@@ -108,21 +140,40 @@ export const LiquidationsPage: React.FC = () => {
     };
   }, [provider]);
 
-  // Свечи для графика «цена + ликвидации» (честное пустое состояние при ошибке).
+  // Свечи — независимый REST/WS источник: liquidation events не являются
+  // условием создания графика. Live provider делает Binance → KuCoin fallback.
   useEffect(() => {
     let isActive = true;
-    provider
-      .getCandles(liqSymbol, '1h', 120)
-      .then((candles) => {
-        if (isActive) setLiqCandles(candles);
-      })
-      .catch(() => {
-        if (isActive) setLiqCandles([]);
-      });
+    let requestInFlight = false;
+    setLiqCandles([]);
+    setLiqCandlesLoading(true);
+    setLiqCandlesError(false);
+
+    const loadCandles = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const candles = await provider.getCandles(liqSymbol, liqTimeframe, 240);
+        if (!isActive) return;
+        setLiqCandles(candles);
+        setLiqCandlesError(false);
+      } catch {
+        if (!isActive) return;
+        // Keep last good history during transient failures; never fabricate bars.
+        setLiqCandlesError(true);
+      } finally {
+        requestInFlight = false;
+        if (isActive) setLiqCandlesLoading(false);
+      }
+    };
+
+    void loadCandles();
+    const timer = window.setInterval(() => void loadCandles(), 30_000);
     return () => {
       isActive = false;
+      window.clearInterval(timer);
     };
-  }, [provider, liqSymbol]);
+  }, [provider, liqSymbol, liqTimeframe]);
 
   const estimatedClusters = useMemo(() => {
     if (!clusterInput) return [];
@@ -132,27 +183,12 @@ export const LiquidationsPage: React.FC = () => {
     );
   }, [clusterInput]);
 
-  if (!loading && sourceUnavailable && !data) {
-    return (
-      <div className="mx-auto flex min-h-[50vh] max-w-2xl items-center px-4">
-        <DataSourceUnavailable subject="поток ликвидаций" />
-      </div>
-    );
-  }
-
-  if (loading || !data) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-sans text-sm">
-        <Flame className="w-5 h-5 animate-spin mr-2 text-rose-500" />
-        Загрузка аналитики ликвидаций...
-      </div>
-    );
-  }
-
   const longPct = data.total24h > 0 ? ((data.totalLong24h / data.total24h) * 100).toFixed(1) : '0.0';
   const shortPct = data.total24h > 0 ? ((data.totalShort24h / data.total24h) * 100).toFixed(1) : '0.0';
   // Масштаб оси баров выводится из фактических данных, а не из зашитой константы
   const timelineMax = Math.max(...data.timeline.map((b) => Math.max(b.longUsd, b.shortUsd)), 0);
+  const selectedChartTimeframe = CHART_TIMEFRAMES.find((item) => item.value === liqTimeframe) ?? CHART_TIMEFRAMES[2];
+  const chartEvents = liquidationEvents.filter((event) => event.symbol.trim().toUpperCase() === liqSymbol.toUpperCase());
 
   /**
    * Тиры по размеру (§44). Классификация чисто визуальная: входные значения
@@ -188,39 +224,43 @@ export const LiquidationsPage: React.FC = () => {
             <h1 className="text-lg sm:text-xl font-bold text-white tracking-wide">
               Карта и поток ликвидаций
             </h1>
-            {data.dataStatus === 'LIVE_STREAM' && (
+            {loading && (
+              <span className="text-[11px] font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/25">ПОЛУЧЕНИЕ ПОТОКА</span>
+            )}
+            {!loading && data.dataStatus === 'LIVE_STREAM' && (
               <span className="text-[11px] font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
                 LIVE-ПОТОК · {connectedSources.length > 0 ? connectedSources.map((id) => LIQUIDATION_SOURCE_LABELS[id].toUpperCase()).join(' · ') : 'БИРЖИ'}
               </span>
             )}
-            {(data.dataStatus === 'AWAITING_STREAM' || data.dataStatus === 'UNAVAILABLE') && (
+            {!loading && (data.dataStatus === 'AWAITING_STREAM' || data.dataStatus === 'UNAVAILABLE') && (
               <span className="text-[11px] font-semibold text-slate-300 bg-slate-500/10 px-2.5 py-0.5 rounded-full border border-slate-400/30">
                 {data.dataStatus === 'AWAITING_STREAM'
                   ? 'ПОТОК ПОДКЛЮЧЕН · ОЖИДАНИЕ СОБЫТИЙ'
                   : 'ПОТОК ЛИКВИДАЦИЙ НЕДОСТУПЕН'}
               </span>
             )}
-            {data.dataStatus === 'DEMO' && (
+            {!loading && data.dataStatus === 'DEMO' && (
               <span className="text-[11px] font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                 QA-СРЕЗ
               </span>
             )}
           </div>
           <p className="text-xs text-slate-400 font-sans mt-0.5">
-            {data.dataStatus === 'LIVE_STREAM' &&
+            {loading && 'Подключаем поток фактических ликвидаций. Свечной график загружается и обновляется независимо.'}
+            {!loading && data.dataStatus === 'LIVE_STREAM' &&
               'Фактические принудительно закрытые позиции по публичным потокам бирж (Binance USD-M forceOrder, Bybit V5 allLiquidation, OKX liquidation-orders). Доли бирж считаются только по подключённым потокам.'}
-            {data.dataStatus === 'AWAITING_STREAM' &&
+            {!loading && data.dataStatus === 'AWAITING_STREAM' &&
               'Поток фактических ликвидаций подключен. Агрегаты появятся после первых событий — оценочные числа не подставляются.'}
-            {data.dataStatus === 'UNAVAILABLE' &&
+            {!loading && data.dataStatus === 'UNAVAILABLE' &&
               'Фактический поток ликвидаций недоступен из текущей сети. Терминал не отображает оценочные суммы вместо реальных данных.'}
-            {data.dataStatus === 'DEMO' &&
+            {!loading && data.dataStatus === 'DEMO' &&
               'Мониторинг принудительно закрытых маржинальных позиций по биржам на QA-датасете.'}
           </p>
         </div>
 
         <div className="text-xs text-slate-400 font-sans">
-          {data.hasFullObservationWindow ? (
+          {loading ? 'Получение фактических событий…' : data.hasFullObservationWindow ? (
             <>Всего ликвидировано за 24ч:{' '}<strong className="text-white font-mono tabular-nums">{formatCurrency(data.total24h, { compact: true })}</strong></>
           ) : data.observationDurationMs > 0 ? (
             <>С момента подключения:{' '}<strong className="text-white font-mono tabular-nums">{formatCurrency(data.total24h, { compact: true })}</strong>{' '}<span className="text-slate-500">· Наблюдение: {formatDuration(data.observationDurationMs)}</span></>
@@ -250,28 +290,96 @@ export const LiquidationsPage: React.FC = () => {
         </p>
       </details>
 
-      {/* Цена и ликвидации на одном графике */}
-      <div className="bg-surface border border-white/[0.08] rounded-xl p-4 shadow-panel">
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
+      {/* Terminal chart: candles are independent of the actual liquidation stream. */}
+      <section className="overflow-hidden rounded-xl border border-white/[0.09] bg-surface shadow-[0_18px_50px_rgba(0,0,0,.24)]" data-qa="liquidation-terminal">
+        <div className="flex flex-col gap-3 border-b border-white/[0.07] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-xs font-bold text-white tracking-wide">Цена и ликвидации</div>
-            <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-              Свечи и фактические события потока на одном графике. Метки полупрозрачные и не закрывают свечи:
-              зелёные — ликвидированные лонги, красные — шорты.
-            </p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold tracking-wide text-white">Цена и ликвидации</h2>
+              <span className="rounded border border-cyan-400/20 bg-cyan-400/[0.07] px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-wider text-cyan-300">MARKET TERMINAL</span>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">Фактические ликвидации отображаются поверх независимой истории свечей.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setLiqPickerOpen(true)}
-            data-qa="liq-picker-open"
-            className="font-mono font-bold text-sm text-white border border-surface-border rounded px-3 py-1.5 bg-surface-elevated hover:text-brand-cyan hover:border-brand-cyan/40 transition-colors"
-            title="Выбрать инструмент для графика"
-          >
-            {liqSymbol}/USDT ▾
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center rounded-md border border-white/[0.08] bg-surface-inset p-0.5" role="group" aria-label="Таймфрейм графика">
+              {CHART_TIMEFRAMES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setLiqTimeframe(item.value)}
+                  aria-pressed={liqTimeframe === item.value}
+                  className={`rounded px-2 py-1.5 font-mono text-[11px] transition-colors ${liqTimeframe === item.value ? 'bg-cyan-400/15 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(34,211,238,.18)]' : 'text-slate-500 hover:text-slate-200'}`}
+                  data-qa={`liq-timeframe-${item.label}`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setLiqPickerOpen(true)}
+              data-qa="liq-picker-open"
+              className="flex items-center gap-2 rounded-md border border-white/[0.1] bg-surface-elevated px-3 py-2 font-mono text-[11px] font-bold text-slate-100 transition hover:border-cyan-300/35 hover:text-cyan-200"
+              title="Выбрать инструмент для графика"
+            >
+              {liqSymbol}/USDT <span className="text-slate-500">⌄</span>
+            </button>
+          </div>
         </div>
-        <LiquidationPriceChart candles={liqCandles} events={data.recentEvents} symbol={liqSymbol} />
-      </div>
+        <div className="grid min-w-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0 p-2 sm:p-3">
+            <LiquidationPriceChart
+              candles={liqCandles}
+              events={chartEvents}
+              symbol={liqSymbol}
+              timeframe={liqTimeframe}
+              timeframeSec={selectedChartTimeframe.seconds}
+              loading={liqCandlesLoading}
+              error={liqCandlesError}
+            />
+          </div>
+          <aside className="border-t border-white/[0.07] bg-surface-inset xl:border-l xl:border-t-0" aria-label="Лента ликвидаций">
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+              <div>
+                <h3 className="text-[11px] font-bold tracking-wide text-slate-200">LIVE LIQUIDATIONS</h3>
+                <p className="mt-0.5 text-[11px] text-slate-600">Фактические события · {liqSymbol}/USDT</p>
+              </div>
+              <span className="flex items-center gap-1.5 rounded-full border border-emerald-400/15 bg-emerald-400/[0.06] px-2 py-1 font-mono text-[11px] text-emerald-300">
+                <i className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />{chartEvents.length} EVENTS
+              </span>
+            </div>
+            <div className="grid grid-cols-[55px_minmax(0,1fr)_68px] gap-2 border-b border-white/[0.05] px-4 py-2 text-[11px] uppercase tracking-wider text-slate-600">
+              <span>Time</span><span>Symbol · Exchange</span><span className="text-right">Side / USD</span>
+            </div>
+            {chartEvents.length === 0 ? (
+              <div className="flex min-h-[184px] flex-col items-center justify-center px-5 text-center" data-qa="liq-chart-feed-empty">
+                <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.07] bg-white/[0.025] text-slate-600"><Flame className="h-3.5 w-3.5" /></span>
+                <p className="text-[11px] font-medium text-slate-400">Событий пока нет</p>
+                <p className="mt-1 max-w-[190px] text-[11px] leading-relaxed text-slate-600">Поток биржевых ликвидаций пуст. История цены продолжает обновляться независимо.</p>
+              </div>
+            ) : (
+              <div className="max-h-[420px] overflow-y-auto">
+                {[...chartEvents].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, 30).map((event) => (
+                  <div key={event.id} className="grid grid-cols-[55px_minmax(0,1fr)_68px] items-center gap-2 border-b border-white/[0.035] px-4 py-2.5 transition-colors hover:bg-white/[0.025]">
+                    <span className="font-mono text-[11px] tabular-nums text-slate-500">{new Date(event.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-mono text-[11px] font-semibold text-slate-200">{event.symbol}/USDT</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-slate-600">{event.exchange}</span>
+                    </span>
+                    <span className="text-right">
+                      <span className={`block font-mono text-[11px] font-bold ${event.side === 'LONG' ? 'text-emerald-300' : 'text-rose-300'}`}>{event.side}</span>
+                      <span className="mt-0.5 block font-mono text-[11px] tabular-nums text-slate-300">{formatCurrency(event.amountUsd, { compact: true })}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="border-t border-white/[0.06] px-4 py-2 font-sans text-[11px] text-slate-600">
+              0 событий — корректное состояние; расчётные уровни не показываются как ликвидации.
+            </div>
+          </aside>
+        </div>
+      </section>
       <SymbolPickerModal
         open={liqPickerOpen}
         onClose={() => setLiqPickerOpen(false)}
@@ -590,12 +698,18 @@ export const LiquidationsPage: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Flame className="w-4 h-4 text-rose-500" />
             <span className="text-xs font-bold text-white tracking-wide">
-              {data.dataStatus === 'DEMO'
-                ? 'Журнал событий ликвидаций QA-датасета'
-                : 'Журнал фактических событий ликвидаций'}
+              {loading
+                ? 'Загрузка журнала событий ликвидаций…'
+                : data.dataStatus === 'DEMO'
+                  ? 'Журнал событий ликвидаций QA-датасета'
+                  : 'Журнал фактических событий ликвидаций'}
             </span>
           </div>
-          {data.dataStatus === 'DEMO' ? (
+          {loading ? (
+            <span className="text-[11px] font-mono text-slate-400 bg-slate-500/10 px-1.5 py-0.5 rounded border border-slate-400/20">
+              ЗАГРУЗКА
+            </span>
+          ) : data.dataStatus === 'DEMO' ? (
             <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
               QA-ДАТАСЕТ
             </span>

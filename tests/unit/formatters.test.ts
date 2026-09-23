@@ -58,10 +58,14 @@ describe('formatNumber', () => {
 });
 
 describe('formatTimestamp', () => {
-  it('formats valid ISO date into UTC time string', () => {
-    const formatted = formatTimestamp('2026-09-15T11:45:00Z');
-    expect(formatted).toContain('UTC');
-    expect(formatted).toContain('11:45:00');
+  it('uses browser-local time by default and keeps an explicit UTC representation', () => {
+    const iso = '2026-09-15T11:45:00Z';
+    const local = formatTimestamp(iso);
+    const expectedLocal = new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    expect(local).toBe(expectedLocal);
+    const utc = formatTimestamp(iso, 'UTC');
+    expect(utc).toContain('UTC');
+    expect(utc).toContain('11:45:00');
   });
 });
 
