@@ -1539,6 +1539,19 @@ strategy feature silently disappears**. The proof that `index.js` is what runs t
 `/api/health` returns `node`, `environment` and `database` fields, which exist only in
 `server/routes/health.js:33-42` — `productionServer.js`'s health handler returns a different shape.
 
+**The most dangerous line in the documentation.** `package.json` defines
+`"start": "node server/productionServer.js"` and `"server": "node server/index.js"` — and
+`docs/STRATEGY_OPERATIONS.md` §10 instructs the operator:
+
+```bash
+npm run server         # или npm start в проде
+```
+
+`npm start` **in production** launches the legacy static server: the site renders, `/api/market` and
+`/api/health` answer, and every account, admin, strategy and signal endpoint silently returns 404. An
+operator following that line verbatim would produce exactly the outage described above, with a
+healthy-looking homepage. The correct production command is `npm run server` (what systemd already runs).
+
 Roadmap 12.1 already notes the systemd mismatch. This audit adds: the nginx `root`, the bind host, the
 dead env vars, and the commented-out TLS block are mismatched too. **Do not overwrite the VPS's
 Certbot-managed nginx config with the repo template** (roadmap 15.4 says the same).
@@ -1685,7 +1698,24 @@ What **was** verified instead: production HTML/JSON for `/`, `/api/health`, `/ap
 `/api/signals`, `/api/strategies/scan-universe`, `/api/admin/scan-universe` (refusal), the full unit +
 integration suite, the production build, and a static read of every page component listed in §3.2.
 
-**Exact commands for the owner (or a CI runner with browsers) to complete the smoke test:**
+**Update — the browser half *was* executed, by CI, on this PR.** GitHub Actions installs Chromium
+(`npx playwright install --with-deps chromium`) and runs `npm run test:e2e` (= `playwright test`, all
+specs in `e2e/`, `screenshotQA` excluded unless `CI_SCREENSHOTS` is set). On PR #15 both jobs passed:
+
+```
+Browser e2e (Chromium)        pass   57s
+Typecheck + Unit + Build      pass   1m42s
+```
+
+That means `e2e/timeframeHang.spec.ts` — the P0 regression covering **BTC `1h → 15m → 1h → 5m` and SOL
+`1h → 15m`**, renderer responsiveness after each switch, navigation back to `/`, and an empty
+`pageerror` list — **passes on the audited commit**, as do `routes.spec.ts`, `browser.spec.ts`,
+`flows.spec.tsx`, `responsive.spec.tsx` and `uiRegression.spec.tsx`. What CI does *not* cover is live
+exchange data (the specs are deliberately data-agnostic because exchange APIs 451 cloud IPs) and any
+interaction with the production deployment. So the remaining manual smoke test is about **production
+data and layout**, not about the renderer hanging.
+
+**Exact commands for the owner (or a CI runner with browsers) to reproduce locally:**
 
 ```bash
 # local / CI, from the repo root
@@ -2131,8 +2161,10 @@ without the owner's explicit separate approval (`docs/DONT_DO.md`, roadmap §0).
 `npm ci` ✅ · `npm run typecheck` ✅ exit 0 · `npm test` ✅ **116 files / 1176 tests** ·
 `tests/integration` ✅ 56 tests with **real PostgreSQL** · `npm run build` ✅ (main chunk 900.69 kB /
 gzip 247.44 kB) · `git diff --check` ✅ clean · server bundle build ✅ but `scanOnce` **undefined** ·
-Playwright E2E ❌ **not run** (no browser binaries installable in the sandbox, no exchange egress, no
-persistent PostgreSQL — §13.5 has the exact commands for the owner).
+Playwright E2E ❌ not run **in the sandbox** (no installable browser binaries, no exchange egress, no
+persistent PostgreSQL) — but ✅ **run by CI on this PR**: `Browser e2e (Chromium) pass 57s` and
+`Typecheck + Unit + Build pass 1m42s`, which includes the P0 `timeframeHang.spec.ts` BTC/SOL timeframe
+regression (§13.5).
 
 ### 16.7 Bug list (ordered)
 
@@ -2160,8 +2192,10 @@ persistent PostgreSQL — §13.5 has the exact commands for the owner).
 1. **Enabling a strategy on production today breaks it visibly and permanently** (F-01 + F-12): red card,
    `TypeError` in `last_error`, an error log line every 15 s, zero signals. Highest-probability accident
    for the next agent — the toggle is one click away on `/strategies` for an admin.
-2. **Deploying the repo's systemd template would silently delete auth, DB, strategies and admin** from
-   the running site while the pages still render (F-11).
+2. **Deploying the repo's systemd template — or running `npm start` in production as
+   `docs/STRATEGY_OPERATIONS.md` §10 instructs — would silently delete auth, DB, strategies and admin**
+   from the running site while the pages still render (F-11). `npm start` = `productionServer.js`;
+   `npm run server` = `index.js`.
 3. **Two sources of truth for signals** will diverge the moment the server engine is fixed: the browser
    ledger has fills/outcomes/TP3, PostgreSQL does not. Any UI that reads both will show contradictory
    numbers. Decide D1 before implementing.
