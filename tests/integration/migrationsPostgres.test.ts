@@ -372,7 +372,7 @@ describe('Миграции идемпотентны и не ломают сос�
     const files = changed.split('\n').filter(Boolean);
     for (const f of files) {
       expect(f, 'нельзя менять существующую миграцию').toMatch(
-        /migrations\/00[67]_/,
+        /migrations\/00[678]_/,
       );
     }
   });
