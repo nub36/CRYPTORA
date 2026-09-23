@@ -21,6 +21,12 @@ import {
 } from '../services/strategySettings.js';
 import { isKnownStrategyId } from '../services/strategyCatalog.js';
 import { schedulerStatus } from '../services/strategyEngine/strategyScheduler.js';
+import {
+  getScanUniverseState,
+  addScanSymbol,
+  removeScanSymbol,
+  SCAN_UNIVERSE_MAX,
+} from '../services/scanUniverse.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -309,6 +315,47 @@ router.patch('/strategies/:strategyId', async (req, res, next) => {
       message: enabled ? 'Стратегия включена' : 'Стратегия выключена',
     });
   } catch (e) {
+    next(e);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Scan Universe (Admin → Монеты)                                      */
+/* ------------------------------------------------------------------ */
+/*
+ * Доступность монет на сайте НЕ управляется здесь: все активные Spot USDT
+ * инструменты Binance доступны автоматически (exchangeInfo). Здесь — только
+ * какие из них сканирует движок сигналов. Хранение — PostgreSQL, общее для
+ * всех процессов и пользователей.
+ */
+
+router.get('/scan-universe', async (_req, res, next) => {
+  try {
+    const state = await getScanUniverseState();
+    res.json({ ...state, max: SCAN_UNIVERSE_MAX });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/scan-universe', async (req, res, next) => {
+  try {
+    const result = await addScanSymbol({ symbol: req.body?.symbol, actorUserId: req.user.id });
+    const state = await getScanUniverseState();
+    res.json({ ...result, ...state, max: SCAN_UNIVERSE_MAX });
+  } catch (e) {
+    if (e?.statusCode) return res.status(e.statusCode).json({ error: 'SCAN_UNIVERSE', message: e.message });
+    next(e);
+  }
+});
+
+router.delete('/scan-universe/:symbol', async (req, res, next) => {
+  try {
+    const result = await removeScanSymbol({ symbol: req.params.symbol, actorUserId: req.user.id });
+    const state = await getScanUniverseState();
+    res.json({ ...result, ...state, max: SCAN_UNIVERSE_MAX });
+  } catch (e) {
+    if (e?.statusCode) return res.status(e.statusCode).json({ error: 'SCAN_UNIVERSE', message: e.message });
     next(e);
   }
 });

@@ -97,13 +97,10 @@ export const CoinDetailPage: React.FC = () => {
   const [chartType, setChartType] = useState<CandleChartType>('candles');
   const [showMA, setShowMA] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerAssets, setPickerAssets] = useState<Array<{ symbol: string; name: string }>>([]);
-  const openPicker = useCallback(() => {
-    setPickerOpen(true);
-    void provider.getAssets()
-      .then((assets) => setPickerAssets(assets.map(({ symbol: assetSymbol, name }) => ({ symbol: assetSymbol, name }))))
-      .catch(() => { /* Keep the shared canonical catalog available if exchange lookup fails. */ });
-  }, [provider]);
+  // The picker lazily loads the full active Spot universe itself (exchangeInfo,
+  // cached app-wide). No provider.getAssets() here: that would pull bulk tickers
+  // and kick off candle enrichment just to open a selector.
+  const openPicker = useCallback(() => setPickerOpen(true), []);
   const [btcCandles, setBtcCandles] = useState<OHLCV[]>([]);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>('idle');
 
@@ -462,7 +459,6 @@ export const CoinDetailPage: React.FC = () => {
           onClose={() => setPickerOpen(false)}
           onSelect={(base) => navigate(`/coin/${base.toUpperCase()}`)}
           current={routeSymbol}
-          availableAssets={pickerAssets}
           title="Выбор монеты"
         />
       </div>
@@ -1217,7 +1213,6 @@ export const CoinDetailPage: React.FC = () => {
         onClose={() => setPickerOpen(false)}
         onSelect={(base) => navigate(`/coin/${base.toUpperCase()}`)}
         current={asset.symbol}
-        availableAssets={pickerAssets}
         title="Выбор монеты для графика"
       />
     </div>

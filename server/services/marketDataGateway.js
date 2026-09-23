@@ -1,3 +1,6 @@
+import { spotUniversePayload, futuresUniversePayload } from './exchangeUniverse.js';
+import { assetMetadataPayload } from './assetMetadata.js';
+
 const BINANCE_SPOT = 'https://api.binance.com';
 const BINANCE_FUTURES = 'https://fapi.binance.com';
 const KUCOIN_SPOT = 'https://api.kucoin.com';
@@ -78,6 +81,17 @@ const ROUTES = new Map([
 ]);
 
 /**
+ * Server-computed, cached catalog endpoints. The browser gets a compact list
+ * instead of downloading multi-MB exchangeInfo itself; upstream is hit at most
+ * once per cache TTL regardless of the number of clients.
+ */
+const COMPUTED_ROUTES = new Map([
+  ['/universe/spot', { handler: spotUniversePayload, cacheSeconds: 300 }],
+  ['/universe/futures', { handler: futuresUniversePayload, cacheSeconds: 300 }],
+  ['/metadata/assets', { handler: assetMetadataPayload, cacheSeconds: 3600 }],
+]);
+
+/**
  * Proxies one allowlisted GET request to a fixed public exchange endpoint.
  * Returns JSON rather than exposing a generic proxy. No cookies or credentials
  * are forwarded, and cache/memory use is bounded to the request lifetime.
@@ -90,6 +104,17 @@ const ROUTES = new Map([
 export async function requestMarketData(routePath, query, options = {}) {
   if (typeof routePath !== 'string' || routePath.length > 180 || routePath.includes('..')) {
     return { status: 404, body: { error: 'Unknown market-data endpoint' } };
+  }
+  const computed = COMPUTED_ROUTES.get(routePath);
+  if (computed) {
+    if (!(query instanceof URLSearchParams) || [...query.keys()].length > 0) {
+      return { status: 400, body: { error: 'Invalid market-data query' } };
+    }
+    try {
+      return { status: 200, body: await computed.handler(), cacheSeconds: computed.cacheSeconds };
+    } catch {
+      return { status: 503, body: { error: 'Exchange universe temporarily unavailable' } };
+    }
   }
   const route = ROUTES.get(routePath);
   if (!route) return { status: 404, body: { error: 'Unknown market-data endpoint' } };
@@ -126,4 +151,4 @@ export async function requestMarketData(routePath, query, options = {}) {
   }
 }
 
-export const marketDataGatewayRoutes = Object.freeze([...ROUTES.keys()]);
+export const marketDataGatewayRoutes = Object.freeze([...ROUTES.keys(), ...COMPUTED_ROUTES.keys()]);

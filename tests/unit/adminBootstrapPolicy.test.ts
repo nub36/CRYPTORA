@@ -78,7 +78,7 @@ describe('admin bootstrap policy — no plaintext admin password anywhere', () =
      *   3. никакого захардкоженного пароля/роли/токена.
      */
     const CREDENTIAL_TABLES = ['users', 'sessions', 'audit_log', 'email_verification_tokens'];
-    const INSERT_WHITELIST = ['strategy_settings'];
+    const INSERT_WHITELIST = ['strategy_settings', 'scan_universe'];
 
     for (const f of files) {
       const sql = fs.readFileSync(path.join(dir, f), 'utf8');

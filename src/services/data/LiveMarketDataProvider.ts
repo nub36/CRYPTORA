@@ -37,6 +37,12 @@ import { IndicatorEngine, type CompleteIndicatorsResult } from '../indicators/In
 import { CoinGeckoAdapter } from './adapters/CoinGeckoAdapter';
 import { CandleHistoryService } from './CandleHistoryService';
 import { extractBinanceSpread } from './adapters/normalization';
+import {
+  getActiveSpotBaseSet,
+  getFuturesUniverse,
+  type FuturesUniverse,
+} from './registry/exchangeUniverse';
+import type { CanonicalAsset } from './registry/assetRegistry';
 
 /** Длительность одной свечи — нужна, чтобы запросить у резервной биржи явное окно. */
 const TIMEFRAME_MS: Partial<Record<Timeframe, number>> = {
@@ -58,7 +64,18 @@ export interface LiveMarketDataProviderConfig {
   cacheTtlMs?: number;
   anomalyEngine?: AnomalyEngine;
   candleHistoryService?: CandleHistoryService;
+  /**
+   * Authoritative active Spot USDT bases (Binance exchangeInfo via server).
+   * null = unknown → historical ticker records are NOT trusted; only the
+   * canonical catalog is listed (degraded mode).
+   */
+  activeSpotSymbols?: () => Promise<Set<string> | null>;
+  /** Active USD-M USDT perpetuals (exchangeInfo via server); null = unknown. */
+  futuresUniverse?: () => Promise<FuturesUniverse | null>;
 }
+
+/** Per-symbol OI requests are bounded to this many contracts (the rest show «—»). */
+export const FUTURES_OI_DETAIL_LIMIT = 30;
 
 export class LiveMarketDataProvider implements MarketDataProvider {
   public readonly isDemo = false;
@@ -73,6 +90,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   private readonly fearGreedTtlMs = 10 * 60 * 1000;
   private readonly cacheTtlMs: number;
   private readonly anomalyEngine?: AnomalyEngine;
+  private readonly activeSpotSymbols: () => Promise<Set<string> | null>;
+  private readonly futuresUniverse: () => Promise<FuturesUniverse | null>;
 
   // In-memory cache for rate-limiting protection
   private assetCache: { data: AssetSummary[]; timestamp: number } | null = null;
@@ -95,6 +114,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     this.candleHistory = config.candleHistoryService ?? CandleHistoryService.getInstance();
     this.cacheTtlMs = config.cacheTtlMs ?? 10000; // 10s default TTL
     this.anomalyEngine = config.anomalyEngine;
+    this.activeSpotSymbols = config.activeSpotSymbols ?? (() => getActiveSpotBaseSet());
+    this.futuresUniverse = config.futuresUniverse ?? (() => getFuturesUniverse());
   }
 
   /**
@@ -115,14 +136,20 @@ export class LiveMarketDataProvider implements MarketDataProvider {
 
     // BULK: 1 request instead of 25 (Binance /api/v3/ticker/24hr, weight 40)
     let bulkTickers: Map<string, any> | null = null;
-    try {
-      const allTickers = await this.binance.fetchAll24hrTickers();
-      bulkTickers = new Map(allTickers.map((t) => [t.symbol.toUpperCase(), t]));
-    } catch {
-      // Bulk failed — will try per-symbol below as degraded fallback
+    const [bulkResult, activeResult] = await Promise.allSettled([
+      this.binance.fetchAll24hrTickers(),
+      this.activeSpotSymbols(),
+    ]);
+    if (bulkResult.status === 'fulfilled') {
+      bulkTickers = new Map(bulkResult.value.map((t) => [t.symbol.toUpperCase(), t]));
     }
+    // Bulk failed — per-symbol fallback below. Active set unknown → only canonical rows.
+    const activeSpot = activeResult.status === 'fulfilled' ? activeResult.value : null;
 
     for (const asset of canonicalList) {
+      // A canonical asset that is no longer TRADING on Binance Spot is not listed
+      // (its stale historical ticker would otherwise look like a live quote).
+      if (activeSpot && !activeSpot.has(asset.symbol)) continue;
       // 1. Try bulk ticker
       if (bulkTickers && asset.binanceSymbol) {
         const ticker = bulkTickers.get(asset.binanceSymbol.toUpperCase());
@@ -155,14 +182,15 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       }
     }
 
-    // The canonical registry is metadata enrichment, not a whitelist. The Binance
-    // Spot ticker endpoint returns the exchange's current ticker universe; include
-    // every additional USDT-quoted spot base and leave absent cap/supply metadata blank.
-    if (bulkTickers) {
+    // The canonical registry is metadata enrichment, not a whitelist. The universe
+    // is Binance Spot exchangeInfo (quoteAsset=USDT, status=TRADING, spot allowed).
+    // The bulk ticker endpoint also returns thousands of HISTORICAL records (VEN,
+    // XRPBULL, BCC, *UP/*DOWN…), so a ticker alone never admits a symbol.
+    if (bulkTickers && activeSpot) {
       const knownSymbols = new Set(canonicalList.map((asset) => asset.symbol));
       const additions = [...bulkTickers.values()]
         .map((ticker) => normalizeUnregisteredBinanceTicker(ticker))
-        .filter((asset): asset is AssetSummary => asset !== null && !knownSymbols.has(asset.symbol))
+        .filter((asset): asset is AssetSummary => asset !== null && !knownSymbols.has(asset.symbol) && activeSpot.has(asset.symbol))
         .sort((a, b) => b.volume24h - a.volume24h || a.symbol.localeCompare(b.symbol));
       additions.forEach((asset, index) => {
         asset.rank = canonicalList.length + index + 1;
@@ -624,25 +652,53 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       ]);
 
       const tickerMap = new Map(tickers.map((t) => [t.symbol.toUpperCase(), t]));
+      const premiumMap = new Map(premiums.map((p) => [p.symbol.toUpperCase(), p]));
       const canonicalList = getCanonicalAssets().filter((a) => a.binanceSymbol);
-      const oiHistMap = await this.fetchOpenInterestHistory(canonicalList.map((a) => a.binanceSymbol as string), now);
-      const oiSpotMap = await this.fetchOpenInterestSpot(canonicalList.map((a) => a.binanceSymbol as string), now);
+      const canonicalByExchange = new Map(canonicalList.map((a) => [a.binanceSymbol as string, a]));
+
+      // Universe = ALL active USD-M USDT perpetuals from exchangeInfo (not canonical 25).
+      // Degraded fallback when exchangeInfo is unknown: canonical perps only.
+      const universe = await this.futuresUniverse().catch(() => null);
+      const contracts: Array<{ exchangeSymbol: string; base: string }> = universe
+        ? universe.contracts.map((c) => ({ exchangeSymbol: c.exchangeSymbol, base: c.symbol }))
+        : canonicalList.map((a) => ({ exchangeSymbol: a.binanceSymbol as string, base: a.symbol }));
+
+      // Per-symbol OI endpoints cost one request per contract. They are bounded to the
+      // canonical perps + top futures volume (FUTURES_OI_DETAIL_LIMIT); other rows show
+      // OI from no source («—»), never an estimate. No N×requests storm for 500+ contracts.
+      const byVolume = [...contracts].sort(
+        (a, b) => parseFloat(tickerMap.get(b.exchangeSymbol)?.quoteVolume ?? '0') - parseFloat(tickerMap.get(a.exchangeSymbol)?.quoteVolume ?? '0'),
+      );
+      const oiSymbols = [...new Set([
+        ...contracts.filter((c) => canonicalByExchange.has(c.exchangeSymbol)).map((c) => c.exchangeSymbol),
+        ...byVolume.map((c) => c.exchangeSymbol),
+      ])].slice(0, FUTURES_OI_DETAIL_LIMIT);
+      const oiHistMap = await this.fetchOpenInterestHistory(oiSymbols, now);
+      const oiSpotMap = await this.fetchOpenInterestSpot(oiSymbols, now);
       const results: FuturesAsset[] = [];
 
-      for (const asset of canonicalList) {
-        const premium = premiums.find((p) => p.symbol.toUpperCase() === asset.binanceSymbol);
-        if (premium) {
-          const ticker = tickerMap.get(asset.binanceSymbol as string);
-          const futuresAsset = DerivativesEngine.normalizeFuturesAsset(
-            asset,
-            premium,
-            ticker,
-            oiSpotMap.get(asset.binanceSymbol as string),
-            oiHistMap.get(asset.binanceSymbol as string)
-          );
-          results.push(futuresAsset);
-        }
+      for (const contract of contracts) {
+        const premium = premiumMap.get(contract.exchangeSymbol);
+        if (!premium) continue;
+        const asset: CanonicalAsset = canonicalByExchange.get(contract.exchangeSymbol) ?? {
+          symbol: contract.base, name: contract.base, category: 'other', rank: Number.MAX_SAFE_INTEGER,
+          binanceSymbol: contract.exchangeSymbol, kucoinSymbol: null, coingeckoId: null, description: '', circulatingSupply: 0,
+        };
+        results.push(DerivativesEngine.normalizeFuturesAsset(
+          asset,
+          premium,
+          tickerMap.get(contract.exchangeSymbol),
+          oiSpotMap.get(contract.exchangeSymbol),
+          oiHistMap.get(contract.exchangeSymbol),
+        ));
       }
+
+      // Stable order: canonical perps by rank first (BTC, ETH, …), then by futures volume.
+      results.sort((a, b) => {
+        const ra = canonicalByExchange.get(`${a.symbol.split('/')[0]}USDT`)?.rank ?? Number.MAX_SAFE_INTEGER;
+        const rb = canonicalByExchange.get(`${b.symbol.split('/')[0]}USDT`)?.rank ?? Number.MAX_SAFE_INTEGER;
+        return ra - rb || b.futuresVolume24h - a.futuresVolume24h || a.symbol.localeCompare(b.symbol);
+      });
 
       if (results.length > 0) {
         const withLiq = this.applyFactualLiquidations(results, now);

@@ -102,7 +102,8 @@ beforeAll(async () => {
   });
   expect(out).toContain('✓ 006_strategy_settings');
   expect(out).toContain('✓ 007_signals');
-  expect(out).toContain('Done. 7 migration(s) applied.');
+  expect(out).toContain('✓ 008_scan_universe');
+  expect(out).toContain('Done. 8 migration(s) applied.');
 
   client = await (pg as any).getPgClient('cryptora');
   await client.connect();

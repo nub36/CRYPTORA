@@ -1,15 +1,23 @@
 /**
- * SymbolPickerModal — выбор монеты попапом: поиск + список реестра.
+ * SymbolPickerModal — выбор монеты попапом: поиск по тикеру и названию.
  * Используется на графике монеты (/coin) и на ликвидациях.
  *
- * Если введённый текст — валидный тикер, но его нет в реестре, предлагается
- * выбрать его как есть (свечи для него берутся напрямую с Binance spot, а
- * карточка /coin для неизвестного тикера честно покажет «Актив не найден»).
+ * Вселенная — ПОЛНЫЙ список активных Binance Spot USDT инструментов
+ * (exchangeInfo через сервер), а не canonical 25. Для каждого из них реально
+ * поддерживаются свечи (Binance Spot klines BASEUSDT), поэтому тот же список
+ * годится и для /liquidations.
+ *
+ * Производительность: список рендерит не более PICKER_RENDER_LIMIT строк —
+ * поиск сужает выдачу; тяжёлая аналитика для результатов не загружается,
+ * логотипы — ленивые <img> из общего кэша метаданных (один запрос на всё).
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Search } from 'lucide-react';
 import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
+import { getSelectableSpotSymbols } from '@/services/data/registry/exchangeUniverse';
+import { getCoinNames } from '@/services/data/registry/coinLogoRegistry';
+import { CoinIcon } from './CoinIcon';
 
 export interface PickerEntry {
   symbol: string;
@@ -18,29 +26,51 @@ export interface PickerEntry {
 }
 
 const TICKER_RE = /^[A-Z0-9]{2,20}$/;
+/** DOM bound for the result list (search narrows it; no 500-row render). */
+export const PICKER_RENDER_LIMIT = 60;
 
-/** Чистая фильтрация для списка + опция «свой тикер». Покрыта юнит-тестами. */
+/**
+ * Чистая фильтрация для списка. Покрыта юнит-тестами.
+ * @param availableAssets полный активный universe (symbol + name)
+ * @param authoritative true — universe из exchangeInfo: «свой тикер» не предлагается,
+ *   т.к. неактивный инструмент выбрать нельзя; false — деградированный режим.
+ */
 export function filterPickerSymbols(
   query: string,
   availableAssets: readonly { symbol: string; name: string }[] = [],
+  authoritative = false,
 ): PickerEntry[] {
   const q = query.trim().toUpperCase();
   const universe = new Map<string, { symbol: string; name: string }>();
-  for (const asset of CANONICAL_ASSETS) universe.set(asset.symbol, { symbol: asset.symbol, name: asset.name });
+  if (!authoritative) {
+    for (const asset of CANONICAL_ASSETS) universe.set(asset.symbol, { symbol: asset.symbol, name: asset.name });
+  }
   for (const asset of availableAssets) {
     const symbol = asset.symbol.toUpperCase().split('/')[0]!.replace(/USDT$/, '');
-    if (TICKER_RE.test(symbol) && !universe.has(symbol)) universe.set(symbol, { symbol, name: asset.name });
+    if (/^[A-Z0-9]{1,20}$/.test(symbol) && !universe.has(symbol)) universe.set(symbol, { symbol, name: asset.name || symbol });
   }
-  const matches: PickerEntry[] = [...universe.values()]
-    .filter((a) => !q || a.symbol.includes(q) || a.name.toUpperCase().includes(q))
-    .map((a) => ({ symbol: a.symbol, name: a.name, custom: false }));
-  if (q) {
+  const all = [...universe.values()];
+  const matches: PickerEntry[] = (q
+    ? all
+      .filter((a) => a.symbol.includes(q) || a.name.toUpperCase().includes(q))
+      // exact ticker → ticker prefix → name match
+      .sort((a, b) => rankMatch(a, q) - rankMatch(b, q) || a.symbol.localeCompare(b.symbol))
+    : all
+  ).map((a) => ({ symbol: a.symbol, name: a.name, custom: false }));
+  if (q && !authoritative) {
     const base = (q.includes('/') ? q.split('/')[0]! : q).trim().replace(/USDT$/, '');
     if (TICKER_RE.test(base) && !universe.has(base)) {
       matches.push({ symbol: base, name: 'Тикер вне реестра (свечи — Binance spot)', custom: true });
     }
   }
   return matches;
+}
+
+function rankMatch(a: { symbol: string; name: string }, q: string): number {
+  if (a.symbol === q) return 0;
+  if (a.symbol.startsWith(q)) return 1;
+  if (a.symbol.includes(q)) return 2;
+  return 3;
 }
 
 interface SymbolPickerModalProps {
@@ -50,7 +80,10 @@ interface SymbolPickerModalProps {
   title?: string;
   /** Подсказка-текущий выбор (подсвечивается в списке). */
   current?: string;
-  /** Extra assets from the active provider, merged with the canonical spot catalog. */
+  /**
+   * Optional explicit universe (tests / special pages). By default the picker
+   * lazily loads the full active Spot universe when opened.
+   */
   availableAssets?: readonly { symbol: string; name: string }[];
 }
 
@@ -60,9 +93,23 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
   onSelect,
   title = 'Выбор монеты',
   current,
-  availableAssets = [],
+  availableAssets,
 }) => {
   const [query, setQuery] = useState('');
+  const [loaded, setLoaded] = useState<{ assets: { symbol: string; name: string }[]; authoritative: boolean } | null>(null);
+
+  // Lazy: universe + names are fetched only when the picker is opened (both cached app-wide).
+  useEffect(() => {
+    if (!open || availableAssets) return;
+    let active = true;
+    void getSelectableSpotSymbols().then(async ({ symbols, authoritative }) => {
+      if (!active) return;
+      setLoaded({ assets: symbols.map((symbol) => ({ symbol, name: symbol })), authoritative });
+      const names = await getCoinNames(symbols);
+      if (active) setLoaded({ assets: symbols.map((symbol) => ({ symbol, name: names.get(symbol) ?? symbol })), authoritative });
+    });
+    return () => { active = false; };
+  }, [open, availableAssets]);
   const inputRef = useRef<HTMLInputElement>(null);
   const currentUpper = (current ?? '').toUpperCase();
 
@@ -83,7 +130,13 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
     return undefined;
   }, [open, onClose]);
 
-  const entries = useMemo(() => filterPickerSymbols(query, availableAssets), [query, availableAssets]);
+  const universeAssets = availableAssets ?? loaded?.assets ?? [];
+  const authoritative = availableAssets ? false : Boolean(loaded?.authoritative);
+  const entries = useMemo(
+    () => filterPickerSymbols(query, universeAssets, authoritative),
+    [query, universeAssets, authoritative],
+  );
+  const visibleEntries = entries.slice(0, PICKER_RENDER_LIMIT);
 
   if (!open) return null;
 
@@ -117,6 +170,15 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
           </button>
         </div>
         <div className="border-b border-surface-border p-3">
+          <div className="mb-2 font-sans text-[11px] text-slate-500" data-qa="symbol-picker-universe">
+            {availableAssets
+              ? `Инструментов: ${universeAssets.length}`
+              : loaded
+                ? loaded.authoritative
+                  ? `Активных Spot USDT на Binance: ${loaded.assets.length}`
+                  : 'Список активных инструментов недоступен — показан базовый каталог'
+                : 'Загрузка списка инструментов…'}
+          </div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
@@ -137,7 +199,7 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
               Ничего не найдено. Введите тикер вида BTC или PEPE.
             </div>
           )}
-          {entries.map((e) => (
+          {visibleEntries.map((e) => (
             <button
               key={`${e.symbol}-${e.custom ? 'custom' : 'reg'}`}
               type="button"
@@ -148,14 +210,20 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
               }`}
             >
               <span className="flex items-center gap-2">
+                <span aria-hidden="true" className="contents"><CoinIcon symbol={e.symbol} size={20} /></span>
                 <span className="font-mono text-sm font-bold text-white">{e.symbol}</span>
                 {e.symbol === currentUpper && (
                   <span className="font-sans text-[11px] text-brand-cyan">· текущая</span>
                 )}
               </span>
-              <span className="font-sans text-[11px] text-slate-400">{e.name}</span>
+              <span className="ml-3 truncate font-sans text-[11px] text-slate-400">{e.name}</span>
             </button>
           ))}
+          {entries.length > visibleEntries.length && (
+            <div className="px-3 py-2 text-center font-sans text-[11px] text-slate-500" data-qa="symbol-picker-more">
+              Показано {visibleEntries.length} из {entries.length} — уточните поиск
+            </div>
+          )}
         </div>
       </div>
     </div>
