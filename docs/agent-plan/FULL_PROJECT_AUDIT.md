@@ -31,7 +31,9 @@ a command that was actually run in this audit, or a live production response cap
 
 1. The **frontend is healthy**: `npm ci`, `npm run typecheck`, `npm test` (1176 tests), and
    `npm run build` all pass on the audited commit, and the production site serves live Binance/KuCoin
-   data at v0.9.3.
+   data at v0.9.3. Caveat: in CI `npm test` intermittently exits 1 with **zero failing tests** — two
+   unhandled `pg` `FATAL 57P01` errors from the integration teardown (F-17, §13.6), which is also a
+   real production crash path.
 2. The **browser-side signal engine works** and is the only signal generator that actually produces
    anything today: `LiveSignalEngine` is auto-started by `MarketDataContext`, scans the server-owned
    scan universe (24 symbols live), and writes an append-only SHA-256-chained ledger into
@@ -69,6 +71,7 @@ a command that was actually run in this audit, or a live production response cap
 | F-14 | **P3** | Main JS bundle is 900.69 kB (gzip 247.44 kB) — roadmap 16.1 not started | build log in §13.4 | §13.4, §14 |
 | F-15 | **P3** | Liquidation journal filters are missing the `$1M` tier and a per-symbol filter (roadmap 8.2) | `LiquidationsPage.tsx:61` | §14 |
 | F-16 | **P3** | Stale concept docs still describe Stage-1 architecture (TimescaleDB/ClickHouse/Redis, `/api/v1/*`, DemoMarketDataProvider) | §2.3 | §2.3 |
+| F-17 | **P1** | The `pg` Pool has **no `pool.on('error')` listener** and the backend has **no process-level exception handler** → a backend-initiated `FATAL` on an idle pooled connection (Postgres restart/failover/idle-kill, `57P01 admin_shutdown`) escapes as an uncaught `'error'` event and kills the Node process; in CI the same defect turns a fully green suite (1176/1176 passed) into a red job | `server/db/pool.js:16-27`; CI job log reproduced in §13.6 | §13.6 |
 
 **No P0 findings.** The last P0 (Chrome renderer hang) is fixed and correctly guarded (§10).
 
@@ -84,7 +87,9 @@ a command that was actually run in this audit, or a live production response cap
 | Production build | `npm run build` | ✅ built in 6.47 s; main chunk 900.69 kB / gzip 247.44 kB |
 | Whitespace errors | `git diff --check` | ✅ clean (exit 0) |
 | Server strategy bundle | `node --input-type=module` → `loadStrategyCore()` | ✅ esbuild builds `src/` → `.generated/strategyCore.mjs`; **`scanOnce` is `undefined`**, `scanNow` is a function (F-01) |
-| Browser E2E | `npx playwright install chromium --with-deps` | ❌ **could not run** — sandbox lacks the system packages (`libxrandr2`, `xvfb`, font packages, …). See §13.5 for the exact owner-side commands |
+| Browser E2E (local) | `npx playwright install chromium --with-deps` | ❌ **could not run** — sandbox lacks the system packages (`libxrandr2`, `xvfb`, font packages, …). See §13.5 for the exact owner-side commands |
+| Browser E2E (CI) | GitHub Actions job `Browser e2e (Chromium)` | ✅ **ran and passed on all three commits of this PR** (57 s – 1 m 2 s), including the P0 timeframe-hang spec (BTC/SOL) — see §13.5 |
+| CI unit-job forensics | `gh api repos/…/actions/jobs/<id>/logs` → signed blob URL fetched directly | ⚠️ job red with **116 files / 1176 tests passed** and `Errors 2 errors`: serialized `pg` `FATAL code 57P01 admin_shutdown` on an embedded-postgres client → **F-17** (§13.6) |
 | Production liveness | `fetch_page` on 6 public endpoints | ✅ v0.9.3, DB connected, universe 494 spot / 732 futures, 24-symbol scan universe, 3 strategies OFF, `/api/signals` empty, admin endpoints refuse unauthenticated callers |
 
 ---
@@ -1736,43 +1741,89 @@ for p in /api/health /api/strategies /api/signals /api/strategies/scan-universe 
 #                   /admin → login as admin only; never bypass auth
 ```
 
-### 13.6 CI observation on this PR (recorded honestly, unresolved)
+### 13.6 CI on this PR: a red job with 1176/1176 tests passing — root cause found (F-17)
 
-This PR contains **only** `docs/agent-plan/FULL_PROJECT_AUDIT.md`. CI ran twice:
+This PR contains **only** `docs/agent-plan/FULL_PROJECT_AUDIT.md`. CI ran three times:
 
 | Commit | Typecheck + Unit + Build | Browser e2e (Chromium) |
 |---|---|---|
-| `011045a` (audit document) | ✅ pass 1m42s | ✅ pass 57s |
-| `ca4105c` (+34 lines of markdown) | ❌ **fail 1m32s**, step `Run npm test`, exit 1 | ✅ pass 57s |
+| `011045a` (the audit document) | ✅ pass 1m42s | ✅ pass 57s |
+| `ca4105c` (+34 lines of markdown) | ❌ **fail 1m32s** — step `Run npm test`, exit 1 | ✅ pass 57s |
+| `08cfce1` (+markdown) | ❌ **fail 1m39s** — step `Run npm test`, exit 1 | ✅ pass 1m2s |
 
-A markdown-only diff cannot change the behaviour of `npm test`, and the same suite passes locally
-(1176/1176, twice — full run and integration-only run). The conclusion is that the second failure is
-**environmental/flaky, not caused by this PR**. The failing test could not be identified because the
-Actions log blob host (`productionresultssa13.blob.core.windows.net`) is unreachable from the audit
-sandbox, `gh run rerun --failed` refused (`run cannot be rerun`), and the only annotation published is
-`Process completed with exit code 1` on the `Run npm test` step.
+The raw job log is retrievable even though `gh run view --log` cannot reach the blob host from this
+sandbox: `gh api repos/nub36/CRYPTORA/actions/jobs/<id>/logs` prints the signed blob URL in its error
+message, and fetching that URL directly returns the full text. The log settles the question:
 
-Most probable causes, in order — both are pre-existing fragilities, not new defects:
+```
+ Test Files  116 passed (116)
+      Tests  1176 passed (1176)
+     Errors  2 errors
+##[error]Process completed with exit code 1.
+```
 
-1. **`tests/integration/migrationsPostgres.test.ts`** starts a real PostgreSQL through
-   `embedded-postgres`. The roadmap already records this failing on the VPS with `initdb EACCES`
-   (§12 of the roadmap, task 12.1). On a loaded or freshly-imaged GitHub runner the same binary can be
-   slow or fail to initialise. It passed in the previous run, which is consistent with intermittency.
-2. **`tests/unit/volumeProfileTermination.test.ts`** is deliberately **wall-clock bounded**
-   (`< 2 s` and `< 5 s` for the 22-position gap sweep) so that a re-introduced hang fails instead of
-   hanging the runner. That is the right trade for a P0 guardrail, but it also means the test can fail
-   on a slow runner without any hang. Locally the whole file takes ~1.3 s of test time.
+**Not one test failed.** Vitest exited non-zero because of two *unhandled errors*, both attributed to
+`tests/integration/strategyOperations.test.ts`. The serialized error in the log is a `pg` error object:
 
-**Recommended follow-ups (both test-infrastructure only, no strategy code):**
-make the integration suite's PostgreSQL startup retry once and print `initdb` output on failure; and
-either raise the wall-clock ceilings for the termination sweep or express the bound in *iterations*
-(the loop is provably bounded by `bucketsCount`, so an iteration counter is a stronger and
-machine-independent assertion). Also worth adding: `retry: 1` for the unit job, or splitting
-`tests/integration` into its own job so a PostgreSQL-runner hiccup does not red-flag a documentation PR.
+```
+severity: 'FATAL', code: '57P01', routine: 'ProcessInterrupts', file: 'postgres.c', line: '3356'
+client.connectionParameters: { user: 'cryptora', database: 'cryptora', host: '127.0.0.1', port: 43535 }
+client._poolUseCount: 45, client._ending: true, client._ended: false, stream.destroyed: true,
+stream._readableState.readableAborted: true
+```
 
-Until this is understood, **a red `Typecheck + Unit + Build` on a docs-only commit should be treated as
-suspect and re-run**, not as a regression — but it should never be ignored either, because the same job
-is what protects the P0 hang guardrail.
+`57P01` = `admin_shutdown`, "terminating connection due to administrator command" — exactly what happens
+when the integration suite's embedded PostgreSQL is stopped in `afterAll` while a pooled client still
+exists.
+
+Why it escapes instead of being absorbed (all four verified in the tree):
+
+1. `server/db/pool.js:16-27` builds `new Pool({...})` and **never attaches `pool.on('error', ...)`**.
+   `pg` delivers errors that occur on *idle* (not checked-out) clients through the pool's `'error'`
+   event; with no listener that becomes an uncaught `'error'` event on the process.
+2. There is **no `process.on('uncaughtException' | 'unhandledRejection')` handler anywhere in `server/`**
+   (grep; the only `.on('error')` in the backend is a file stream in the legacy
+   `productionServer.js:182`).
+3. `closePool()` sets `pool = null` while `getPool()` re-creates the pool on the next call
+   (`server/db/pool.js:14-27`, `:53-58`), so a query issued by anything still settling after teardown
+   opens brand-new connections that the following `pg.stop()` then kills.
+4. `afterAll` in `tests/integration/strategyOperations.test.ts:135-152` **already contains a comment
+   describing this exact hazard** and orders `db.end() → closeServer() → closePool() → pg.stop()`. The
+   guard narrows the window; it does not close it (and `srv.close(cb)` in
+   `tests/helpers/httpHarness` does not force keep-alive sockets shut).
+
+**This PR did not cause it.** The diff is markdown, the same job passed on `011045a`, and the identical
+content passes locally: full suite 116 files / 1176 tests with **no** `Errors` line (twice), plus three
+isolated runs of `tests/integration/strategyOperations.test.ts` (23/23 each), all clean. The race needs a
+loaded runner — in CI all 116 files run concurrently, including three suites that each boot their own
+embedded PostgreSQL, so teardowns interleave with shutdowns.
+
+**Why this matters far beyond CI — this is finding F-17 (P1).** The same missing listener means that in
+production a Postgres restart, a failover, an idle-session kill, a `pg_terminate_backend()` during
+maintenance, or a network blip on an *idle* pooled connection emits `FATAL 57P01`/`57P02` on a client
+nobody is awaiting → uncaught `'error'` event → **the `cryptora.service` Node process dies**. The repo's
+`systemd/cryptora.service` has `Restart=always` / `RestartSec=5s`, so it would come back in ~5 s — but
+§12.4 shows that template does **not** match the deployed unit, so the real restart policy on the VPS is
+unverified. If it lacks `Restart=`, the site stays down until a human notices. This is the cheapest
+high-value fix in the entire audit: one event listener.
+
+**Recommended fix (needs approval — backend, but zero strategy logic):**
+
+```js
+// server/db/pool.js — inside getPool(), immediately after `pool = new Pool({...})`
+pool.on('error', (err) => {
+  // Backend errors on IDLE clients (57P01 admin_shutdown, 57P02 crash_shutdown, ECONNRESET).
+  // pg discards the client itself; the event must not escape as an uncaught 'error'.
+  console.warn('[pool] idle client error', err.code, err.message);
+});
+```
+
+plus, in the integration teardown: make `closePool()` terminal (a `closed` flag so `getPool()` cannot
+re-create a pool during shutdown) and call `server.closeAllConnections()` before `closeServer()`
+resolves. A `process.on('unhandledRejection')` *logger* is worth adding too.
+
+**Do NOT "fix" this** with `dangerouslyIgnoreUnhandledErrors: true` in `vitest.config.ts` or a CI
+`retry:`/rerun policy: that hides a genuine production crash path behind a permanently green build.
 
 ---
 
@@ -2200,9 +2251,15 @@ without the owner's explicit separate approval (`docs/DONT_DO.md`, roadmap §0).
 `tests/integration` ✅ 56 tests with **real PostgreSQL** · `npm run build` ✅ (main chunk 900.69 kB /
 gzip 247.44 kB) · `git diff --check` ✅ clean · server bundle build ✅ but `scanOnce` **undefined** ·
 Playwright E2E ❌ not run **in the sandbox** (no installable browser binaries, no exchange egress, no
-persistent PostgreSQL) — but ✅ **run by CI on this PR**: `Browser e2e (Chromium) pass 57s` and
-`Typecheck + Unit + Build pass 1m42s`, which includes the P0 `timeframeHang.spec.ts` BTC/SOL timeframe
-regression (§13.5).
+persistent PostgreSQL) — but ✅ **run by CI on this PR**: `Browser e2e (Chromium)` passed on all three
+commits (57 s – 1 m 2 s), which includes the P0 `timeframeHang.spec.ts` BTC/SOL timeframe regression
+(§13.5).
+
+CI `Typecheck + Unit + Build`: ✅ pass on `011045a`, ❌ exit 1 on `ca4105c` and `08cfce1` — with
+**116 files / 1176 tests passed and `Errors 2 errors`**: two unhandled `pg` `FATAL 57P01
+admin_shutdown` errors from the embedded-postgres teardown, caused by the missing `pool.on('error')`
+listener (F-17). Not caused by this PR (markdown-only diff); reproduced nowhere locally in five runs.
+Full log evidence and the fix in §13.6.
 
 ### 16.7 Bug list (ordered)
 
@@ -2224,6 +2281,7 @@ regression (§13.5).
 | F-14 | P3 | Main bundle 900.69 kB, no CI budget | Split providers/services out of the main chunk; add a budget check |
 | F-15 | P3 | Liquidation filters miss `$1M` and per-symbol | Two small additions to `LiquidationsPage.tsx:59-61`, `:210-215` |
 | F-16 | P3 | Stage-1 concept docs misdescribe the system | Add "historical concept" banners to `ARCHITECTURE.md`, `DATABASE.md`, `API.md`, `STRATEGIES.md` |
+| F-17 | P1 | No `pool.on('error')` and no process-level handler → an idle-connection `FATAL 57P01` crashes the backend (and reddens CI despite 1176/1176 passing) | One listener in `server/db/pool.js` after `new Pool(...)`; make `closePool()` terminal; `closeAllConnections()` in the integration teardown. **Never** `dangerouslyIgnoreUnhandledErrors` |
 
 ### 16.8 Risks
 
@@ -2245,6 +2303,10 @@ regression (§13.5).
 7. **The false-green test (F-03) hides any future bundle/source divergence** — the exact class of bug it
    was written to catch (the V3.3 geometry bug came from a hand-written copy drifting from the source).
 8. **Shallow clone** can mislead an agent into thinking the project has one commit.
+9. **A routine Postgres restart can take the whole backend down** (F-17). No `pool.on('error')`,
+   no `uncaughtException` handler, and the deployed systemd unit's `Restart=` policy is unverified
+   (§12.4). This is invisible until the first failover or maintenance restart — and it is the reason
+   CI reddens on commits that change nothing but markdown.
 
 ### 16.9 Roadmap — what remains (condensed; full grading in §14)
 
@@ -2255,7 +2317,8 @@ regression (§13.5).
 * **NOT STARTED:** 8.3, 11.1, 11.3, 12.1, 12.2, 14.1, 15.1, 16.1, 16.2, 17.1, 19.2.
 * **BLOCKED (sandbox):** 20.1 browser half — commands provided in §13.5.
 * **REGRESSIONS:** none.
-* **New tasks this audit adds:** F-01…F-16, with F-01+F-03 as the first PR.
+* **New tasks this audit adds:** F-01…F-17, with F-01+F-03 as the first PR and F-17 as an
+  independent two-line backend PR.
 
 ### 16.10 Recommended next PR (single, small, reviewable)
 
@@ -2289,6 +2352,13 @@ real passes, not silent ones) · `npm run build` · then, on a **staging** datab
 `PATCH /api/admin/strategies/V3_0_HTF_LIQUIDATION_TRAP {"enabled":true}` and confirm `lastScanAt`
 advances, `lastError` stays `null`, and `journalctl -u cryptora` shows no repeating error. Never test
 this on the production database without a `pg_dump` first.
+
+**Second, independent PR (recommended right after, ~6 lines, zero strategy logic):**
+`fix(server): handle idle pg pool errors so a Postgres restart cannot kill the backend` (F-17) —
+add `pool.on('error', ...)` in `server/db/pool.js`, make `closePool()` terminal so `getPool()` cannot
+re-create a pool mid-shutdown, and harden `tests/integration/*` teardown with
+`server.closeAllConnections()`. This is what turns CI green deterministically *and* removes a real
+production crash path; it must not be "fixed" by ignoring unhandled errors in `vitest.config.ts`.
 
 ### 16.11 Exact files for the future Signals Chart
 
