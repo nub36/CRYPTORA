@@ -14,7 +14,6 @@
  * Правила стратегий не затрагиваются — меняется только входной список.
  */
 
-import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 
 /** Жёсткий лимит (зеркалит server/services/scanUniverse.js). */
 export const SCAN_UNIVERSE_MAX = 100;
@@ -35,11 +34,6 @@ function emit(): void {
       /* слушатель не должен ломать сервис */
     }
   }
-}
-
-/** Вселенная до первого ответа сервера — канонический реестр (как seed миграции 008). */
-export function defaultScanUniverse(): string[] {
-  return CANONICAL_ASSETS.map((a) => a.symbol.toUpperCase());
 }
 
 /** 'btc', 'BTC/USDT', 'BTCUSDT' → 'BTC'. Мусор → null. */
@@ -66,9 +60,19 @@ function cleanList(raw: unknown): string[] | null {
   return out.slice(0, SCAN_UNIVERSE_MAX);
 }
 
-/** Текущая (последняя известная) эффективная вселенная — синхронно. */
+/**
+ * Текущая эффективная вселенная — синхронно. Только ПОДТВЕРЖДЁННАЯ сервером
+ * (saved ∩ активные по exchangeInfo). До первого подтверждения или если
+ * сервер сообщил activeKnown=false → пустой список: канонический реестр НЕ
+ * сканируется как fallback без подтверждённого статуса на бирже.
+ */
 export function getScanUniverse(): string[] {
-  return current ?? defaultScanUniverse();
+  return current ?? [];
+}
+
+/** true, если вселенная подтверждена сервером (exchangeInfo известен). */
+export function isScanUniverseConfirmed(): boolean {
+  return current !== null;
 }
 
 /**
@@ -83,7 +87,8 @@ export function refreshScanUniverse(fetchFn: typeof fetch = (...a) => globalThis
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { symbols?: unknown; activeKnown?: unknown };
       const list = cleanList(body.symbols);
-      if (list && body.activeKnown !== false) applyServerUniverse(list);
+      if (body.activeKnown === false) clearConfirmedUniverse();
+      else if (list) applyServerUniverse(list);
     } catch {
       /* keep last known */
     } finally {
@@ -99,6 +104,14 @@ export function applyServerUniverse(symbols: readonly string[]): void {
   const next = cleanList(symbols) ?? [];
   const changed = !current || current.length !== next.length || current.some((s, i) => s !== next[i]);
   current = next;
+  loadedAt = Date.now();
+  if (changed) emit();
+}
+
+/** Сервер: активный статус на бирже неизвестен → не сканировать ничего. */
+function clearConfirmedUniverse(): void {
+  const changed = current === null || current.length > 0;
+  current = null;
   loadedAt = Date.now();
   if (changed) emit();
 }
@@ -156,6 +169,7 @@ async function adminCall(
       max: typeof body.max === 'number' ? body.max : SCAN_UNIVERSE_MAX,
     };
     if (state.activeKnown) applyServerUniverse(state.effective);
+    else clearConfirmedUniverse();
     return { ok: true, state };
   } catch {
     return { ok: false, error: 'Сервер недоступен' };

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { paginate, DEFAULT_PAGE_SIZE } from '@/utils/pagination';
 import { Pagination } from '@/components/common/Pagination';
 import { getCoinNames } from '@/services/data/registry/coinLogoRegistry';
+import { getActiveSpotBaseSet } from '@/services/data/registry/exchangeUniverse';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useLivePriceMap } from '@/hooks/useLivePrices';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -42,6 +43,15 @@ export const MarketPage: React.FC = () => {
   const [page, setPage] = useState(1);
   // Display names for dynamic assets from the shared metadata cache (ONE request total).
   const [names, setNames] = useState<Map<string, string>>(() => new Map());
+  // Подтверждён ли список Binance exchangeInfo (тот же кэш/запрос, что у провайдера).
+  // Без подтверждения показывается базовый каталог и он НЕ называется «активным».
+  const [universeConfirmed, setUniverseConfirmed] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (dataMode !== 'live') return;
+    let active = true;
+    void getActiveSpotBaseSet().then((set) => { if (active) setUniverseConfirmed(set !== null); });
+    return () => { active = false; };
+  }, [dataMode, assets]);
   const universeKey = marketUniverse.map((a) => a.symbol).join(',');
   useEffect(() => {
     let active = true;
@@ -378,7 +388,11 @@ export const MarketPage: React.FC = () => {
         {/* Footer info in table */}
         <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-sans">
           <div className="flex flex-wrap items-center gap-3">
-            <span data-qa="market-count">Найдено: {filteredAssets.length} из {marketUniverse.length} активных Spot-инструментов</span>
+            <span data-qa="market-count">
+              {dataMode === 'live' && universeConfirmed === false
+                ? `Найдено: ${filteredAssets.length} из ${marketUniverse.length} — базовый каталог: список активных инструментов Binance (exchangeInfo) недоступен, активный статус не подтверждён`
+                : `Найдено: ${filteredAssets.length} из ${marketUniverse.length} активных Spot-инструментов`}
+            </span>
             <Pagination {...pageData} onPage={setPage} qa="market-pagination" />
           </div>
           <div

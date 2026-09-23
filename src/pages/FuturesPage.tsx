@@ -32,6 +32,7 @@ export const FuturesPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [universe, setUniverse] = useState<FuturesUniverse | null>(null);
+  const [universeLoaded, setUniverseLoaded] = useState(false);
   const [spotSet, setSpotSet] = useState<Set<string> | null>(null);
   useEffect(() => {
     if (dataMode !== 'live') return;
@@ -39,6 +40,7 @@ export const FuturesPage: React.FC = () => {
     void Promise.all([getFuturesUniverse(), getActiveSpotBaseSet()]).then(([u, s]) => {
       if (!active) return;
       setUniverse(u);
+      setUniverseLoaded(true);
       setSpotSet(s);
     });
     return () => { active = false; };
@@ -177,7 +179,11 @@ export const FuturesPage: React.FC = () => {
             {formatCurrency(overview.totalOpenInterestUsd, { compact: true })}
           </div>
           <div className="text-[11px] text-emerald-400 mt-0.5 font-semibold" data-qa="futures-universe-count">
-            {futures.length} активных USDT-M perpetual{universe ? ` · всего активных USDT-M контрактов: ${universe.activeUsdtContracts}` : ''}
+            {universe
+              ? `${futures.length} активных USDT-M perpetual · всего активных USDT-M контрактов: ${universe.activeUsdtContracts}`
+              : dataMode === 'live' && universeLoaded
+                ? `${futures.length} контрактов — базовый каталог: список активных контрактов Binance (exchangeInfo) недоступен, активный статус не подтверждён`
+                : `${futures.length} USDT-M perpetual`}
           </div>
         </div>
 
