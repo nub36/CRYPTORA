@@ -8,6 +8,7 @@ import { PlanManager } from '@/services/subscription/PlanManager';
 import type { AlertChannelId, UserAlertCondition } from '@/services/alerts/alertEvaluator';
 import { conditionLabelRu } from '@/services/alerts/alertEvaluator';
 import { isPlausibleBotToken, isValidWebhookUrl, maskToken } from '@/services/alerts/deliveryChannels';
+import { signalSymbolToRoute } from '@/services/signals/signalNotifications';
 
 type Tab = 'rules' | 'signals' | 'history' | 'channels';
 
@@ -370,6 +371,15 @@ export const AlertsModal: React.FC = () => {
                       <span className="font-mono text-[11px] text-slate-500">{new Date(n.at).toLocaleString('ru-RU')}</span>
                     </div>
                     <div className="text-slate-300 font-sans mt-0.5">{n.detail}</div>
+                    {/* Jump straight to the asset behind the signal (FET/USDT -> /coin/FET). */}
+                    <Link
+                      to={`/coin/${signalSymbolToRoute(n.symbol)}`}
+                      onClick={closeAlertsModal}
+                      data-qa="signal-open-asset"
+                      className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-cyan hover:underline"
+                    >
+                      Открыть актив {signalSymbolToRoute(n.symbol)} →
+                    </Link>
                   </div>
                 ))
               )}
