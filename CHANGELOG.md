@@ -4,6 +4,43 @@
 
 ---
 
+## [Unreleased] — 2026-09-23 — полная вселенная Binance
+
+### Added
+- **Spot-вселенная из `exchangeInfo`.** Сервер (`server/services/exchangeUniverse.js`) берёт
+  `/api/v3/exchangeInfo` и оставляет только `quoteAsset=USDT`, `status=TRADING`, spot-торговля
+  разрешена (`isSpotTradingAllowed` / `permissions` / `permissionSets`). Кэш 10 мин, single-flight,
+  stale ≤ 6 ч. Эндпоинт `GET /api/market/universe/spot`. Число активных монет НЕ захардкожено.
+  Мёртвые записи bulk-тикера (VEN, XRPBULL/BEAR, *UP/*DOWN, BCC, BCHABC…) больше не попадают на
+  сайт: провайдер пересекает bulk `ticker/24hr` с активным набором; если exchangeInfo недоступен —
+  исторические тикеры не доверяются (только канонические 25).
+- **Futures-вселенная** из `/fapi/v1/exchangeInfo`: `GET /api/market/universe/futures`
+  (`activeUsdtContracts`, `perpetualCount`, `count`). /futures показывает все активные USDT-M
+  PERPETUAL (квартальные не смешиваются, spot не смешивается). Per-contract OI ограничен
+  `FUTURES_OI_DETAIL_LIMIT`, остальные строки — OI `null`, а не оценка.
+- **Метаданные монет (логотипы/имена)**: `GET /api/market/metadata/assets` — серверный кэш CoinGecko
+  (постранично, последовательно, 12 ч, backoff при ошибке). Клиент делает ОДИН запрос за сессию;
+  CoinIcon — lazy, буквенный fallback последним.
+- **Скан-вселенная на сервере**: миграция `008_scan_universe` (сид — 25 канонических), API
+  `GET/POST/DELETE /api/admin/scan-universe` (admin, audit_log), публичное
+  `GET /api/strategies/scan-universe`. localStorage больше не используется. Шедулер сканирует
+  только `saved ∩ active`; при недоступном exchangeInfo скан пропускается. Правила стратегий не менялись.
+- **Админка → Монеты**: «Доступно на рынке: N», «В скане: M», поиск по всей активной вселенной,
+  «Добавить в скан» / «Убрать из скана», пометка неактивных.
+- **Пагинация** /market и /futures (`src/utils/pagination.ts`, `Pagination.tsx`) — DOM ограничен.
+- **Селекторы** /coin/:symbol и /liquidations ищут по всей активной Spot-вселенной (тикер + имя),
+  список рендерится ограниченно, запросы только при открытии.
+
+### Fixed
+- /liquidations: убраны большие вертикальные разрывы (таймлайн и разбивки стекаются, `items-start`,
+  без `min-h-[184px]`).
+
+### Tests
+- `exchangeUniverse`, `dynamicUniverseProvider`, `dynamicSelectors`, `coinIcon` (переписан),
+  интеграционный `scanUniverse` на реальном PostgreSQL. Итого 1172+ тестов зелёные.
+
+---
+
 ## [0.9.3] — 2026-09-22
 
 ### Added — интеграция веток в main + UX-проход по скриншотам владельца

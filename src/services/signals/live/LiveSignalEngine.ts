@@ -267,13 +267,13 @@ export class LiveSignalEngine {
 
   /**
    * Обновить вселенную скана в runtime (админка → Монеты). Пустой список
-   * игнорируется — движок не должен сканировать «ничего». Состояния и
+   * допустим: вселенная не подтверждена exchangeInfo → скан по пустому списку
+   * (ничего не сканируется, fallback на канонический реестр НЕ делается). Состояния и
    * ретроспектива существующих символов сохраняются; новые получают чистое
    * состояние. Следующий скан уже идёт по новому списку.
    */
   public updateSymbols(symbols: readonly string[]): void {
     const next = [...new Set(symbols.map((s) => s.toUpperCase().trim()).filter(Boolean))];
-    if (next.length === 0) return;
     this.symbols = next;
     for (const symbol of next) {
       if (!this.state.has(symbol)) this.state.set(symbol, this.freshState(symbol));

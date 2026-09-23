@@ -628,7 +628,7 @@ export const OverviewPage: React.FC = () => {
                 </div>
                 {(() => {
                   // DERIVED: фактический BTC basis из среза деривативов
-                  const btcFut = futures.find((f) => f.symbol.startsWith('BTC'));
+                  const btcFut = futures.find((f) => f.symbol.split('/')[0].toUpperCase() === 'BTC');
                   if (!btcFut) return <div className="ui-helper mt-0.5">Базис BTC — нет данных</div>;
                   return (
                     <div className={`text-[11px] font-mono mt-0.5 ${btcFut.basisPct >= 0 ? 'text-slate-400' : 'text-rose-400'}`}>

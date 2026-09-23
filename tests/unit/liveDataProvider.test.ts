@@ -80,7 +80,7 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     expect(btc?.provenance?.isFallback).toBe(false);
   });
 
-  it('includes the full Binance USDT spot ticker universe beyond canonical metadata', async () => {
+  it('includes the full ACTIVE Binance Spot USDT universe (exchangeInfo) beyond canonical metadata', async () => {
     const binanceMock = new BinanceSpotAdapter();
     vi.spyOn(binanceMock, 'fetchAll24hrTickers').mockResolvedValue([
       ...mockBulkTickers(),
@@ -88,7 +88,10 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
       { ...SAMPLE_BINANCE_TICKER, symbol: 'TESTUSDC' } as any,
     ]);
     const candleHistoryService = { getAll: vi.fn().mockResolvedValue(new Map()) } as any;
-    const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock, candleHistoryService });
+    const active = new Set([...CANONICAL_ASSETS.map((a) => a.symbol), 'PEPE']);
+    const provider = new LiveMarketDataProvider({
+      binanceAdapter: binanceMock, candleHistoryService, activeSpotSymbols: async () => active,
+    });
 
     const assets = await provider.getAssets();
     expect(assets).toHaveLength(CANONICAL_ASSETS.length + 1);

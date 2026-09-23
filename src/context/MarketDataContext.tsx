@@ -7,7 +7,7 @@ import { KuCoinSpotAdapter } from '@/services/data/adapters/KuCoinSpotAdapter';
 import { SourceHealthTracker } from '@/services/data/adapters/sourceHealth';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { LiveSignalEngine } from '@/services/signals/live/LiveSignalEngine';
-import { getScanUniverse, subscribeScanUniverse } from '@/services/signals/scanUniverse';
+import { getScanUniverse, subscribeScanUniverse, refreshScanUniverse, ensureFreshScanUniverse } from '@/services/signals/scanUniverse';
 import { signalNotifications, type SignalNotification } from '@/services/signals/signalNotifications';
 import { PlanTier, PlanManager } from '@/services/subscription/PlanManager';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
@@ -212,11 +212,18 @@ export const MarketDataProviderComponent: React.FC<{
   }, [dataMode]);
 
   // Вселенная скана → движок (только live): применяется сразу, без перезапуска.
+  // Источник — server-side scan_universe (общий для всех пользователей).
   useEffect(() => {
     if (dataMode !== 'live') return;
-    return subscribeScanUniverse(() => {
+    const unsubscribe = subscribeScanUniverse(() => {
       LiveSignalEngine.getInstance()?.updateSymbols(getScanUniverse());
     });
+    void refreshScanUniverse();
+    const timer = setInterval(ensureFreshScanUniverse, 60_000);
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
   }, [dataMode]);
 
   // Лента событий журнала сигналов (колокольчик): старт синглтона + подписка.

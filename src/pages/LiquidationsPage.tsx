@@ -109,7 +109,7 @@ export const LiquidationsPage: React.FC = () => {
     Promise.all([provider.getFuturesList(), provider.getCandles('BTC', '4h')])
       .then(([futures, btcCandles]) => {
         if (!isActive) return;
-        const btc = futures.find((f) => f.symbol.toUpperCase().startsWith('BTC'));
+        const btc = futures.find((f) => f.symbol.split('/')[0].toUpperCase() === 'BTC');
         if (btc && btc.markPrice > 0 && btc.openInterest != null && btc.openInterest > 0) {
           // Провенанс входных метрик сохраняется: демо-входы нельзя выдавать за фактический рынок.
           setClusterInput({
@@ -353,7 +353,7 @@ export const LiquidationsPage: React.FC = () => {
               <span>Time</span><span>Symbol · Exchange</span><span className="text-right">Side / USD</span>
             </div>
             {chartEvents.length === 0 ? (
-              <div className="flex min-h-[184px] flex-col items-center justify-center px-5 text-center" data-qa="liq-chart-feed-empty">
+              <div className="flex flex-col items-center justify-center px-5 py-6 text-center" data-qa="liq-chart-feed-empty">
                 <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.07] bg-white/[0.025] text-slate-600"><Flame className="h-3.5 w-3.5" /></span>
                 <p className="text-[11px] font-medium text-slate-400">Событий пока нет</p>
                 <p className="mt-1 max-w-[190px] text-[11px] leading-relaxed text-slate-600">Поток биржевых ликвидаций пуст. История цены продолжает обновляться независимо.</p>
@@ -445,10 +445,13 @@ export const LiquidationsPage: React.FC = () => {
       </div>
       )}
 
-      {/* Timeline & Breakdowns Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:items-start">
-        {/* Timeline Visualization (8 cols) */}
-        <div className="lg:col-span-8 bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3.5 shadow-panel">
+      {/* Timeline (full width) + breakdowns in a content-sized grid.
+          Previously an 8/4 split put a short timeline next to a tall stack of
+          cards and left a large empty vertical hole; now each row collapses
+          to its content. */}
+      <div className="space-y-4" data-qa="liq-timeline-breakdowns">
+        {/* Timeline Visualization */}
+        <div className="bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3.5 shadow-panel" data-qa="liq-timeline">
           <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
             <span className="text-xs font-bold text-white tracking-wide flex items-center space-x-1.5">
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
@@ -467,7 +470,8 @@ export const LiquidationsPage: React.FC = () => {
                 : 'Фактический поток ликвидаций недоступен — выдуманные бары не отображаются.'}
             </div>
           )}
-          <div className={`h-56 flex items-end justify-between pt-6 px-2 gap-2 ${timelineMax === 0 ? 'hidden' : ''}`}>
+          {timelineMax > 0 && (
+          <div className="h-56 flex items-end justify-between pt-6 px-2 gap-2">
             {data.timeline.map((bar, idx) => {
               const longHeight = (bar.longUsd / timelineMax) * 160;
               const shortHeight = (bar.shortUsd / timelineMax) * 160;
@@ -496,6 +500,7 @@ export const LiquidationsPage: React.FC = () => {
               );
             })}
           </div>
+          )}
 
           <div className="flex items-center justify-center space-x-6 text-[11px] pt-2 border-t border-white/[0.06] text-slate-400">
             <div className="flex items-center space-x-1.5">
@@ -509,8 +514,8 @@ export const LiquidationsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Exchange & Asset Breakdowns (4 cols) */}
-        <div className="lg:col-span-4 space-y-4">
+        {/* Exchange & Asset Breakdowns — auto grid, items-start: no stretched empty cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start" data-qa="liq-breakdowns">
           {/* Exchange Breakdown */}
           <div className="bg-surface border border-white/[0.08] rounded-xl p-4 space-y-3 shadow-panel">
             <div className="text-xs font-bold text-white tracking-wide pb-2 border-b border-white/[0.06] flex items-center justify-between">

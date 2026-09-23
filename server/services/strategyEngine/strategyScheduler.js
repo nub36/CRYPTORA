@@ -14,9 +14,31 @@
  *     сканов.
  */
 
-import { getEnabledStrategies } from '../strategySettings.js';
+import { getEnabledStrategies, recordScanResult } from '../strategySettings.js';
 import { scanStrategySafely } from './strategyEngine.js';
 import { getMarketDataFetcher } from './marketDataFetcher.js';
+import { getEffectiveScanExchangeSymbols } from '../scanUniverse.js';
+import { getActiveSpotBaseSet } from '../exchangeUniverse.js';
+
+/**
+ * Какие символы сканирует стратегия. Правила стратегий не меняются — только
+ * входной список:
+ *   • явное переопределение strategy_settings.symbols (если задано), иначе
+ *   • общая server-side Scan Universe (Admin → Монеты, таблица scan_universe).
+ * В обоих случаях список пересекается с АКТИВНЫМ Spot-universe из exchangeInfo:
+ * инструмент, переставший торговаться, не сканируется, даже если он сохранён.
+ *
+ * @param {{ symbols: string[] | null }} row
+ * @returns {Promise<string[]>} Binance-символы ('BTCUSDT')
+ */
+export async function resolveScanSymbols(row) {
+  if (Array.isArray(row.symbols) && row.symbols.length > 0) {
+    const active = await getActiveSpotBaseSet();
+    if (!active) throw new Error('Active Spot universe (exchangeInfo) unavailable — scan skipped');
+    return row.symbols.filter((s) => typeof s === 'string' && s.endsWith('USDT') && active.has(s.slice(0, -4)));
+  }
+  return getEffectiveScanExchangeSymbols();
+}
 
 /** Шаг основного цикла. Конкретный интервал берётся из strategy_settings. */
 export const TICK_MS = 15_000;
@@ -29,11 +51,13 @@ export class StrategyScheduler {
    * @param {Function} [opts.scan] — инъекция для тестов
    * @param {Function} [opts.now]
    */
-  constructor({ tickMs = TICK_MS, getEnabled, scan, now } = {}) {
+  constructor({ tickMs = TICK_MS, getEnabled, scan, now, resolveSymbols } = {}) {
     this.tickMs = tickMs;
     this.getEnabledFn = getEnabled ?? (() => getEnabledStrategies());
     this.scanFn = scan ?? ((p) => scanStrategySafely(p));
     this.nowFn = now ?? (() => Date.now());
+    // Без явной инъекции (тесты со своим scan) — прежнее поведение: symbols из строки.
+    this.resolveSymbolsFn = resolveSymbols ?? (scan ? null : resolveScanSymbols);
 
     /** @type {Map<string, Promise<any>>} in-flight замок на стратегию */
     this.inFlight = new Map();
@@ -145,10 +169,20 @@ export class StrategyScheduler {
 
       const promise = (async () => {
         try {
-          return await this.scanFn({
-            strategyId,
-            symbols: Array.isArray(row.symbols) ? row.symbols : null,
-          });
+          let symbols = Array.isArray(row.symbols) ? row.symbols : null;
+          if (this.resolveSymbolsFn) {
+            try {
+              symbols = await this.resolveSymbolsFn(row);
+            } catch (e) {
+              // Неизвестный активный universe ⇒ скан пропускается и это видно в last_error.
+              await recordScanResult({ strategyId, error: e instanceof Error ? e.message : String(e) }).catch(() => {});
+              throw e;
+            }
+            if (symbols.length === 0) {
+              return { ok: true, strategyId, skipped: 'EMPTY_SCAN_UNIVERSE' };
+            }
+          }
+          return await this.scanFn({ strategyId, symbols });
         } catch (e) {
           // scanStrategySafely уже глотает ошибки; это страховка от
           // непредвиденного отказа, чтобы цикл не умер целиком.

@@ -114,6 +114,7 @@ describe('migration inventory', () => {
     expect([...tables].sort()).toEqual([
       'audit_log',
       'email_verification_tokens',
+      'scan_universe',
       'sessions',
       'signals',
       'strategy_settings',

@@ -1,26 +1,30 @@
 /**
- * ScanUniverse — инструменты, которые сканирует LiveSignalEngine.
+ * ScanUniverse — инструменты, которые сканирует движок сигналов.
  *
- * По умолчанию движок сканирует ВСЕ монеты канонического реестра
- * (CANONICAL_ASSETS), а не фиксированную шестёрку. Админ может исключать
- * инструменты из скана и добавлять свои тикеры (в т.ч. вне реестра — для них
- * свечи берутся напрямую с Binance spot, см. LiveMarketDataProvider.getCandles).
+ * ИСТОЧНИК ИСТИНЫ — PostgreSQL (таблица scan_universe, миграция 008), общий
+ * для всех процессов и пользователей. localStorage больше НЕ используется.
  *
- * Хранение — localStorage браузера (движок и журнал тоже client-side, см.
- * docs/DONT_DO.md #4/#8): настройка действует в том браузере, где работает
- * движок. Правила стратегий не затрагиваются — меняется только список
- * инструментов, подаваемых на вход frozen-реплеям.
+ *   • Доступность монеты на сайте ≠ скан: все активные Binance Spot USDT
+ *     инструменты доступны автоматически (exchangeInfo).
+ *   • Эффективная вселенная = сохранённая ∩ активные на бирже (считает сервер):
+ *     делистинг не сканируется, даже если остался в настройке.
+ *   • Admin → Монеты: GET/POST/DELETE /api/admin/scan-universe.
+ *   • Браузерный движок читает GET /api/strategies/scan-universe.
+ *
+ * Правила стратегий не затрагиваются — меняется только входной список.
  */
 
-import { CANONICAL_ASSETS } from '@/services/data/registry/assetRegistry';
 
-export const SCAN_UNIVERSE_STORAGE_KEY = 'cryptora_scan_universe_v1';
-/** Жёсткий лимит: больше инструментов за 60-секундный цикл честно не успеть. */
+/** Жёсткий лимит (зеркалит server/services/scanUniverse.js). */
 export const SCAN_UNIVERSE_MAX = 100;
-const SYMBOL_RE = /^[A-Z0-9]{2,12}$/;
+const SYMBOL_RE = /^[A-Z0-9]{1,20}$/;
+const REFRESH_MS = 5 * 60_000;
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
+let current: string[] | null = null;
+let loadedAt = 0;
+let pending: Promise<string[]> | null = null;
 
 function emit(): void {
   for (const l of listeners) {
@@ -32,111 +36,89 @@ function emit(): void {
   }
 }
 
-function dedupe(symbols: readonly string[]): string[] {
+/** 'btc', 'BTC/USDT', 'BTCUSDT' → 'BTC'. Мусор → null. */
+export function normalizeScanSymbol(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  let s = raw.trim().toUpperCase();
+  if (!s) return null;
+  if (s.includes('/')) s = s.split('/')[0]!.trim();
+  if (s.length > 4 && s.endsWith('USDT')) s = s.slice(0, -4);
+  return SYMBOL_RE.test(s) ? s : null;
+}
+
+function cleanList(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const s of symbols) {
-    if (!seen.has(s)) {
+  for (const r of raw) {
+    const s = normalizeScanSymbol(r);
+    if (s && !seen.has(s)) {
       seen.add(s);
       out.push(s);
     }
   }
-  return out;
+  return out.slice(0, SCAN_UNIVERSE_MAX);
 }
 
-/** Вселенная по умолчанию — весь канонический реестр (BASE-тикеры). */
-export function defaultScanUniverse(): string[] {
-  return CANONICAL_ASSETS.map((a) => a.symbol.toUpperCase());
-}
-
-/** Нормализация пользовательского ввода: 'btc', 'BTC/USDT' → 'BTC'. Мусор → null. */
-export function normalizeScanSymbol(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim().toUpperCase();
-  if (!trimmed) return null;
-  const base = (trimmed.includes('/') ? trimmed.split('/')[0]! : trimmed).trim();
-  if (!SYMBOL_RE.test(base)) return null;
-  return base;
-}
-
-/** Текущая вселенная (сохранённая или по умолчанию). Битый стор → дефолт, без исключений. */
+/**
+ * Текущая эффективная вселенная — синхронно. Только ПОДТВЕРЖДЁННАЯ сервером
+ * (saved ∩ активные по exchangeInfo). До первого подтверждения или если
+ * сервер сообщил activeKnown=false → пустой список: канонический реестр НЕ
+ * сканируется как fallback без подтверждённого статуса на бирже.
+ */
 export function getScanUniverse(): string[] {
-  try {
-    if (typeof localStorage === 'undefined') return defaultScanUniverse();
-    const raw = localStorage.getItem(SCAN_UNIVERSE_STORAGE_KEY);
-    if (!raw) return defaultScanUniverse();
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return defaultScanUniverse();
-    const clean = dedupe(
-      parsed.map(normalizeScanSymbol).filter((s): s is string => s !== null),
-    ).slice(0, SCAN_UNIVERSE_MAX);
-    if (clean.length === 0) return defaultScanUniverse();
-    return clean;
-  } catch {
-    return defaultScanUniverse();
-  }
+  return current ?? [];
 }
 
-export interface UniverseWriteResult {
-  ok: boolean;
-  error?: string;
-  symbols: string[];
+/** true, если вселенная подтверждена сервером (exchangeInfo известен). */
+export function isScanUniverseConfirmed(): boolean {
+  return current !== null;
 }
 
-export function setScanUniverse(symbols: readonly string[]): UniverseWriteResult {
-  const clean = dedupe(
-    symbols.map(normalizeScanSymbol).filter((s): s is string => s !== null),
-  ).slice(0, SCAN_UNIVERSE_MAX);
-  if (clean.length === 0) {
-    return { ok: false, error: 'Нужен хотя бы один инструмент для сканирования', symbols: getScanUniverse() };
-  }
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(SCAN_UNIVERSE_STORAGE_KEY, JSON.stringify(clean));
+/**
+ * Подтянуть эффективную вселенную с сервера. Общий промис — без шторма.
+ * Сервер недоступен → остаётся последнее известное значение.
+ */
+export function refreshScanUniverse(fetchFn: typeof fetch = (...a) => globalThis.fetch(...a)): Promise<string[]> {
+  if (pending) return pending;
+  pending = (async () => {
+    try {
+      const res = await fetchFn('/api/strategies/scan-universe', { credentials: 'include', headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as { symbols?: unknown; activeKnown?: unknown };
+      const list = cleanList(body.symbols);
+      if (body.activeKnown === false) clearConfirmedUniverse();
+      else if (list) applyServerUniverse(list);
+    } catch {
+      /* keep last known */
+    } finally {
+      pending = null;
     }
-  } catch {
-    return { ok: false, error: 'Хранилище браузера недоступно', symbols: clean };
-  }
-  emit();
-  return { ok: true, symbols: clean };
+    return getScanUniverse();
+  })();
+  return pending;
 }
 
-export function addScanSymbol(raw: string): UniverseWriteResult {
-  const symbol = normalizeScanSymbol(raw);
-  const current = getScanUniverse();
-  if (!symbol) {
-    return { ok: false, error: `«${raw}» — некорректный тикер (2–12 символов A–Z, 0–9)`, symbols: current };
-  }
-  if (current.includes(symbol)) {
-    return { ok: false, error: `${symbol} уже в списке сканирования`, symbols: current };
-  }
-  if (current.length >= SCAN_UNIVERSE_MAX) {
-    return { ok: false, error: `Лимит — ${SCAN_UNIVERSE_MAX} инструментов`, symbols: current };
-  }
-  return setScanUniverse([...current, symbol]);
+/** Применить список, пришедший с сервера (после чтения или изменения админом). */
+export function applyServerUniverse(symbols: readonly string[]): void {
+  const next = cleanList(symbols) ?? [];
+  const changed = !current || current.length !== next.length || current.some((s, i) => s !== next[i]);
+  current = next;
+  loadedAt = Date.now();
+  if (changed) emit();
 }
 
-export function removeScanSymbol(raw: string): UniverseWriteResult {
-  const symbol = normalizeScanSymbol(raw);
-  const current = getScanUniverse();
-  if (!symbol || !current.includes(symbol)) return { ok: true, symbols: current };
-  return setScanUniverse(current.filter((x) => x !== symbol));
+/** Сервер: активный статус на бирже неизвестен → не сканировать ничего. */
+function clearConfirmedUniverse(): void {
+  const changed = current === null || current.length > 0;
+  current = null;
+  loadedAt = Date.now();
+  if (changed) emit();
 }
 
-/** Сброс к реестру по умолчанию. Возвращает итоговый список. */
-export function resetScanUniverse(): string[] {
-  try {
-    if (typeof localStorage !== 'undefined') localStorage.removeItem(SCAN_UNIVERSE_STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
-  emit();
-  return defaultScanUniverse();
-}
-
-export function isDefaultUniverse(symbols: readonly string[]): boolean {
-  const d = defaultScanUniverse();
-  return symbols.length === d.length && symbols.every((s, i) => s === d[i]);
+/** Периодическое обновление (движок другого админа мог изменить вселенную). */
+export function ensureFreshScanUniverse(): void {
+  if (Date.now() - loadedAt > REFRESH_MS) void refreshScanUniverse();
 }
 
 export function subscribeScanUniverse(listener: Listener): () => void {
@@ -144,4 +126,66 @@ export function subscribeScanUniverse(listener: Listener): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+/** Test-only reset. */
+export function resetScanUniverseForTests(): void {
+  current = null;
+  loadedAt = 0;
+  pending = null;
+  listeners.clear();
+}
+
+// ─── Admin API client ────────────────────────────────────────────────────────
+
+export interface AdminScanUniverseState {
+  saved: string[];
+  effective: string[];
+  inactive: string[];
+  activeKnown: boolean;
+  activeCount: number | null;
+  max: number;
+}
+
+async function adminCall(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit = {},
+): Promise<{ ok: true; state: AdminScanUniverseState } | { ok: false; error: string }> {
+  try {
+    const res = await fetchFn(url, {
+      credentials: 'include',
+      ...init,
+      headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+    });
+    const body = (await res.json().catch(() => ({}))) as Partial<AdminScanUniverseState> & { message?: string };
+    if (!res.ok) return { ok: false, error: body.message ?? `HTTP ${res.status}` };
+    const state: AdminScanUniverseState = {
+      saved: cleanList(body.saved) ?? [],
+      effective: cleanList(body.effective) ?? [],
+      inactive: cleanList(body.inactive) ?? [],
+      activeKnown: body.activeKnown !== false,
+      activeCount: typeof body.activeCount === 'number' ? body.activeCount : null,
+      max: typeof body.max === 'number' ? body.max : SCAN_UNIVERSE_MAX,
+    };
+    if (state.activeKnown) applyServerUniverse(state.effective);
+    else clearConfirmedUniverse();
+    return { ok: true, state };
+  } catch {
+    return { ok: false, error: 'Сервер недоступен' };
+  }
+}
+
+const defaultFetch: typeof fetch = (...a) => globalThis.fetch(...a);
+
+export function fetchAdminScanUniverse(fetchFn: typeof fetch = defaultFetch) {
+  return adminCall(fetchFn, '/api/admin/scan-universe');
+}
+
+export function addScanSymbolRemote(symbol: string, fetchFn: typeof fetch = defaultFetch) {
+  return adminCall(fetchFn, '/api/admin/scan-universe', { method: 'POST', body: JSON.stringify({ symbol }) });
+}
+
+export function removeScanSymbolRemote(symbol: string, fetchFn: typeof fetch = defaultFetch) {
+  return adminCall(fetchFn, `/api/admin/scan-universe/${encodeURIComponent(symbol)}`, { method: 'DELETE' });
 }

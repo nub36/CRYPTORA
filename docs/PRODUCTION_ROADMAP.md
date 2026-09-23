@@ -1,0 +1,381 @@
+# CRYPTORA — Production Roadmap & Operational Backlog
+
+> **Основной backlog проекта после PR #12 / #13 / #14.** Живой checklist: следующий coding agent
+> берёт задачи отсюда, а не из истории чата. Меняя статус задачи, обновляй её здесь (статус +
+> PR/commit) и в `docs/agent-plan/STATUS.md`.
+>
+> Последнее обновление: 2026-09-23.
+
+## Легенда
+
+| Маркер | Значение |
+|---|---|
+| `[ ]` | TODO |
+| `[~]` | IN PROGRESS — код есть в открытом PR, но не слит и/или не проверен в production |
+| `[x]` | DONE — слито в `main` (и, если указано, проверено в production) |
+| `[!]` | BLOCKED — указано, что блокирует |
+
+Priority: **P0**: production сломан или Chrome зависает · **P1**: ключевая функциональность и
+эксплуатация · **P2**: качество, безопасность, производительность · **P3**: улучшения.
+
+Шаблон задачи: **Priority · Problem · Evidence from production · Desired behavior · Acceptance
+criteria · Dependencies · Status · PR/commit**.
+
+---
+
+## 0. Обязательные инварианты (действуют для КАЖДОЙ задачи)
+
+- Не выдавать demo/mock данные за live.
+- Не выдавать estimated/calculated liquidation levels за actual liquidation events.
+- Не менять алгоритмы стратегий (V3.0 / V3.3 / V2.8), правила входа/выхода и research/backtest
+  logic без отдельного разрешения владельца.
+- Внутренние timestamps хранятся в UTC; по умолчанию показываются в локальном времени браузера.
+- Большой universe не должен порождать сотни REST-запросов (никаких N × candles / N × metadata).
+- Любой P0 Chrome hang закрывается только вместе с Browser E2E regression-тестом.
+- `main` меняется только через PR и зелёный CI. Агенты не мержат сами.
+- Production deploy — только после backup и health checks.
+- Production DB migration — только после backup и просмотра `migrate:status`.
+- Агенты не запускают production migration и deploy из песочницы; они дают точные команды для VPS.
+
+---
+
+## 1. Уже сделано
+
+### [x] PR #12: market-data gateway и базовая инфраструктура
+- **Merge commit:** `1a6f0389cd809a90453cf5d32e9cea48e05b93c9`
+- Same-origin market-data gateway (`/api/market/*`), устранены CORS-проблемы Binance/KuCoin.
+- Отрисовка свечей на графике ликвидаций; Market Radar; честные подписи Analytics Preview.
+- Заготовки: Coin selector, расширенный рынок, логотипы; улучшения локальных candles/WS.
+
+### [x] PR #13: критический Chrome renderer hang
+- **Merge commit:** `e82e4ff18d7b8efca488ab6e07fd23068390a7a7`
+- **Root cause:** `IndicatorEngine.calculateVolumeProfile()` мог уйти в синхронный бесконечный цикл,
+  когда одна сторона value area исчерпана, а следующий bucket имеет нулевой объём.
+- Добавлены regression-тест и Browser E2E на переключение таймфреймов.
+- Также: Signals → «Открыть актив»; улучшено отображение локального времени; план миграции
+  `strategy_settings` (`docs/STRATEGY_SETTINGS_MIGRATION_PLAN.md`).
+- **Production:** владелец предварительно проверил переключение таймфреймов BTC/SOL; зависание
+  больше не воспроизводится.
+
+### [~] PR #14: полный universe Binance (открыт, не слит)
+- https://github.com/nub36/CRYPTORA/pull/14 · ветка `arena/01a0ce81-cryptora`
+- Покрывает разделы 2, 3, 4, 5, 6 и часть 8 (вертикальные разрывы). Статусы соответствующих задач
+  ниже — `[~]`. После merge и проверки на production перевести их в `[x]` и вписать merge commit.
+- Живые счётчики Binance из песочницы не проверены (нет доступа к Binance); Playwright локально
+  не запускался. CI зелёный.
+
+---
+
+## 2. P0/P1: Market universe
+
+### [~] 2.1 Spot universe = активные инструменты из exchangeInfo
+- **Priority:** P0/P1
+- **Problem:** список монет строился из bulk ticker, где есть исторические и мёртвые записи.
+- **Evidence from production:** bulk ticker Binance = **3710** записей, из них с суффиксом `USDT` =
+  **746**. Production показывал около **736** строк, включая VEN, XRPBULL, XRPBEAR, XLMUP, XLMDOWN,
+  XTZUP, XTZDOWN, YFIUP, YFIDOWN, BCC/BCHABC и другие исторические активы.
+- **Desired behavior:** Binance Spot `exchangeInfo` → `quoteAsset=USDT` → `status=TRADING` →
+  spot trading разрешён. На сайте доступны все реально активные Spot-активы. Количество
+  динамическое.
+- **Acceptance criteria:**
+  - Нет захардкоженных 25 / 50 / 736.
+  - Мёртвые тикеры из списка выше отсутствуют на /market, в селекторах и в скане.
+  - Если exchangeInfo недоступен, исторические тикеры не используются.
+  - На production `GET /api/market/universe/spot` → `.count` совпадает с числом строк /market
+    (по всем страницам).
+- **Dependencies:** market-data gateway (PR #12).
+- **Status:** `[~]` реализовано в PR #14, не слито, production count не проверен.
+- **PR/commit:** #14.
+
+### [~] 2.2 Futures universe = все активные USD-M USDT контракты
+- **Priority:** P1
+- **Problem / Evidence:** production /futures показывает около **25** контрактов, что слишком мало.
+- **Desired behavior:** Binance USD-M `fapi/v1/exchangeInfo` → активные USDT-контракты → полный
+  актуальный поддерживаемый universe. Spot и Futures universe раздельные.
+- **Acceptance criteria:** `GET /api/market/universe/futures` отдаёт `activeUsdtContracts`,
+  `perpetualCount` и `count`. /futures показывает `count` строк. Квартальные контракты и spot-данные
+  не смешиваются. В отчёте явно указано, что именно показывает UI (сейчас: только PERPETUAL).
+- **Dependencies:** 2.1 (общий gateway), раздел 4 (производительность).
+- **Status:** `[~]` PR #14. **PR/commit:** #14.
+
+---
+
+## 3. P1: Admin Scan Universe
+
+### [~] 3.1 Скан-вселенная на сервере
+- **Priority:** P1
+- **Problem:** скан-вселенная хранилась в localStorage браузера админа; админка управляла
+  «доступностью монет» вместо скана.
+- **Desired behavior:**
+  - Все активные assets автоматически доступны пользователям сайта; админ управляет только Scan
+    Universe.
+  - Admin → Монеты показывает «Доступно на рынке: N» и «В скане: M», ищет любую активную монету,
+    умеет Add to scan / Remove from scan.
+  - Хранение серверное и постоянное (PostgreSQL), не localStorage.
+  - Удаление из скана не удаляет актив с сайта.
+  - Delisted-инструмент перестаёт сканироваться, даже если он сохранён в списке.
+- **Acceptance criteria:** изменения переживают перезагрузку и видны в другом браузере; записываются
+  в `audit_log`; шедулер сканирует `saved ∩ active`; при недоступном exchangeInfo скан пропускается
+  с явной ошибкой. Алгоритмы стратегий не изменены.
+- **Dependencies:** 2.1; раздел 7 (миграции на production, нужна `008_scan_universe`).
+- **Status:** `[~]` PR #14 (миграция 008, `/api/admin/scan-universe`, `/api/strategies/scan-universe`).
+- **PR/commit:** #14.
+
+---
+
+## 4. P1: Производительность на большом universe
+
+### [~] 4.1 Без регрессий на сотнях активов
+- **Priority:** P1
+- **Problem:** рост universe в 20–30 раз может вернуть зависания и лавину запросов.
+- **Desired behavior / Acceptance criteria:**
+  - Не делать 500 candle REST-запросов для 500 активов: каталог = exchangeInfo + bulk ticker.
+  - Metadata и логотипы: lazy, кэш, ограниченная параллельность.
+  - Candles загружаются только для открытого или реально нужного актива.
+  - Market/Futures: пагинация или виртуализация.
+  - Search: debounce.
+  - Запросы: dedupe и защита in-flight (single-flight).
+  - Тест фиксирует отсутствие N × candles; P0-тест из PR #13 остаётся зелёным.
+- **Dependencies:** 2.1, 2.2.
+- **Status:** `[~]` PR #14 (пагинация, single-flight, ограничение OI). Debounce поиска в селекторах
+  отдельно не проверен, проверить при ревью.
+- **PR/commit:** #14.
+
+---
+
+## 5. P1: Логотипы и metadata
+
+### [~] 5.1 Системный маппинг symbol → name/logo/metadata
+- **Priority:** P1
+- **Problem:** у динамических активов часто показывается буквенный аватар.
+- **Desired behavior:** lazy, кэш, ограниченная параллельность. Не хардкодить сотни URL. Не делать
+  сотни запросов к CoinGecko при рендере. Буквенный аватар — последний fallback.
+- **Acceptance criteria:** браузер делает не больше одного запроса metadata за сессию (кэш на
+  сервере); после ошибки срабатывает backoff без retry storm. На production проверены логотипы BTC,
+  ETH, SOL, LTC, BCH, ZEC, PEPE, USDC и нескольких динамических активов.
+- **Dependencies:** доступность CoinGecko с VPS.
+- **Status:** `[~]` PR #14 (`/api/market/metadata/assets`), на production не проверено.
+- **PR/commit:** #14.
+
+---
+
+## 6. P1: Селекторы
+
+### [~] 6.1 Coin Selector (/coin/:symbol)
+- Полный активный Spot universe, поиск по тикеру и имени, логотип. Не canonical 25.
+- **Status:** `[~]` PR #14.
+
+### [~] 6.2 Liquidations Selector
+- Активный поддерживаемый universe ∩ наличие свечей; поиск по тикеру и имени; логотип. Не canonical 25.
+- Не ломать candles, events, markers и потоки Binance/Bybit/OKX.
+- **Status:** `[~]` PR #14. Пересечение с поддержкой свечей проверить на production для
+  низколиквидных активов.
+
+---
+
+## 7. P1: База данных и стратегии
+
+### [ ] 7.1 Применить миграции на production
+- **Priority:** P1
+- **Evidence from production:** `relation "strategy_settings" does not exist`, при этом подключение
+  к БД работает. Миграция `006_strategy_settings` в репозитории есть.
+- **Вероятная причина** (анализ PR #14): `scripts/migrate.mjs` и `server/config.js` не читают `.env`.
+  Без экспортированного `DATABASE_URL` миграции применяются к БД по умолчанию, а не к production.
+- **Процедура (выполняет владелец на VPS):**
+  ```bash
+  cd /root/CRYPTORA
+  set -a; . ./.env; set +a            # или export DATABASE_URL='postgresql://…'
+  echo "$DATABASE_URL"                # убедиться, что это production
+  pg_dump "$DATABASE_URL" -Fc -f /root/cryptora-$(date +%F-%H%M).dump
+  npm run migrate:status
+  npm run migrate
+  npm run migrate:status              # 006, 007 (и 008 после PR #14) applied
+  psql "$DATABASE_URL" -c 'SELECT strategy_id, enabled FROM strategy_settings'   # 3 строки, disabled
+  psql "$DATABASE_URL" -c '\d signals'
+  sudo systemctl restart cryptora
+  curl -s http://127.0.0.1:3000/api/strategies | head -c 400
+  journalctl -u cryptora -n 100 --no-pager | grep -iE 'strateg|schedul|error'
+  ```
+- **Acceptance criteria:** есть backup; `migrate:status` без pending; в `strategy_settings`
+  3 строки, все disabled (сиды 006 не включают стратегии); таблица `signals` (007) существует;
+  `/api/strategies` отвечает 200; журнал шедулера без повторяющихся ошибок БД.
+- **Критично:** не менять алгоритмы V3.0/V3.3/V2.8, entry/exit, research/backtest logic.
+- **Dependencies:** доступ к VPS; раздел 12 (безопасность миграций).
+- **Status:** `[ ]`. **PR/commit:** процедура задокументирована в PR #14 и здесь.
+
+---
+
+## 8. P1: Ликвидации
+
+- `[x]` Candles работают.
+- `[x]` Actual events поступают.
+- `[x]` Markers работают.
+- `[x]` Потоки Binance/Bybit/OKX работают.
+
+### [~] 8.1 Убрать большие пустые вертикальные области
+- **Priority:** P1 · **Status:** `[~]` PR #14 (карточки стекаются, `items-start`, убран
+  `min-h-[184px]`). Проверить на production на desktop, tablet и mobile.
+
+### [ ] 8.2 Фильтры
+- **Priority:** P1
+- Фильтры по символу, бирже и минимальной сумме **$1K / $10K / $100K / $1M**.
+- **Note:** в v0.9.3 есть локальные фильтры журнала (биржа, сторона, минимальный размер). Сверить
+  пороги с этим списком и добавить фильтр по символу, где его нет.
+- **Acceptance criteria:** фильтрация не порождает сетевых запросов; фильтры работают вместе.
+
+### [ ] 8.3 Короткая серверная история actual events
+- **Priority:** P1/P2
+- **Problem:** после F5 история ликвидаций у пользователя обнуляется.
+- **Desired behavior:** сервер хранит ограниченное окно последних actual events (например, N событий
+  или T минут) и отдаёт его при загрузке страницы.
+- **Acceptance criteria:** после F5 журнал восстанавливается; calculated liquidation levels не
+  смешиваются с actual events; объём хранения ограничен.
+
+---
+
+## 9. P1: Сигналы
+
+- `[x]` «Открыть актив» (PR #13).
+
+### [ ] 9.1 Signal Detail и расширенный контекст
+- **Priority:** P1
+- Показывать: symbol, strategy, timeframe, event time, entry, invalidation, state, outcome, exit reason.
+- Только реальные данные.
+- Явно различать: new signal / entry executed / exit / research/history / live observation.
+- **Acceptance criteria:** ни одно поле не заполняется выдуманными значениями; при отсутствии данных
+  показывается «—» с пояснением. Логика стратегий не меняется.
+- **Dependencies:** 7.1 (серверные `signals`), если источником станет `/api/signals`.
+
+---
+
+## 10. P1: Свежесть данных
+
+### [ ] 10.1 Бейджи LIVE / STALE / DEGRADED с возрастом данных
+- Возраст в виде `2s`, `35s`, `3m` для ticker, candles, OI, funding, liquidations.
+- **Acceptance criteria:** пороги описаны в коде и документации; при остановке источника бейдж
+  становится STALE.
+
+### [ ] 10.2 Переподключение WS
+- После disconnect: REST catch-up → возобновление WS.
+- **Acceptance criteria:** production/browser test обязателен (эмуляция offline → online), без
+  пропусков свечей и без дублей.
+
+---
+
+## 11. P1: Наблюдаемость
+
+- `[ ]` **11.1 Admin/System: статус источников данных.** Binance Spot REST, Binance Spot WS, Binance
+  Futures, Bybit liquidation stream, OKX liquidation stream, CoinGecko, PostgreSQL. Для каждого:
+  status, latency, last success, last error, staleness.
+- `[ ]` **11.2 Разделить `/health` и `/ready`** при необходимости: liveness отдельно, readiness с БД
+  и миграциями.
+- `[ ]` **11.3 Frontend error reporting.**
+- `[ ]` **11.4 Метрики gateway:** errors, latency, rate-limit, timeouts.
+
+---
+
+## 12. P1: Deployment
+
+### [ ] 12.1 Исправить production deploy pipeline
+- **Текущий VPS:** repo `/root/CRYPTORA`; frontend раздаётся из `/var/www/cryptora`; backend —
+  systemd `cryptora.service` → `server/index.js`; Nginx `cryptora.duckdns.org`,
+  `/api` → `127.0.0.1:3000`.
+- **Note:** шаблон `systemd/cryptora.service` в репозитории запускает `server/productionServer.js`,
+  это расходится с VPS. Привести шаблон и документацию к фактической схеме.
+- **Problem:** `scripts/deploy.sh` запускает интеграционные тесты с embedded PostgreSQL, которые на
+  VPS падают с `initdb EACCES`, хотя GitHub CI проходит.
+- **Desired behavior:** разделить CI tests (GitHub), production build и deployment smoke tests (VPS).
+
+### [ ] 12.2 Надёжный (автоматизированный) deploy
+- backup → fetch → `git merge --ff-only` → build → atomic frontend swap → backend restart →
+  health → gateway smoke → rollback при провале.
+- **Acceptance criteria:** провал любого шага оставляет production на предыдущей версии; есть
+  документированная команда rollback.
+
+---
+
+## 13. P1: Версия production
+
+### [ ] 13.1 Endpoint версии
+- `/api/health` или отдельный endpoint отдаёт app version, Git SHA, build time и environment.
+- У frontend есть build ID (например, в footer или meta).
+- **Acceptance criteria:** по production можно однозначно определить задеплоенный commit.
+
+---
+
+## 14. P1: Безопасность миграций
+
+### [ ] 14.1 Обнаруживать pending critical migrations
+- Startup/readiness обнаруживает pending critical migrations и сообщает о них явно.
+- Шедулер не должен писать одну и ту же ошибку БД каждые 15 секунд бесконечно: backoff или
+  остановка с понятным статусом.
+- Destructive migrations не применяются автоматически без политики проекта.
+
+---
+
+## 15. P2: Безопасность
+
+- `[ ]` **15.1 npm audit.** На VPS `npm ci` сообщил о 7 уязвимостях: 5 moderate, 1 high, 1 critical.
+  НЕ запускать `npm audit fix --force` автоматически. Исследовать: какой пакет, prod или dev
+  зависимость, эксплуатируемость, безопасное обновление.
+- `[ ]` **15.2 Bind backend.** Node слушает `0.0.0.0:3000`. Если внешний доступ не нужен, слушать
+  `127.0.0.1` или закрыть внешний 3000 firewall'ом.
+- `[ ]` **15.3 Проверить firewall.**
+- `[ ]` **15.4 Проверить реальные production CSP и security headers.** Важно: активный Nginx на VPS
+  отличается от шаблона в репозитории и управляется Certbot. Не перезаписывать TLS-конфигурацию
+  шаблоном.
+
+---
+
+## 16. P2: Bundle и производительность
+
+- `[ ]` **16.1 Main JS bundle ~897–900 KB.** Вынести тяжёлые части в lazy/dynamic import. CoinPage не
+  грузит код Admin/Strategies, и наоборот. Установить performance budgets (проверка в CI).
+- `[ ]` **16.2 CoinPage budgets:** время переключения таймфрейма, число подписок, освобождение памяти,
+  число рендеров и callback'ов. Regression-тест PR #13 сохраняется.
+
+---
+
+## 17. P2: Невалидные и delisted активы
+
+- `[ ]` **17.1 `/coin/UNKNOWN`:** быстрое сообщение «Инструмент не поддерживается» без retry storm.
+- `[~]` **17.2 Delisted asset:** убирается из active universe и из выполнения скана (PR #14). НЕ
+  удалять исторический журнал и сигналы, проверить отдельно.
+
+---
+
+## 18. P2: Семантика Futures/Spot
+
+- `[ ]` **18.1 Аудит:** spot price, mark price, index price, futures volume, spot volume, OI и funding
+  не смешиваются. У каждого блока есть provenance/source.
+
+---
+
+## 19. P2: UI и layout
+
+- `[~]` **19.1** Большие пустые области на /liquidations (см. 8.1).
+- `[ ]` **19.2** Проверить responsive: desktop, tablet, mobile.
+- `[ ]` **19.3** Состояния error/empty/loading не создают огромных пустых карточек.
+
+---
+
+## 20. P2: Production audit
+
+### [ ] 20.1 READ-ONLY browser audit после ключевых исправлений
+- Маршруты: `/`, `/market`, `/futures`, `/coin/BTC`, `/coin/SOL`, `/liquidations`, `/radar`,
+  `/signals`, `/strategies`, `/admin`.
+- Собрать: console errors, failed network requests, API latency, stale data, layout regressions,
+  broken navigation.
+- Классифицировать находки P0/P1/P2/P3 и занести сюда отдельными задачами.
+- Не исправлять всё одним огромным PR.
+- **Dependencies:** разделы 2–8 слиты и задеплоены.
+
+---
+
+## Рекомендуемый порядок
+
+1. Ревью и merge PR #14 → deploy по процедуре 12.x → миграции 7.1 → проверка счётчиков 2.1/2.2.
+2. 13.1 (версия) и 14.1 (безопасность миграций): без них сложно проверить всё остальное.
+3. 12.1/12.2 deploy pipeline → 15.x security.
+4. 10.x, 11.x, 8.2/8.3, 9.1.
+5. 16.x, 17.x, 18.x, 19.x → 20.1 production audit.

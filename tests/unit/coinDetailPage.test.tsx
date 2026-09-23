@@ -9,6 +9,25 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import { normalizeCoinRouteSymbol } from '@/pages/CoinDetailPage';
 import { filterPickerSymbols } from '@/components/common/SymbolPickerModal';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { resetExchangeUniverseForTests } from '@/services/data/registry/exchangeUniverse';
+import { resetCoinLogoCacheForTests } from '@/services/data/registry/coinLogoRegistry';
+
+/** Server endpoints the picker uses: active Spot universe (exchangeInfo) + metadata. */
+function universeFetch(extra: Array<{ symbol: string; name: string }> = []) {
+  return vi.fn(async (url: string) => {
+    const u = String(url);
+    if (u.includes('/api/market/universe/spot')) {
+      const bases = ['BTC', 'ETH', 'SOL', ...extra.map((e) => e.symbol)];
+      return { ok: true, json: async () => ({ symbols: bases.map((b) => ({ symbol: b, exchangeSymbol: `${b}USDT`, baseAsset: b })), fetchedAt: '', stale: false }) };
+    }
+    if (u.includes('/api/market/metadata/assets')) {
+      const assets: Record<string, { name: string; logo: string }> = {};
+      for (const e of extra) assets[e.symbol] = { name: e.name, logo: `https://img.example/${e.symbol}.png` };
+      return { ok: true, json: async () => ({ assets }) };
+    }
+    return { ok: true, json: async () => [] };
+  });
+}
 
 function asset(symbol: string, name: string): AssetDetail {
   return {
@@ -21,9 +40,11 @@ function asset(symbol: string, name: string): AssetDetail {
 
 const LocationProbe = () => <output data-testid="current-route">{useLocation().pathname}</output>;
 
-function renderCoin(provider: MarketDataProvider, initialPath = '/coin/BTC') {
+function renderCoin(provider: MarketDataProvider, initialPath = '/coin/BTC', fetchImpl: unknown = universeFetch([{ symbol: 'PEPE', name: 'Pepe' }])) {
   localStorage.setItem('cryptora_qa_fixture', '1');
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
+  resetExchangeUniverseForTests();
+  resetCoinLogoCacheForTests();
+  vi.stubGlobal('fetch', fetchImpl);
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <ThemeProvider>
@@ -149,7 +170,7 @@ describe('CoinDetailPage failure isolation and symbol navigation', () => {
 });
 
 describe('coin selector uses the shared supported universe', () => {
-  it('selects a spot asset supplied by the live market provider and routes to that ticker', async () => {
+  it('selects a dynamic asset from the active Spot universe (exchangeInfo) and routes to that ticker', async () => {
     const getAssetSnapshot = vi.fn(async (symbol: string) => ({
       ...asset(symbol, symbol), category: 'other' as const, rank: Number.MAX_SAFE_INTEGER,
       marketCap: 0, circulatingSupply: 0, description: '',
@@ -172,6 +193,23 @@ describe('coin selector uses the shared supported universe', () => {
     await screen.findByRole('heading', { name: 'PEPE' });
     expect(screen.getByTestId('current-route')).toHaveTextContent('/coin/PEPE');
     expect(getAssetSnapshot.mock.calls.map(([symbol]) => symbol)).toEqual(['BTC', 'PEPE']);
+  });
+
+  it('opening the selector loads only the cheap universe — no provider.getAssets (bulk tickers + candle enrichment)', async () => {
+    const getAssets = vi.fn().mockResolvedValue([]);
+    const getCandles = vi.fn().mockResolvedValue([]);
+    const fetchImpl = universeFetch([{ symbol: 'PEPE', name: 'Pepe' }, { symbol: 'LTC', name: 'Litecoin' }]);
+    renderCoin(baseProvider({ getAssets, getCandles }), '/coin/BTC', fetchImpl);
+    await screen.findByRole('heading', { name: 'Bitcoin' });
+    const candleCallsBefore = getCandles.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /Выбрать монету/ }));
+    const picker = screen.getByRole('dialog', { name: 'Выбор монеты для графика' });
+    fireEvent.change(within(picker).getByRole('textbox'), { target: { value: 'litecoin' } });
+    expect(await within(picker).findByRole('button', { name: /^LTC Litecoin$/ })).toBeInTheDocument();
+    expect(getAssets).not.toHaveBeenCalled();
+    expect(getCandles.mock.calls.length).toBe(candleCallsBefore);
+    const universeCalls = fetchImpl.mock.calls.filter(([u]) => String(u).includes('/api/market/universe/spot'));
+    expect(universeCalls).toHaveLength(1);
   });
 
   it('searches by ticker and name and normalizes exchange-style ticker input', () => {

@@ -1,4 +1,8 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { paginate, DEFAULT_PAGE_SIZE } from '@/utils/pagination';
+import { Pagination } from '@/components/common/Pagination';
+import { getCoinNames } from '@/services/data/registry/coinLogoRegistry';
+import { getActiveSpotBaseSet } from '@/services/data/registry/exchangeUniverse';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useLivePriceMap } from '@/hooks/useLivePrices';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -36,6 +40,30 @@ export const MarketPage: React.FC = () => {
   );
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  // Display names for dynamic assets from the shared metadata cache (ONE request total).
+  const [names, setNames] = useState<Map<string, string>>(() => new Map());
+  // Подтверждён ли список Binance exchangeInfo (тот же кэш/запрос, что у провайдера).
+  // Без подтверждения показывается базовый каталог и он НЕ называется «активным».
+  const [universeConfirmed, setUniverseConfirmed] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (dataMode !== 'live') return;
+    let active = true;
+    void getActiveSpotBaseSet().then((set) => { if (active) setUniverseConfirmed(set !== null); });
+    return () => { active = false; };
+  }, [dataMode, assets]);
+  const universeKey = marketUniverse.map((a) => a.symbol).join(',');
+  useEffect(() => {
+    let active = true;
+    const symbols = universeKey ? universeKey.split(',') : [];
+    if (symbols.length === 0) return;
+    void getCoinNames(symbols).then((m) => { if (active) setNames(m); });
+    return () => { active = false; };
+  }, [universeKey]);
+  const displayName = useCallback(
+    (a: MarketUniverseAsset) => (a.name === a.symbol ? names.get(a.symbol) ?? a.name : a.name),
+    [names],
+  );
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('all');
   const [sortConfig, setSortConfig] = useState<SortConfig<AssetSummary>>({
     key: 'rank',
@@ -83,12 +111,16 @@ export const MarketPage: React.FC = () => {
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
-        (a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q)
+        (a) => a.symbol.toLowerCase().includes(q) || displayName(a).toLowerCase().includes(q)
       );
     }
 
     return sortMarketUniverse(result, sortConfig.key, sortConfig.direction);
-  }, [marketUniverse, selectedCategory, search, sortConfig]);
+  }, [marketUniverse, selectedCategory, search, sortConfig, displayName]);
+
+  // Filters/sort reset to the first page; only ONE page of rows is ever rendered.
+  useEffect(() => { setPage(1); }, [selectedCategory, search, sortConfig]);
+  const pageData = useMemo(() => paginate(filteredAssets, page, DEFAULT_PAGE_SIZE), [filteredAssets, page]);
 
   const categories: { label: string; value: AssetCategory }[] = [
     { label: 'Все активы', value: 'all' },
@@ -249,7 +281,7 @@ export const MarketPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredAssets.map((asset) => {
+                pageData.rows.map((asset) => {
                   const isStarred = watchlist.includes(asset.symbol);
                   return (
                     <tr
@@ -288,7 +320,7 @@ export const MarketPage: React.FC = () => {
                             {asset.symbol}
                           </span>
                           <span className="text-slate-400 text-xs hidden sm:inline">
-                            {asset.name}
+                            {displayName(asset)}
                           </span>
                           <span
                             title={CATEGORY_LABELS[asset.category] ?? asset.category}
@@ -355,7 +387,14 @@ export const MarketPage: React.FC = () => {
 
         {/* Footer info in table */}
         <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-sans">
-          <div>Показано: {filteredAssets.length} из {marketUniverse.length} активов каталога</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span data-qa="market-count">
+              {dataMode === 'live' && universeConfirmed === false
+                ? `Найдено: ${filteredAssets.length} из ${marketUniverse.length} — базовый каталог: список активных инструментов Binance (exchangeInfo) недоступен, активный статус не подтверждён`
+                : `Найдено: ${filteredAssets.length} из ${marketUniverse.length} активных Spot-инструментов`}
+            </span>
+            <Pagination {...pageData} onPage={setPage} qa="market-pagination" />
+          </div>
           <div
             className={`flex items-center space-x-1 text-[11px] ${
               dataMode === 'live' ? (sourceUnavailable ? 'text-rose-400/90' : 'text-brand-green/90') : 'text-amber-400/90'

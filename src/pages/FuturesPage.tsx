@@ -1,4 +1,12 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { paginate, DEFAULT_PAGE_SIZE } from '@/utils/pagination';
+import { Pagination } from '@/components/common/Pagination';
+import {
+  getFuturesUniverse,
+  getActiveSpotBaseSet,
+  futuresBaseToSpot,
+  type FuturesUniverse,
+} from '@/services/data/registry/exchangeUniverse';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -21,6 +29,22 @@ export const FuturesPage: React.FC = () => {
     direction: 'desc',
   });
   const navigate = useNavigate();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [universe, setUniverse] = useState<FuturesUniverse | null>(null);
+  const [universeLoaded, setUniverseLoaded] = useState(false);
+  const [spotSet, setSpotSet] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (dataMode !== 'live') return;
+    let active = true;
+    void Promise.all([getFuturesUniverse(), getActiveSpotBaseSet()]).then(([u, s]) => {
+      if (!active) return;
+      setUniverse(u);
+      setUniverseLoaded(true);
+      setSpotSet(s);
+    });
+    return () => { active = false; };
+  }, [dataMode]);
 
   // Б1: фьючерсы обновляются сами (30с; spot-OI кэшируется 60с, OI-ряд 5мин —
   // цикл почти не создаёт запросов; пауза в фоновой вкладке).
@@ -58,9 +82,15 @@ export const FuturesPage: React.FC = () => {
     } else if (filterFunding === 'negative') {
       result = result.filter((f) => f.fundingRate < 0);
     }
+    const q = search.trim().toUpperCase();
+    if (q) result = result.filter((f) => f.symbol.toUpperCase().includes(q));
 
     return sortData(result, sortConfig);
-  }, [futures, filterFunding, sortConfig]);
+  }, [futures, filterFunding, sortConfig, search]);
+
+  useEffect(() => { setPage(1); }, [filterFunding, sortConfig, search]);
+  // Only one page of contracts is rendered: 500+ perpetuals never hit the DOM at once.
+  const pageData = useMemo(() => paginate(filteredFutures, page, DEFAULT_PAGE_SIZE), [filteredFutures, page]);
 
   // Aggregate derivatives statistics via DerivativesEngine
   const overview = useMemo(
@@ -97,7 +127,16 @@ export const FuturesPage: React.FC = () => {
         </div>
 
         {/* Filter Buttons */}
-        <div className="flex items-center space-x-1.5 font-sans text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 font-sans text-xs">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск контракта…"
+            aria-label="Поиск контракта"
+            data-qa="futures-search"
+            className="rounded-lg border border-white/[0.08] bg-surface-elevated px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none min-h-[32px] w-40"
+          />
           <span className="text-slate-400 mr-1.5 hidden sm:inline font-semibold">Фандинг:</span>
           <button
             onClick={() => setFilterFunding('all')}
@@ -139,7 +178,13 @@ export const FuturesPage: React.FC = () => {
           <div className="text-xl font-bold text-white mt-1 tabular-nums font-mono">
             {formatCurrency(overview.totalOpenInterestUsd, { compact: true })}
           </div>
-          <div className="text-[11px] text-emerald-400 mt-0.5 font-semibold">25 ключевых perpetual futures</div>
+          <div className="text-[11px] text-emerald-400 mt-0.5 font-semibold" data-qa="futures-universe-count">
+            {universe
+              ? `${futures.length} активных USDT-M perpetual · всего активных USDT-M контрактов: ${universe.activeUsdtContracts}`
+              : dataMode === 'live' && universeLoaded
+                ? `${futures.length} контрактов — базовый каталог: список активных контрактов Binance (exchangeInfo) недоступен, активный статус не подтверждён`
+                : `${futures.length} USDT-M perpetual`}
+          </div>
         </div>
 
         <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 shadow-panel">
@@ -273,13 +318,15 @@ export const FuturesPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-border">
-              {filteredFutures.map((f) => {
-                const baseSymbol = f.symbol.split('/')[0];
+              {pageData.rows.map((f) => {
+                // 1000PEPE perp → PEPE spot page; perps without an active Spot pair are not navigable.
+                const spotBase = futuresBaseToSpot(f.symbol.split('/')[0], spotSet);
                 return (
                   <tr
                     key={f.symbol}
-                    onClick={() => navigate(`/coin/${baseSymbol}`)}
-                    className="hover:bg-surface-hover/80 transition-colors cursor-pointer group"
+                    onClick={spotBase ? () => navigate(`/coin/${spotBase}`) : undefined}
+                    title={spotBase ? undefined : 'Нет активной Spot-пары на Binance'}
+                    className={`hover:bg-surface-hover/80 transition-colors group ${spotBase ? 'cursor-pointer' : ''}`}
                   >
                     <td className="py-2.5 px-3">
                       <div className="flex items-center space-x-1.5">
@@ -378,6 +425,10 @@ export const FuturesPage: React.FC = () => {
               })}
             </tbody>
           </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-surface-border bg-surface-elevated/50 p-3 font-sans text-xs text-slate-400">
+          <span>Найдено: {filteredFutures.length} из {futures.length} контрактов (USD-M, USDT, PERPETUAL)</span>
+          <Pagination {...pageData} onPage={setPage} qa="futures-pagination" />
         </div>
       </div>
     </div>

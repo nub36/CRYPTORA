@@ -52,7 +52,7 @@ export const HeatmapGrid: React.FC<HeatmapGridProps> = ({
 
   // Helper to get tile style based on metric
   const getTileData = (asset: AssetSummary) => {
-    const futuresRow = futuresList.find((f) => f.symbol.startsWith(asset.symbol));
+    const futuresRow = futuresList.find((f) => f.symbol.split('/')[0].toUpperCase() === asset.symbol.toUpperCase());
 
     if (metric === 'change24h') {
       const val = asset.change24h;

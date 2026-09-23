@@ -3,6 +3,17 @@
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
 > **Последнее обновление:** 2026-09-23
 > **Текущая версия:** v0.9.3 — ИНТЕГРАЦИЯ ВЕТОК + UX-ПРОХОД ПО СКРИНШОТАМ (навигация, график монеты, новости)  
+> **ОСНОВНОЙ BACKLOG → [`docs/PRODUCTION_ROADMAP.md`](../PRODUCTION_ROADMAP.md).** После текущих
+> исправлений (PR #12, #13 слиты; PR #14 открыт) задачи берутся оттуда: живой checklist
+> `[ ]/[~]/[x]/[!]` с приоритетами P0–P3, доказательствами из production, acceptance criteria и
+> обязательными инвариантами. Закрывая задачу, обнови её статус и PR/commit в roadmap.
+> **Текущий этап (2026-09-23, PR после #13, не слит):** полная вселенная Binance — Spot из
+> exchangeInfo (USDT/TRADING/spot allowed), Futures — все активные USDT-M perpetual, логотипы через
+> серверный кэш CoinGecko, скан-вселенная в PostgreSQL (миграция 008, админка «Монеты»), пагинация
+> /market и /futures, селекторы /coin и /liquidations по всей вселенной. Живые счётчики из песочницы
+> не проверены (нет доступа к Binance) — проверить на VPS через /api/market/universe/*.
+> Прод-ошибка `relation "strategy_settings" does not exist`: миграции на VPS запускались без
+> DATABASE_URL прод-базы (конфиг не читает .env) — процедура в описании PR.
 > **Текущий этап:** v0.9.3 completed: в main влиты ветка аудита (отчёты + артефакты) и серверный слой
 > стратегий из arena/01a0aeee (движок, миграции 006/007, API /api/signals и /api/strategies,
 > setupGeometry) — при этом рантайм сигналов сохранён за main (SetupIssuance/SetupOutcome, outcomeHash);
