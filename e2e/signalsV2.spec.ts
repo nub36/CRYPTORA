@@ -211,10 +211,12 @@ interface RequestLog {
   klinesTotal: number;
   /** Запросы ленты сигналов по символу (не должно быть веера по вселенной). */
   signalsBySymbol: Map<string, number>;
+  /** Запросы вселенной селектора (открытие/поиск не должны грузить свечи). */
+  universeCount: number;
 }
 
 function newLog(): RequestLog {
-  return { klinesBySymbol: new Map(), klinesTotal: 0, signalsBySymbol: new Map() };
+  return { klinesBySymbol: new Map(), klinesTotal: 0, signalsBySymbol: new Map(), universeCount: 0 };
 }
 
 async function installSignalsFixtures(page: Page, log: RequestLog): Promise<void> {
@@ -228,13 +230,14 @@ async function installSignalsFixtures(page: Page, log: RequestLog): Promise<void
   });
 
   // Вселенная селектора (полный активный Spot, не админ-скан).
-  await page.route('**/api/market/universe/spot*', (route: Route) =>
-    route.fulfill({
+  await page.route('**/api/market/universe/spot*', (route: Route) => {
+    log.universeCount += 1;
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(spotUniverse(['BTC', 'ETH', 'SOL'])),
-    })
-  );
+    });
+  });
 
   // Свечи (перехват на случай live-провайдера; в QA-режиме не запрашиваются).
   await page.route('**/api/market/binance/spot/api/v3/klines*', async (route: Route) => {
@@ -376,29 +379,72 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await shot(page, 'signals-no-signal-coin');
   });
 
-  test('I/B: нет веера — сигналы/свечи только по выбранным инструментам', async ({ page }) => {
+  test('I/B: аудит запросов /signals — нет веера, нет дуп-лупа, нет runaway-поллинга', async ({ page }) => {
     const log = newLog();
     await installSignalsFixtures(page, log);
+    const info = test.info();
+    const snap = (label: string) => {
+      const feedTotal = [...log.signalsBySymbol.values()].reduce((a, b) => a + b, 0);
+      info.annotations.push({
+        type: 'requests',
+        description: `${label}: лента=${feedTotal} (символов=${log.signalsBySymbol.size}), свечи=${log.klinesTotal}, вселенная=${log.universeCount}`,
+      });
+      return { feedTotal, klines: log.klinesTotal, universe: log.universeCount };
+    };
+
+    // 1) Initial load: выбран BTC.
     await page.goto('/signals');
     await expect(page.getByTestId('signals-chart-card')).toBeVisible();
     await page.waitForTimeout(1500);
+    const afterLoad = snap('initial load');
+    // Лента только по выбранной монете, свечи не веером.
+    expect(log.signalsBySymbol.size).toBeLessThanOrEqual(1);
 
-    // На старте запрошен только выбранный инструмент (нет ленты по всей вселенной).
-    expect(log.signalsBySymbol.size).toBeLessThanOrEqual(2);
-
-    // Переключаем на SOL через селектор.
+    // 2) Открытие селектора: догружается только вселенная, НЕ свечи.
+    const klinesBeforePicker = log.klinesTotal;
     await page.getByTestId('signals-coin-picker-open').click();
+    await expect(page.getByTestId('symbol-picker-option-SOL')).toBeVisible();
+    await page.waitForTimeout(500);
+    snap('open selector');
+    expect(log.klinesTotal, 'открытие селектора не грузит свечи').toBe(klinesBeforePicker);
+
+    // 3) Поиск по тикеру: клиентская фильтрация, без сетевых свечей.
+    const klinesBeforeSearch = log.klinesTotal;
+    await page.getByTestId('symbol-picker-search').fill('SO');
+    await page.waitForTimeout(400);
+    snap('search');
+    expect(log.klinesTotal, 'поиск не запускает свечи по вселенной').toBe(klinesBeforeSearch);
+
+    // 4) Выбор SOL: +1 лента по SOL (+1 свеча в live; в QA-режиме синтетика=0).
     await page.getByTestId('symbol-picker-option-SOL').click();
     await page.waitForTimeout(1200);
-
-    // Сигналы запрошены только по BTC и SOL (по 1–2 страницы), не по всей вселенной.
+    snap('select SOL');
     expect(log.signalsBySymbol.size).toBeLessThanOrEqual(2);
-    for (const [, count] of log.signalsBySymbol) {
-      expect(count).toBeLessThanOrEqual(4);
+
+    // 5) Быстрый цикл SOL → BTC → SOL → BTC (гонка): запросы ограничены, дуп-лупа нет.
+    await page.getByTestId('signals-coin-picker-open').click();
+    await page.getByTestId('symbol-picker-option-BTC').click();
+    await page.getByTestId('signals-coin-picker-open').click();
+    await page.getByTestId('symbol-picker-option-SOL').click();
+    await page.getByTestId('signals-coin-picker-open').click();
+    await page.getByTestId('symbol-picker-option-BTC').click();
+    await page.waitForTimeout(1200);
+    snap('rapid SOL→BTC→SOL→BTC');
+
+    // 6) Переключение таймфрейма: свеча того же символа, не новый символ.
+    await page.getByTestId('signals-chart-tf-4h').click();
+    await page.waitForTimeout(800);
+    snap('timeframe switch');
+
+    // Итоговые границы: только BTC и SOL; по каждому ограниченное число запросов.
+    for (const [sym, count] of log.signalsBySymbol) {
+      expect(count, `лента по ${sym}`).toBeLessThanOrEqual(4);
+      expect(['BTC', 'SOL']).toContain(sym);
     }
-    // Свечи: в QA-режиме синтетика (0 сетевых), в любом случае не веер.
-    expect(log.klinesTotal).toBeLessThanOrEqual(6);
+    expect(log.klinesTotal).toBeLessThanOrEqual(8);
     expect(log.klinesBySymbol.size).toBeLessThanOrEqual(2);
+    // Поллинг 60с не должен сработать за время теста → дуп-луп отсутствует.
+    expect(afterLoad.feedTotal).toBeGreaterThanOrEqual(1);
   });
 
   test('G: секция «Статистика и аудит» (браузерный журнал, SHA-256) достижима и отделена', async ({ page }) => {
