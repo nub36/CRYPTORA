@@ -40,6 +40,20 @@ jobs:
         run: |
           set -o pipefail
           npm run test:e2e 2>&1 | tee /tmp/e2e.log
+      # Реальные счётчики запросов /signals по фазам (пишет e2e/signalsV2.spec.ts).
+      - name: Emit Signals V2 request audit
+        if: always()
+        shell: bash
+        run: |
+          if [ -f e2e/.request-audit.json ]; then
+            {
+              echo "### Signals V2 — аудит сетевых запросов /signals (реальный Chromium)"
+              echo '```json'
+              cat e2e/.request-audit.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            cat e2e/.request-audit.json
+          fi
       # Скриншоты Signals V2 (e2e/signalsV2.spec.ts пишут их при запуске в CI):
       # mobile top, график+выбранный сигнал, LONG/SHORT, targets[3], аудит.
       - name: Upload Signals V2 screenshots

@@ -14,3 +14,4 @@ screenshots
 
 # Серверный бандл ядра стратегий (собирается esbuild из src/, в Git не хранится)
 server/services/strategyEngine/.generated/
+e2e/.request-audit.json

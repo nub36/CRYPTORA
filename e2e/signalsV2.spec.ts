@@ -31,6 +31,7 @@
  */
 
 import { test, expect, type Page, type Route } from '@playwright/test';
+import fs from 'node:fs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Детерминированные фикстуры (сетевая граница)
@@ -383,13 +384,16 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     const log = newLog();
     await installSignalsFixtures(page, log);
     const info = test.info();
+    const phases: Array<{ phase: string; feed: number; feedSymbols: number; klines: number; universe: number }> = [];
     const snap = (label: string) => {
       const feedTotal = [...log.signalsBySymbol.values()].reduce((a, b) => a + b, 0);
+      const rec = { phase: label, feed: feedTotal, feedSymbols: log.signalsBySymbol.size, klines: log.klinesTotal, universe: log.universeCount };
+      phases.push(rec);
       info.annotations.push({
         type: 'requests',
         description: `${label}: лента=${feedTotal} (символов=${log.signalsBySymbol.size}), свечи=${log.klinesTotal}, вселенная=${log.universeCount}`,
       });
-      return { feedTotal, klines: log.klinesTotal, universe: log.universeCount };
+      return rec;
     };
 
     // 1) Initial load: выбран BTC.
@@ -444,7 +448,18 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     expect(log.klinesTotal).toBeLessThanOrEqual(8);
     expect(log.klinesBySymbol.size).toBeLessThanOrEqual(2);
     // Поллинг 60с не должен сработать за время теста → дуп-луп отсутствует.
-    expect(afterLoad.feedTotal).toBeGreaterThanOrEqual(1);
+    expect(afterLoad.feed).toBeGreaterThanOrEqual(1);
+
+    // Реальные счётчики — в файл для CI-сводки (артефакт аудита запросов).
+    try {
+      fs.mkdirSync('e2e', { recursive: true });
+      fs.writeFileSync(
+        'e2e/.request-audit.json',
+        JSON.stringify({ phases, signalsBySymbol: Object.fromEntries(log.signalsBySymbol), klinesBySymbol: Object.fromEntries(log.klinesBySymbol), klinesTotal: log.klinesTotal, universeCount: log.universeCount }, null, 2)
+      );
+    } catch {
+      /* нефатально */
+    }
   });
 
   test('G: секция «Статистика и аудит» (браузерный журнал, SHA-256) достижима и отделена', async ({ page }) => {
