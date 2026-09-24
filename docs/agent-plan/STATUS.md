@@ -187,6 +187,18 @@
 > (`89.125.24.50`) был обновлён до **v0.8.4 (`6a01ce1`)** и визуально проверен на `/liquidations`.
 > Прежние записи «production = v0.8.3» неверны. Версии v0.8.5–v0.8.39 на VPS **не выкатывались** (деплой не заказан).  
 > ⚠️ **КЛЮЧЕВОЙ ИНВАРИАНТ:** **CRYPTORA DOES NOT EXECUTE TRADES.**  
+> 🚨 **P0-ИНЦИДЕНТ 2026-09-24 (этап этой ветки, `arena/01a0d40a-cryptora`): CROSS-STRATEGY
+> PROVENANCE.** Три `strategy_id` (V3.0 / V3.3 / V2.8) получили на production ОДИН payload
+> (BTC/USDT, `signal_candle_ts` `2026-09-24 14:00 UTC`: `LONG`, коридор `83612.89569417082 …
+> 83734.64430582919`, стоп `83297.56854125623`, цели `{85389.275, 87278.54}`; то же на SEI, RENDER,
+> NEAR, INJ). **Root cause:** `server/services/strategyEngine/strategyEngine.js` → `runStrategyScan()`
+> читал статический синглтон `SignalsAuditLedger.getInstance()` **ПОСЛЕ `await`**, а планировщик
+> запускает стратегии КОНКУРЕНТНО — сканы читали чужой журнал, а `buildSignalRecord()` ставил
+> `strategyId` вызывающего. **Fix:** ссылка на ledger фиксируется синхронно с созданием движка;
+> `buildSignalRecord()` запрещает relabel (`provenanceMismatch`). Математика стратегий НЕ тронута.
+> Подробности: `docs/SIGNALS.md` §12, roadmap 9.5, SQL-аудит `scripts/sql/signal-provenance-audit.sql`.
+> **PRODUCTION:** стратегии остаются OFF, сигналы НЕ удалены, PR #18 НЕ задеплоен, миграция 010
+> НЕ применена. Монитор PR #18 деплоить только ПОСЛЕ фикса и выбора политики (A/B/C).
 > Терминал спроектирован исключительно для сбора и анализа данных (Crypto Market Intelligence Terminal). Торговый функционал, исполнение ордеров, торговые боты, автотрейдинг, кастоди и торговые API-ключи полностью и бесповоротно исключены из архитектуры и дорожной карты платформы.
 
 ---

@@ -108,6 +108,19 @@ export function normalizeScanSymbols(requested) {
 /**
  * Отображение сетапа ядра в строку таблицы `signals`.
  *
+ * ── ИНВАРИАНТ PROVENANCE (инцидент 2026-09-24: три strategy_id с одним payload) ──
+ *
+ * `strategyId` строки БД — это НЕ «чей скан сейчас идёт», а «какая стратегия
+ * породила этот сетап». Источник истины — `setup.strategyId`: его ставит сам
+ * LIVE-реплей стратегии (src/services/signals/live/replays/*), и он же входит
+ * в `setup.id` (`${strategyId}-${symbol}-${setupOpenTime}`).
+ *
+ * Переименование чужого сетапа — незаметная подмена: уровни остаются
+ * «правдоподобными», а журнал и статистика стратегии начинают описывать чужую
+ * математику. Поэтому relabel здесь запрещён: сетап с чужим strategyId не
+ * возвращается и не попадает в БД, а факт расхождения виден в сводке скана
+ * (`provenanceMismatch`) и в логе.
+ *
  * Функция ЧИСТАЯ: ни БД, ни математики стратегий. Все значения берутся из
  * `AnalyticalSetup` как есть (src/services/signals/SignalsAuditLedger.ts) —
  * уровень, который стратегия посчитала, здесь не пересчитывается и не
@@ -129,13 +142,26 @@ export function normalizeScanSymbols(requested) {
  * @param {string} p.fallbackVersion — версия из каталога, если сетап её не несёт
  * @param {string} p.engineKey — ключ стратегии в ядре ('V3.0', 'V3.3', 'V2.8')
  * @param {string} p.execTf — таймфрейм исполнения ядра
- * @returns {{setupOpenTime: number, record: object}|null} null — нет валидного
- *   ключа дедупликации: такой сетап НЕ сохраняется (сохранить без ключа =
- *   потерять дедупликацию и получить дубли при каждом рестарте).
+ * @returns {{setupOpenTime: number, record: object|null, provenanceMismatch?: string}|null}
+ *   null — нет валидного ключа дедупликации: такой сетап НЕ сохраняется
+ *   (сохранить без ключа = потерять дедупликацию и получить дубли при каждом
+ *   рестарте). `record: null` при `provenanceMismatch` — сетап порождён другой
+ *   стратегией: публиковать его под этим strategy_id нельзя.
  */
 export function buildSignalRecord({ setup, strategyId, fallbackVersion, engineKey, execTf }) {
   const setupOpenTime = Number(setup?.setupOpenTime);
   if (!Number.isFinite(setupOpenTime)) return null;
+
+  /**
+   * Provenance-проверка. `setup.strategyId` ставит реплей самой стратегии;
+   * отсутствие поля — это старый/неполный сетап, и молча подставлять вместо
+   * него вызывающего нельзя, иначе проверка вырождается в «всегда ок».
+   */
+  const generatingStrategyId = setup?.strategyId;
+  if (typeof generatingStrategyId === 'string' && generatingStrategyId.length > 0
+      && generatingStrategyId !== strategyId) {
+    return { setupOpenTime, record: null, provenanceMismatch: generatingStrategyId };
+  }
 
   return {
     setupOpenTime,
@@ -176,7 +202,7 @@ export function buildSignalRecord({ setup, strategyId, fallbackVersion, engineKe
  * @param {boolean} [p.persist] — false только в тестах
  * @returns {Promise<{strategyId:string, symbolsScanned:number, evaluated:boolean,
  *                    setupsFound:number, inserted:number, duplicates:number,
- *                    skippedNoKey:number, rejected:number,
+ *                    skippedNoKey:number, provenanceMismatch:number, rejected:number,
  *                    lifecycle:{synced:number, unchanged:number, notFound:number},
  *                    scan:object, activeSignals:number|null}>}
  */
@@ -218,6 +244,27 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     strategies: [engineKey],
   });
   if (!engine) throw new Error('Failed to instantiate strategy core engine');
+
+  /**
+   * ⚠️ ССЫЛКА НА LEDGER ФИКСИРУЕТСЯ ЗДЕСЬ — СИНХРОННО с созданием движка,
+   * до любого `await` (инцидент 2026-09-24: три strategy_id с одним payload).
+   *
+   * `SignalsAuditLedger` — такой же статический синглтон, как и сам движок:
+   * конструктор `LiveSignalEngine` берёт его через `getInstance()`, а
+   * планировщик запускает стратегии КОНКУРЕНТНО (StrategyScheduler.tick()
+   * не дожидается окончания скана). Раньше `ledger` читался ПОСЛЕ `await`
+   * предзагрузки свечей; к моменту возобновления статический синглтон уже
+   * принадлежал движку стратегии, запущенной последней. Три скана читали
+   * ОДИН чужой ledger, а `buildSignalRecord` ставил в строку strategy_id
+   * вызывающего — так один и тот же payload уходил в БД под всеми тремя
+   * strategy_id, а сетапы двух других стратегий терялись.
+   *
+   * Здесь между конструктором движка и чтением ledger нет ни одного `await`,
+   * поэтому `ledger` — это именно тот журнал, в который пишет `engine`.
+   * Дополнительный рубеж — provenance-проверка в `buildSignalRecord`: даже
+   * если чужой сетап всё же попадёт в выборку, он не будет переименован.
+   */
+  const ledger = core.SignalsAuditLedger.getInstance();
 
   /**
    * Таймфрейм исполнения — из ЯДРА, а не из копии: публикации сетапов несут
@@ -268,7 +315,7 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     throw err;
   }
 
-  const ledger = core.SignalsAuditLedger.getInstance();
+  // `ledger` захвачен выше, синхронно с созданием `engine` (см. комментарий).
   const before = new Set(ledger.getSetups().map((s) => s.id));
 
   /**
@@ -289,6 +336,9 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
   let inserted = 0;
   let duplicates = 0;
   let skippedNoKey = 0;
+  let provenanceMismatch = 0;
+  /** Кто именно породил отвергнутые сетапы — для честного лога, а не «что-то пошло не так». */
+  const alienStrategyIds = new Set();
 
   for (const setup of fresh) {
     /**
@@ -312,11 +362,32 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
       skippedNoKey++;
       continue;
     }
+    /**
+     * Provenance: уровни этого сетапа посчитала ДРУГАЯ стратегия. Публиковать их
+     * под текущим `strategyId` — значит подменить авторство сигнала: в журнале
+     * появится запись, которой эта стратегия не создавала. Такой сетап
+     * пропускается и считается; молча писать его нельзя, поэтому расхождение
+     * уходит и в лог, и в сводку скана.
+     */
+    if (!built.record) {
+      provenanceMismatch++;
+      if (built.provenanceMismatch) alienStrategyIds.add(built.provenanceMismatch);
+      continue;
+    }
     if (!persist) continue;
 
     const res = await insertSignal(built.record);
     if (res.inserted) inserted++;
     else duplicates++;
+  }
+
+  if (provenanceMismatch > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[strategyEngine] provenance violation: скан ${strategyId} получил ${provenanceMismatch} `
+      + `сетап(ов) стратегий ${[...alienStrategyIds].join(', ') || 'UNKNOWN'} — они НЕ опубликованы. `
+      + 'Причина: общий статический ledger ядра между параллельными сканами.',
+    );
   }
 
   if (inserted > 0) await recordSignalEmitted(strategyId);
@@ -349,6 +420,7 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     inserted,
     duplicates,
     skippedNoKey,
+    provenanceMismatch,
     rejected,
     lifecycle,
     scan: {

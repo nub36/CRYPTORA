@@ -51,8 +51,12 @@ export interface SignalInsertRecord {
 
 /**
  * Чистое отображение сетапа ядра (`AnalyticalSetup`) в строку signals.
+ *
  * `null` — у сетапа нет валидного `setupOpenTime`, сохранять его нельзя:
  * без ключа дедупликации рестарт процесса дал бы дубли.
+ *
+ * `record: null` при `provenanceMismatch` — сетап посчитала другая стратегия:
+ * переименовывать его под `strategyId` вызывающего запрещено.
  */
 export declare function buildSignalRecord(params: {
   setup: Record<string, unknown>;
@@ -60,7 +64,11 @@ export declare function buildSignalRecord(params: {
   fallbackVersion: string;
   engineKey: string;
   execTf: string;
-}): { setupOpenTime: number; record: SignalInsertRecord } | null;
+}): {
+  setupOpenTime: number;
+  record: SignalInsertRecord | null;
+  provenanceMismatch?: string;
+} | null;
 
 export interface ScanLifecycleSummary {
   synced: number;
@@ -96,6 +104,12 @@ export interface StrategyScanResult {
   duplicates: number;
   /** Сетапы без валидного ключа дедупликации: не сохранены, но видимы. */
   skippedNoKey: number;
+  /**
+   * Сетапы, которые посчитала ДРУГАЯ стратегия: не сохранены и не
+   * переименованы (инвариант provenance). Ненулевое значение — ЧП: оно
+   * означает, что скан читал чужой ledger ядра.
+   */
+  provenanceMismatch: number;
   /** Σ `unpublishable` из ReplaySummary (отклонённые геометрией). */
   rejected: number;
   lifecycle: ScanLifecycleSummary;

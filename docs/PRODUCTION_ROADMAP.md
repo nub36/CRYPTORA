@@ -405,6 +405,60 @@ criteria · Dependencies · Status · PR/commit**.
 - **Dependencies:** 9.2, 9.3, 7.1 (миграции на production).
 - **Status:** `[~]`. **PR:** #18 — https://github.com/nub36/CRYPTORA/pull/18
   (ветка `arena/01a0d27d-cryptora`, CI зелёный).
+### [~] 9.5 P0-инцидент: три strategy_id получили ОДИН payload (cross-strategy provenance)
+- **Priority:** **P0** — целостность production-сигналов.
+- **Evidence from production (от владельца, 2026-09-24):** BTC/USDT, `signal_candle_ts`
+  `2026-09-24 14:00 UTC` —V2.8, V3.0 и V3.3 записали **полностью одинаковые**
+  `direction / entry_min / entry_max / stop_loss / targets`:
+  `LONG`, `83612.89569417082 … 83734.64430582919`, стоп `83297.56854125623`, цели
+  `{85389.275, 87278.54}`. Та же картина на SEI, RENDER, NEAR, INJ и, возможно, других.
+- **Root cause (найден кодом, подтверждён падающими regression-тестами):**
+  `server/services/strategyEngine/strategyEngine.js` → `runStrategyScan()`.
+  `SignalsAuditLedger` — СТАТИЧЕСКИЙ синглтон, как и `LiveSignalEngine`. Конструктор движка
+  берёт журнал через `SignalsAuditLedger.getInstance()`, но сам `runStrategyScan` читал
+  `getInstance()` **ПОСЛЕ `await`** предзагрузки свечей. Стратегии запускаются планировщиком
+  **КОНКУРЕНТНО** (`StrategyScheduler.tick()` не дожидается конца скана), поэтому к моменту
+  возобновления статический журнал уже принадлежал движку, созданному последним. Три сканa
+  читали ОДИН чужой журнал, а `buildSignalRecord()` ставил в строку `strategyId` **вызывающего**,
+  а не автора сетапа. Итог: один payload под тремя `strategy_id` плюс тихая потеря сетапов двух
+  других стратегий (их журнал никто не читал).
+- **Desired behavior (инвариант provenance):** `published.strategy_id` обязан равняться
+  `strategyId` того сетапа, который его породил; уровни берутся из raw output ИМЕННО этой
+  стратегии. Переименование чужого сетапа запрещено на уровне кода.
+- **Fix (только infrastructure/orchestration, математика стратегий не тронута):**
+  * ссылка на ledger фиксируется **синхронно** с созданием движка, до любого `await`;
+  * `buildSignalRecord()` возвращает `record: null` + `provenanceMismatch`, если
+    `setup.strategyId !== strategyId` — чужой сетап НЕ публикуется и НЕ переименовывается;
+  * счётчик `provenanceMismatch` в сводке скана + `console.error` (ЧП не может быть тихим);
+  * декларации `strategyEngine.d.ts` обновлены под новый контракт.
+- **Regression-тесты (падают на старом коде, зелёные на новом):**
+  * `tests/integration/strategyProvenance.test.ts` — настоящее ядро + детерминированные
+    фикстуры, на которых V3.0 и V3.3 реально публикуют сетапы (у них одинаковый коридор, но
+    РАЗНЫЕ цели: равновесие 4H-диапазона против середины displacement-ноги), V2.8 — не публикует
+    ничего. До фикса: `engine_setup_id=V3_3_…-BTCUSDT-1790258400000` уходил в БД под
+    `strategy_id=V3_0_HTF_LIQUIDATION_TRAP`, и V2.8 получал строку без единого своего сетапа.
+  * `tests/unit/strategyProvenanceRace.test.ts` — гонка за статический синглтон без сети и без
+    настоящего ядра (быстро, детерминированно); плюс тесты на отказ от relabel.
+  * `tests/integration/signalProvenanceAuditSql.test.ts` — SQL-аудит исполняется на настоящем
+    PostgreSQL и находит форму инцидента.
+  * `tests/unit/strategyEngineOrchestration.test.ts` — контракт `buildSignalRecord` дополнен
+    проверкой provenance.
+- **SQL для владельца (только SELECT):** `scripts/sql/signal-provenance-audit.sql` —
+  collision groups по `(symbol, signal_candle_ts, direction, entry_min, entry_max, stop_loss,
+  targets)` и ДОКАЗАННАЯ подмена авторства по `engine_setup_id` / `strategy_version` /
+  `exit_rule` (все три поля пишутся из сетапа, поэтому называют истинного автора).
+- **Судьба уже записанных production-сигналов:** НЕ удалять и НЕ переписывать. Выбор политики
+  (A — provenance подтверждён ⇒ мониторить; B — подмена ⇒ административно пометить
+  invalid/unresolved с явной причиной; C — карантин строк до фикса) — за владельцем, после
+  прогона SQL-аудита. Черновик — `docs/SIGNALS.md` §12.
+- **Монитор PR #18:** НЕ деплоить поверх непроверенных ACTIVE-сигналов — монитор начал бы
+  сопровождать сетапы, авторство которых не доказано, и записал бы их исходы в строки с
+  чужим `strategy_id`. Порядок: прогнать SQL-аудит → выбрать политику → задеплоить фикс →
+  затем монитор.
+- **Dependencies:** прогноз SQL-аудита на production, решение владельца по политике.
+- **Status:** `[~]` — fix + тесты готовы в этом PR, **не слит и не задеплоен**.
+  **STRATEGY MATH MODIFIED: NO · PRODUCTION STRATEGIES ENABLED: NO ·
+  PRODUCTION SIGNALS DELETED: NO · MIGRATION 010 APPLIED: NO.**
 
 ---
 

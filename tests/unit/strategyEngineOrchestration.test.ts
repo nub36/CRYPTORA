@@ -163,6 +163,8 @@ import {
 
 const V30 = 'V3_0_HTF_LIQUIDATION_TRAP';
 const V28 = 'V2_8_ZERO_FEE_SNIPER_TRAILING';
+/** Чужая стратегия для проверки инварианта provenance. */
+const V33_FOREIGN = 'V3_3_HTF_ZONE_MITIGATION';
 
 const SETUP_BAR = Date.parse('2026-09-19T10:00:00Z');
 
@@ -603,22 +605,38 @@ describe('Перенос сетапа в signalRepository', () => {
   });
 
   it('buildSignalRecord — чистое отображение: ничего не пересчитывается', () => {
+    // strategyId вызывающего обязан совпадать с strategyId сетапа: это тот же
+    // инвариант provenance, что закрывает инцидент 2026-09-24 (три strategy_id
+    // с одним payload). Свои сетапы проходят без изменений уровней.
     const built = buildSignalRecord({
       setup: makeSetup({ targets: [10, 20, 30, 40] }),
-      strategyId: V28,
-      fallbackVersion: '2.8',
-      engineKey: 'V2.8',
+      strategyId: V30,
+      fallbackVersion: '3.0',
+      engineKey: 'V3.0',
       execTf: '1h',
     });
     expect(built).not.toBeNull();
-    expect(built!.record.targets).toEqual([10, 20, 30, 40]);
+    expect(built!.record).not.toBeNull();
+    expect(built!.record!.targets).toEqual([10, 20, 30, 40]);
     expect(built!.setupOpenTime).toBe(SETUP_BAR);
+
+    // Чужой сетап НЕ переименовывается: relabel — и есть корень инцидента.
+    const relabel = buildSignalRecord({
+      setup: makeSetup({ strategyId: V33_FOREIGN }),
+      strategyId: V30,
+      fallbackVersion: '3.0',
+      engineKey: 'V3.0',
+      execTf: '1h',
+    });
+    expect(relabel, 'ключ дедупликации есть — null быть не должно').not.toBeNull();
+    expect(relabel!.record, 'публиковать чужой сетап под своим id нельзя').toBeNull();
+    expect(relabel!.provenanceMismatch).toBe(V33_FOREIGN);
 
     // Лестница копируется: последующая мутация сетапа не меняет сохранённое.
     const setup = makeSetup();
     const copy = buildSignalRecord({ setup, strategyId: V30, fallbackVersion: '3.0', engineKey: 'V3.0', execTf: '1h' })!;
     setup.targets.push(999);
-    expect(copy.record.targets).toEqual([116_900.5, 118_400.25, 121_050.0]);
+    expect(copy.record!.targets).toEqual([116_900.5, 118_400.25, 121_050.0]);
 
     expect(buildSignalRecord({ setup: makeSetup({ setupOpenTime: Infinity }), strategyId: V30, fallbackVersion: '3.0', engineKey: 'V3.0', execTf: '1h' })).toBeNull();
     expect(buildSignalRecord({ setup: makeSetup({ setupOpenTime: '1758283200000' }), strategyId: V30, fallbackVersion: '3.0', engineKey: 'V3.0', execTf: '1h' })!.setupOpenTime).toBe(1758283200000);
