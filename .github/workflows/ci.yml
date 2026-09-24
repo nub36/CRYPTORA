@@ -40,6 +40,33 @@ jobs:
         run: |
           set -o pipefail
           npm run test:e2e 2>&1 | tee /tmp/e2e.log
+      # Реальные счётчики запросов /signals по фазам (пишет e2e/signalsV2.spec.ts).
+      # Дублируем в аннотации check-run (читаются через API без blob-хранилища).
+      - name: Emit Signals V2 request audit
+        if: always()
+        shell: bash
+        run: |
+          if [ -f e2e/.request-audit.json ]; then
+            {
+              echo "### Signals V2 — аудит сетевых запросов /signals (реальный Chromium)"
+              echo '```json'
+              cat e2e/.request-audit.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.phases[] | "::notice::Requests [\(.phase)]: лента=\(.feed) (символов=\(.feedSymbols)), свечи=\(.klines), вселенная=\(.universe)"' e2e/.request-audit.json
+            jq -r '"::notice::Requests [ИТОГО]: лента по символам=\(.signalsBySymbol | tojson), свечи=\(.klinesBySymbol | tojson), klinesTotal=\(.klinesTotal), universe=\(.universeCount)"' e2e/.request-audit.json
+            cat e2e/.request-audit.json
+          fi
+      # Скриншоты Signals V2 (e2e/signalsV2.spec.ts пишут их при запуске в CI):
+      # mobile top, график+выбранный сигнал, LONG/SHORT, targets[3], аудит.
+      - name: Upload Signals V2 screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-screenshots
+          path: e2e/screenshots
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4

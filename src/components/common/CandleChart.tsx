@@ -1,9 +1,10 @@
 import { useTheme } from '@/context/ThemeContext';
 import { readThemeToken } from '@/theme/theme';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi, LineData, Time, TickMarkType } from 'lightweight-charts';
-import type { MouseEventParams } from 'lightweight-charts';
+import { createChart, ColorType, LineStyle, IChartApi, ISeriesApi, IPriceLine, LineData, Time, TickMarkType } from 'lightweight-charts';
+import type { MouseEventParams, SeriesMarker } from 'lightweight-charts';
 import type { Timeframe } from '@/types/market';
+import type { ChartLevelLine, ChartMarker } from '@/types/chart';
 import { IndicatorPaneChart } from './IndicatorPaneChart';
 import { ChartTimeRangeSync } from './ChartTimeRangeSync';
 import { formatChartAxisTime, formatChartCrosshairTime } from '@/utils/chartTime';
@@ -42,6 +43,82 @@ interface CandleChartProps {
   chartType?: CandleChartType;
   /** Показывать MA-линии поверх цены (SMA20/50/200 + полосы Боллинджера). Default: true. */
   showMA?: boolean;
+  /**
+   * Маркеры событий поверх свечей (аддитивный props; существующие потребители
+   * его не передают и ведут себя как раньше). Время — unix-секунды openTime бара,
+   * который РЕАЛЬНО присутствует в `data`: маркер вне окна графика библиотека
+   * не отрисует, поэтому фильтрация делается на стороне источника
+   * (см. `mapSignalMarkers`).
+   */
+  markers?: ChartMarker[];
+  /**
+   * Горизонтальные уровни (аддитивный props). Линии заменяются по `id`: при
+   * смене выбранного сигнала старые уровни удаляются, а не накапливаются —
+   * смешать уровни двух сигналов на графике невозможно.
+   */
+  levelLines?: ChartLevelLine[];
+  /**
+   * Клик по бару с маркером. Передаётся основной маркер и ВСЕ маркеры этого
+   * бара: политику выбора («какой из нескольких сигналов открыть») знает
+   * доменный слой, а не общий график.
+   */
+  onMarkerClick?: (marker: ChartMarker, markersAtTime: ChartMarker[]) => void;
+}
+
+/** Стили линий уровней — соответствие имен и значений lightweight-charts. */
+const LEVEL_LINE_STYLE: Record<NonNullable<ChartLevelLine['style']>, LineStyle> = {
+  solid: LineStyle.Solid,
+  dotted: LineStyle.Dotted,
+  dashed: LineStyle.Dashed,
+  largeDashed: LineStyle.LargeDashed,
+  sparseDotted: LineStyle.SparseDotted,
+};
+
+/**
+ * Доменный маркер → маркер библиотеки.
+ *
+ * Экспортировано как чистая функция: mapping покрыт юнит-тестами без рендера
+ * графика (canvas в jsdom недоступен).
+ */
+export function toSeriesMarkers(markers: readonly ChartMarker[]): SeriesMarker<Time>[] {
+  return markers.map((m) => ({
+    time: m.time as Time,
+    position: m.position,
+    shape: m.shape,
+    color: m.color,
+    id: m.id,
+    size: (m.size ?? 1) as 0 | 1 | 2 | 3 | 4,
+    ...(m.text !== undefined ? { text: m.text } : {}),
+  }));
+}
+
+/** Равенство описаний линии: цена, подпись и оформление. */
+export function sameLevelLine(a: ChartLevelLine, b: ChartLevelLine): boolean {
+  return (
+    a.price === b.price &&
+    a.title === b.title &&
+    a.color === b.color &&
+    (a.style ?? 'solid') === (b.style ?? 'solid') &&
+    (a.lineWidth ?? 1) === (b.lineWidth ?? 1) &&
+    (a.axisLabelVisible ?? true) === (b.axisLabelVisible ?? true)
+  );
+}
+
+/** `Time` библиотеки (число | строка | BusinessDay) → unix-секунды. */
+export function chartTimeToSeconds(time: Time | undefined): number | null {
+  if (time === undefined || time === null) return null;
+  if (typeof time === 'number') return Number.isFinite(time) ? Math.floor(time) : null;
+  if (typeof time === 'string') {
+    const parsed = Date.parse(time);
+    return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
+  }
+  if (typeof time === 'object') {
+    const { year, month, day } = time as { year?: number; month?: number; day?: number };
+    if (typeof year === 'number' && typeof month === 'number' && typeof day === 'number') {
+      return Math.floor(Date.UTC(year, month - 1, day) / 1000);
+    }
+  }
+  return null;
 }
 
 /**
@@ -68,6 +145,9 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   timeframe = '15m',
   chartType = 'candles',
   showMA = true,
+  markers,
+  levelLines,
+  onMarkerClick,
 }) => {
   const candleSource = data[0]?.provenance?.exchange;
   const isDemoCandles = candleSource === 'synthetic-demo' || (data.length > 0 && !candleSource);
@@ -89,6 +169,13 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   const chartDataInitializedRef = useRef(false);
   const chartTimeframeRef = useRef<Timeframe | null>(null);
   const timeSyncRef = useRef(new ChartTimeRangeSync());
+  /** Маркеры — для обработки клика (подписка создаётся один раз вместе с графиком). */
+  const markersRef = useRef<ChartMarker[]>([]);
+  /** Колбэк клика в ref: пересоздание графика из-за смены обработчика не нужно. */
+  const onMarkerClickRef = useRef(onMarkerClick);
+  onMarkerClickRef.current = onMarkerClick;
+  /** Созданные линии уровней: id → линия + её описание (для точечной замены). */
+  const levelLineRefs = useRef<Map<string, { line: IPriceLine; descriptor: ChartLevelLine }>>(new Map());
   const [timeMode, setTimeMode] = useState<TimeDisplayMode>('LOCAL');
   const timeModeRef = useRef<TimeDisplayMode>(timeMode);
   timeModeRef.current = timeMode;
@@ -280,6 +367,22 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     };
     chart.subscribeCrosshairMove(handleCrosshairMove);
 
+    /**
+     * Клик по бару с маркером. Общий график не знает доменной политики
+     * («какой из нескольких сигналов на баре открыть»), поэтому наружу
+     * отдаются основной маркер и все маркеры этого бара.
+     */
+    const handleClick = (param: MouseEventParams<Time>) => {
+      const callback = onMarkerClickRef.current;
+      if (!callback) return;
+      const seconds = chartTimeToSeconds(param.time);
+      if (seconds === null) return;
+      const atTime = markersRef.current.filter((m) => m.time === seconds);
+      if (atTime.length === 0) return;
+      callback(atTime[0]!, atTime);
+    };
+    chart.subscribeClick(handleClick);
+
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current === chart) {
         chart.applyOptions({ width: chartContainerRef.current.clientWidth });
@@ -299,8 +402,13 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       window.removeEventListener('resize', handleResize);
       resizeObserver?.disconnect();
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      chart.unsubscribeClick(handleClick);
       unregisterTimeSync();
       chart.remove();
+      // Линии и маркеры принадлежат уничтоженной серии: ссылки обязаны быть
+      // сброшены, иначе следующий эффект станет обновлять несуществующие линии.
+      levelLineRefs.current = new Map();
+      markersRef.current = [];
       if (chartRef.current === chart) chartRef.current = null;
       currentPriceRef.current = null;
       lastAppliedTimeRef.current = null;
@@ -361,6 +469,63 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       timeSyncRef.current.syncFrom(chart);
     }
   }, [data, timeframe]);
+
+  /**
+   * Маркеры событий (аддитивно). Применяются ко всем сериям цены, чтобы смена
+   * `chartType` не теряла историю; `height` в зависимостях — потому что при его
+   * смене график пересоздаётся и маркеры нужно нанести заново.
+   */
+  useEffect(() => {
+    const list = markers ?? [];
+    markersRef.current = list;
+    const seriesMarkers = toSeriesMarkers(list);
+    candleSeriesRef.current?.setMarkers(seriesMarkers);
+    barSeriesRef.current?.setMarkers(seriesMarkers);
+    lineSeriesRef.current?.setMarkers(seriesMarkers);
+  }, [markers, data, height]);
+
+  /**
+   * Горизонтальные уровни выбранного сигнала (аддитивно).
+   *
+   * Замена ТОЧЕЧНАЯ по `id`: `createPriceLine` не умеет менять цену, поэтому
+   * изменившаяся линия пересоздаётся, а линия, которой в новом наборе нет,
+   * удаляется. Именно это гарантирует, что при выборе другого сигнала его
+   * уровни заменяют прежние, а не складываются с ними (§8 задачи Signals V2).
+   */
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    const desired = levelLines ?? [];
+    const existing = levelLineRefs.current;
+    const next = new Map<string, { line: IPriceLine; descriptor: ChartLevelLine }>();
+
+    for (const descriptor of desired) {
+      const prev = existing.get(descriptor.id);
+      if (prev && sameLevelLine(prev.descriptor, descriptor)) {
+        next.set(descriptor.id, prev);
+        existing.delete(descriptor.id);
+        continue;
+      }
+      if (prev) {
+        try { series.removePriceLine(prev.line); } catch { /* линия уже снята */ }
+        existing.delete(descriptor.id);
+      }
+      const line = series.createPriceLine({
+        price: descriptor.price,
+        color: descriptor.color,
+        lineWidth: (descriptor.lineWidth ?? 1) as 1 | 2 | 3 | 4,
+        lineStyle: LEVEL_LINE_STYLE[descriptor.style ?? 'solid'],
+        axisLabelVisible: descriptor.axisLabelVisible ?? true,
+        title: descriptor.title,
+      });
+      next.set(descriptor.id, { line, descriptor });
+    }
+
+    for (const stale of existing.values()) {
+      try { series.removePriceLine(stale.line); } catch { /* линия уже снята */ }
+    }
+    levelLineRefs.current = next;
+  }, [levelLines, data, height]);
 
   // Binance kline update: same T replaces, T+interval appends, older/mismatched ticks are ignored.
   useEffect(() => {

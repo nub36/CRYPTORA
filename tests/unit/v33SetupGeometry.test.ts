@@ -84,11 +84,17 @@ describe('B — компаратор Stop Loss', () => {
     expect(stopComparator('SHORT')).toBe('>');
   });
 
-  it('в SignalsPage знак берётся из направления, а не захардкожен', () => {
-    const src = srcOf('src/pages/SignalsPage.tsx');
-    expect(src).toContain('stopComparator(setup.direction)');
-    // Знак не зашит литералом рядом с уровнем отмены.
-    expect(src).not.toMatch(/'<'[^)]*invalidationLevel/);
+  it('в отображении сигналов знак берётся из направления, а не захардкожен', () => {
+    // Логика переехала из SignalsPage в общий слой отображения серверных сигналов
+    // (Signals V2): stopSign(direction) оборачивает стоп-компаратор, а модель
+    // уровня стопа строится из stopSign(signal.direction).
+    const text = srcOf('src/utils/serverSignalText.ts');
+    const model = srcOf('src/services/signals/ui/signalUiModel.ts');
+    expect(text).toContain('stopComparator(direction)');
+    expect(model).toContain('stopSign(signal.direction)');
+    // Знак не зашит литералом рядом с уровнем отмены/стопа.
+    expect(model).not.toMatch(/'<'[^)]*(invalidationLevel|stopLoss)/);
+    expect(text).not.toMatch(/'<'[^)]*(invalidationLevel|stopLoss)/);
   });
 });
 

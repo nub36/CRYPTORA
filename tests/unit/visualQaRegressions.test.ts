@@ -78,8 +78,13 @@ describe('§10 — текущая цена отображается один р�
 
   it('осознанная линия текущей цены остаётся единственной', () => {
     const s = src(CANDLE);
-    const priceLines = s.match(/createPriceLine\(/g) || [];
-    expect(priceLines.length).toBe(2); // setData + realtime update
+    // createPriceLine используется и для уровней сигналов (аддитивный проп
+    // `levelLines`), поэтому считаем только линии ТЕКУЩЕЙ ЦЕНЫ — они строятся от
+    // `.close` последней свечи (путь setData + realtime update) и должны
+    // оставаться ровно двумя, без дублей.
+    const calls = s.split('createPriceLine(').slice(1);
+    const currentPriceLines = calls.filter((c) => c.slice(0, 200).includes('.close'));
+    expect(currentPriceLines.length).toBe(2); // setData + realtime update
   });
 });
 
