@@ -12,6 +12,7 @@ import { createApp } from './app.js';
 import { config } from './config.js';
 import { checkDatabase, closePool } from './db/pool.js';
 import { getStrategyScheduler } from './services/strategyEngine/strategyScheduler.js';
+import { getSignalMonitor } from './services/signalMonitor/signalMonitor.js';
 
 const app = createApp();
 
@@ -49,6 +50,26 @@ async function start() {
     console.warn('[CRYPTORA] Strategy scheduler NOT started: database unreachable.');
   }
 
+  // ── Серверный монитор сигналов ─────────────────────────────────────
+  // Отдельно от планировщика сканов: планировщик ИЩЕТ новые сетапы, монитор
+  // доводит уже опубликованные до терминального исхода. Без него состояние
+  // сигнала менялось только когда открыт браузер (F-18).
+  //
+  // Монитор не зависит от ВКЛ/ВЫКЛ стратегий: он работает с тем, что уже
+  // сохранено в `signals`. Выключенные стратегии не создают новых сигналов, но
+  // старые продолжают отслеживаться до терминала. Если открытых сигналов нет —
+  // тик не делает ни одного запроса к бирже.
+  if (dbOk) {
+    try {
+      getSignalMonitor().start();
+      console.log('[CRYPTORA] Signal monitor started (open signals, independent of browser).');
+    } catch (err) {
+      console.error('[CRYPTORA] Signal monitor failed to start:', err.message);
+    }
+  } else {
+    console.warn('[CRYPTORA] Signal monitor NOT started: database unreachable.');
+  }
+
   httpServer = app.listen(config.PORT, config.HOST, () => {
     console.log('=======================================================');
     console.log('  CRYPTORA Backend Server');
@@ -83,6 +104,13 @@ const shutdown = async (signal) => {
     console.log('[CRYPTORA] Strategy scheduler stopped.');
   } catch (err) {
     console.error('[CRYPTORA] Error stopping strategy scheduler:', err.message);
+  }
+  try {
+    // Монитор останавливается ДО закрытия пула: тик может писать в signals.
+    await getSignalMonitor().stop();
+    console.log('[CRYPTORA] Signal monitor stopped.');
+  } catch (err) {
+    console.error('[CRYPTORA] Error stopping signal monitor:', err.message);
   }
   try {
     if (httpServer) {

@@ -95,9 +95,115 @@ function candle(symbol: string, i: number): OHLCV {
   };
 }
 
-function stubSignalsFetch(signals: SignalDto[], opts: { fail?: boolean } = {}) {
+/**
+ * Заглушка сервера для `/signals`. Кроме ленты сигналов закрывает три
+ * эндпоинта, которые страница опрашивает отдельно: состояние стратегий
+ * (`/api/strategies` — честный статус сканирования), телеметрию монитора
+ * (`/api/signals/monitor`) и серверную статистику
+ * (`/api/signals/statistics`). Без них тест проверял бы поведение на
+ * сломанном контракте, а не на поведении продукта.
+ */
+function strategiesDto(enabled: boolean) {
+  return {
+    strategies: [
+      {
+        strategyId: 'V3_0_HTF_LIQUIDATION_TRAP',
+        version: '3.0',
+        name: 'HTF Liquidation Trap',
+        nameRu: 'HTF Liquidation Trap',
+        timeframes: ['4h', '1h'],
+        execTimeframe: '1h',
+        contextTimeframes: ['4h'],
+        badge: 'V3.0',
+        enabled,
+        status: enabled ? 'ON' : 'OFF',
+        scanIntervalSeconds: 60,
+        symbols: null,
+        lastScanAt: null,
+        lastSignalAt: null,
+        lastError: null,
+        updatedAt: null,
+        activeSignalCount: 0,
+      },
+    ],
+    source: 'server',
+  };
+}
+
+function statisticsDto(signals: SignalDto[]) {
+  const withOutcome = signals.filter((s) => ['TARGET_REACHED', 'INVALIDATED', 'CLOSED'].includes(s.status));
+  return {
+    period: 'all',
+    filters: { strategyId: null, symbol: 'BTC/USDT' },
+    statuses: ['ACTIVE', 'FILLED', 'TARGET_REACHED', 'INVALIDATED', 'CLOSED', 'EXPIRED', 'CANCELLED', 'UNRESOLVED'],
+    openStatuses: ['ACTIVE', 'FILLED'],
+    tradeClosedStatuses: ['TARGET_REACHED', 'INVALIDATED', 'CLOSED'],
+    noTradeStatuses: ['EXPIRED', 'CANCELLED', 'UNRESOLVED'],
+    closedStatuses: ['TARGET_REACHED', 'INVALIDATED', 'CLOSED', 'EXPIRED', 'CANCELLED', 'UNRESOLVED'],
+    totals: {
+      published: signals.length,
+      waitingEntry: signals.filter((s) => s.status === 'ACTIVE').length,
+      filled: signals.filter((s) => s.status === 'FILLED').length,
+      completed: withOutcome.length,
+      cancelled: 0,
+      expired: 0,
+      unresolved: 0,
+      targetReached: withOutcome.filter((s) => s.status === 'TARGET_REACHED').length,
+      invalidated: withOutcome.filter((s) => s.status === 'INVALIDATED').length,
+      closed: withOutcome.filter((s) => s.status === 'CLOSED').length,
+      wins: withOutcome.filter((s) => (s.resultR ?? 0) > 0).length,
+      losses: withOutcome.filter((s) => (s.resultR ?? 0) <= 0).length,
+      winRatePct: withOutcome.length > 0
+        ? Math.round((withOutcome.filter((s) => (s.resultR ?? 0) > 0).length / withOutcome.length) * 1000) / 10
+        : null,
+      avgGrossR: null,
+      avgNetR: null,
+      grossRSum: null,
+      netRSum: null,
+      fillRatePct: null,
+      completionRatePct: null,
+    },
+    byStrategy: [],
+    bySymbol: [],
+    definitions: { winRatePct: 'x', avgGrossR: 'x', avgNetR: 'x' },
+    source: 'server',
+  };
+}
+
+function stubSignalsFetch(
+  signals: SignalDto[],
+  opts: { fail?: boolean; strategiesEnabled?: boolean; strategiesFail?: boolean } = {}
+) {
   return vi.fn(async (url: string) => {
     const u = String(url);
+    if (u.includes('/api/signals/statistics')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify(statisticsDto(signals)) };
+    }
+    if (u.includes('/api/signals/monitor')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            running: true,
+            cycles: 3,
+            inFlight: false,
+            lastTickStartedAt: null,
+            lastTickFinishedAt: null,
+            lastTickDurationMs: 120,
+            lastError: null,
+            consecutiveFailures: 0,
+            stale: false,
+            lastSummary: null,
+          }),
+      };
+    }
+    if (u.includes('/api/strategies')) {
+      if (opts.strategiesFail) {
+        return { ok: false, status: 500, text: async () => JSON.stringify({ error: 'DB_UNAVAILABLE' }) };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify(strategiesDto(opts.strategiesEnabled ?? true)) };
+    }
     if (u.includes('/api/signals')) {
       if (opts.fail) {
         return { ok: false, status: 500, text: async () => JSON.stringify({ error: 'DB_UNAVAILABLE' }) };
@@ -228,7 +334,10 @@ describe('SignalsPage V2: пустые и ошибочные состояния 
     expect(document.querySelectorAll('[data-qa="signal-card"]').length).toBe(0);
     // График всё равно показывается для выбранной монеты.
     expect(document.querySelector('[data-qa="signals-chart-card"]')).not.toBeNull();
-    expect(document.querySelector('[data-qa="signals-summary-empty"]')).not.toBeNull();
+    // BUG B: пустое состояние ОДНО. Дубль внутри сводки удалён — проверяем,
+    // что второго блока про «нет сигналов» на экране нет.
+    expect(document.querySelectorAll('[data-qa="signals-summary-empty"]').length).toBe(0);
+    expect(document.querySelectorAll('[data-qa="signals-empty"]').length).toBe(1);
   });
 
   it('ошибка источника сигналов — состояние ошибки без подстановок', async () => {

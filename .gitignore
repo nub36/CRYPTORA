@@ -11,6 +11,7 @@ server.log
 
 # Screenshot QA artifacts (scripts/screenshot-qa.mjs)
 screenshots
+e2e/screenshots
 
 # Серверный бандл ядра стратегий (собирается esbuild из src/, в Git не хранится)
 server/services/strategyEngine/.generated/

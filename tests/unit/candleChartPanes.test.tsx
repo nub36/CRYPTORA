@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { cleanup, render } from '@testing-library/react';
 import { TickMarkType } from 'lightweight-charts';
 import type { OHLCV } from '@/types/market';
 import { CandleChart } from '@/components/common/CandleChart';
 import { CHART_RIGHT_OFFSET, RSI_FIXED_PRICE_RANGE } from '@/components/common/chartPresentationConfig';
+import { browserTimeZone, timeZoneLabel } from '@/utils/timePresentation';
 
 const chartCapture = vi.hoisted(() => ({ instances: [] as any[] }));
 
@@ -108,16 +109,33 @@ describe('independent indicator panes and chart viewport', () => {
     expect(getByTestId('kline-freshness').textContent).toBe('KLINE STALE');
   });
 
-  it('uses a real right-side logical offset and browser-local/explicit UTC tick formatting', () => {
-    const { getByRole } = render(<CandleChart data={data} />);
+  it('uses a real right-side logical offset and formats ticks in the browser/OS timezone', () => {
+    const { queryByRole, container } = render(<CandleChart data={data} />);
     const price = chartCapture.instances[0];
     expect(price.options.timeScale.rightOffset).toBe(CHART_RIGHT_OFFSET);
     expect(price.scale.applyOptions).toHaveBeenCalledWith({ rightOffset: CHART_RIGHT_OFFSET });
 
+    // Один и тот же Unix-момент → время в поясе БРАУЗЕРА (не жёсткий UTC+3).
     const instant = Date.parse('2026-01-15T08:09:00Z') / 1000;
-    const localExpected = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant * 1000);
-    expect(price.options.timeScale.tickMarkFormatter(instant, TickMarkType.Time, 'en-US')).toBe(localExpected);
-    fireEvent.click(getByRole('button', { name: 'Переключить локальное время и UTC' }));
-    expect(price.options.timeScale.tickMarkFormatter(instant, TickMarkType.Time, 'en-US')).toContain('08:09');
+    const zone = browserTimeZone();
+    const expected = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: zone,
+    }).format(instant * 1000);
+    expect(price.options.timeScale.tickMarkFormatter(instant, TickMarkType.Time, 'en-US')).toBe(expected);
+
+    // DST: в летнем поясе Europe/Berlin тот же момент смещён на +2, а не на +3.
+    const summer = Date.parse('2026-07-15T08:09:00Z') / 1000;
+    const berlinSummer = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Berlin',
+    }).format(summer * 1000);
+    expect(berlinSummer).toBe('10:09');
+
+    // BUG D: переключателя LOCAL/UTC больше нет — техническая метка зоны
+    // не показывается. Вместо неё подпись настоящего IANA-пояса.
+    expect(queryByRole('button', { name: /локальное время|UTC/i })).toBeNull();
+    const label = container.querySelector('[data-qa="chart-timezone-label"]');
+    expect(label).not.toBeNull();
+    expect(label?.textContent ?? '').not.toBe('LOCAL');
+    expect(label?.textContent ?? '').toBe(timeZoneLabel('BROWSER'));
   });
 });

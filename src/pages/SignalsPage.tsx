@@ -1,32 +1,37 @@
 /**
  * Signals V2 — страница сигналов: свечной график + селектор монет + уровни.
- *
  * Источник истины для торговых сигналов — СЕРВЕР (`GET /api/signals`, контракт
  * PR #16). Уровни (вход/стоп/цели), статусы и R отображаются как их сохранил
  * сервер: на клиенте ничего не досчитывается и не «улучшается».
  *
  * Мобильная иерархия сверху вниз (§14):
  *   1. селектор монеты (+ чипы монет с сигналами);
- *   2. сводка последнего/выбранного сигнала;
- *   3. свечной график выбранного инструмента;
- *   4. уровни выбранного сигнала (вход/стоп/все цели);
- *   5. история сигналов монеты (ограниченная, постраничная);
- *   6. сворачиваемые «Статистика и аудит» + «Кодекс прозрачности».
+ *   2. честный статус сканирования (сервер, не браузер);
+ *   3. сводка последнего/выбранного сигнала;
+ *   4. свечной график выбранного инструмента;
+ *   5. уровни выбранного сигнала (вход/стоп/все цели);
+ *   6. история сигналов монеты (ограниченная, постраничная);
+ *   7. сворачиваемые «Статистика» (серверная) и «Кодекс прозрачности».
  *
  * Защита от гонок (§17): смена монеты/таймфрейма отменяет устаревшие запросы
  * (AbortController + монотонный номер запроса в хуках); маркеры и линии
  * предыдущего инструмента не остаются на экране. Свечи запрашиваются только для
  * выбранного символа и таймфрейма — веера N×candles нет (§18).
+ *
+ * ВРЕМЯ. БД и API — UTC/ISO. Экран показывает часовой пояс браузера/ОС
+ * (`Intl`), DST учитывается автоматически. Единый форматтер —
+ * `utils/timePresentation`; переключателя LOCAL/UTC на экране больше нет
+ * (BUG D), поэтому ось графика, перекрестие, время сигнала и время исхода не
+ * могут разойтись.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, Radio } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import type { Timeframe } from '@/types/market';
-import type { TimeDisplayMode } from '@/utils/timePresentation';
 import { useMarketData } from '@/context/MarketDataContext';
-import { LiveSignalEngine, type EngineStatus } from '@/services/signals/live/LiveSignalEngine';
 import { SignalsAuditLedger } from '@/services/signals/SignalsAuditLedger';
 import { useServerSignals } from '@/hooks/useServerSignals';
+import { useServerScanner } from '@/hooks/useServerScanner';
 import { useSignalChartCandles } from '@/hooks/useSignalChartCandles';
 import {
   resolveActiveSignal,
@@ -46,25 +51,31 @@ import { SignalSummaryCard } from '@/components/signals/SignalSummaryCard';
 import { SignalChartCard } from '@/components/signals/SignalChartCard';
 import { SignalDetailsPanel } from '@/components/signals/SignalDetailsPanel';
 import { SignalHistoryList } from '@/components/signals/SignalHistoryList';
+import { ScannerStatusChip } from '@/components/signals/ScannerStatusChip';
+import { SignalStatisticsPanel } from '@/components/signals/SignalStatisticsPanel';
 import {
   SignalsLedgerAuditSection,
   type ServerSignalsStats,
 } from '@/components/signals/SignalsLedgerAuditSection';
+import { timeZoneLabelWithOffset } from '@/utils/timePresentation';
 
 const DEFAULT_SYMBOL = 'BTC';
 const DEFAULT_TIMEFRAME: Timeframe = '1h';
 const SIGNALS_PAGE_LIMIT = 20;
 /** Поллинг первой страницы серверной ленты — только видимая вкладка (хук сам гасит фон). */
 const SIGNALS_POLL_MS = 60_000;
+/** Поллинг статуса сканирования — отдельный ограниченный запрос (не веер). */
+const SCANNER_POLL_MS = 15_000;
+/** Поллинг серверной статистики — тяжёлые агрегаты, чаще минуты не нужно. */
+const STATISTICS_POLL_MS = 60_000;
 
 export const SignalsPage: React.FC = () => {
-  const { provider, dataMode } = useMarketData();
+  const { provider } = useMarketData();
 
   // ── Выбор инструмента и таймфрейма графика ─────────────────────────────
   const [baseSymbol, setBaseSymbol] = useState<string>(DEFAULT_SYMBOL);
   const [chartTimeframe, setChartTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
-  const [timeMode, setTimeMode] = useState<TimeDisplayMode>('LOCAL');
 
   const pair = signalPairText(baseSymbol);
 
@@ -85,6 +96,9 @@ export const SignalsPage: React.FC = () => {
     timeframe: chartTimeframe,
     limit: 500,
   });
+
+  // ── Статус сканирования — с сервера, не из браузера (BUG C) ───────────
+  const scanner = useServerScanner({ pollMs: SCANNER_POLL_MS });
 
   // ── Отображение серверных сигналов в модель UI ────────────────────────
   const models: SignalUiModel[] = useMemo(
@@ -112,7 +126,7 @@ export const SignalsPage: React.FC = () => {
     [activeSignal]
   );
 
-  // ── Компактная серверная статистика для блока аудита ──────────────────
+  // ── Компактная серверная сводка для блока аудита (источник — лента) ───
   const serverStats: ServerSignalsStats | null = useMemo(() => {
     if (signalsQuery.phase !== 'ready' && signalsQuery.phase !== 'error') return null;
     return {
@@ -126,22 +140,32 @@ export const SignalsPage: React.FC = () => {
   }, [signalsQuery]);
 
   // ── Браузерный журнал аудита (второстепенный источник, не смешивается) ─
-  const ledger = useMemo(() => SignalsAuditLedger.getInstance(), []);
+  // Журнал остаётся функциональным, но больше не является драйвером частых
+  // ререндеров. Раньше экран опрашивал журнал каждые 5 с И статус браузерного
+  // движка каждые 5 с, а ленту — каждые 60 с: три независимых таймера
+  // перерисовывали родителя и сбрасывали строку поиска в модалке выбора монеты
+  // (BUG A). Теперь сводка журнала пересчитывается по его собственной подписке
+  // (событие записи), а не по таймеру.
+  const ledger = useMemo(() => {
+    try {
+      return SignalsAuditLedger.getInstance();
+    } catch {
+      return null;
+    }
+  }, []);
   const [ledgerTick, setLedgerTick] = useState(0);
   useEffect(() => {
+    if (!ledger) return;
     const unsubscribe = ledger.subscribe(() => setLedgerTick((t) => t + 1));
-    const interval = setInterval(() => {
-      ledger.reload();
-      setLedgerTick((t) => t + 1);
-    }, 5_000);
-    return () => {
-      unsubscribe();
-      clearInterval(interval);
-    };
+    return unsubscribe;
   }, [ledger]);
 
-  const ledgerSummary = useMemo(() => ledger.getSummary(), [ledger, ledgerTick]);
+  const ledgerSummary = useMemo(
+    () => (ledger ? ledger.getSummary() : null),
+    [ledger, ledgerTick]
+  );
   const integrityVerified = useMemo(() => {
+    if (!ledger) return null;
     try {
       return ledger.verifyIntegrity();
     } catch {
@@ -149,36 +173,19 @@ export const SignalsPage: React.FC = () => {
     }
   }, [ledger, ledgerTick]);
 
-  // ── Статус браузерного LIVE-движка (честная подпись источника) ────────
-  const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(
-    () => LiveSignalEngine.getInstance()?.getStatus() ?? null
-  );
-  useEffect(() => {
-    const engine = LiveSignalEngine.getInstance();
-    if (!engine) {
-      setEngineStatus(null);
-      return;
-    }
-    const refresh = () => setEngineStatus(engine.getStatus());
-    refresh();
-    const unsubscribe = engine.subscribe(refresh);
-    const interval = setInterval(refresh, 5_000);
-    return () => {
-      unsubscribe();
-      clearInterval(interval);
-    };
-  }, [dataMode, ledgerTick]);
-
-  const engineRunning = engineStatus?.running ?? false;
-
-  // Пустое состояние: нет сигналов для отображения (пусто или ошибка — и то,
-  // и другое означает «показывать нечего», но причина поясняется отдельно).
+  // ── Состояния экрана (§16: причины различаются явно) ──────────────────
+  // Стратегии выключены — это НЕ «нет сигналов»: сервер просто не публикует.
+  const scannerOff = scanner.phase === 'ready' && scanner.enabledCount === 0;
+  // Лента загрузилась и пуста.
   const showEmpty = signalsQuery.phase === 'ready' && signalsQuery.signals.length === 0;
+  // Запрос ленты упал — никогда не называем это «сигналов нет».
   const showApiError = signalsQuery.phase === 'error';
+  // Свечи выбранной монеты недоступны — рынок, а не сигналы.
+  const showMarketError = candlesState.phase === 'error';
 
   return (
     <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4">
-      {/* Заголовок + источник + режим времени */}
+      {/* Заголовок + источник + часовой пояс пользователя */}
       <div className="flex flex-col justify-between gap-2 border-b border-surface-border pb-3 sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2">
@@ -192,30 +199,14 @@ export const SignalsPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div
-            data-qa="signals-engine-status"
-            data-state={engineRunning ? (engineStatus?.scanning ? 'scanning' : 'running') : 'stopped'}
-            className={`flex items-center gap-1.5 text-[11px] font-mono ${engineRunning ? 'text-emerald-400' : 'text-slate-500'}`}
+          <ScannerStatusChip state={scanner} />
+          <span
+            className="rounded border border-surface-border bg-surface-elevated px-2 py-1 text-[11px] text-slate-400"
+            data-qa="signals-timezone-label"
+            title="Время на экране — ваш часовой пояс. В базе и API время хранится в UTC."
           >
-            <Radio className={`h-3 w-3 ${engineRunning ? 'animate-pulse' : ''}`} aria-hidden="true" />
-            <span>
-              {engineRunning
-                ? `LIVE-скан · каждые ${Math.round((engineStatus?.scanIntervalMs ?? 60_000) / 1000)}с`
-                : dataMode === 'live'
-                  ? 'Движок запускается…'
-                  : 'Источник — серверная лента сигналов'}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setTimeMode((m) => (m === 'LOCAL' ? 'UTC' : 'LOCAL'))}
-            aria-label="Переключить локальное время и UTC"
-            className="rounded border border-surface-border bg-surface-elevated px-2 py-1 text-[11px] font-mono text-slate-300 hover:text-white"
-            title={timeMode === 'LOCAL' ? 'Время браузера; нажмите для UTC' : 'UTC; нажмите для локального времени'}
-          >
-            {timeMode}
-          </button>
+            {timeZoneLabelWithOffset('BROWSER')}
+          </span>
         </div>
       </div>
 
@@ -227,11 +218,18 @@ export const SignalsPage: React.FC = () => {
         onSelect={(s) => setBaseSymbol(signalBaseSymbol(s))}
       />
 
-      {/* Пустое состояние / ошибка серверной ленты — без подстановок */}
-      {(showEmpty || showApiError) && (
+      {/*
+        ЕДИНСТВЕННОЕ пустое/ошибочное состояние ленты (BUG B).
+        Раньше на экране были два разных блока про «нет сигналов»: этот и ещё
+        один внутри сводки. Теперь текст один, а причина выбирается явно:
+        сканер выключен / лента пуста / запрос упал / рынок недоступен.
+      */}
+      {(scannerOff || showEmpty || showApiError || showMarketError) && (
         <div
           data-qa="signals-empty"
-          data-state={showApiError ? 'error' : 'empty'}
+          data-state={
+            showApiError ? 'error' : showMarketError ? 'market-error' : scannerOff ? 'scanner-off' : 'empty'
+          }
           className="space-y-1 rounded-lg border border-amber-500/30 bg-surface p-4"
         >
           {showApiError ? (
@@ -243,12 +241,29 @@ export const SignalsPage: React.FC = () => {
                 подставляются и не выдумываются — график ниже показывает фактические свечи выбранной монеты.
               </p>
             </>
+          ) : showMarketError ? (
+            <>
+              <div className="font-sans text-sm font-bold text-white">Рыночные данные недоступны</div>
+              <p className="ui-helper leading-relaxed">
+                {candlesState.errorMessage ?? 'Не удалось загрузить свечи выбранной монеты.'} Это отказ
+                источника свечей, а не отсутствие сигналов: лента сигналов загружается отдельным запросом.
+              </p>
+            </>
+          ) : scannerOff ? (
+            <>
+              <div className="font-sans text-sm font-bold text-white">Сканирование сигналов выключено</div>
+              <p className="ui-helper leading-relaxed">
+                Ни одна стратегия не включена на сервере, поэтому новых сигналов не публикуется. Ранее
+                сохранённые сигналы остаются в истории ниже и продолжают отслеживаться серверным
+                монитором. График показывает рыночные свечи выбранной монеты.
+              </p>
+            </>
           ) : (
             <>
               <div className="font-sans text-sm font-bold text-white">Сигналов по этому инструменту нет</div>
               <p className="ui-helper leading-relaxed">
-                Стратегии публикуют сетап редко и только на фактических закрытых свечах. Пустая лента — норма,
-                а не ошибка. График показывает рыночные свечи выбранной монеты.
+                Стратегии публикуют сетап редко и только на фактических закрытых свечах. Пустая лента —
+                норма, а не ошибка. График показывает рыночные свечи выбранной монеты.
               </p>
             </>
           )}
@@ -256,7 +271,7 @@ export const SignalsPage: React.FC = () => {
       )}
 
       {/* 2. Сводка последнего/выбранного сигнала */}
-      <SignalSummaryCard model={activeSignal} timeMode={timeMode} />
+      <SignalSummaryCard model={activeSignal} />
 
       {/* 3. Свечной график */}
       <SignalChartCard
@@ -287,10 +302,12 @@ export const SignalsPage: React.FC = () => {
         onLoadMore={signalsQuery.loadMore}
         selectedId={activeSignal?.id ?? null}
         onSelect={setSelectedSignalId}
-        timeMode={timeMode}
       />
 
-      {/* 6. Статистика и аудит — второстепенно, сворачиваемо */}
+      {/* 6. Серверная статистика — свои агрегаты, не лента страницы */}
+      <SignalStatisticsPanel symbol={baseSymbol} pollMs={STATISTICS_POLL_MS} />
+
+      {/* 7. Статистика и аудит — второстепенно, сворачиваемо */}
       <SignalsLedgerAuditSection
         serverStats={serverStats}
         ledgerSummary={ledgerSummary}

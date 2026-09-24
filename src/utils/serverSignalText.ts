@@ -21,7 +21,7 @@ import type { SignalDto, SignalStatus } from '@/services/strategyOps';
 import { TRADE_CLOSED_SIGNAL_STATUSES } from '@/services/strategyOps';
 import { exitReasonLabelRu, formatSignedR, strategyShortLabel } from './signalText';
 import { pairLabel, sideLabel, stopComparator } from './labels';
-import { formatEventTimestamp, type TimeDisplayMode } from './timePresentation';
+import { formatEventTimestamp, type ChartTimeZone } from './timePresentation';
 
 /** Тон бейджа — тот же набор, что у `Badge`, чтобы не изобретать палитру. */
 export type ServerStatusTone = 'green' | 'red' | 'cyan' | 'amber' | 'neutral';
@@ -216,8 +216,8 @@ export function timeframeMismatchNote(
   return `График открыт в ${timeframeText(chartTimeframe)}, а сигнал выпущен на ${timeframeText(signalTimeframe)}`;
 }
 
-/** Время сигнала (время ЗАКРЫТОГО бара сетапа) в выбранном режиме LOCAL/UTC. */
-export function formatSignalTime(iso: string | null | undefined, mode: TimeDisplayMode = 'LOCAL'): string {
+/** Время сигнала (время ЗАКРЫТОГО бара сетапа) в поясе пользователя. */
+export function formatSignalTime(iso: string | null | undefined, mode: ChartTimeZone = 'BROWSER'): string {
   if (!iso) return '—';
   return formatEventTimestamp(iso, mode);
 }

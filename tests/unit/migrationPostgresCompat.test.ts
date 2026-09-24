@@ -111,11 +111,13 @@ function bareColumn(expression: string): string | null {
 describe('migration inventory', () => {
   it('parses every migration and finds the expected tables', () => {
     const tables = new Set(columns.map((c) => c.table.toLowerCase()));
+    // signal_monitor_state добавлена миграцией 010 (телеметрия монитора).
     expect([...tables].sort()).toEqual([
       'audit_log',
       'email_verification_tokens',
       'scan_universe',
       'sessions',
+      'signal_monitor_state',
       'signals',
       'strategy_settings',
       'user_preferences',
@@ -125,9 +127,9 @@ describe('migration inventory', () => {
 
   it('found every index definition in the migrations', () => {
     // Guards the parser itself: this is the exact index inventory of
-    // 001–009 (12 from 001–005 + 1 from 006 + 4 from 007 + 1 from 009). If the
-    // count drops, a regex silently stopped matching and the checks below are
-    // void.
+    // 001–010 (12 from 001–005 + 1 from 006 + 4 from 007 + 1 from 009 + 1 from
+    // 010). If the count drops, a regex silently stopped matching and the
+    // checks below are void.
     expect(indexes.map((i) => i.name).sort()).toEqual([
       'idx_audit_log_action',
       'idx_audit_log_actor',
@@ -138,6 +140,7 @@ describe('migration inventory', () => {
       'idx_evt_user_id',
       'idx_sessions_expire',
       'idx_signals_created_at_desc',
+      'idx_signals_open_group',
       'idx_signals_previous_hash',
       'idx_signals_strategy_status',
       'idx_signals_symbol',
@@ -362,7 +365,11 @@ describe('009_signal_levels_and_lifecycle — только добавление'
 
   it('файл существует и следует конвенции именования', () => {
     expect(FILES).toContain(file);
-    expect(FILES[FILES.length - 1]).toBe(file); // лексикографически последний
+    // 009 больше НЕ последний: после него идёт аддитивная 010. Проверяется
+    // позиция, а не «последний файл», иначе добавление 010 ломало бы гарантию
+    // того, что 009 вообще существует и идёт до неё.
+    expect(FILES.indexOf(file)).toBeGreaterThanOrEqual(0);
+    expect(FILES.indexOf(file)).toBeLessThan(FILES.indexOf('010_signal_monitor_bookkeeping.sql'));
   });
 
   it('ничего не удаляет и не переписывает данные', () => {
@@ -455,5 +462,94 @@ describe('009_signal_levels_and_lifecycle — только добавление'
     expect(body).toMatch(/chain_version/);
     expect(body).toMatch(/ALTER TABLE signals ALTER COLUMN chain_version SET DEFAULT 2/i);
     expect(body).toMatch(/outcome_hash\s+TEXT NULL/i);
+  });
+});
+
+/**
+ * 010_signal_monitor_bookkeeping: статические гарантии additive-миграции.
+ *
+ * Настоящее применение на PostgreSQL (включая сохранность строк и целостность
+ * хэш-цепочки 009) — tests/integration/signalMonitorPostgres.test.ts. Здесь —
+ * то, что видно из текста: миграция добавляет, но ничего не переписывает, и не
+ * трогает payload'ы хэшей.
+ */
+describe('010_signal_monitor_bookkeeping — только добавление', () => {
+  const file = '010_signal_monitor_bookkeeping.sql';
+  const sql = () => fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+  const code = () => stripComments(sql());
+
+  it('файл существует и идёт сразу после 009', () => {
+    expect(FILES).toContain(file);
+    expect(FILES[FILES.indexOf(file) - 1]).toBe('009_signal_levels_and_lifecycle.sql');
+    expect(FILES[FILES.length - 1]).toBe(file);
+  });
+
+  it('ничего не удаляет и не переписывает данные', () => {
+    const body = code();
+    for (const forbidden of [
+      /DROP\s+TABLE/i,
+      /DROP\s+COLUMN/i,
+      /TRUNCATE/i,
+      /\bDELETE\s+FROM\b/i,
+      /\bUPDATE\s+\w+\s+SET\b/i,
+      /RENAME\s+(TABLE|COLUMN|TO)\b/i,
+      /ALTER\s+COLUMN[\s\S]{0,80}\bTYPE\b/i,
+      /DROP\s+DATABASE/i,
+    ]) {
+      expect(body, `${file}: запрещённая операция ${forbidden}`).not.toMatch(forbidden);
+    }
+  });
+
+  it('каждое добавление колонки идемпотентно (IF NOT EXISTS)', () => {
+    const adds = [...code().matchAll(/ADD\s+COLUMN(\s+IF\s+NOT\s+EXISTS)?/gi)];
+    expect(adds.length, 'в 010 должны быть новые колонки signals').toBeGreaterThanOrEqual(4);
+    for (const a of adds) {
+      expect(a[1], `${file}: "ADD COLUMN" без IF NOT EXISTS`).toBeTruthy();
+    }
+  });
+
+  it('новые колонки signals разобраны парсером с ожидаемыми типами', () => {
+    expect(typeOf('signals', 'monitor_check_count')).toBe('integer');
+    expect(typeOf('signals', 'monitor_last_check_at')).toBe('timestamptz');
+    expect(typeOf('signals', 'monitor_last_result')).toBe('text');
+    expect(typeOf('signals', 'monitor_last_error')).toBe('text');
+  });
+
+  it('таблица телеметрии — синглтон с ожидаемыми колонками', () => {
+    for (const column of ['running', 'last_tick_started_at', 'last_tick_finished_at', 'last_tick_duration_ms', 'last_error', 'last_open_signals', 'last_groups', 'last_candle_requests', 'last_result', 'updated_at']) {
+      expect(typeOf('signal_monitor_state', column), `signal_monitor_state.${column} не объявлена`).toBeTruthy();
+    }
+    expect(typeOf('signal_monitor_state', 'id')).toBe('smallint');
+    expect(typeOf('signal_monitor_state', 'running')).toBe('boolean');
+  });
+
+  it('CHECK-домен результата наблюдения совпадает с кодом (MONITOR_RESULTS)', () => {
+    const body = code();
+    const m = body.match(/monitor_last_result\s+IN\s*\(([^)]*)\)/i);
+    expect(m, 'CHECK на monitor_last_result не найден').toBeTruthy();
+    const fromSql = [...(m?.[1] ?? '').matchAll(/'([A-Z_]+)'/g)].map((x) => x[1]).sort();
+    // Тот же список, что у signalRepository.MONITOR_RESULTS.
+    expect(fromSql).toEqual(['ERROR', 'FILLED', 'OUT_OF_WINDOW', 'RESOLVED', 'SKIP', 'UNCHANGED']);
+  });
+
+  it('частичный индекс покрывает только открытые сигналы', () => {
+    const idx = indexes.find((i) => i.name === 'idx_signals_open_group');
+    expect(idx, 'idx_signals_open_group не найден').toBeTruthy();
+    expect(idx?.table).toBe('signals');
+    expect(idx?.method).toBe('btree');
+    expect(idx?.expression.toLowerCase().replace(/\s+/g, ' ')).toBe('symbol, timeframe');
+    // WHERE-предикат обязателен: без него индекс бы дублировал существующие.
+    const body = code();
+    const create = body.match(/CREATE INDEX IF NOT EXISTS idx_signals_open_group[\s\S]*?;/i);
+    expect(create?.[0]).toMatch(/WHERE\s+status\s+IN\s*\(/i);
+  });
+
+  it('нет CREATE INDEX CONCURRENTLY: раннер выполняет файл внутри транзакции', () => {
+    expect(code()).not.toMatch(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY/i);
+  });
+
+  it('новый индекс не дублирует существующие по набору колонок', () => {
+    const shapes = indexes.filter((i) => i.table === 'signals').map((i) => i.expression.toLowerCase());
+    expect(new Set(shapes).size, 'два индекса signals с одинаковым набором колонок').toBe(shapes.length);
   });
 });

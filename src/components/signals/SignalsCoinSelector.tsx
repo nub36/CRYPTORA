@@ -12,7 +12,7 @@
  * всей вселенной: источники — уже полученная страница ленты.
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
 import { CoinIcon } from '@/components/common/CoinIcon';
@@ -34,6 +34,16 @@ export const SignalsCoinSelector: React.FC<SignalsCoinSelectorProps> = ({
   onSelect,
 }) => {
   const [open, setOpen] = useState(false);
+
+  /**
+   * BUG A. `onClose` обязан быть СТАБИЛЬНЫМ: `SymbolPickerModal` сбрасывает
+   * строку поиска на переходе open false→true, но если сюда передавать
+   * инлайн-стрелку, родительские ререндеры (опрос статуса движка, журнала,
+   * ленты сигналов) создают новую ссылку — и запрос в модалке стирался посреди
+   * набора. `useCallback` убирает этот класс регрессии для всех родителей
+   * этого компонента, а не только для текущего экрана.
+   */
+  const closePicker = useCallback(() => setOpen(false), []);
 
   return (
     <section
@@ -92,7 +102,7 @@ export const SignalsCoinSelector: React.FC<SignalsCoinSelectorProps> = ({
 
       <SymbolPickerModal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={closePicker}
         onSelect={onSelect}
         current={symbol}
         title="Выбор монеты для сигналов"

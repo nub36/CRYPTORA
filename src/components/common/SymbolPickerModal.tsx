@@ -35,12 +35,33 @@ export const PICKER_RENDER_LIMIT = 60;
  * @param authoritative true — universe из exchangeInfo: «свой тикер» не предлагается,
  *   т.к. неактивный инструмент выбрать нельзя; false — деградированный режим.
  */
+/**
+ * Нормализация запроса: пользователь вводит и тикер, и торговую пару.
+ * «BTC/USDT», «BTC USDT», «BTC-USDT», «btcusdt» → «BTC».
+ *
+ * BUG A (продолжение). Симптом на проде: ввод `B` давал «Ничего не найдено».
+ * Часть причины — сброс строки (исправлена в эффекте модалки), но оставалась
+ * вторая: пара, введённая целиком, не находила свой тикер, потому что
+ * `symbol.includes('BTC/USDT')` не может совпасть никогда. Поэтому запрос
+ * приводится к тикеру ДО сравнения.
+ */
+function normalizePickerQuery(raw: string): string {
+  const trimmed = raw.trim().toUpperCase();
+  if (!trimmed) return '';
+  // Голова до разделителя пары: BTC/USDT, BTC USDT, BTC-USDT, BTC:USDT.
+  const head = trimmed.split(/[/\s:_-]+/)[0] ?? '';
+  const base = head || trimmed;
+  // Хвост-котировка: BTCUSDT → BTC. Список конечен, поэтому WBTC/ETh не рвутся.
+  const stripped = base.replace(/(USDT|USDC|FDUSD|BUSD|TRY|EUR)$/, '');
+  return stripped || base;
+}
+
 export function filterPickerSymbols(
   query: string,
   availableAssets: readonly { symbol: string; name: string }[] = [],
   authoritative = false,
 ): PickerEntry[] {
-  const q = query.trim().toUpperCase();
+  const q = normalizePickerQuery(query);
   const universe = new Map<string, { symbol: string; name: string }>();
   if (!authoritative) {
     for (const asset of CANONICAL_ASSETS) universe.set(asset.symbol, { symbol: asset.symbol, name: asset.name });
@@ -58,9 +79,8 @@ export function filterPickerSymbols(
     : all
   ).map((a) => ({ symbol: a.symbol, name: a.name, custom: false }));
   if (q && !authoritative) {
-    const base = (q.includes('/') ? q.split('/')[0]! : q).trim().replace(/USDT$/, '');
-    if (TICKER_RE.test(base) && !universe.has(base)) {
-      matches.push({ symbol: base, name: 'Тикер вне реестра (свечи — Binance spot)', custom: true });
+    if (TICKER_RE.test(q) && !universe.has(q)) {
+      matches.push({ symbol: q, name: 'Тикер вне реестра (свечи — Binance spot)', custom: true });
     }
   }
   return matches;
@@ -116,23 +136,35 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const currentUpper = (current ?? '').toUpperCase();
 
+  /**
+   * BUG A (регрессия, чинится здесь). Эффект сброса строки поиска зависел от
+   * `onClose`, а родитель передавал инлайн-стрелку: её новая ссылка на каждый
+   * ререндер родителя заново запускала эффект и делала `setQuery('')`. На
+   * `/signals` родитель ререндерится по опросу статуса движка, журнала и
+   * сигналов, поэтому запрос стирался посреди набора — из остатка «B» поиск
+   * ничего не находил. Теперь: (1) сброс только на переходе open false→true,
+   * (2) `onClose` из зависимостей убран. Ссылку onClose держим в ref, чтобы
+   * Escape всегда звал актуальный обработчик без перезапуска эффекта.
+   */
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setActiveIndex(0);
-      // Фокус после монтирования попапа.
-      const t = setTimeout(() => inputRef.current?.focus(), 0);
-      const onKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') onClose();
-      };
-      window.addEventListener('keydown', onKey);
-      return () => {
-        clearTimeout(t);
-        window.removeEventListener('keydown', onKey);
-      };
-    }
-    return undefined;
-  }, [open, onClose]);
+    if (!open) return undefined;
+    // Открытие попапа: чистый старт поиска. Ререндеры родителя сюда не попадают.
+    setQuery('');
+    setActiveIndex(0);
+    // Фокус после монтирования попапа.
+    const t = setTimeout(() => inputRef.current?.focus(), 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   const universeAssets = availableAssets ?? loaded?.assets ?? [];
   const authoritative = availableAssets ? false : Boolean(loaded?.authoritative);
@@ -222,7 +254,10 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
         </div>
         <div ref={listRef} className="max-h-80 overflow-y-auto p-2" data-qa="symbol-picker-list">
           {entries.length === 0 && (
-            <div className="px-3 py-6 text-center font-sans text-xs text-slate-500">
+            <div
+              className="px-3 py-6 text-center font-sans text-xs text-slate-500"
+              data-qa="symbol-picker-empty"
+            >
               Ничего не найдено. Введите тикер вида BTC или PEPE.
             </div>
           )}

@@ -8,7 +8,7 @@ import type { ChartLevelLine, ChartMarker } from '@/types/chart';
 import { IndicatorPaneChart } from './IndicatorPaneChart';
 import { ChartTimeRangeSync } from './ChartTimeRangeSync';
 import { formatChartAxisTime, formatChartCrosshairTime } from '@/utils/chartTime';
-import type { TimeDisplayMode } from '@/utils/timePresentation';
+import { browserTimeZone, timeZoneLabel } from '@/utils/timePresentation';
 import { klineTimeSeconds } from '@/services/realtime/candleHandoff';
 import { mapTimeframeToBinanceInterval } from '@/hooks/useRealtimeKline';
 import { CHART_RIGHT_OFFSET } from './chartPresentationConfig';
@@ -176,9 +176,13 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   onMarkerClickRef.current = onMarkerClick;
   /** Созданные линии уровней: id → линия + её описание (для точечной замены). */
   const levelLineRefs = useRef<Map<string, { line: IPriceLine; descriptor: ChartLevelLine }>>(new Map());
-  const [timeMode, setTimeMode] = useState<TimeDisplayMode>('LOCAL');
-  const timeModeRef = useRef<TimeDisplayMode>(timeMode);
-  timeModeRef.current = timeMode;
+  /**
+   * Часовой пояс графика — пояс браузера/ОС. Раньше здесь был переключатель
+   * LOCAL/UTC, который выводил на график техническую метку `{timeMode}`
+   * (BUG D). Переключатель убран: один источник времени на все подписи, зону
+   * пользователя подставляет `Intl`, метка зоны берётся из неё же.
+   */
+  const timeZoneLabelText = timeZoneLabel('BROWSER');
 
   const [crosshair, setCrosshair] = useState<CrosshairInfo | null>(null);
   const [clockMs, setClockMs] = useState(() => Date.now());
@@ -224,7 +228,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       },
       localization: {
         locale: 'en-US',
-        timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time, timeModeRef.current, 'ru-RU'),
+        timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time, ),
         priceFormatter: (price: number) => {
           if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
           if (price >= 1) return price.toFixed(4);
@@ -252,7 +256,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         secondsVisible: false,
         visible: !showRSI && !showMACD,
         rightOffset: CHART_RIGHT_OFFSET,
-        tickMarkFormatter: (time: Time, tickType: TickMarkType) => formatChartAxisTime(time, tickType, timeModeRef.current),
+        tickMarkFormatter: (time: Time, tickType: TickMarkType) => formatChartAxisTime(time, tickType),
         barSpacing: 10, // свечи шире — плотность как на TradingView
       },
       height,
@@ -555,11 +559,11 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     const chart = chartRef.current;
     if (!chart) return;
     chart.applyOptions({
-      localization: { timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time, timeMode, 'ru-RU') },
+      localization: { timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time) },
     });
     chart.timeScale().applyOptions({ visible: !showRSI && !showMACD });
     timeSyncRef.current.syncFrom(chart);
-  }, [timeMode, showRSI, showMACD]);
+  }, [showRSI, showMACD]);
 
   // Update indicator overlays (MA-линии; видимость — тумблер showMA)
   useEffect(() => {
@@ -621,7 +625,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         {/* OHLCV tooltip when crosshair active */}
         {crosshair && (
           <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-300 bg-slate-900/80 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-slate-700/50">
-            <span className="text-slate-500">{formatChartCrosshairTime(crosshair.time, timeMode)}</span>
+            <span className="text-slate-500">{formatChartCrosshairTime(crosshair.time)}</span>
             <span><span className="text-slate-500">O</span> <span className="text-slate-200">{crosshair.open.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></span>
             <span><span className="text-slate-500">H</span> <span className="text-white">{crosshair.high.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></span>
             <span><span className="text-slate-500">L</span> <span className="text-white">{crosshair.low.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></span>
@@ -629,13 +633,17 @@ export const CandleChart: React.FC<CandleChartProps> = ({
             <span><span className="text-slate-500">Vol</span> <span className="text-sky-400">{crosshair.volume >= 1e9 ? `${(crosshair.volume / 1e9).toFixed(1)}B` : crosshair.volume >= 1e6 ? `${(crosshair.volume / 1e6).toFixed(1)}M` : crosshair.volume.toLocaleString()}</span></span>
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => setTimeMode((mode) => mode === 'LOCAL' ? 'UTC' : 'LOCAL')}
-          className="ml-auto rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1 font-mono text-[11px] text-slate-300 hover:text-white"
-          aria-label="Переключить локальное время и UTC"
-          title={timeMode === 'LOCAL' ? 'Время браузера; нажмите для UTC' : 'UTC; нажмите для локального времени браузера'}
-        >{timeMode}</button>
+        {/*
+          BUG D. Здесь выводился технический токен зоны (`LOCAL` / `UTC`) как
+          кнопка-переключатель. Токен убран: вместо него — имя часового пояса
+          пользователя, полученное из браузера (не захардкоженное). Метка
+          справочная: переключать зону нельзя, время везде одно.
+        */}
+        <span
+          className="ml-auto rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1 font-sans text-[11px] text-slate-400"
+          data-qa="chart-timezone-label"
+          title={`Время на графике — ваш часовой пояс (${browserTimeZone()})`}
+        >{timeZoneLabelText}</span>
       </div>
 
       <div className="relative w-full" style={{ height }}>
@@ -648,8 +656,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
           ⟲ fit
         </button>
       </div>
-      {showRSI && <IndicatorPaneChart kind="RSI" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={126} showTimeAxis={!showMACD} timeMode={timeMode} timeSync={timeSyncRef.current} />}
-      {showMACD && <IndicatorPaneChart kind="MACD" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={146} showTimeAxis timeMode={timeMode} timeSync={timeSyncRef.current} />}
+      {showRSI && <IndicatorPaneChart kind="RSI" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={126} showTimeAxis={!showMACD} timeSync={timeSyncRef.current} />}
+      {showMACD && <IndicatorPaneChart kind="MACD" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={146} showTimeAxis timeSync={timeSyncRef.current} />}
     </div>
   );
 };

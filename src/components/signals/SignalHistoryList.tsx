@@ -10,7 +10,6 @@
  */
 
 import React from 'react';
-import type { TimeDisplayMode } from '@/utils/timePresentation';
 import type { SignalUiModel } from '@/services/signals/ui/signalUiModel';
 import { formatSignalTime } from '@/utils/serverSignalText';
 import { Badge } from '@/components/common/Badge';
@@ -23,7 +22,6 @@ interface SignalHistoryListProps {
   onLoadMore: () => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  timeMode: TimeDisplayMode;
 }
 
 export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
@@ -34,7 +32,6 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
   onLoadMore,
   selectedId,
   onSelect,
-  timeMode,
 }) => {
   return (
     <section data-qa="signals-history" className="rounded-lg border border-surface-border bg-surface p-3" aria-label="История сигналов">
@@ -72,7 +69,9 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
                     </Badge>
                     <Badge variant="neutral" size="xs">{m.strategyShort}</Badge>
                     <span className="text-[11px] font-mono text-slate-400">{m.timeframe}</span>
-                    <span className="ml-auto text-[11px] text-slate-400">{formatSignalTime(m.signalCandleTs, timeMode)}</span>
+                    <span className="ml-auto text-[11px] text-slate-400" data-qa="signal-card-time">
+                      {formatSignalTime(m.signalCandleTs)}
+                    </span>
                   </span>
                   <span className="flex items-center justify-between gap-2">
                     <span className="ui-helper truncate">{m.statusLabel}</span>
