@@ -81,8 +81,10 @@
 > `enabled = false` (**PRODUCTION STRATEGIES ENABLED: NO**); план канарейного включения — runbook-only в
 > `docs/STRATEGY_OPERATIONS.md` §13.
 >
-> **8. Остаток:** серверный архив исходов старше окна реплея; `pnl_result_pct` из серверного пути; маркеры
-> `CandleChart` для других страниц; production deploy и merge — за владельцем.
+> **8. PR:** https://github.com/nub36/CRYPTORA/pull/18 — OPEN, CI зелёный (Typecheck + Unit + Build,
+> Browser e2e). Merge и deploy — за владельцем.
+> **9. Остаток:** серверный архив исходов старше окна реплея; `pnl_result_pct` из серверного пути; маркеры
+> `CandleChart` для других страниц.
 
 > **Предыдущий этап (2026-09-23, PR #16 `fix/signal-pipeline-foundation` — СЛИТ в `main` как `dada279`):**
 > надёжный серверный конвейер сигналов — фундамент до Signals V2 UI. Реализованы findings аудита PR #15

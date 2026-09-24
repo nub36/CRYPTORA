@@ -73,6 +73,7 @@ criteria · Dependencies · Status · PR/commit**.
 
 ### [~] PR #18: доработка Signals end-to-end (открыт, не слит)
 - Ветка `arena/01a0d27d-cryptora` от `origin/main` (`45c01b80`). **Не слита, не задеплоена.**
+- **PR:** https://github.com/nub36/CRYPTORA/pull/18 — CI зелёный (Typecheck + Unit + Build, Browser e2e).
 - Закрывает задачи 9.1, 9.3 (остатки), 9.4 и остаток пункта 2 из §12.
 - **Исправления производства:**
   * **BUG A** — поиск в селекторе монеты: набор `B` давал «Ничего не найдено». Корень: эффект сброса
@@ -395,7 +396,8 @@ criteria · Dependencies · Status · PR/commit**.
   * UI: лента 60 с, статус сканера 15 с, статистика 60 с, пауза при скрытой вкладке, отмена устаревших запросов;
   * Browser E2E на реальном Chromium покрывает сценарии A–P (`e2e/signalsV2.spec.ts`).
 - **Dependencies:** 9.2, 9.3, 7.1 (миграции на production).
-- **Status:** `[~]`. **PR:** #18 (ветка `arena/01a0d27d-cryptora`).
+- **Status:** `[~]`. **PR:** #18 — https://github.com/nub36/CRYPTORA/pull/18
+  (ветка `arena/01a0d27d-cryptora`, CI зелёный).
 
 ---
 
