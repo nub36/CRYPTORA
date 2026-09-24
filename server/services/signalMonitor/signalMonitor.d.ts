@@ -85,6 +85,12 @@ export function groupOpenSignals(rows: readonly any[]): {
   total: number;
 };
 
+/**
+ * Длительность бара ТАЙМФРЕЙМА ГРУППЫ в мс: таблица `ARCHIVE_TF_MS` ядра,
+ * иначе разбор стандартного суффикса, иначе 0 (неизвестный таймфрейм).
+ */
+export function timeframeMs(core: any, timeframe: string | null | undefined): number;
+
 /** Сколько баров запросить, чтобы покрыть самый старый сетап группы. */
 export function computeLookbackBars(
   rows: readonly any[],

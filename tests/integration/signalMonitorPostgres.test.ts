@@ -372,6 +372,69 @@ describe('Серверная статистика', () => {
     expect(s.source).toBe('server');
   });
 
+  it('результат 0 R попадает в losses, а не в третью корзину; итог сходится по всем статусам', async (ctx) => {
+    if (guard(ctx)) return;
+    await q('DELETE FROM signals');
+    // Все статусы по одному разу: полная проверка знаменателей.
+    const cases: Array<[string, number | null]> = [
+      ['ACTIVE', null],
+      ['FILLED', null],
+      ['TARGET_REACHED', 2.0],   // win
+      ['INVALIDATED', -1.0],     // loss
+      ['CLOSED', 0.0],           // TP1_THEN_BE: ровно 0 R
+      ['CLOSED', -0.25],         // TP1_THEN_SL
+      ['EXPIRED', null],
+      ['CANCELLED', null],
+      ['UNRESOLVED', null],
+    ];
+    const noTrade = (st: string) =>
+      st === 'ACTIVE' || st === 'CANCELLED' || st === 'EXPIRED' || st === 'UNRESOLVED';
+    for (let i = 0; i < cases.length; i++) {
+      const [status, r] = cases[i]!;
+      const ts = new Date(Date.UTC(2026, 8, 22, i, 0, 0));
+      await seedSignal({ signalCandleTs: ts });
+      await repo.syncSignalLifecycle({
+        strategyId: 'V3_0_HTF_LIQUIDATION_TRAP',
+        symbol: 'BTC/USDT',
+        timeframe: '1h',
+        signalCandleTs: ts,
+        fill: noTrade(status)
+          ? null
+          : { price: 64600, at: new Date(Date.UTC(2026, 8, 22, i, 1, 0)).toISOString() },
+        outcome: {
+          status,
+          closedAt: new Date(Date.UTC(2026, 8, 22, i, 5, 0)).toISOString(),
+          exitReason: status === 'CLOSED' ? 'TP1_THEN_BE' : 'X',
+          exitPrice: null,
+          resultR: r,
+          netResultR: r === null ? null : r - 0.07,
+          barsHeld: null,
+        },
+      });
+    }
+
+    const s = await stats.getSignalStatistics({ nowMs: Date.UTC(2026, 8, 25) });
+    const t = s.totals;
+    expect(t.published).toBe(9);
+    // Тождество полноты: восемь взаимоисключающих статусов дают published.
+    expect(
+      t.waitingEntry + t.filled + t.cancelled + t.expired + t.unresolved +
+      t.targetReached + t.invalidated + t.closed
+    ).toBe(t.published);
+    // completed = только завершённые сделки: TARGET_REACHED + INVALIDATED + 2 × CLOSED.
+    expect(t.completed).toBe(4);
+    // 0 R — поражение (победа требует result_r > 0), а не «ничья».
+    expect(t.wins).toBe(1);
+    expect(t.losses).toBe(3);
+    expect(t.wins + t.losses).toBe(t.completed);
+    // ΣR считается только по completed; ACTIVE/FILLED/CANCELLED/EXPIRED/UNRESOLVED не входят.
+    expect(t.grossRSum).toBeCloseTo(2.0 - 1.0 + 0.0 - 0.25, 6);
+    expect(t.winRatePct).toBe(25);
+    // fillRate: в числителе FILLED + completed = 1 + 4; ACTIVE/CANCELLED/… не входят.
+    // Доля округляется до 0.1 % — сравниваем с округлённым значением.
+    expect(t.fillRatePct).toBeCloseTo(Math.round(((1 + 4) / 9) * 1000) / 10, 6);
+  }, 120_000);
+
   it('пустая таблица даёт null, а не 0 %', async (ctx) => {
     if (guard(ctx)) return;
     const s = await stats.getSignalStatistics({});
@@ -501,5 +564,238 @@ describe('Монитор на настоящем PostgreSQL', () => {
     expect(row.status).toBe('ACTIVE');
     expect(row.monitor_last_result).toBe('ERROR');
     expect(row.result_r).toBeNull();
+  }, 120_000);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G) Рестарт-паритет и частичный жизненный цикл.
+//
+// Проверяется ровно то, что требует ревью перед мержем:
+//
+//   1. ПАРИТЕТ РЕСТАРТА. Сигнал опубликован → монитор довёл его до
+//      НЕтерминального состояния (FILLED) → «бэкенд остановился» → НОВЫЙ
+//      экземпляр `SignalMonitor` поднимается и ЧИТАЕТ СТРОКУ ИЗ БД → свечи
+//      продолжаются → исход. Результат обязан побитово совпасть с прогоном
+//      БЕЗ рестарта (контроль). Это возможно только потому, что монитор
+//      stateless: он не хранит стратегемное состояние, а восстанавливает его
+//      из бара сетапа + закрытых свечей теми же frozen-функциями.
+//
+//   2. ЧАСТИЧНЫЙ ЦИКЛ / TP1. Выход на TP1 без TP2/стопа/таймаута обязан дать
+//      НЕтерминальный статус FILLED (позиция открыта), а не «исход». Дальше
+//      те же бары доводятся до терминала.
+//
+//   3. ПРОХОЖДЕНИЕ ПО ТРЁМ СТРАТЕГИЯМ. V3.0 и V3.3 идут через коридор
+//      (`trackCorridor` → `manageTrade`), V2.8 — через вход по следующему
+//      open (`trackNextOpen` → `simulateTrailing`). Разная механика — разные
+//      фикстуры, один и тот же критерий паритета.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const H = 3_600_000;
+
+/** Монитор с НАСТОЯЩИМ ядром (frozen-функции из `src/`). */
+function makePgMonitor(nowMs: () => number, candles: () => unknown[]) {
+  return new monitorMod.SignalMonitor({
+    now: nowMs,
+    listOpen: (limit: number) => repo.listOpenSignals(null, limit),
+    sync: (patch: unknown) => repo.syncSignalLifecycle(patch as never),
+    getCandles: async () => candles(),
+    recordMonitor: (id: string, patch: unknown) => repo.recordSignalMonitorCheck(id, patch as never),
+    loadCore: async () => {
+      const core = await import('../../server/services/strategyEngine/strategyCoreBundle.js');
+      return core.loadStrategyCore();
+    },
+    sleep: async () => {},
+    requestTimeoutMs: 5000,
+  });
+}
+
+/** Точки сравнения исхода: ровно то, что frozen-функция вернула в БД. */
+function outcomeOf(row: any) {
+  return {
+    status: row.status,
+    exitReason: row.close_reason,
+    exitPrice: row.close_price === null ? null : Number(row.close_price),
+    resultR: row.result_r === null ? null : Number(row.result_r),
+    netResultR: row.net_result_r === null ? null : Number(row.net_result_r),
+    barsHeld: row.bars_held === null ? null : Number(row.bars_held),
+  };
+}
+
+/**
+ * Один прогон «с рестартом» против контроля.
+ *
+ * `split` — сколько баров отдать ПЕРЕД «остановкой бэкенда». Если `split`
+ * меньше полной серии, первый тик обязан оставить сигнал неразрешённым.
+ */
+async function parityRun(args: {
+  seed: Record<string, unknown>;
+  bars: Array<{ time: number; open: number; high: number; low: number; close: number }>;
+  split: number;
+  expectNonTerminal: 'FILLED' | 'ACTIVE';
+}) {
+  // ── Контроль: один тик на всей серии ─────────────────────────────────────
+  await q('DELETE FROM signals');
+  const control = await seedSignal(args.seed);
+  const all = args.bars.map((b) => ({ ...b, volume: 1 }));
+  const controlMonitor = makePgMonitor(() => all[all.length - 1]!.time * 1000 + H, () => all);
+  await controlMonitor.tick();
+  const controlRow = (await q('SELECT * FROM signals WHERE id = $1', [control.signal.id]))[0];
+
+  // ── Прогон с рестартом: тик на частичной серии, затем НОВЫЙ монитор ──────
+  await q('DELETE FROM signals');
+  const restarted = await seedSignal(args.seed);
+  const head = all.slice(0, args.split);
+  const headMonitor = makePgMonitor(() => head[head.length - 1]!.time * 1000 + H, () => head);
+  await headMonitor.tick();
+  const midRow = (await q('SELECT * FROM signals WHERE id = $1', [restarted.signal.id]))[0];
+  // Частичный жизненный цикл: НЕ терминальный статус, позиция ещё открыта.
+  expect(midRow.status).toBe(args.expectNonTerminal);
+  expect(midRow.result_r).toBeNull();
+  expect(['UNCHANGED', 'FILLED']).toContain(midRow.monitor_last_result);
+
+  // «Остановка бэкенда»: headMonitor больше не используется. Новый экземпляр
+  // читает состояние ИСКЛЮЧИТЕЛЬНО из `signals` через listOpenSignals.
+  const resumedMonitor = makePgMonitor(() => all[all.length - 1]!.time * 1000 + H, () => all);
+  const resumed = await resumedMonitor.tick();
+  expect(resumed.openSignals).toBeGreaterThanOrEqual(1);
+  const resumedRow = (await q('SELECT * FROM signals WHERE id = $1', [restarted.signal.id]))[0];
+
+  return { controlRow, midRow, resumedRow, resumedMonitor, signalId: restarted.signal.id };
+}
+
+describe('Рестарт-паритет и частичный жизненный цикл (настоящий PostgreSQL)', () => {
+  it('V3.0: TP1 достигнут ⇒ FILLED; рестарт даёт тот же исход, что без рестарта', async (ctx) => {
+    if (guard(ctx)) return;
+    const setup = Date.UTC(2026, 8, 21, 9, 0, 0);
+    // Коридор [64500, 64700]: вход на баре +1h, TP1=65500 на баре +2h,
+    // TP2=66200 на баре +3h. На трёх барах позиция открыта (FILLED).
+    const bars = [
+      { time: setup / 1000, open: 64400, high: 64500, low: 64300, close: 64450 },
+      { time: (setup + H) / 1000, open: 64600, high: 64700, low: 64550, close: 64650 },
+      { time: (setup + 2 * H) / 1000, open: 64650, high: 65600, low: 64600, close: 65500 },
+      { time: (setup + 3 * H) / 1000, open: 65500, high: 66300, low: 65400, close: 66250 },
+    ];
+    const { controlRow, resumedRow, resumedMonitor, signalId } = await parityRun({
+      seed: { signalCandleTs: new Date(setup) },
+      bars,
+      split: 3,
+      expectNonTerminal: 'FILLED',
+    });
+    expect(controlRow.status).toBe('TARGET_REACHED');
+    expect(resumedRow.status).toBe('TARGET_REACHED');
+    // ГЛАВНОЕ: исход после рестарта побитово равен исходу без рестарта.
+    // (`outcome_hash` сюда не входит: он включает `hash` публикации строки,
+    // а у контрольного и рестартованного прогона это разные строки.)
+    expect(outcomeOf(resumedRow)).toEqual(outcomeOf(controlRow));
+    // Журнал наблюдения пережил рестарт: счётчик проверок вырос.
+    expect(resumedRow.monitor_check_count).toBeGreaterThanOrEqual(2);
+    // И ещё один тик после исхода ничего не меняет.
+    await resumedMonitor.tick();
+    const settled = (await q('SELECT * FROM signals WHERE id = $1', [signalId]))[0];
+    expect(settled.outcome_hash).toBe(resumedRow.outcome_hash);
+    expect(outcomeOf(settled)).toEqual(outcomeOf(resumedRow));
+  }, 120_000);
+
+  it('V3.3: тот же критерий паритета на своей стратегии и своих константах', async (ctx) => {
+    if (guard(ctx)) return;
+    const setup = Date.UTC(2026, 8, 21, 10, 0, 0);
+    const bars = [
+      { time: setup / 1000, open: 64400, high: 64500, low: 64300, close: 64450 },
+      { time: (setup + H) / 1000, open: 64600, high: 64700, low: 64550, close: 64650 },
+      { time: (setup + 2 * H) / 1000, open: 64650, high: 65600, low: 64600, close: 65500 },
+      { time: (setup + 3 * H) / 1000, open: 65500, high: 66300, low: 65400, close: 66250 },
+    ];
+    const { controlRow, resumedRow } = await parityRun({
+      seed: {
+        strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+        strategyVersion: '3.3',
+        signalCandleTs: new Date(setup),
+      },
+      bars,
+      split: 3,
+      expectNonTerminal: 'FILLED',
+    });
+    expect(resumedRow.status).toBe('TARGET_REACHED');
+    expect(outcomeOf(resumedRow)).toEqual(outcomeOf(controlRow));
+  }, 120_000);
+
+  it('V2.8: вход по следующему open ⇒ FILLED, затем trail-исход идентичен контролю', async (ctx) => {
+    if (guard(ctx)) return;
+    const setup = Date.UTC(2026, 8, 21, 11, 0, 0);
+    // V2.8 исполняет по open СЛЕДУЮЩЕГО бара: plannedEntry=100, stop=90,
+    // риск=10. Бар +1h: high 105 (0.5R). Бар +2h: high 112 (1.2R) — арм BE,
+    // трейл-стоп 102. Бар +3h: high 120 (2R) — трейл-стоп 110. Бар +4h:
+    // low 108 ≤ 110 ⇒ выход TRAIL по 110, grossR = 1.0.
+    const bars = [
+      { time: setup / 1000, open: 100, high: 100, low: 100, close: 100 },
+      { time: (setup + H) / 1000, open: 100, high: 105, low: 99, close: 103 },
+      { time: (setup + 2 * H) / 1000, open: 103, high: 112, low: 102, close: 111 },
+      { time: (setup + 3 * H) / 1000, open: 111, high: 120, low: 110, close: 119 },
+      { time: (setup + 4 * H) / 1000, open: 119, high: 119, low: 108, close: 109 },
+    ];
+    const { controlRow, resumedRow } = await parityRun({
+      seed: {
+        strategyId: 'V2_8_ZERO_FEE_SNIPER_TRAILING',
+        strategyVersion: '2.8',
+        entryType: 'MARKET_NEXT_OPEN',
+        signalCandleTs: new Date(setup),
+        entryMin: 100,
+        entryMax: 100,
+        stopLoss: 90,
+        targets: [110, 120],
+      },
+      bars,
+      split: 4,
+      expectNonTerminal: 'FILLED',
+    });
+    // V2.8 выходит не парой TP/SL, а трейлингом: причина TRAIL, статус CLOSED.
+    expect(controlRow.status).toBe('CLOSED');
+    expect(controlRow.close_reason).toBe('TRAIL');
+    expect(resumedRow.close_reason).toBe('TRAIL');
+    expect(outcomeOf(resumedRow)).toEqual(outcomeOf(controlRow));
+    expect(Number(resumedRow.result_r)).toBeCloseTo(1, 6);
+  }, 120_000);
+
+  it('сигнал старше окна ядра ⇒ UNRESOLVED/OUT_OF_DATA_WINDOW, а не молчаливый ACTIVE', async (ctx) => {
+    if (guard(ctx)) return;
+    await q('DELETE FROM signals');
+    const now = Date.UTC(2026, 8, 21, 9, 0, 0);
+    // Сетап старше окна ядра (1000 баров 1h): запрос lookback упрётся в
+    // максимум, биржа вернёт ровно окно, и бара сетапа в нём не будет.
+    const setup = now - 2000 * H;
+    const { signal } = await seedSignal({ signalCandleTs: new Date(setup) });
+
+    // 1001 бар, последний — формирующийся: закрытых ровно 1000, сколько и
+    // запрошено. Первый закрытый бар (now − 1001h) новее сетапа (now − 2000h).
+    const late = Array.from({ length: 1001 }, (_, i) => ({
+      time: (now - (1001 - i) * H) / 1000,
+      open: 64600, high: 64700, low: 64550, close: 64650, volume: 1,
+    }));
+    const requested: number[] = [];
+    const monitor = new monitorMod.SignalMonitor({
+      now: () => now,
+      listOpen: (limit: number) => repo.listOpenSignals(null, limit),
+      sync: (patch: unknown) => repo.syncSignalLifecycle(patch as never),
+      getCandles: async (_s: string, _tf: string, limit: number) => {
+        requested.push(limit);
+        return late;
+      },
+      recordMonitor: (id: string, patch: unknown) => repo.recordSignalMonitorCheck(id, patch as never),
+      loadCore: async () => {
+        const core = await import('../../server/services/strategyEngine/strategyCoreBundle.js');
+        return core.loadStrategyCore();
+      },
+      sleep: async () => {},
+      requestTimeoutMs: 5000,
+    });
+    await monitor.tick();
+
+    // Окно ограничено максимумом ядра, а не «тянуть всю историю».
+    expect(requested).toEqual([monitorMod.MAX_LOOKBACK_BARS]);
+    const row = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('UNRESOLVED');
+    expect(row.close_reason).toBe('OUT_OF_DATA_WINDOW');
+    expect(row.result_r).toBeNull();
+    expect(row.monitor_last_result).toBe('RESOLVED');
   }, 120_000);
 });

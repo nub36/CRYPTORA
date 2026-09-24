@@ -85,6 +85,41 @@ export const MONITOR_RESULTS = Object.freeze({
 });
 
 /**
+ * Длительность бара ТАЙМФРЕЙМА ГРУППЫ в миллисекундах.
+ *
+ * ЗАЧЕМ НЕ КОНСТАНТА. Размер lookback (сколько баров запросить) считается как
+ * «сколько барОВ прошло с бара сетапа» = (now − setupOpenTime) / tfMs. Если
+ * tfMs взять из 1h, а группа живёт на 15m, монитор запросит вчетверо меньше
+ * баров, чем нужно, и честно скажет OUT_OF_WINDOW вместо того, чтобы довести
+ * сделку до исхода. На 4h/1d — запросит в 4/24 раза больше необходимого и
+ * упрётся в ограничение окна. Источник истины — `ARCHIVE_TF_MS` ядра (та же
+ * таблица, по которой переводит свечи `ohlcvArrayToArchive`), поэтому расхождение
+ * с тем, что реально исполняется, невозможно.
+ *
+ * Таймфреймы стратегий исполнения сегодня — 1h у всех трёх, но монитор обязан
+ * быть верным и для любого другого: он читает таймфрейм из СТРОКИ сигнала
+ * (`signals.timeframe`), а не из предположения о стратегии.
+ *
+ * @param {object} core скомпилированное ядро (может быть без ARCHIVE_TF_MS в тестах)
+ * @param {string} timeframe таймфрейм группы ('15m' | '1h' | '4h' | '1d' | …)
+ * @returns {number} длительность бара в мс, либо 0 если таймфрейм неизвестен
+ */
+export function timeframeMs(core, timeframe) {
+  const tf = String(timeframe ?? '');
+  const table = core?.ARCHIVE_TF_MS;
+  const direct = table && typeof table[tf] === 'number' ? table[tf] : null;
+  if (direct && direct > 0) return direct;
+  // Ядро недоступно (инъекция в тестах) — разбор стандартного суффикса.
+  const m = /^(\d+)([mhd])$/.exec(tf);
+  if (m) {
+    const n = Number(m[1]);
+    const unit = m[2] === 'm' ? 60_000 : m[2] === 'h' ? 3_600_000 : 86_400_000;
+    return n * unit;
+  }
+  return 0;
+}
+
+/**
  * Группировка открытых сигналов по (символ, таймфрейм).
  *
  * Это ядро защиты от веера N×candles: ключ группы — инструмент, а не сигнал.
@@ -335,7 +370,6 @@ export class SignalMonitor {
       summary.groups = bounded.length;
 
       const core = await this.core_();
-      const tfMs = core?.ARCHIVE_TF_MS?.['1h'] ?? 3_600_000;
       const maxBars = Number(core?.CANDLE_LIMIT_1H ?? MAX_LOOKBACK_BARS) || MAX_LOOKBACK_BARS;
 
       // Очередь групп с ограниченной конкурентностью.
@@ -346,7 +380,10 @@ export class SignalMonitor {
           if (!group) return;
           const before = this.requestCount();
           try {
-            await this.monitorGroup(group, { core, tfMs, maxBars, nowMs: this.nowFn(), summary });
+            // tfMs — от ТАЙМФРЕЙМА ЭТОЙ ГРУППЫ, а не общая константа 1h:
+            // иначе размер lookback считался бы по чужому бара.
+            const groupTfMs = timeframeMs(core, group.timeframe);
+            await this.monitorGroup(group, { core, tfMs: groupTfMs, maxBars, nowMs: this.nowFn(), summary });
           } catch (e) {
             summary.errors += group.rows.length;
             this.recordError(e);
@@ -409,6 +446,16 @@ export class SignalMonitor {
     if (!group.exchangeSymbol) {
       for (const row of group.rows) {
         await this.writeMonitor(row, { result: 'SKIP', error: 'UNSUPPORTED_SYMBOL' });
+        summary.skipped += 1;
+      }
+      return;
+    }
+
+    // Неизвестный таймфрейм группы: судить о числе баров нельзя, поэтому
+    // пропускаем с явной причиной, а не угадываем по 1h.
+    if (!(tfMs > 0)) {
+      for (const row of group.rows) {
+        await this.writeMonitor(row, { result: 'SKIP', error: 'UNKNOWN_TIMEFRAME' });
         summary.skipped += 1;
       }
       return;

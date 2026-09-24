@@ -26,6 +26,7 @@ import {
   SignalMonitor,
   groupOpenSignals,
   computeLookbackBars,
+  timeframeMs,
   MAX_LOOKBACK_BARS,
   LOOKBACK_MARGIN_BARS,
   MONITOR_TICK_MS,
@@ -193,6 +194,74 @@ describe('computeLookbackBars — окно не больше окна ядра',
     expect(computeLookbackBars([], SETUP_TS, H)).toBe(MAX_LOOKBACK_BARS);
     expect(computeLookbackBars([{ signalCandleTs: 'not-a-date' }], SETUP_TS, H)).toBe(MAX_LOOKBACK_BARS);
     expect(computeLookbackBars([openRow()], SETUP_TS, 0)).toBe(MAX_LOOKBACK_BARS);
+  });
+});
+
+describe('timeframeMs — длительность бара берётся у ТАЙМФРЕЙМА ГРУППЫ, не у 1h', () => {
+  it('все таймфреймы архива разрешаются через таблицу ядра', () => {
+    for (const [tf, ms] of Object.entries(ARCHIVE_TF_MS)) {
+      expect(timeframeMs(CORE, tf)).toBe(ms);
+    }
+  });
+
+  it('ядро без ARCHIVE_TF_MS ⇒ разбор стандартного суффикса, а не 1h', () => {
+    expect(timeframeMs({}, '15m')).toBe(15 * 60_000);
+    expect(timeframeMs({}, '4h')).toBe(4 * 3_600_000);
+    expect(timeframeMs({}, '1d')).toBe(86_400_000);
+  });
+
+  it('неизвестный таймфрейм даёт 0, а не молчаливую подстановку 1h', () => {
+    expect(timeframeMs(CORE, '7x')).toBe(0);
+    expect(timeframeMs(CORE, '')).toBe(0);
+    expect(timeframeMs(CORE, null)).toBe(0);
+  });
+
+  it('группа 15m запрашивает окно ПО СВОЕМУ бару, а не по часу', () => {
+    // Сетап 4 часа назад: на 15m это 16 баров, на 1h — 4.
+    const now = SETUP_TS + 4 * H;
+    const by15m = computeLookbackBars([openRow()], now, timeframeMs(CORE, '15m'));
+    const by1h = computeLookbackBars([openRow()], now, timeframeMs(CORE, '1h'));
+    expect(by15m).toBe(16 + LOOKBACK_MARGIN_BARS);
+    expect(by1h).toBe(4 + LOOKBACK_MARGIN_BARS);
+    // Регрессия: раньше обе группы считались по 1h и 15m-группа недобирала бары.
+    expect(by15m).toBeGreaterThan(by1h);
+  });
+
+  it('группа 4h не раздувает окно: лимит считается по 4-часовому бару', () => {
+    const now = SETUP_TS + 24 * H; // сутки = 6 баров 4h, 24 бара 1h
+    expect(computeLookbackBars([openRow()], now, timeframeMs(CORE, '4h'))).toBe(
+      6 + LOOKBACK_MARGIN_BARS
+    );
+    expect(computeLookbackBars([openRow()], now, timeframeMs(CORE, '1d'))).toBe(
+      1 + LOOKBACK_MARGIN_BARS
+    );
+  });
+
+  it('тик с группой 15m шлёт limit по 15m-бару и timeframe группы', async () => {
+    const row = openRow({ timeframe: '15m', signalCandleTs: SETUP_ISO });
+    // 40 баров 15m = 10 часов после сетапа.
+    const bars = Array.from({ length: 60 }, (_, i) =>
+      candle(SETUP_TS + i * 15 * 60_000, 100.5, 102, 99, 100.5)
+    );
+    const { monitor, candleRequests } = makeMonitor({
+      rows: [row],
+      candlesFor: { 'BTCUSDT|15m': bars },
+    });
+    monitor.nowFn = () => SETUP_TS + 10 * H;
+    await monitor.tick();
+    expect(candleRequests).toHaveLength(1);
+    expect(candleRequests[0].timeframe).toBe('15m');
+    expect(candleRequests[0].limit).toBe(40 + LOOKBACK_MARGIN_BARS);
+  });
+
+  it('неизвестный таймфрейм группы ⇒ SKIP, а не запрос свечей по догадке', async () => {
+    const { monitor, candleRequests, monitorWrites } = makeMonitor({
+      rows: [openRow({ timeframe: '3x' })],
+    });
+    await monitor.tick();
+    expect(candleRequests).toHaveLength(0);
+    expect(monitorWrites[0].patch.result).toBe('SKIP');
+    expect(monitorWrites[0].patch.error).toBe('UNKNOWN_TIMEFRAME');
   });
 });
 
