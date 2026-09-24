@@ -40,7 +40,10 @@ export interface SignalAggregate {
   /** Завершённая сделка с результатом ровно 0 R. НЕ убыток. */
   breakEven: number;
   /** Завершённая сделка, у которой ядро не вернуло результат R. */
+  /** Завершённые сделки без рассчитанного результата (result_r IS NULL). */
   unrated: number;
+  /** То же, что `unrated`; имя не путает со статусом «исход не отслежен». */
+  unratedCompleted: number;
   /** Завершённые сделки с известным результатом: wins + losses + breakEven. */
   ratedCompleted: number;
   /** null — знаменатель ноль: «нет данных» ≠ 0 %. */

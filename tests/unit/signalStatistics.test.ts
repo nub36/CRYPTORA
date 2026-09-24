@@ -127,22 +127,55 @@ describe('mapAggregate — знаменатель win rate', () => {
     expect(a.grossRSum).toBeNull();
   });
 
-  it('сделка без результата R не портирует сумму', () => {
+  it('G: SUM/AVG игнорируют NULL, а не превращают его в ноль', () => {
+    // Одна сделка с известным результатом (+1.5 R) и ОДНА завершённая сделка
+    // без результата (unrated). SQL-агрегаты должны увидеть только первую.
     const a = mapAggregate({
       ...EMPTY_ROW,
       published: 2,
-      completed: 1,
+      completed: 2,
       wins: 1,
       losses: 0,
       break_even: 0,
-      unrated: 0,
+      unrated: 1,
       rated_completed: 1,
       gross_r_sum: 1.5,
       net_r_sum: 1.42,
+      avg_gross_r: 1.5,
+      avg_net_r: 1.42,
     });
+    // Σ = 1.5, а НЕ 1.5 + 0 = «как будто нулевая сделка дала вклад».
     expect(a.grossRSum).toBe(1.5);
     expect(a.netRSum).toBe(1.42);
+    // Среднее делится на 1 (сделки с известным R), а не на 2.
+    expect(a.avgGrossR).toBe(1.5);
+    expect(a.avgNetR).toBe(1.42);
+    // Тождество знаменателя.
+    expect(a.ratedCompleted + a.unratedCompleted).toBe(a.completed);
     expect(a.winRatePct).toBe(100);
+  });
+
+  it('G2: unrated не «добавляет ноль» — Σ остаётся только по известным R', () => {
+    // Две сделки с известным результатом и одна без: если бы NULL стал 0,
+    // Σ осталась бы той же, а вот СРЕДНЕЕ упало бы на треть. Проверяем среднее.
+    const withNull = mapAggregate({
+      ...EMPTY_ROW,
+      completed: 3,
+      wins: 1,
+      losses: 1,
+      break_even: 0,
+      unrated: 1,
+      rated_completed: 2,
+      gross_r_sum: 0,
+      avg_gross_r: 0,
+    });
+    // Среднее 0 по ДВУМ сделкам (+1 и −1), а не по трём.
+    expect(withNull.avgGrossR).toBe(0);
+    expect(withNull.ratedCompleted).toBe(2);
+    expect(withNull.unratedCompleted).toBe(1);
+    // Σ не изменился от появления NULL: +1 + (−1) = 0, и это совпадение с
+    // «нулём» не должно маскировать ошибку — поэтому проверяем знаменатель.
+    expect(withNull.grossRSum).toBe(0);
   });
 
   it('+1R → win', () => {
@@ -183,6 +216,7 @@ describe('mapAggregate — знаменатель win rate', () => {
     expect(a.losses).toBe(0);
     expect(a.breakEven).toBe(0);
     expect(a.unrated).toBe(1);
+    expect(a.unratedCompleted).toBe(1);
     // NULL не превращается в 0: знаменателя нет ⇒ null, а не 0 %.
     expect(a.ratedCompleted).toBe(0);
     expect(a.winRatePct).toBeNull();
@@ -207,6 +241,7 @@ describe('mapAggregate — знаменатель win rate', () => {
     expect(a.losses).toBe(1);
     expect(a.breakEven).toBe(1);
     expect(a.unrated).toBe(1);
+    expect(a.unratedCompleted).toBe(1);
     // Четыре корзины покрывают completed.
     expect(a.wins + a.losses + a.breakEven + a.unrated).toBe(a.completed);
     // Знаменатель — только сделки с известным результатом.
@@ -229,6 +264,7 @@ describe('mapAggregate — знаменатель win rate', () => {
     });
     expect(a.completed).toBe(2);
     expect(a.unrated).toBe(2);
+    expect(a.unratedCompleted).toBe(2);
     // «Нет данных» ≠ 0 %.
     expect(a.winRatePct).toBeNull();
     expect(a.avgGrossR).toBeNull();

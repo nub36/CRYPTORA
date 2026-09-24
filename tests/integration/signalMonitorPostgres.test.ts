@@ -967,7 +967,7 @@ describe('Рестарт-паритет и частичный жизненный
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Статистика — знаменатели и результат 0 R', () => {
-  it('все восемь статусов: published сходится, wins+losses = completed, 0 R — в losses', async (ctx) => {
+  it('все восемь статусов: published сходится, 0 R — в breakEven, а не в losses', async (ctx) => {
     if (guard(ctx)) return;
     await q('DELETE FROM signals');
     // По одному разу каждый статус: ACTIVE, FILLED, TARGET_REACHED (TP2),
@@ -1026,8 +1026,11 @@ describe('Статистика — знаменатели и результат 
     expect(t.losses).toBe(2);
     expect(t.breakEven).toBe(1);
     expect(t.unrated).toBe(0);
+    expect(t.unratedCompleted).toBe(0);
     // Четыре корзины покрывают completed.
     expect(t.wins + t.losses + t.breakEven + t.unrated).toBe(t.completed);
+    // Тождество знаменателя: rated + unrated = completed.
+    expect(t.ratedCompleted + t.unratedCompleted).toBe(t.completed);
     // ΣR считается только по completed; ACTIVE/FILLED/CANCELLED/EXPIRED/UNRESOLVED не входят.
     expect(t.grossRSum).toBeCloseTo(2.0 - 1.0 + 0.0 - 0.25, 6);
     // Знаменатель — завершённые сделки с известным результатом: 4.
@@ -1086,9 +1089,12 @@ describe('Статистика — знаменатели и результат 
     expect(t.losses).toBe(1);
     expect(t.breakEven).toBe(1);
     expect(t.unrated).toBe(1);
+    expect(t.unratedCompleted).toBe(1);
     expect(t.ratedCompleted).toBe(3);
     // Четыре корзины покрывают completed.
     expect(t.wins + t.losses + t.breakEven + t.unrated).toBe(t.completed);
+    // Тождество знаменателя: rated + unrated = completed = 4.
+    expect(t.ratedCompleted + t.unratedCompleted).toBe(t.completed);
     // Доля успешных — среди завершённых С ИЗВЕСТНЫМ результатом: 1 из 3.
     expect(t.winRatePct).toBe(33.3);
     // NULL не даёт вклада в ΣR: +1 + (-1) + 0, без четвёркой «+0».

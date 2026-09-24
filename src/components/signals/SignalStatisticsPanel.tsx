@@ -17,7 +17,7 @@
  *
  * ВТОРОЕ ПРАВИЛО: сделка «в ноль» (0 R) — это НЕ убыток. Убыток требует
  * строго отрицательного результата; ноль идёт своей строкой «В ноль», а
- * завершённая сделка без результата R — строкой «Без оценки R». Знаменатель
+ * завершённая сделка без результата R — строкой «Без расчёта результата». Знаменатель
  * доли успешных — завершённые сделки с известным результатом.
  */
 
@@ -138,12 +138,12 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
         <Row label="В ноль" value={num(hasTrades ? t.breakEven : null)} qa="stat-break-even" />
         <Row label="Убыточные" value={num(hasTrades ? t.losses : null)} qa="stat-losses" />
         <Row
-          label="Без оценки R"
-          value={num(hasTrades ? t.unrated : null)}
+          label="Без расчёта результата"
+          value={num(hasTrades ? t.unratedCompleted : null)}
           qa="stat-unrated"
         />
         <Row label="Доля успешных" value={pct(t.winRatePct)} qa="stat-winrate" />
-        <Row label="Средний результат" value={hasTrades ? r(t.avgNetR) : '—'} qa="stat-avg" />
+        <Row label="Средний net R" value={hasTrades ? r(t.avgNetR) : '—'} qa="stat-avg" />
         <Row
           label="Без сделки (отмены / истечения / не отслежено)"
           value={num(t.cancelled + t.expired + t.unresolved)}
@@ -242,8 +242,14 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
             <p>
               Отмены ({num(t.cancelled)}), истечения ({num(t.expired)}) и неотслеженные исходы (
               {num(t.unresolved)}) в знаменатель не входят: там сделки не было. Завершённые сделки без
-              результата R ({num(t.unrated)}) тоже не входят — «результат неизвестен» не является ни
-              победой, ни поражением, ни ничьей.
+              рассчитанного результата ({num(t.unratedCompleted)}) тоже не входят — «результат
+              неизвестен» не является ни победой, ни поражением, ни ничьей.
+            </p>
+            <p>
+              Прибыльные, убыточные и «в ноль» определяются записанным результатом сделки, а не
+              названием исхода: исход вроде «закрытие половины по TP1, половины по входу» сам по себе
+              никого не делает ни прибыльным, ни убыточным. Классификация одна и построена на
+              результате до комиссий.
             </p>
             <p>
               Сделка в ноль (0 R) не является убыточной: убыток — это строго отрицательный результат.
