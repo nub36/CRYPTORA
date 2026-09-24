@@ -111,11 +111,15 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
     return () => { active = false; };
   }, [open, availableAssets]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  /** Клавиатурная навигация по списку (стрелки + Enter) — §21 доступность. */
+  const [activeIndex, setActiveIndex] = useState(0);
   const currentUpper = (current ?? '').toUpperCase();
 
   useEffect(() => {
     if (open) {
       setQuery('');
+      setActiveIndex(0);
       // Фокус после монтирования попапа.
       const t = setTimeout(() => inputRef.current?.focus(), 0);
       const onKey = (e: KeyboardEvent) => {
@@ -143,6 +147,28 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
   const choose = (symbol: string) => {
     onSelect(symbol);
     onClose();
+  };
+
+  /** Стрелки/Enter/Home/End — выбор без мыши; фокус остаётся в поле поиска. */
+  const moveActive = (next: number) => {
+    const last = visibleEntries.length - 1;
+    if (last < 0) return;
+    const clamped = Math.min(Math.max(next, 0), last);
+    setActiveIndex(clamped);
+    listRef.current
+      ?.querySelectorAll<HTMLElement>('[data-picker-option]')
+      [clamped]?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(activeIndex + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(activeIndex - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); moveActive(0); }
+    else if (e.key === 'End') { e.preventDefault(); moveActive(visibleEntries.length - 1); }
+    else if (e.key === 'Enter') {
+      const entry = visibleEntries[activeIndex];
+      if (entry) { e.preventDefault(); choose(entry.symbol); }
+    }
   };
 
   return (
@@ -186,28 +212,31 @@ export const SymbolPickerModal: React.FC<SymbolPickerModalProps> = ({
               type="text"
               aria-label="Поиск монеты по тикеру или названию"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setActiveIndex(0); }}
+              onKeyDown={onSearchKeyDown}
               placeholder="BTC, Solana, PEPE…"
               data-qa="symbol-picker-search"
               className="w-full rounded border border-surface-border bg-surface-elevated py-2 pl-9 pr-3 font-mono text-sm text-white placeholder:text-slate-500 focus:border-brand-cyan/60 focus:outline-none"
             />
           </div>
         </div>
-        <div className="max-h-80 overflow-y-auto p-2" data-qa="symbol-picker-list">
+        <div ref={listRef} className="max-h-80 overflow-y-auto p-2" data-qa="symbol-picker-list">
           {entries.length === 0 && (
             <div className="px-3 py-6 text-center font-sans text-xs text-slate-500">
               Ничего не найдено. Введите тикер вида BTC или PEPE.
             </div>
           )}
-          {visibleEntries.map((e) => (
+          {visibleEntries.map((e, index) => (
             <button
               key={`${e.symbol}-${e.custom ? 'custom' : 'reg'}`}
               type="button"
               onClick={() => choose(e.symbol)}
               data-qa={`symbol-picker-option-${e.symbol}`}
+              data-picker-option={e.symbol}
+              aria-current={index === activeIndex ? 'true' : undefined}
               className={`flex w-full items-center justify-between rounded px-3 py-2 text-left transition-colors hover:bg-white/[0.05] ${
                 e.symbol === currentUpper ? 'bg-brand-cyan/10' : ''
-              }`}
+              } ${index === activeIndex ? 'ring-1 ring-inset ring-brand-cyan/60' : ''}`}
             >
               <span className="flex items-center gap-2">
                 <span aria-hidden="true" className="contents"><CoinIcon symbol={e.symbol} size={20} /></span>

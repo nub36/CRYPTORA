@@ -195,9 +195,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-/** Состояние трёх продуктовых стратегий. Публичный endpoint. */
-export async function fetchStrategies(): Promise<StrategyStateDto[]> {
-  const res = await request<{ strategies: StrategyStateDto[]; source: string }>('/api/strategies');
+/**
+ * Состояние трёх продуктовых стратегий. Публичный endpoint.
+ *
+ * `init` — опционально (Signals V2 передаёт `signal` AbortController'а: смена
+ * выбранного инструмента отменяет устаревший запрос, а не игнорирует его).
+ */
+export async function fetchStrategies(init?: RequestInit): Promise<StrategyStateDto[]> {
+  const res = await request<{ strategies: StrategyStateDto[]; source: string }>('/api/strategies', init);
   return res.strategies;
 }
 
@@ -240,8 +245,8 @@ function signalsQuery(filters: SignalFilters): string {
 }
 
 /** Сигналы серверного движка (только лента). */
-export async function fetchSignals(filters: SignalFilters = {}): Promise<SignalDto[]> {
-  const res = await request<SignalsPageDto>(`/api/signals${signalsQuery(filters)}`);
+export async function fetchSignals(filters: SignalFilters = {}, init?: RequestInit): Promise<SignalDto[]> {
+  const res = await request<SignalsPageDto>(`/api/signals${signalsQuery(filters)}`, init);
   return res.signals;
 }
 
@@ -250,6 +255,23 @@ export async function fetchSignals(filters: SignalFilters = {}): Promise<SignalD
  * `total` для постраничной навигации, `statuses` — вместо хардкода состояний
  * на клиенте.
  */
-export async function fetchSignalsPage(filters: SignalFilters = {}): Promise<SignalsPageDto> {
-  return request<SignalsPageDto>(`/api/signals${signalsQuery(filters)}`);
+export async function fetchSignalsPage(
+  filters: SignalFilters = {},
+  init?: RequestInit
+): Promise<SignalsPageDto> {
+  return request<SignalsPageDto>(`/api/signals${signalsQuery(filters)}`, init);
+}
+
+/**
+ * Отличить отмену запроса (AbortController) от настоящей ошибки источника.
+ * Отменённый ответ НЕЛЬЗЯ показывать пользователю как ошибку: его просто не
+ * существует — гонку выиграл более поздний запрос (см. useServerSignals).
+ */
+export function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    ((error as { name?: string }).name === 'AbortError' ||
+      (error as { code?: number }).code === 20 /* DOMException.ABORT_ERR */)
+  );
 }

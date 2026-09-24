@@ -4,7 +4,8 @@ export default defineConfig({
   testDir: './e2e',
   // baseURL: без него page.goto('/') = «Cannot navigate to invalid URL»
   // (routes.spec не пострадал — там абсолютные URL).
-  use: { baseURL: 'http://localhost:5173' },
+  // data-qa — единый атрибут стабильных селекторов проекта; `getByTestId` читает его.
+  use: { baseURL: 'http://localhost:5173', testIdAttribute: 'data-qa' },
   timeout: 30000,
   forbidOnly: !!process.env.CI,
   // В CI одна ретрая попытка — страховка от сетевого флака браузерных тестов.

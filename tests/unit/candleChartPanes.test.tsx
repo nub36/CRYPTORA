@@ -15,6 +15,7 @@ vi.mock('lightweight-charts', async (importOriginal) => {
     priceScale: () => ({ applyOptions: vi.fn() }),
     createPriceLine: vi.fn(() => ({ id: 'price-line' })),
     removePriceLine: vi.fn(),
+    setMarkers: vi.fn(),
   });
   return {
     ...actual,
@@ -26,6 +27,8 @@ vi.mock('lightweight-charts', async (importOriginal) => {
         remove: vi.fn(),
         subscribeCrosshairMove: vi.fn(),
         unsubscribeCrosshairMove: vi.fn(),
+        subscribeClick: vi.fn(),
+        unsubscribeClick: vi.fn(),
         timeScale: () => instance.scale,
         scale: {
           applyOptions: vi.fn(), fitContent: vi.fn(),

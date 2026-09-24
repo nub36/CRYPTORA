@@ -548,18 +548,38 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(document.body.textContent).not.toContain('Sponsored / Partner');
   });
 
-  test('/signals: журнал пуст, без иллюстративных сетапов и без плашки «СТАТИЧЕСКИЙ НАБОР»', async () => {
+  test('/signals: серверная лента пуста/недоступна — без иллюстративных сетапов, структура V2 на месте', async () => {
     cleanup();
     renderApp('/signals');
     // Маршрут ленивый (Suspense): дожидаемся фактического рендера страницы.
+    // Серверная лента в герметичном окружении недоступна (сеть отключена) — это
+    // честное «показывать нечего», а не подстановка демо-сетапов.
     await waitFor(() => {
-      expect(document.querySelector('[data-qa="signals-empty"]')).not.toBeNull();
+      const empty = document.querySelector('[data-qa="signals-empty"]');
+      expect(empty).not.toBeNull();
+      // Причина состояния явно помечена: пустая лента или ошибка источника.
+      expect(['empty', 'error']).toContain(empty!.getAttribute('data-state'));
     });
-    // Журнал не содержит ни одной карточки: ни демонстрационных, ни «иллюстративных» сетапов.
+    // Ни одной карточки сигнала: ни демонстрационных, ни «иллюстративных» сетапов.
     expect(document.querySelectorAll('[data-qa="signal-card"]').length).toBe(0);
     expect(document.body.textContent).not.toContain('Цель достигнута:');
     expect(document.querySelector('[data-qa="static-dataset-notice"]')).toBeNull();
-    // В QA-режиме (демо-датасет) LIVE-движок не запускается — честная подпись вместо мнимого скана.
+
+    // Signals V2: источник — серверная лента; селектор монеты, сводка, график,
+    // детали, история и аудит рендерятся и без данных (график — по свечам
+    // демо-провайдера, один запрос на выбранный символ, без веера).
+    expect(document.querySelector('[data-qa="signals-coin-selector"]')).not.toBeNull();
+    expect(document.querySelector('[data-qa="signals-chart-card"]')).not.toBeNull();
+    expect(document.querySelector('[data-qa="signals-history"]')).not.toBeNull();
+    expect(document.querySelector('[data-qa="signals-audit-section"]')).not.toBeNull();
+    expect(document.querySelector('[data-qa="signals-summary-empty"]')).not.toBeNull();
+
+    // Таймфрейм сигнала (исполнения) и переключатель таймфрейма графика.
+    expect(document.querySelector('[data-qa="signals-chart-tf-1h"]')).not.toBeNull();
+    expect(document.querySelector('[data-qa="signals-chart-tf-4h"]')).not.toBeNull();
+
+    // В QA-режиме (демо-датасет) браузерный LIVE-движок не запускается —
+    // честная подпись источника вместо мнимого скана.
     const engineStatus = document.querySelector('[data-qa="signals-engine-status"]');
     expect(engineStatus).not.toBeNull();
     expect(engineStatus!.getAttribute('data-state')).toBe('stopped');

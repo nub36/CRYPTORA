@@ -42,6 +42,7 @@ vi.mock('lightweight-charts', () => {
   });
   return {
     ColorType: { Solid: 'solid' },
+    LineStyle: { Solid: 0, Dotted: 1, Dashed: 2, LargeDashed: 3, SparseDotted: 4 },
     TickMarkType: { Year: 0, Month: 1, DayOfMonth: 2, Time: 3, TimeWithSeconds: 4 },
     createChart: vi.fn(() => {
       // A realistic time scale: it REMEMBERS the range and NOTIFIES subscribers,
@@ -71,6 +72,7 @@ vi.mock('lightweight-charts', () => {
         addLineSeries: makeSeries, addBarSeries: makeSeries,
         priceScale: () => ({ applyOptions: vi.fn() }),
         subscribeCrosshairMove: vi.fn(), unsubscribeCrosshairMove: vi.fn(),
+        subscribeClick: vi.fn(), unsubscribeClick: vi.fn(),
         timeScale: () => timeScale,
         remove: vi.fn(() => { chartProbe.removed += 1; listeners.clear(); }),
       };
