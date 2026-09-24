@@ -20,7 +20,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { trackPublishedSetup } from '@/services/signals/live/lifecycle';
 import { ohlcvToArchive, ohlcvArrayToArchive } from '@/services/signals/live/ohlcvAdapter';
 import { ARCHIVE_TF_MS } from '@/services/strategyArchive/types';
-import { CANDLE_LIMIT_1H } from '@/services/signals/live/LiveSignalEngine';
+import { CANDLE_LIMIT_1H, EXEC_TIMEFRAME } from '@/services/signals/live/LiveSignalEngine';
 
 import {
   SignalMonitor,
@@ -227,8 +227,8 @@ describe('timeframeMs — длительность бара берётся у Т
     expect(by15m).toBeGreaterThan(by1h);
   });
 
-  it('группа 4h не раздувает окно: лимит считается по 4-часовому бару', () => {
-    const now = SETUP_TS + 24 * H; // сутки = 6 баров 4h, 24 бара 1h
+  it('группа 4h/1d не раздувает окно: лимит считается по своему бару', () => {
+    const now = SETUP_TS + 24 * H; // сутки = 6 баров 4h, 24 бара 1h, 1 бар 1d
     expect(computeLookbackBars([openRow()], now, timeframeMs(CORE, '4h'))).toBe(
       6 + LOOKBACK_MARGIN_BARS
     );
@@ -238,8 +238,7 @@ describe('timeframeMs — длительность бара берётся у Т
   });
 
   it('тик с группой 15m шлёт limit по 15m-бару и timeframe группы', async () => {
-    const row = openRow({ timeframe: '15m', signalCandleTs: SETUP_ISO });
-    // 40 баров 15m = 10 часов после сетапа.
+    const row = openRow({ timeframe: '15m' });
     const bars = Array.from({ length: 60 }, (_, i) =>
       candle(SETUP_TS + i * 15 * 60_000, 100.5, 102, 99, 100.5)
     );
@@ -262,6 +261,76 @@ describe('timeframeMs — длительность бара берётся у Т
     expect(candleRequests).toHaveLength(0);
     expect(monitorWrites[0].patch.result).toBe('SKIP');
     expect(monitorWrites[0].patch.error).toBe('UNKNOWN_TIMEFRAME');
+  });
+});
+
+describe('Таймфрейм исполнения — из строки сигнала, не из удобства провайдера', () => {
+  it('движок публикует сетап с EXEC_TIMEFRAME = 1h, и это колонка timeframe', () => {
+    // Колонка `signals.timeframe` заполняется из EXEC_TIMEFRAME движка, значит
+    // она описывает бары ИСПОЛНЕНИЯ, а не подпись графика.
+    expect(EXEC_TIMEFRAME).toBe('1h');
+    expect(ARCHIVE_TF_MS['1h']).toBe(H);
+  });
+
+  it('ДВА разных юниона Timeframe: архив — строчные ключи, market — «1D»/«1W»', () => {
+    // В коде есть два несовместимых по регистру юниона:
+    //   • `ARCHIVE_TF_MS` (strategyArchive) — '1d', '1w' (строчные);
+    //   • `src/types/market` Timeframe — '1D', '1W' (заглавные).
+    // Колонка `signals.timeframe` живёт в ДОМЕНЕ АРХИВА (по ней же переводятся
+    // свечи `ohlcvArrayToArchive`), поэтому монитор обязан работать со строчными
+    // ключами. Заглавный '1D' из market-домена не должен молча дать верное
+    // окно — он обязан дать 0 и честный SKIP/UNKNOWN_TIMEFRAME.
+    expect(Object.keys(ARCHIVE_TF_MS)).toContain('1d');
+    expect(Object.keys(ARCHIVE_TF_MS)).not.toContain('1D');
+    expect(timeframeMs(CORE, '1d')).toBe(86_400_000);
+    expect(timeframeMs(CORE, '1D')).toBe(0);
+    expect(timeframeMs(CORE, '1w')).toBe(7 * 86_400_000);
+    expect(timeframeMs(CORE, '1W')).toBe(0);
+  });
+
+  it('V3.0/V3.3 объявляют EXEC_TF = 1h в своих frozen-константах', async () => {
+    const v30 = await import(
+      '@/services/strategyArchive/definitions/v3_0-htf-liquidation-trap/v30Core'
+    );
+    const v33 = await import(
+      '@/services/strategyArchive/definitions/v3_3-htf-zone-mitigation/v33Core'
+    );
+    expect(v30.V30_CONSTANTS.EXEC_TF).toBe('1h');
+    expect(v33.V33_CONSTANTS.EXEC_TF).toBe('1h');
+    // 4h у V3.0 — СТРУКТУРНЫЙ таймфрейм (поиск сетапа), не исполнение.
+    expect(v30.V30_CONSTANTS.STRUCT_TF).toBe('4h');
+  });
+
+  it('V2.8 требует СТРОГО соседний 1h бар: resolveEntry проверяет openTime == setup + TF_MS[1h]', async () => {
+    const { resolveEntry } = await import('@/services/strategyArchive/legacy/v2/stateMachine');
+    const setup = SETUP_TS;
+    // Соседний 1h бар — принимается.
+    expect(resolveEntry(setup, H, { openTime: setup + H, open: 100, isClosed: true })).toEqual({
+      entryCandleTime: setup + H,
+      entryPrice: 100,
+    });
+    // Бар 15m спустя — отвергается: это НЕ таймфрейм исполнения V2.8.
+    expect(resolveEntry(setup, H, { openTime: setup + 15 * 60_000, open: 100, isClosed: true })).toBeNull();
+    // Пропущенный бар — тоже отвергается.
+    expect(resolveEntry(setup, H, { openTime: setup + 2 * H, open: 100, isClosed: true })).toBeNull();
+  });
+
+  it('монитор не тянет 4h/1d для ведения: timeframe берётся из строки', async () => {
+    const rows = [
+      openRow({ id: 'a', timeframe: '1h' }),
+      openRow({ id: 'b', symbol: 'ETH/USDT', timeframe: '4h' }),
+    ];
+    const bars = Array.from({ length: 12 }, (_, i) => candle(SETUP_TS + i * H, 100.5, 102, 99, 100.5));
+    const h4 = Array.from({ length: 12 }, (_, i) => candle(SETUP_TS + i * 4 * H, 100.5, 102, 99, 100.5));
+    const { monitor, candleRequests } = makeMonitor({
+      rows,
+      candlesFor: { 'BTCUSDT|1h': bars, 'ETHUSDT|4h': h4 },
+    });
+    await monitor.tick();
+    const asked = candleRequests.map((r) => `${r.symbol}|${r.timeframe}`).sort();
+    expect(asked).toEqual(['BTCUSDT|1h', 'ETHUSDT|4h']);
+    // Ни одного запроса 1d/15m «на всякий случай».
+    expect(candleRequests.every((r) => ['1h', '4h'].includes(r.timeframe))).toBe(true);
   });
 });
 

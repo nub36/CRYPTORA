@@ -96,11 +96,14 @@ export const MONITOR_RESULTS = Object.freeze({
  * таблица, по которой переводит свечи `ohlcvArrayToArchive`), поэтому расхождение
  * с тем, что реально исполняется, невозможно.
  *
- * Таймфреймы стратегий исполнения сегодня — 1h у всех трёх, но монитор обязан
- * быть верным и для любого другого: он читает таймфрейм из СТРОКИ сигнала
- * (`signals.timeframe`), а не из предположения о стратегии.
+ * Почему это именно ТАЙМФРЕЙМ ИСПОЛНЕНИЯ, а не «удобный» 1h: колонка
+ * `signals.timeframe` заполняется из `EXEC_TIMEFRAME` движка, а V2.8 в принципе
+ * не примет несоседний бар — `v28EntryAtNextOpen` → `resolveEntry` требует
+ * `next.openTime === setupOpenTime + TF_MS[V28_LIVE_TIMEFRAME]`, где
+ * `V28_LIVE_TIMEFRAME = '1h'`. Контекстные 4h/1d нужны для ПОИСКА сетапа, а не
+ * для ведения сделки.
  *
- * @param {object} core скомпилированное ядро (может быть без ARCHIVE_TF_MS в тестах)
+ * @param {object} core скомпилированное ядро (в тестах может быть без ARCHIVE_TF_MS)
  * @param {string} timeframe таймфрейм группы ('15m' | '1h' | '4h' | '1d' | …)
  * @returns {number} длительность бара в мс, либо 0 если таймфрейм неизвестен
  */
@@ -381,7 +384,7 @@ export class SignalMonitor {
           const before = this.requestCount();
           try {
             // tfMs — от ТАЙМФРЕЙМА ЭТОЙ ГРУППЫ, а не общая константа 1h:
-            // иначе размер lookback считался бы по чужому бара.
+            // иначе размер lookback считался бы по чужому бару.
             const groupTfMs = timeframeMs(core, group.timeframe);
             await this.monitorGroup(group, { core, tfMs: groupTfMs, maxBars, nowMs: this.nowFn(), summary });
           } catch (e) {

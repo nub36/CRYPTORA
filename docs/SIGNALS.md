@@ -89,26 +89,37 @@ frozen-функциями архива:
 - **V2.8 (MARKET_NEXT_OPEN):** `v28EntryAtNextOpen` (OPEN N+1, сдвиг стопа/целей на дельту исполнения, `executableLadder`,
   rr1 ≥ min_rr) → `v28TrailOutcome` (Trail V2.5: BE при MFE ≥ 1R, трейлинг 1R шагом 0.25R, таймаут 10 баров).
 
-**Один бар, в котором коснулись и стопа, и цели — правила РАЗНЫЕ у разных стратегий** (никакого общего
-«всегда стоп»; источник — frozen-код, а не удобство формулировки):
-
-| Стратегия | Что делает frozen-код на спорном баре | Где в исходниках |
-|---|---|---|
-| V3.0 | `manageTrade` проверяет стоп **первым** и выходит по нему: комментарий `// R1: stop first, always.` | `definitions/v3_0-htf-liquidation-trap/v30Core.ts`, `manageTrade` |
-| V3.3 | `manageTrade` структурно идентичен: стоп проверяется первым. Комментария `R1` здесь **нет**, и набор причин выхода другой — совпадение поведения это свойство двух реализаций, а не общего правила | `definitions/v3_3-htf-zone-mitigation/v33Core.ts`, `manageTrade` |
-| V2.8 | **Пары TP/SL нет вовсе.** `simulateTrailing` внутри бара действительно вычисляет `hitStop` раньше остальных проверок, но её исходы — только `SL \| BE \| TRAIL \| TIMEOUT`; «TP1 vs SL на одном баре» для V2.8 не существует как развилка | `shared/legacyResearch/v25Trailing.ts`, `simulateTrailing` |
-
-Порог «спорного бара» фиксирован и в замороженных настройках: `outcome.sl_priority_on_ambiguous_bar = true`
-(`strategyArchive/results/v2-real-20260915-080338/settings.json`), он же читается в `legacy/v2/tracker.ts`.
-Это относится к V2.x-линии, где стоп и цель могут коснуться одного бара; к V3.x оно применимо только через
-их собственный `manageTrade`.
-
-**Ведение сделки отслеживает TP1 и TP2.** `trackCorridor` читает `entry.targets[0]`/`[1] ?? [0]` и передаёт
-именно эти две цели в `manageTrade`. Цели лестницы за пределами TP2 в frozen-ведение не входят — это замороженное
-поведение, а не упущение монитора.
-
 Статусы: `ACTIVE → FILLED → TARGET_REACHED | INVALIDATED | CLOSED` (сделка была) или `ACTIVE → EXPIRED | CANCELLED`
 (сделки не было). `UNRESOLVED` — бар сетапа вышел за окно данных до исхода (честно помечается, не считается сделкой).
+
+### 3.1. Один бар, где коснулись и стопа, и цели — правило РАЗНОЕ у разных стратегий
+
+Никакого общего «всегда стоп»: у каждой стратегии своя реализация, и у одной из них пары TP/SL не существует вовсе.
+Источник — frozen-код, а не удобство формулировки.
+
+| Стратегия | Frozen-источник | Функция (строки) | Точное правило на спорном баре | Является ли stop-first правилом ЭТОЙ стратегии |
+|---|---|---|---|---|
+| **V3.0** | `definitions/v3_0-htf-liquidation-trap/v30Core.ts` | `manageTrade` (124–188) | Внутри цикла по барам `hitStop` вычисляется на строке 158 **до** `hitT1`/`hitT2`, и на строке 160 стоит комментарий `// R1: stop first, always.` → `if (hitStop)` возвращает `SL` (TP1 ещё не было) либо `TP1_THEN_BE`/`TP1_THEN_SL` (TP1 был). BE взводится только со **следующего** бара: `beArmed = hitTp1 && tp1Bar >= 0 && i > tp1Bar` (строка 154) | **ДА.** Явное, задокументированное в самом коде правило R1 именно V3.0 |
+| **V3.3** | `definitions/v3_3-htf-zone-mitigation/v33Core.ts` | `manageTrade` (241–295) | Та же структура: `hitStop` на строке 269, `if (hitStop)` на строке 270 — **до** `hitT1` (строка 274). Комментария `R1` здесь **нет**. Набор причин выхода (`V33ExitReason`, строка 46) **совпадает** с V3.0 (`V30ExitReason`, строка 38): `SL \| TP2 \| TP1_THEN_BE \| TP1_THEN_SL \| TP1_THEN_TIMEOUT \| TIMEOUT` | **ДА по поведению, НЕТ по документированию.** Стоп проверяется первым в этой реализации, но это свойство двух независимо написанных функций, а не общего правила; таймаут другой (48 против 50) |
+| **V2.8** | `shared/legacyResearch/v25Trailing.ts` | `simulateTrailing` (38–105) | **Пары TP/SL нет.** Внутри одного бара `hitStop` действительно вычисляется первым (строка 66), но её исходы — только `SL \| BE \| TRAIL \| TIMEOUT` (`V25ExitReason`, строка 15). Развилки «TP1 против SL на одном баре» не существует: после входа позиция ведёт единственный трейлинг-стоп | **НЕТ.** Правило стоп-первым здесь — артефакт внутреннего устройства трейлера, а не выбор между целью и стопом |
+
+Порог зафиксирован и в замороженных настройках: `outcome.sl_priority_on_ambiguous_bar = true`
+(`strategyArchive/results/v2-real-20260915-080338/settings.json`, строка 69; читается в
+`legacy/v2/tracker.ts` и пробрасывается как `FROZEN_ENGINE.slPriorityOnAmbiguousBar` в
+`shared/frozenSettings.ts:55`). Он относится к V2.x-линии, где стоп и цель вообще могут коснуться одного бара;
+к V3.x применим только через их собственный `manageTrade`.
+
+**Что это доказывает тестом:**
+
+| Стратегия | Фикстура |
+|---|---|
+| V3.0 / V3.3 | `tests/unit/signalMonitorParity.test.ts` — сценарии «LONG: стоп раньше цели» и «коридор и стоп на одном баре ⇒ отмена, а не сделка» |
+| V3.0 / V3.3 | `tests/integration/signalMonitorPostgres.test.ts` — блок «Рестарт-паритет…» (V3.0, V3.3) и «TP1 → BE» |
+| V2.8 | `tests/integration/signalMonitorPostgres.test.ts` — «V2.8: вход по следующему open ⇒ FILLED, затем trail-исход идентичен контролю» (исход `TRAIL`, не `SL`/`TP2`) |
+
+**Ведение сделки отслеживает TP1 и TP2.** `trackCorridor` читает `entry.targets[0]` / `[1] ?? [0]` и передаёт
+именно эти две цели в `manageTrade`. Цели лестницы за пределами TP2 в frozen-ведение не входят — это замороженное
+поведение, а не упущение монитора.
 
 ---
 
@@ -466,9 +477,9 @@ net R, суммы R, разрезы по стратегии и инструме�
 
 ---
 
-## 9. Автоматическое сопровождение открытых сигналов (серверный монитор)
+## 9. Автоматическое серверное сопровождение открытых сигналов
 
-> Терминология. Монитор — это **«автоматическое сопровождение, обновляется сервером»**.
+> Терминология. Монитор — это **«автоматическое серверное сопровождение по закрытым свечам»**.
 > Он работает по **закрытым** свечам и потому отстаёт от цены не более чем на один бар;
 > это не tick-realtime исполнение и не стриминг. В интерфейсе и документации нельзя
 > обещать «в реальном времени» для TP/SL-сопровождения: внутри незакрытого бара
@@ -518,17 +529,17 @@ StrategyScheduler (независимо) ──▶ getSignalMonitor().tick()   M
 (`src/services/strategyArchive/types.ts`), по которой переводит свечи `ohlcvArrayToArchive`.
 Никакой стратегии таймфрейм не подменяется.
 
-Почему это не теория:
+Доказательства по коду:
 
-* движок публикует сетап с `timeframe: EXEC_TIMEFRAME`, где `EXEC_TIMEFRAME = '1h'`
-  (`src/services/signals/live/LiveSignalEngine.ts`), т.е. колонка `timeframe` — это **таймфрейм
-  исполнения**, а не подпись для графика;
-* V2.8 в принципе не примет несоседний бар: `v28EntryAtNextOpen` → `resolveEntry(setupOpenTime,
-  TF_MS[V28_LIVE_TIMEFRAME], next)`, а `V28_LIVE_TIMEFRAME = '1h'`
-  (`definitions/v2_8-zero-fee-sniper-trailing/v28Live.ts`) — вход только по open следующего
-  **часового** бара;
-* контекстные свечи другого таймфрейма (4h/1d) используются для **поиска** сетапа; для **ведения**
-  сделки нужны бары исполнения. Это разные роли, и монитор берёт вторые.
+| Стратегия | Таймфрейм исполнения | Где зафиксировано |
+|---|---|---|
+| V3.0 | `1h` | `V30_CONSTANTS.EXEC_TF = '1h'` (`v30Core.ts:32`); движок публикует `timeframe: EXEC_TIMEFRAME`, `EXEC_TIMEFRAME = '1h'` (`LiveSignalEngine.ts:56`, применение на `:522`) |
+| V3.3 | `1h` | `V33_CONSTANTS.EXEC_TF = '1h'` (`v33Core.ts:35`) |
+| V2.8 | `1h`, причём жестко | `V28_LIVE_TIMEFRAME = '1h'` (`v28Live.ts:52`); `v28EntryAtNextOpen` → `resolveEntry(setupOpenTime, TF_MS[V28_LIVE_TIMEFRAME], next)`, а `resolveEntry` (`legacy/v2/stateMachine.ts:7-19`) требует `nextCandle.openTime === setupCandleTime + timeframeMs` — несоседний или нечасовой бар отвергается (`NO_CONTIGUOUS_NEXT_BAR`) |
+
+Контекстные свечи другого таймфрейма — для **поиска** сетапа: `V30_CONSTANTS.STRUCT_TF = '4h'`
+(`v30Core.ts:33`) — структурный таймфрейм, а не исполнение. Монитор их для ведения не запрашивает: он берёт
+именно `signals.timeframe`.
 
 Регрессия: группа с таймфреймом не `1h` обязана получить окно, посчитанное по своему бару
 (`tests/unit/signalMonitor.test.ts`, блок `timeframeMs`). Неизвестный таймфрейм даёт `SKIP`
@@ -536,20 +547,30 @@ StrategyScheduler (независимо) ──▶ getSignalMonitor().tick()   M
 
 ### 9.2. Окно реплея против максимального жизненного цикла
 
-| Параметр | Значение | Откуда |
-|---|---|---|
-| Размер окна | `MAX_LOOKBACK_BARS = 1000` закрытых баров | `signalMonitor.js`, = `CANDLE_LIMIT_1H` ядра |
-| Таймфрейм окна | таймфрейм группы (`signals.timeframe`) | §9.1 |
-| Запас после бара сетапа | `LOOKBACK_MARGIN_BARS = 16` | `signalMonitor.js` |
-| V3.0 | коридор 3 бара + `TIMEOUT_BARS = 50` ⇒ ≈ 53–54 бара | `v30Core.ts`, `V30_CONSTANTS` |
-| V3.3 | коридор 3 бара + `TIMEOUT_BARS = 48` ⇒ ≈ 51–52 бара | `v33Core.ts`, `V33_CONSTANTS` |
-| V2.8 | вход на следующем баре + срез `outcomeTimeoutBars + 64` = 48 + 64 = 112 баров ⇒ ≈ 113 баров | `v28Live.ts`, `v28TrailOutcome` |
+| Стратегия | Execution TF | Max lifecycle (баров) | Из чего складывается | Monitor replay bars | Достаточно |
+|---|---|---|---|---|---|
+| V3.0 | `1h` | ≈ 53–54 | коридор `CORRIDOR_EXPIRY_BARS = 3` + `TIMEOUT_BARS = 50` (`v30Core.ts:24-30`) + 1–2 на fill | `MAX_LOOKBACK_BARS = 1000` | **YES** |
+| V3.3 | `1h` | ≈ 51–52 | коридор 3 + `TIMEOUT_BARS = 48` (`v33Core.ts:27-33`) + 1–2 на fill | 1000 | **YES** |
+| V2.8 | `1h` | ≈ 113 | вход на следующем баре (1) + срез `barsFromEntry.slice(0, outcomeTimeoutBars + 64)` = 48 + 64 = 112 (`v28Live.ts:349`) | 1000 | **YES** |
+
+Происхождение чисел:
+
+* размер окна — `MAX_LOOKBACK_BARS = 1000` закрытых баров, ровно `CANDLE_LIMIT_1H` ядра
+  (`signalMonitor.js:60`, `LiveSignalEngine.ts:53`);
+* запас после бара сетапа — `LOOKBACK_MARGIN_BARS = 16` (`signalMonitor.js:65`);
+* `outcomeTimeoutBars = 48` — из `outcome.timeout_bars` замороженных настроек
+  (`results/v2-real-20260915-080338/settings.json:70`), проброшен как `FROZEN_ENGINE.outcomeTimeoutBars`
+  (`shared/frozenSettings.ts:51`). Внутренний `TIMEOUT_BARS = 10` трейлера (`v25Trailing.ts:15`) применяется
+  только пока позиция **не** вошла в BE; после взвода BE таймаута нет, поэтому именно срез 112 баров и
+  ограничивает сверху жизненный цикл V2.8;
+* контекст (4h/1d) на жизненный цикл не влияет: он нужен только генерации (§9.1).
 
 **Вывод: окно (1000 баров) заведомо больше максимального жизненного цикла любой из трёх стратегий
 (≈ 113 баров), поэтому корректный сигнал не может выпасть из окна при обычных параметрах.**
 Сигнал может остаться вне окна только если он **старше 1000 баров** своего таймфрейма — и тогда монитор
 честно пишет `UNRESOLVED` / `OUT_OF_DATA_WINDOW`, а не оставляет строку `ACTIVE` навсегда
-(проверено интеграционным тестом «сигнал старше окна ядра»).
+(проверено интеграционным тестом «сигнал старше окна ядра», который дополнительно фиксирует запрос
+ровно в `MAX_LOOKBACK_BARS` — без неограниченного фетча).
 
 ### 9.3. Когда монитор запускается, а все стратегии выключены
 
@@ -562,8 +583,12 @@ StrategyScheduler (независимо) ──▶ getSignalMonitor().tick()   M
 * монитор **не генерирует** сетапы, **не включает** стратегии и **не меняет** их настройки; у него нет
   такого маршрута и такого кода. Единственный пользовательский эндпоинт, меняющий состояние стратегий,
   — админский `PATCH /api/admin/strategies/:id`;
-* если открытых сигналов нет, тик не делает **ни одного** запроса к бирже
-  (`tests/unit/signalMonitor.test.ts`, «нет открытых сигналов ⇒ ни одного запроса свечей»).
+* если открытых сигналов нет, тик не делает **ни одного** запроса к бирже.
+
+Проверено тестом `tests/integration/signalMonitorPostgres.test.ts`, блок «Монитор при выключенных
+стратегиях»: реальный `StrategyScheduler` при всех OFF не вызывает скан ни разу, `strategy_settings`
+(включая `enabled`, `scan_interval_seconds`, `symbols`, телеметрию) не меняется, а уже сохранённый
+открытый сигнал доводится монитором до терминала.
 
 ### 9.4. Частичный жизненный цикл и TP1
 
@@ -572,7 +597,43 @@ StrategyScheduler (независимо) ──▶ getSignalMonitor().tick()   M
 может быть потеряно между 30-секундными тиками или рестартом: оно каждый раз **пересчитывается** из бара
 сетапа по закрытым свечам. Окно из §9.2 покрывает весь жизненный цикл от бара сетапа, поэтому усечённой
 истории не возникает. Ограничение честное: у публикации за пределами TP2 целей frozen-ведение не ведёт
-(§3).
+(§3.1).
+
+Переход TP1 → BE проверен отдельным тестом: на баре, где достигнуто TP1, выход ещё невозможен
+(`beArmed` требует `i > tp1Bar`), поэтому монитор обязан оставить `FILLED`; после рестарта тот же путь
+даёт `TP1_THEN_BE` с тем же R, что и контроль без рестарта.
+
+### 9.5. Контракт реконструкции: строка БД → адаптер → вход frozen-функции
+
+`toPublishedSetup(row)` (`server/services/signalMonitor/signalTradeManager.js:44`) — **чистый перевод
+формы**: он не пересчитывает ни одного уровня.
+
+| Поле входа `trackPublishedSetup` | Из колонки/поля БД | Проверка адаптера |
+|---|---|---|
+| `strategyId` | `strategy_id` | должна быть в `TRACKED_STRATEGY_IDS`, иначе `UNTRACKED_STRATEGY` |
+| `strategyVersion` | `strategy_version` | `?? null` |
+| `symbol` | `symbol` | — |
+| `timeframe` | `timeframe` | **таймфрейм исполнения**, по нему же фетчатся свечи (§9.1) |
+| `direction` | `direction` | — |
+| `setupOpenTime` | `signal_candle_ts` → `getTime()` | не число ⇒ `NO_SETUP_TIME` |
+| `entryType` | `entry_type` | `LIMIT_CORRIDOR` → `trackCorridor`; `MARKET_NEXT_OPEN` → `trackNextOpen` |
+| `entryZone` | `[entry_min, entry_max]` (`entry_max ?? entry_min`) | нет `entry_min` ⇒ `NO_ENTRY_ZONE` |
+| `invalidationLevel` | `stop_loss` | нет ⇒ `NO_STOP` |
+| `targets` | `targets[]`, отфильтрованы конечные | пусто ⇒ `NO_TARGETS` |
+| `exitRule` | `exit_rule` | `?? ''` |
+| `validForBars` | `valid_for_bars` | `?? null` |
+| `createdAt` | `created_at` | fallback — `setupOpenTime` |
+| `latencyBars` | `metadata.latencyBars` | `?? 0` |
+| `riskRewardRatio` / `confirmingFactors` / `invalidationFactors` | `metadata.*` | `?? 0` / `?? []` |
+| `status` | `status` | должна быть в `SIGNAL_STATUSES` |
+| `prevHash` / `auditHash` | `previous_hash` / `hash` | `?? 'GENESIS'` |
+| `fill` (информационно) | `fill_price` + `filled_at` (+ `fill_stop`, `fill_targets`) | только если оба не NULL |
+
+**Чего в строке НЕТ и не должно быть:** `intermediate management state` и `bars already processed`.
+`trackPublishedSetup` не читает `entry.fill` и не хранит прогресс — он детерминированно переигрывает путь
+от `setupOpenTime` по закрытым свечам, поэтому единственное, что нужно для идентичного результата после
+рестарта, — это **уровни публикации + бар сетапа + таймфрейм исполнения**, то есть ровно текущая строка
+плюс свечи. Этим и объясняется паритет рестарта (§9).
 
 **Чего монитор не делает:** не исполняет ордера, не считает новых сетапов (это задача `StrategyScheduler` +
 `scanNow()`), не переписывает терминальные строки, не подменяет `closed_at` текущим временем, если ядро время
@@ -586,40 +647,69 @@ StrategyScheduler (независимо) ──▶ getSignalMonitor().tick()   M
 «по стратегии» и «по инструменту» считаются по ОДНИМ правилам. Фильтры (`period`, `strategyId`, `symbol`)
 общие для всех разрезов.
 
-Пусть `TRADE_CLOSED_STATUSES` — статусы завершённой сделки: `TARGET_REACHED`, `INVALIDATED`, `CLOSED`.
+Пусть `TRADE_CLOSED_STATUSES = {TARGET_REACHED, INVALIDATED, CLOSED}` (`signalRepository.js:88`).
 
 | Метрика | Точная формула | Что входит / не входит |
 |---|---|---|
 | `published` | `COUNT(*)` по фильтру | все строки, включая `ACTIVE`, `CANCELLED`, `EXPIRED`, `UNRESOLVED` |
-| `waitingEntry` | `COUNT(*) FILTER (status = 'ACTIVE')` | ждут входа |
+| `waiting` | `COUNT(*) FILTER (status = 'ACTIVE')` | ждут входа |
 | `filled` | `COUNT(*) FILTER (status = 'FILLED')` | **уже в позиции**, но сделка не завершена |
 | `completed` | `COUNT(*) FILTER (status = ANY(TRADE_CLOSED_STATUSES))` | только завершённые сделки |
 | `cancelled` | `COUNT(*) FILTER (status = 'CANCELLED')` | сделки не было |
 | `expired` | `COUNT(*) FILTER (status = 'EXPIRED')` | сделки не было |
 | `unresolved` | `COUNT(*) FILTER (status = 'UNRESOLVED')` | бар сетапа вне окна: **не сделка** |
-| `targetReached` | `COUNT(*) FILTER (status = 'TARGET_REACHED')` | = выход по TP2 |
-| `invalidated` | `COUNT(*) FILTER (status = 'INVALIDATED')` | = выход по стопу |
-| `closed` | `COUNT(*) FILTER (status = 'CLOSED')` | выход не по TP2 и не по стопу: `TP1_THEN_BE`, `TP1_THEN_SL`, `TP1_THEN_TIMEOUT`, `TIMEOUT` (V3.x), `TRAIL`, `BE`, `TIMEOUT` (V2.8) |
 | `wins` | `COUNT(*) FILTER (completed AND result_r > 0)` | строго больше нуля |
 | `losses` | `COUNT(*) FILTER (completed AND result_r <= 0)` | **ноль и отрицательные вместе** |
-| `winRatePct` | `wins / completed × 100`, округление до 0.1 | `completed = 0` ⇒ `null` («—»), не 0 % |
-| `avgGrossR` | `AVG(result_r) FILTER (completed)` | `SUM(result_r) FILTER (completed) / completed` |
-| `avgNetR` | `AVG(net_result_r) FILTER (completed)` | после комиссий |
-| `grossRSum` | `SUM(result_r) FILTER (completed)` | ΣR по завершённым |
-| `netRSum` | `SUM(net_result_r) FILTER (completed)` | ΣR после комиссий |
-| `fillRatePct` | `(filled + completed) / published × 100` | `ACTIVE` в числитель **не** входит |
-| `completionRatePct` | `completed / published × 100` | — |
+| `winRate` | `wins / completed × 100`, округление до 0.1 | `completed = 0` ⇒ `null` («—»), не 0 % |
+| `average gross R` | `AVG(result_r) FILTER (completed)` | = `SUM(result_r) FILTER (completed) / completed` |
+| `average net R` | `AVG(net_result_r) FILTER (completed)` | после комиссий |
+| `Σ gross R` | `SUM(result_r) FILTER (completed)` | ΣR по завершённым |
+| `Σ net R` | `SUM(net_result_r) FILTER (completed)` | ΣR после комиссий |
+| `fillRate` | `(filled + completed) / published × 100` | `ACTIVE` в числитель **не** входит |
+| `completionRate` | `completed / published × 100` | — |
 
-**Куда попадает результат 0 R.** Отдельной категории «ноль» нет: условие победы — `result_r > 0`, поэтому
-точный ноль (например `TP1_THEN_BE`, где половина позиции закрыта по TP1, а половина по цене входа) попадает
-в `losses`. Это осознанное решение frozen-кода (половина сделки не дала прибыли), а не ошибка округления;
-UI не должен называть такое «выигрышем» и не должен скрывать его в третьей корзине.
+**Куда попадает результат 0 R.** Отдельной категории «ничья» нет: условие победы — `result_r > 0`, поэтому
+точный ноль попадает в `losses`. Это не округление и не умолчание, а прямой смысл frozen-исхода: типичный
+носитель нуля — `TP1_THEN_BE`, где половина позиции закрыта по TP1, а половина по цене входа
+(`managedExitPrice('TP1_THEN_BE', …) = entry`, `grossR = 0.5·rOf(tp1) + 0.5·rOf(entry)`), и такая сделка
+завершена (`status = CLOSED`), но прибыли не дала. Поэтому 0 R — **поражение по знаку**, а не «ничья»;
+UI не должен называть такое выигрышем и не должен прятать в третью корзину.
 
-**Где живут `CANCELLED` / `EXPIRED` / `UNRESOLVED` / `ACTIVE` / `FILLED`.** Все пять — в `published`, но ни один
-не входит ни в `wins`, ни в `losses`, ни в ΣR: они не являются завершённой сделкой. `FILLED` дополнительно
-входит в числитель `fillRatePct`. Итого `wins + losses = completed`, и `waitingEntry + filled + cancelled +
-expired + unresolved + targetReached + invalidated + closed = published` — эти два тождества проверяются
-интеграционным тестом `tests/integration/signalMonitorPostgres.test.ts`.
+**Классификация статусов:**
+
+| Статус | `published` | `waiting` | `filled` | `completed` | wins/losses | ΣR |
+|---|---|---|---|---|---|---|
+| `ACTIVE` | ✓ | ✓ | — | — | — | — |
+| `FILLED` | ✓ | — | ✓ | — | — | — |
+| `TARGET_REACHED` | ✓ | — | — | ✓ | по знаку R | ✓ |
+| `INVALIDATED` | ✓ | — | — | ✓ | по знаку R | ✓ |
+| `CLOSED` | ✓ | — | — | ✓ | по знаку R | ✓ |
+| `EXPIRED` | ✓ | — | — | — | — | — |
+| `CANCELLED` | ✓ | — | — | — | — | — |
+| `UNRESOLVED` | ✓ | — | — | — | — | — |
+
+**Классификация исходов (frozen-причина выхода → статус):**
+
+| Исход | Стратегия | Статус | Сделка |
+|---|---|---|---|
+| `TP2` | V3.0, V3.3 | `TARGET_REACHED` | ✓ |
+| `SL` | V3.0, V3.3 | `INVALIDATED` | ✓ |
+| `TIMEOUT` | V3.0, V3.3 | `CLOSED` | ✓ |
+| `TP1_THEN_BE` | V3.0, V3.3 | `CLOSED` | ✓ (0.5 позиции по TP1) |
+| `TP1_THEN_SL` | V3.0, V3.3 | `CLOSED` | ✓ |
+| `TP1_THEN_TIMEOUT` | V3.0, V3.3 | `CLOSED` | ✓ |
+| `TRAIL` | V2.8 | `CLOSED` | ✓ |
+| `BE` | V2.8 | `CLOSED` | ✓ |
+| `TIMEOUT` | V2.8 | `CLOSED` | ✓ |
+| `SL` | V2.8 | `INVALIDATED` | ✓ |
+| `EXPIRED` / `CANCELLED` / `REJECTED_GEOMETRY` | все | `EXPIRED` / `CANCELLED` | ✗ (сделки не было) |
+| `OUT_OF_DATA_WINDOW` | все | `UNRESOLVED` | ✗ |
+
+Отображение причины выхода в статус делает frozen-код (`managedStatus` в
+`src/services/signals/live/replays/shared.ts:34`), монитор и статистика его не переоценивают.
+
+Итоговые тождества, проверяемые тестом: `wins + losses = completed` и
+`waiting + filled + cancelled + expired + unresolved + targetReached + invalidated + closed = published`.
 
 ---
 
@@ -630,24 +720,35 @@ expired + unresolved + targetReached + invalidated + closed = published` — э�
 
 **Только добавление.** 009 не редактировалась: ни одна колонка не удалена, ни один тип не сужен.
 
-| Объект | Тип | Значение | Обратная совместимость |
+| Объект | Тип | Назначение | Обратная совместимость |
 |---|---|---|---|
 | `signals.monitor_check_count` | `INTEGER NOT NULL DEFAULT 0` | сколько раз монитор проверил строку по закрытым свечам | PG 11+: `ADD COLUMN … NOT NULL DEFAULT` — без перезаписи таблицы; существующие строки получают 0 |
 | `signals.monitor_last_check_at` | `TIMESTAMPTZ NULL` | момент последней проверки (UTC); `NULL` = монитор ещё не смотрел | NULL допустим, NOT NULL нет |
 | `signals.monitor_last_result` | `TEXT NULL` | `UNCHANGED \| FILLED \| RESOLVED \| SKIP \| ERROR \| OUT_OF_WINDOW` | NULL допустим |
 | `signals.monitor_last_error` | `TEXT NULL` | причина сбоя наблюдения | NULL допустим; строка при этом не изменяется |
-| `signals_monitor_result_check` | `CHECK … NOT VALID` + `VALIDATE CONSTRAINT` | допустимые значения результата | `NOT VALID` не мешает существующим строкам; `VALIDATE` проходит, т.к. у всех старых строк значение NULL, а NULL разрешён условием |
-| `signal_monitor_state` | новая таблица, `id SMALLINT PK DEFAULT 1`, `CHECK (id = 1)` | телеметрия процесса-монитора: `running`, `last_tick_started_at/finished_at`, `last_tick_duration_ms`, `last_error`, `last_open_signals`, `last_groups`, `last_candle_requests`, `last_result`, `updated_at` | новая таблица не задевает `signals`; singleton ограничен чеком |
+| `signals_monitor_result_check` | `CHECK … NOT VALID` + `VALIDATE CONSTRAINT` | домен допустимых значений результата | `NOT VALID` не мешает существующим строкам; `VALIDATE` проходит, т.к. у старых строк значение NULL, а NULL разрешён условием |
+| `signal_monitor_state` | новая таблица, `id SMALLINT PK DEFAULT 1`, `CHECK (id = 1)` | телеметрия процесса-монитора: `running`, `last_tick_started_at`/`last_tick_finished_at`, `last_tick_duration_ms`, `last_error`, `last_open_signals`, `last_groups`, `last_candle_requests`, `last_result`, `updated_at` | новая таблица не задевает `signals`; singleton ограничен чеком |
 | `idx_signals_open_group` | частичный индекс `(symbol, timeframe) WHERE status IN ('ACTIVE','FILLED')` | рабочий набор монитора | `CREATE INDEX IF NOT EXISTS`, не конфликтует с `idx_signals_symbol_status_created` |
 
-**Повторное применение — no-op.** Каждый оператор идемпотентен: `ADD COLUMN IF NOT EXISTS`,
-`DROP CONSTRAINT IF EXISTS` перед `ADD CONSTRAINT`, `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`.
-Повторный прогон стандартным мигратором не меняет схему и не трогает данные
-(`tests/integration/migrationPostgresCompat.test.ts` + блок «Миграция 010» в `signalMonitorPostgres.test.ts`).
+**Четыре сценария совместимости, проверенные тестом**
+(`tests/integration/signalMonitorPostgres.test.ts`, блок «Миграция 010 — сценарии совместимости A/B/C/D»):
+
+| Сценарий | Что проверяется | Результат |
+|---|---|---|
+| **A.** БД после 009 с нулём сигналов | миграция создаёт 4 колонки + таблицу телеметрии; монитор на пустой таблице даёт 0 сигналов, 0 групп, 0 запросов | ✓ |
+| **B.** БД после 009 с существующими ACTIVE | уровни (`entry_min/max`, `stop_loss`, `targets`), `status`, `hash`, `previous_hash`, `chain_version` не сдвинулись; журнал наблюдения появился и довёл сигнал до `TARGET_REACHED` | ✓ |
+| **C.** БД после 009 с существующими терминальными | терминальная строка не входит в рабочий набор (только `ACTIVE|FILLED`), не переоткрывается, `outcome_hash` и R не переписаны, счётчик наблюдений остался 0 | ✓ |
+| **D.** повторный прогон мигратором (дважды) | схема (`information_schema.columns`), все индексы (`pg_indexes`) и данные идентичны; ограничение `signals_monitor_result_check` существует ровно один раз | ✓ |
+
+**Повторное применение стандартным мигратором — no-op.** Каждый оператор идемпотентен: `ADD COLUMN IF NOT
+EXISTS`, `DROP CONSTRAINT IF EXISTS` перед `ADD CONSTRAINT`, `CREATE TABLE IF NOT EXISTS`,
+`CREATE INDEX IF NOT EXISTS`. Дополнительно это проверяют `tests/unit/migrationPostgresCompat.test.ts`
+(36 тестов: инвентарь миграций, совместимость операторных классов, уникальность имён индексов) и
+`tests/integration/migrationsPostgres.test.ts` (28 тестов на настоящем PostgreSQL).
 
 **Хэши не затронуты.** Новые колонки не входят ни в payload публикации (`hash`/`previous_hash`, форма 009),
-ни в `outcomePayload` (`outcome_hash`). Цепочка 009 продолжает проверяться без изменений — это проверено
-тестом «хэш-цепочка 009 цела после появления колонок 010».
+ни в `outcomePayload` (`outcome_hash`). Цепочка 009 продолжает проверяться без изменений — проверено тестом
+«хэш-цепочка 009 цела после появления колонок 010».
 
 **Подходит ли индекс запросу монитора.** Монитор выбирает `SELECT * FROM signals WHERE status = ANY($1)
 ORDER BY created_at DESC, id DESC LIMIT $2` (`listOpenSignals`). Частичный предикат индекса совпадает с
