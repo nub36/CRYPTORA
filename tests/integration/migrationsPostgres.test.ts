@@ -103,7 +103,13 @@ beforeAll(async () => {
   expect(out).toContain('✓ 006_strategy_settings');
   expect(out).toContain('✓ 007_signals');
   expect(out).toContain('✓ 008_scan_universe');
-  expect(out).toContain('Done. 8 migration(s) applied.');
+  expect(out).toContain('✓ 009_signal_levels_and_lifecycle');
+  // Число миграций выводится из самого каталога: жёстко зашитая цифра роняла
+  // прогон при каждом добавлении файла, ничего не проверяя по существу.
+  const migrationFiles = fs
+    .readdirSync(path.join(ROOT, 'server/db/migrations'))
+    .filter((f) => f.endsWith('.sql'));
+  expect(out).toContain(`Done. ${migrationFiles.length} migration(s) applied.`);
 
   client = await (pg as any).getPgClient('cryptora');
   await client.connect();
@@ -119,10 +125,15 @@ afterAll(async () => {
   if (dataDir && fs.existsSync(dataDir)) fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
+/**
+ * `ctx.skip()` вместо «проглотить и вернуть»: пропущенный тест должен быть
+ * ВИДЕН в отчёте как skipped. Прежняя форма печатала предупреждение в stderr,
+ * но vitest засчитывал тест как passed — так выглядит ложно-зелёный набор.
+ */
 const run = (name: string, fn: () => Promise<void>) =>
-  it(name, async () => {
+  it(name, async (ctx) => {
     if (skipReason) {
-      console.warn(`  ↷ SKIPPED (${skipReason})`);
+      ctx.skip();
       return;
     }
     await fn();
@@ -225,7 +236,7 @@ describe('006_strategy_settings на реальном PostgreSQL', () => {
 });
 
 describe('007_signals на реальном PostgreSQL', () => {
-  run('таблица существует со всеми 20 колонками', async () => {
+  run('таблица существует со всеми колонками миграции 007', async () => {
     const cols = (await q(`SELECT column_name FROM information_schema.columns
                            WHERE table_name='signals'`)).map((r: any) => r.column_name);
     for (const c of [
@@ -320,6 +331,133 @@ describe('007_signals на реальном PostgreSQL', () => {
   });
 });
 
+describe('009_signal_levels_and_lifecycle на реальном PostgreSQL', () => {
+  run('миграция аддитивна: все колонки 007 на месте + добавлены новые', async () => {
+    const cols = (await q(`SELECT column_name FROM information_schema.columns
+                           WHERE table_name='signals'`)).map((r: any) => r.column_name);
+    // 007 не переписана: уровни и цепочка прежние.
+    for (const c of ['entry_min', 'entry_max', 'stop_loss', 'tp1', 'tp2', 'hash', 'previous_hash']) {
+      expect(cols, `007 потеряла колонку ${c}`).toContain(c);
+    }
+    // 009: полная лестница целей, контекст публикации, исполнение и исход.
+    for (const c of [
+      'targets', 'chain_version', 'strategy_version', 'engine_setup_id', 'entry_type',
+      'valid_for_bars', 'exit_rule', 'fill_price', 'filled_at', 'fill_stop', 'fill_targets',
+      'result_r', 'net_result_r', 'pnl_result_pct', 'bars_held', 'outcome_hash',
+    ]) {
+      expect(cols, `009 не добавила колонку ${c}`).toContain(c);
+    }
+  });
+
+  run('лестница целей хранится как NUMERIC[] (цена — не приближение float)', async () => {
+    const types = await q(`SELECT column_name, data_type, udt_name FROM information_schema.columns
+                           WHERE table_name='signals' AND column_name IN ('targets','fill_targets')`);
+    expect(types).toHaveLength(2);
+    for (const t of types as any[]) {
+      expect(t.data_type, `${t.column_name} должен быть массивом`).toBe('ARRAY');
+      expect(t.udt_name, `${t.column_name} должен хранить NUMERIC`).toBe('_numeric');
+    }
+  });
+
+  run('status принимает все 8 состояний жизненного цикла ядра', async () => {
+    const statuses = [
+      'ACTIVE', 'FILLED', 'TARGET_REACHED', 'INVALIDATED', 'CLOSED', 'EXPIRED', 'CANCELLED', 'UNRESOLVED',
+    ];
+    // Приёмка проверяется в транзакции с откатом: таблица не засоряется.
+    await client.query('BEGIN');
+    try {
+      for (const [i, st] of statuses.entries()) {
+        await client.query(
+          `INSERT INTO signals
+             (strategy_id, symbol, timeframe, direction, signal_candle_ts, status, hash, previous_hash)
+           VALUES ('V3_0_HTF_LIQUIDATION_TRAP', $1, '1h', 'LONG', $2, $3, 'h', 'GENESIS')`,
+          [`ZZ0${i}/USDT`, new Date(Date.UTC(2026, 8, 19, i)).toISOString(), st],
+        );
+      }
+    } finally {
+      await client.query('ROLLBACK');
+    }
+    const left = (await q(`SELECT count(*)::int AS n FROM signals WHERE symbol LIKE 'ZZ0%/USDT'`))[0].n;
+    expect(left, 'откат транзакции не сработал').toBe(0);
+  });
+
+  run('выдуманное состояние статуса отклоняется CHECK-ограничением', async () => {
+    await expect(
+      client.query(
+        `INSERT INTO signals
+           (strategy_id, symbol, timeframe, direction, signal_candle_ts, status, hash, previous_hash)
+         VALUES ('V3_0_HTF_LIQUIDATION_TRAP','ZZ9/USDT','1h','LONG','2026-09-19T09:00:00Z','WON','h','GENESIS')`,
+      ),
+    ).rejects.toMatchObject({ code: '23514' }); // check_violation
+  });
+
+  run('entry_type допускает только домен ядра (и NULL для строк до 009)', async () => {
+    await expect(
+      client.query(
+        `INSERT INTO signals
+           (strategy_id, symbol, timeframe, direction, signal_candle_ts, entry_type, hash, previous_hash)
+         VALUES ('V3_0_HTF_LIQUIDATION_TRAP','ZZ8/USDT','1h','LONG','2026-09-19T10:00:00Z','MARKET','h','GENESIS')`,
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+
+    await client.query('BEGIN');
+    try {
+      for (const [i, et] of ['LIMIT_CORRIDOR', 'MARKET_NEXT_OPEN', null].entries()) {
+        await client.query(
+          `INSERT INTO signals
+             (strategy_id, symbol, timeframe, direction, signal_candle_ts, entry_type, hash, previous_hash)
+           VALUES ('V2_8_ZERO_FEE_SNIPER_TRAILING', $1, '1h', 'LONG', $2, $3, 'h', 'GENESIS')`,
+          [`ZZ7${i}/USDT`, new Date(Date.UTC(2026, 8, 19, 11, i)).toISOString(), et],
+        );
+      }
+    } finally {
+      await client.query('ROLLBACK');
+    }
+  });
+
+  run('chain_version: новые строки = 2, строки формы 007 остаются валидными', async () => {
+    const def = await q(`SELECT column_default FROM information_schema.columns
+                         WHERE table_name='signals' AND column_name='chain_version'`);
+    expect(String(def[0].column_default)).toBe('2');
+
+    // Обратная совместимость: вставка «как до 009» (явный chain_version = 1,
+    // без лестницы целей и без новых колонок) обязана проходить.
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        `INSERT INTO signals
+           (strategy_id, symbol, timeframe, direction, signal_candle_ts,
+            entry_min, entry_max, stop_loss, tp1, tp2, status, hash, previous_hash, chain_version)
+         VALUES ('V3_3_HTF_ZONE_MITIGATION','ZZ6/USDT','1h','SHORT','2026-09-19T12:00:00Z',
+                 2612.7, 2617.3, 2625.0, 2600.0, 2570.0, 'ACTIVE','sha256-legacy','GENESIS', 1)`,
+      );
+      const rows = await q(`SELECT chain_version, targets FROM signals WHERE symbol='ZZ6/USDT'`);
+      expect(rows[0].chain_version).toBe(1);
+      expect(rows[0].targets).toBeNull();
+    } finally {
+      await client.query('ROLLBACK');
+    }
+  });
+
+  run('индекс ленты «символ + состояние + новые сверху» создан', async () => {
+    const idx = await q(`SELECT indexdef FROM pg_indexes
+                         WHERE tablename='signals' AND indexname='idx_signals_symbol_status_created'`);
+    expect(idx).toHaveLength(1);
+    expect(String(idx[0].indexdef)).toMatch(/symbol, status, created_at DESC/);
+  });
+
+  run('миграция идемпотентна: повторное применение 009 не ломает схему', async () => {
+    const sql = fs.readFileSync(
+      path.join(ROOT, 'server/db/migrations/009_signal_levels_and_lifecycle.sql'),
+      'utf8',
+    );
+    await client.query(sql); // второй прогон того же файла
+    const cols = (await q(`SELECT column_name FROM information_schema.columns
+                           WHERE table_name='signals' AND column_name='targets'`));
+    expect(cols).toHaveLength(1);
+  });
+});
+
 describe('Миграции идемпотентны и не ломают состояние админа', () => {
   run('повторный прогон SQL 006/007 не сбрасывает включённую стратегию', async () => {
     if (skipReason) return;
@@ -341,7 +479,7 @@ describe('Миграции идемпотентны и не ломают сос�
     expect(n).toBe(1);
   });
 
-  run('миграции 001–005 не изменялись', async () => {
+  run('существующие миграции не изменялись (развитие схемы — новым файлом)', async () => {
     // Защита от соблазна «поправить» уже применённые миграции.
     //
     // Базовый ref берётся из CRYPTORA_BASE_REF (по умолчанию origin/main).
@@ -368,12 +506,25 @@ describe('Миграции идемпотентны и не ломают сос�
       return;
     }
 
-    const changed = git(`diff --name-only ${baseRef} -- server/db/migrations/`) ?? '';
-    const files = changed.split('\n').filter(Boolean);
-    for (const f of files) {
-      expect(f, 'нельзя менять существующую миграцию').toMatch(
-        /migrations\/00[678]_/,
-      );
+    /**
+     * `--diff-filter=M` — только ИЗМЕНЁННЫЕ файлы. Прежняя форма проверяла
+     * обратное («изменённый файл обязан быть 006/007/008»), поэтому (а) правка
+     * уже применённых 006–008 проходила молча и (б) ЛЮБАЯ новая миграция
+     * роняла прогон. Схема развивается добавлением файла, а не правкой того,
+     * что уже применено на проде.
+     */
+    const modified = (git(`diff --name-only --diff-filter=M ${baseRef} -- server/db/migrations/`) ?? '')
+      .split('\n')
+      .filter(Boolean);
+    expect(modified, 'нельзя менять уже применённые миграции').toEqual([]);
+
+    // Новые файлы допустимы, но обязаны следовать конвенции именования
+    // (NNN_snake_case.sql): раннер применяет их в лексикографическом порядке.
+    const added = (git(`diff --name-only --diff-filter=A ${baseRef} -- server/db/migrations/`) ?? '')
+      .split('\n')
+      .filter(Boolean);
+    for (const f of added) {
+      expect(f, 'имя новой миграции').toMatch(/migrations\/\d{3}_[a-z0-9_]+\.sql$/);
     }
   });
 });

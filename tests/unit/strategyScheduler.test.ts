@@ -9,8 +9,10 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-// @ts-expect-error — серверный модуль на чистом JS без деклараций
-import { StrategyScheduler } from '../../server/services/strategyEngine/strategyScheduler.js';
+import {
+  StrategyScheduler,
+  type StrategySettingsRow,
+} from '../../server/services/strategyEngine/strategyScheduler.js';
 
 /** Строка в том виде, в каком её отдаёт getEnabledStrategies() (mapRow). */
 const row = (strategyId: string, extra: Record<string, unknown> = {}) => ({
@@ -54,7 +56,7 @@ describe('StrategyScheduler — включено/выключено', () => {
 
   it('переключение без перезапуска: настройки перечитываются КАЖДЫЙ цикл', async () => {
     const scan = vi.fn().mockResolvedValue({ ok: true });
-    let enabledRows: unknown[] = [];
+    let enabledRows: StrategySettingsRow[] = [];
     const getEnabled = vi.fn(async () => enabledRows);
     let t = 0;
     const s = new StrategyScheduler({ getEnabled, scan, now: () => t });

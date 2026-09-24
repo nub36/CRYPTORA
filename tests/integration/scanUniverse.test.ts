@@ -126,7 +126,6 @@ beforeAll(async () => {
   closeServer = harness.close;
 
   eu = await import('../../server/services/exchangeUniverse.js');
-  // @ts-expect-error — JS module without declarations (same as tests/unit/strategyScheduler.test.ts)
   sched = await import('../../server/services/strategyEngine/strategyScheduler.js');
   installActive(ACTIVE);
 
@@ -166,9 +165,14 @@ beforeEach(async () => {
   await db.query(`DELETE FROM audit_log WHERE target_type = 'scan_universe'`);
 });
 
-const guard = () => {
+/**
+ * Пропуск через `ctx.skip()`, а не «предупреждение в stderr и успех».
+ * Прежняя форма засчитывала непроверенный тест как passed: набор выглядел
+ * зелёным там, где ничего не выполнялось (F-03).
+ */
+const guard = (ctx: any) => {
   if (skipReason) {
-    console.warn(`  ↷ SKIPPED (${skipReason})`);
+    ctx.skip();
     return true;
   }
   return false;
@@ -178,23 +182,23 @@ const guard = () => {
 const saved = async () => (await q('SELECT symbol FROM scan_universe ORDER BY symbol')).map((r: any) => r.symbol);
 
 describe('scan_universe — server-side persistence', () => {
-  it('migration 008 seeds the canonical defaults', async () => {
-    if (guard()) return;
+  it('migration 008 seeds the canonical defaults', async (ctx) => {
+    if (guard(ctx)) return;
     const rows = await saved();
     expect(rows).toContain('BTC');
     expect(rows).not.toContain('PEPE');
   });
 
-  it('non-admin cannot read or change the admin scan universe', async () => {
-    if (guard()) return;
+  it('non-admin cannot read or change the admin scan universe', async (ctx) => {
+    if (guard(ctx)) return;
     const user = await login(USER.email, USER.password);
     expect((await user.get('/api/admin/scan-universe')).status).toBe(403);
     expect((await user.post('/api/admin/scan-universe', { symbol: 'PEPE' })).status).toBe(403);
     expect(await saved()).not.toContain('PEPE');
   });
 
-  it('admin adds an active dynamic coin → stored in PostgreSQL, audited, visible to everyone', async () => {
-    if (guard()) return;
+  it('admin adds an active dynamic coin → stored in PostgreSQL, audited, visible to everyone', async (ctx) => {
+    if (guard(ctx)) return;
     const admin = await login(ADMIN.email, ADMIN.password);
     const res = await admin.post('/api/admin/scan-universe', { symbol: 'pepe' });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -209,16 +213,16 @@ describe('scan_universe — server-side persistence', () => {
     expect((pub.body as any).symbols).toContain('PEPE');
   });
 
-  it('inactive / unknown symbols are rejected', async () => {
-    if (guard()) return;
+  it('inactive / unknown symbols are rejected', async (ctx) => {
+    if (guard(ctx)) return;
     const admin = await login(ADMIN.email, ADMIN.password);
     const res = await admin.post('/api/admin/scan-universe', { symbol: 'VEN' });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(await saved()).not.toContain('VEN');
   });
 
-  it('admin removes a coin', async () => {
-    if (guard()) return;
+  it('admin removes a coin', async (ctx) => {
+    if (guard(ctx)) return;
     const admin = await login(ADMIN.email, ADMIN.password);
     await admin.post('/api/admin/scan-universe', { symbol: 'LTC' });
     const res = await admin.request('DELETE', '/api/admin/scan-universe/LTC');
@@ -226,8 +230,8 @@ describe('scan_universe — server-side persistence', () => {
     expect(await saved()).not.toContain('LTC');
   });
 
-  it('scheduler scans only saved ∩ active; delisted stored symbols are never scanned', async () => {
-    if (guard()) return;
+  it('scheduler scans only saved ∩ active; delisted stored symbols are never scanned', async (ctx) => {
+    if (guard(ctx)) return;
     await db.query(`INSERT INTO scan_universe (symbol) VALUES ('PEPE'), ('DEADCOIN') ON CONFLICT DO NOTHING`);
     const syms = await sched.resolveScanSymbols({ symbols: null });
     expect(syms).toContain('PEPEUSDT');
@@ -237,8 +241,8 @@ describe('scan_universe — server-side persistence', () => {
     expect(await sched.resolveScanSymbols({ symbols: ['BTCUSDT', 'VENUSDT'] })).toEqual(['BTCUSDT']);
   });
 
-  it('exchangeInfo unavailable → scan skipped (no unverified list is scanned)', async () => {
-    if (guard()) return;
+  it('exchangeInfo unavailable → scan skipped (no unverified list is scanned)', async (ctx) => {
+    if (guard(ctx)) return;
     installActive(null);
     await expect(sched.resolveScanSymbols({ symbols: null })).rejects.toThrow(/unavailable/);
   });

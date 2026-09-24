@@ -16,7 +16,12 @@ export interface StrategyState extends StrategySettingRow {
   version: string;
   name: string;
   nameRu: string;
+  /** Все серии стратегии: исполнение + контекст. */
   timeframes: string[];
+  /** Таймфрейм исполнения (бар принятия решения) — у всех трёх продуктовых '1h'. */
+  execTimeframe: string;
+  /** Старшие серии контекста, отдельно от исполнения. */
+  contextTimeframes: string[];
   badge: string;
   status: 'OFF' | 'ON' | 'ERROR';
   activeSignalCount: number;

@@ -46,20 +46,55 @@ function isFresh() {
   return fs.statSync(ENTRY).mtimeMs <= builtAt;
 }
 
+/**
+ * esbuild — инструмент сборки ядра. Он приходит транзитивно через `vite`,
+ * поэтому установка без dev-зависимостей (`npm ci --omit=dev`) оставляет сервер
+ * без возможности собрать ядро. Сообщение об этом явное: молчаливый
+ * MODULE_NOT_FOUND из require() не объясняет, что сломано и как чинить.
+ */
+function loadEsbuild() {
+  try {
+    return require('esbuild');
+  } catch (e) {
+    throw new Error(
+      'esbuild недоступен: серверное ядро стратегий собирается из src/ через esbuild ' +
+        '(транзитивная зависимость vite). Установите зависимости полностью: `npm ci`. ' +
+        `Причина: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+}
+
+/**
+ * Сборка с АТОМАРНОЙ записью.
+ *
+ * esbuild пишет outfile напрямую. Если в этот момент другой процесс/воркер
+ * (vitest запускает файлы параллельно, systemd может перезапустить сервис)
+ * импортирует OUT_FILE, он читает наполовину записанный модуль и падает с
+ * SyntaxError — при этом артефакт остаётся «свежим» по mtime, и ошибка
+ * воспроизводится до ручной очистки кэша. Запись во временный файл + rename
+ * (атомарен в пределах ФС) убирает это окно.
+ */
 async function build() {
-  const esbuild = require('esbuild');
+  const esbuild = loadEsbuild();
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  await esbuild.build({
-    entryPoints: [ENTRY],
-    bundle: true,
-    format: 'esm',
-    platform: 'node',
-    target: 'node20',
-    outfile: OUT_FILE,
-    alias: { '@': path.join(ROOT, 'src') },
-    external: ['react', 'react-dom'],
-    logLevel: 'error',
-  });
+  const tmpFile = `${OUT_FILE}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await esbuild.build({
+      entryPoints: [ENTRY],
+      bundle: true,
+      format: 'esm',
+      platform: 'node',
+      target: 'node20',
+      outfile: tmpFile,
+      alias: { '@': path.join(ROOT, 'src') },
+      external: ['react', 'react-dom'],
+      logLevel: 'error',
+    });
+    fs.renameSync(tmpFile, OUT_FILE);
+  } finally {
+    // Недописанный временный файл не должен оставаться: это мусор в .generated.
+    if (fs.existsSync(tmpFile)) fs.rmSync(tmpFile, { force: true });
+  }
 }
 
 /**
@@ -69,13 +104,48 @@ async function build() {
  *   ohlcvArrayToArchive: Function, ARCHIVE_TF_MS: Record<string, number>
  * }>}
  */
+let building = null;
+
+/** Одна сборка на процесс: параллельные вызовы делят один Promise. */
+function buildOnce() {
+  if (!building) {
+    building = build().finally(() => {
+      building = null;
+    });
+  }
+  return building;
+}
+
 export async function loadStrategyCore() {
   if (cached) return cached;
-  if (!isFresh()) await build();
+  if (!isFresh()) await buildOnce();
+
   // cache-busting: Node кэширует модули по URL, а бандл пересобирается.
-  const mod = await import(`${pathToFileURL(OUT_FILE).href}?v=${Date.now()}`);
-  cached = mod;
-  return mod;
+  const url = () => `${pathToFileURL(OUT_FILE).href}?v=${Date.now()}`;
+  try {
+    const mod = await import(url());
+    cached = mod;
+    return mod;
+  } catch (firstError) {
+    /**
+     * Артефакт мог остаться битым от предыдущего падения процесса (запись
+     * прервана, диск полон, сборка убита по таймауту). Пересобираем один раз;
+     * если и это не помогло — ошибка пробрасывается наружу вместе с причиной.
+     * Фолбэка на заглушку нет: молчаливая подмена ядра запрещена.
+     */
+    await buildOnce();
+    try {
+      const mod = await import(url());
+      cached = mod;
+      return mod;
+    } catch (secondError) {
+      throw new Error(
+        'Не удалось загрузить скомпилированное ядро стратегий после пересборки. ' +
+          `Первая ошибка: ${firstError instanceof Error ? firstError.message : String(firstError)}; ` +
+          `вторая: ${secondError instanceof Error ? secondError.message : String(secondError)}`
+      );
+    }
+  }
 }
 
 export const __internals = { isFresh, build, OUT_FILE, OUT_DIR };
