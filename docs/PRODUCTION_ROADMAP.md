@@ -66,6 +66,21 @@ criteria · Dependencies · Status · PR/commit**.
 
 ---
 
+### [~] PR #15: полный аудит проекта (открыт, не слит)
+- `docs/agent-plan/FULL_PROJECT_AUDIT.md`: findings F-01…F-17 по серверному конвейеру сигналов, тестам,
+  эксплуатации и фронтенду. Аудит — spec для задачи 9.2; сам по себе код не меняет.
+- **Status:** `[~]`. **PR:** #15.
+
+### [~] PR #16: надёжный конвейер сигналов (открыт, не слит)
+- Реализация findings F-01, F-03, F-05, F-06, F-08, F-09, F-10, F-17 из аудита PR #15: настоящий вызов ядра
+  (`scanNow`), честные интеграционные тесты, стабильный ключ дедупликации, полная лестница целей, миграция 009,
+  перенос жизненного цикла, нормализация таймфреймов/символов/лимитов на границе рыночных данных, обработчик ошибок
+  пула PostgreSQL, контракт `GET /api/signals`, исправленные эксплуатационные инструкции и шаблон systemd.
+- Математика стратегий не менялась (`STRATEGY MATH MODIFIED: NO`).
+- **Status:** `[~]`. **PR:** #16 (ветка `fix/signal-pipeline-foundation` от `origin/main`).
+
+---
+
 ## 2. P0/P1: Market universe
 
 ### [~] 2.1 Spot universe = активные инструменты из exchangeInfo
@@ -189,7 +204,7 @@ criteria · Dependencies · Status · PR/commit**.
   pg_dump "$DATABASE_URL" -Fc -f /root/cryptora-$(date +%F-%H%M).dump
   npm run migrate:status
   npm run migrate
-  npm run migrate:status              # 006, 007 (и 008 после PR #14) applied
+  npm run migrate:status              # 006, 007, 008 (PR #14) и 009 (PR #16) applied
   psql "$DATABASE_URL" -c 'SELECT strategy_id, enabled FROM strategy_settings'   # 3 строки, disabled
   psql "$DATABASE_URL" -c '\d signals'
   sudo systemctl restart cryptora
@@ -197,8 +212,14 @@ criteria · Dependencies · Status · PR/commit**.
   journalctl -u cryptora -n 100 --no-pager | grep -iE 'strateg|schedul|error'
   ```
 - **Acceptance criteria:** есть backup; `migrate:status` без pending; в `strategy_settings`
-  3 строки, все disabled (сиды 006 не включают стратегии); таблица `signals` (007) существует;
-  `/api/strategies` отвечает 200; журнал шедулера без повторяющихся ошибок БД.
+  3 строки, все disabled (сиды 006 не включают стратегии); таблица `signals` (007) существует и расширена 009
+  (`targets NUMERIC[]`, `chain_version`, `fill_*`, `result_r`/`net_result_r`, `outcome_hash`, домен `status` из
+  восьми состояний, индекс `idx_signals_symbol_status_created`); `/api/strategies` отвечает 200 и отдаёт
+  `execTimeframe: "1h"`; журнал шедулера без повторяющихся ошибок БД.
+- **Про 009:** миграция аддитивная (007 не переписана), расширение `CHECK` выполнено двумя шагами
+  (`NOT VALID` → `VALIDATE CONSTRAINT`), `CREATE INDEX CONCURRENTLY` невозможен внутри транзакции раннера —
+  таблица `signals` на production пуста, поэтому сборка индекса мгновенна. Применение проверено на настоящем
+  PostgreSQL в `tests/integration/migrationsPostgres.test.ts` (все 9 файлов, идемпотентно).
 - **Критично:** не менять алгоритмы V3.0/V3.3/V2.8, entry/exit, research/backtest logic.
 - **Dependencies:** доступ к VPS; раздел 12 (безопасность миграций).
 - **Status:** `[ ]`. **PR/commit:** процедура задокументирована в PR #14 и здесь.
@@ -246,6 +267,37 @@ criteria · Dependencies · Status · PR/commit**.
   показывается «—» с пояснением. Логика стратегий не меняется.
 - **Dependencies:** 7.1 (серверные `signals`), если источником станет `/api/signals`.
 
+### [~] 9.2 Фундамент серверного конвейера сигналов (до Signals UI)
+- **Priority:** P1 (блокирует 9.1 и любой Signals V2 UI)
+- **Problem (аудит PR #15):** серверный движок вызывал несуществующий метод ядра `scanOnce()` (F-01) — каждый скан
+  падал с TypeError при живом планировщике; интеграционный контракт ядра молча пропускался и отчитывался как passed
+  (F-03); ключ дедупликации брался из времени публикации, а не из `setupOpenTime` (F-05); третья и последующие цели
+  терялись при сохранении (F-06); домен `status` не покрывал состояния, которые ядро уже определяет (F-08);
+  дневной таймфрейм `'1D'` уходил в Binance как есть (F-09), а `limit` свечей терялся в адаптере провайдера (F-10);
+  у пула PostgreSQL не было обработчика `'error'`, из-за чего `FATAL 57P01` на простаивающем клиенте завершал
+  процесс и красил CI при всех прошедших тестах (F-17).
+- **Desired behavior:** скан действительно исполняет ядро, сигнал сохраняется один раз и без потерь, состояние
+  сигнала отражает то, что система уже определила, лента API ограничена и детерминирована, отказ БД/рынка не роняет
+  процесс и не маскируется.
+- **Acceptance criteria (все выполнены в PR #16):**
+  * движок вызывает `scanNow()`; контракт проверяется тестом, который РЕАЛЬНО исполняется в окружении node
+    (10 тестов `strategyEngineCore.test.ts` + 12 `strategyEngineScan.test.ts`);
+  * отказ рыночных данных — `MARKET_DATA_UNAVAILABLE` до скана, а не «сетапов нет»;
+  * дедупликация по `(strategy_id, symbol, timeframe, setupOpenTime)`; новый бар — новый сигнал;
+  * `targets NUMERIC[]` хранит всю лестницу, `tp1`/`tp2` производны; сквозная проверка strategy → БД → API;
+  * жизненный цикл: ACTIVE → FILLED → {TARGET_REACHED | INVALIDATED | CLOSED | EXPIRED | CANCELLED | UNRESOLVED},
+    монотонно, значениями ядра; неизвестный исход не подменяется текущим временем;
+  * `GET /api/signals`: фильтры (symbol/strategy/status/open/direction), `limit` ≤ 200, `offset` ≤ 5000,
+    newest-first, `total` + `appliedFilters` + домен состояний в ответе, 400 с кодом вместо тихой пустоты;
+  * `pool.on('error')` со структурированной записью без секретов; `closePool()` терминален; остановка закрывает
+    пул последним шагом; три подряд прогона интеграционного набора — 103 passed, 0 skipped, 0 unhandled errors;
+  * `npm ci --omit=dev` больше не молчит: отсутствие esbuild даёт явное сообщение (ядро собирается из `src/`).
+- **Остаток работы (не входит в PR #16):** realtime-мониторинг позиции, архивная синхронизация исходов старше окна
+  реплея, перевод страницы `/signals` с браузерного журнала на `GET /api/signals`, заполнение `pnl_result_pct`
+  в серверном пути, включение стратегий в production. Дизайн UI — `docs/agent-plan/SIGNALS_V2_HANDOFF.md`.
+- **Dependencies:** 7.1 (миграции на production), раздел 12.1 (deploy).
+- **Status:** `[~]`. **PR/commit:** #16, ветка `fix/signal-pipeline-foundation`.
+
 ---
 
 ## 10. P1: Свежесть данных
@@ -280,8 +332,11 @@ criteria · Dependencies · Status · PR/commit**.
 - **Текущий VPS:** repo `/root/CRYPTORA`; frontend раздаётся из `/var/www/cryptora`; backend —
   systemd `cryptora.service` → `server/index.js`; Nginx `cryptora.duckdns.org`,
   `/api` → `127.0.0.1:3000`.
-- **Note:** шаблон `systemd/cryptora.service` в репозитории запускает `server/productionServer.js`,
-  это расходится с VPS. Привести шаблон и документацию к фактической схеме.
+- **Note (закрыто в PR #16):** шаблон `systemd/cryptora.service` в репозитории запускал
+  `server/productionServer.js` (legacy static-сервер без БД, auth и движка стратегий), расходясь с VPS.
+  Шаблон приведён к фактической схеме: `ExecStart=… server/index.js`, `EnvironmentFile=-.env`,
+  `HOST=127.0.0.1` (nginx проксирует `/api`), `ReadWritePaths` для esbuild-бандла ядра. Документация
+  (`docs/STRATEGY_OPERATIONS.md` §10, `docs/DEPLOYMENT.md`) больше не рекомендует `npm start` для бэкенда.
 - **Problem:** `scripts/deploy.sh` запускает интеграционные тесты с embedded PostgreSQL, которые на
   VPS падают с `initdb EACCES`, хотя GitHub CI проходит.
 - **Desired behavior:** разделить CI tests (GitHub), production build и deployment smoke tests (VPS).

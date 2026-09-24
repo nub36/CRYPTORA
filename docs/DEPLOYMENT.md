@@ -35,9 +35,13 @@
                 │   - Managed via Systemd / PM2           │
                 └─────────────────────────────────────────┘
 
-`server/productionServer.js` is the standalone static-server alternative; it also implements the
-same allowlisted `/api/market` routes. The deployed Nginx config serves static assets directly and
-forwards `/api/` to the Express backend on port 3000.
+`server/productionServer.js` is the legacy standalone static-server alternative; it also implements
+the same allowlisted `/api/market` routes. It is **not** the application backend: it has no
+PostgreSQL, no auth/sessions, no `/api/signals`, `/api/strategies`, `/api/admin/*` and no strategy
+engine, so running it instead of `server/index.js` (which is what `npm start` still does) leaves the
+terminal looking alive while every database-backed feature is gone. The deployed Nginx config serves
+static assets directly and forwards `/api/` to the Express backend on port 3000; the repository
+systemd template (`systemd/cryptora.service`) starts `server/index.js`.
 ```
 
 ### Политика режима данных: PRODUCTION = ТОЛЬКО LIVE

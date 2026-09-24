@@ -15,6 +15,7 @@
 import { query, getClient } from '../db/pool.js';
 import { recordAudit } from './audit.js';
 import { PRODUCT_STRATEGIES, isKnownStrategyId, BADGE_LABELS } from './strategyCatalog.js';
+import { OPEN_SIGNAL_STATUSES } from './signalRepository.js';
 
 /** Минимальный интервал сканирования — зеркалит CHECK в миграции 006. */
 export const MIN_SCAN_INTERVAL_SECONDS = 15;
@@ -50,10 +51,20 @@ function mapRow(row) {
 export async function listStrategyStates() {
   const [settings, counts] = await Promise.all([
     query('SELECT * FROM strategy_settings'),
-    query(`SELECT strategy_id, COUNT(*)::int AS n
-             FROM signals
-            WHERE status = 'ACTIVE'
-            GROUP BY strategy_id`),
+    /**
+     * «Активные» = открытые: ACTIVE (ожидает входа) И FILLED (в позиции).
+     * Тот же домен, что у `countActiveSignals()` в signalRepository и у
+     * `ledger.getActiveSetups()` в ядре. Прежний счётчик видел только ACTIVE,
+     * поэтому после исполнения сетапа карточка стратегии и страница сигналов
+     * показывали разные числа об одном и том же.
+     */
+    query(
+      `SELECT strategy_id, COUNT(*)::int AS n
+         FROM signals
+        WHERE status = ANY($1)
+        GROUP BY strategy_id`,
+      [[...OPEN_SIGNAL_STATUSES]]
+    ),
   ]);
 
   const byId = new Map(settings.rows.map((r) => [r.strategy_id, r]));
@@ -81,6 +92,16 @@ export async function listStrategyStates() {
       name: meta.name,
       nameRu: meta.nameRu,
       timeframes: meta.timeframes,
+      /**
+       * Таймфрейм ИСПОЛНЕНИЯ и контекст — раздельно. Раньше API отдавал только
+       * плоский `timeframes`, и потребитель не мог отличить бар принятия
+       * решения от старших серий структуры; в документации V2.8 из-за этого
+       * фигурировало «15m» — параметр исторического исследования, а не LIVE
+       * (`V28_LIVE_TIMEFRAME = '1h'` в definitions/v2_8-…/v28Live.ts:52 и
+       * `EXEC_TIMEFRAME = '1h'` в signals/live/LiveSignalEngine.ts:56).
+       */
+      execTimeframe: meta.execTimeframe ?? '1h',
+      contextTimeframes: meta.contextTimeframes ?? [],
       badge: BADGE_LABELS[meta.badge],
       enabled: state.enabled,
       status: deriveStatus(state),

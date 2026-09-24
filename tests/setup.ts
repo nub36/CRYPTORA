@@ -47,8 +47,17 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
+/**
+ * Файл выполняется для ВСЕХ тестов, включая те, что явно просят окружение node
+ * (`// @vitest-environment node` — серверные контрактные тесты). В node нет
+ * `window`, и безусловный `Object.defineProperty(window, …)` ронял сбор файла
+ * целиком. Браузерные моки применяются только там, где есть браузерное окно;
+ * в jsdom поведение прежнее.
+ */
+const hasWindow = typeof window !== 'undefined';
+
 // Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
+if (hasWindow) Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
     matches: false,

@@ -15,7 +15,18 @@ export interface StrategyStateDto {
   version: string;
   name: string;
   nameRu: string;
+  /** ВСЕ серии, которые стратегия реально использует (исполнение + контекст). */
   timeframes: string[];
+  /**
+   * Таймфрейм ИСПОЛНЕНИЯ: бар, на котором стратегия принимает решение и
+   * публикует сетап. У всех трёх продуктовых стратегий это '1h' — значение
+   * приходит с сервера из каталога и сверено с `EXEC_TIMEFRAME` ядра.
+   * Показывать `timeframes[0]` или «15m» как активную характеристику нельзя:
+   * 15m — параметр исторического исследования V2.8, а не LIVE-исполнения.
+   */
+  execTimeframe: string;
+  /** Старшие серии контекста (структура/зоны), отдельно от исполнения. */
+  contextTimeframes: string[];
   badge: string;
   enabled: boolean;
   status: StrategyStatus;
@@ -28,30 +39,124 @@ export interface StrategyStateDto {
   activeSignalCount: number;
 }
 
+/**
+ * Домен состояний сигнала (миграция 009 = `SetupStatus` ядра).
+ *
+ * Разделение сознательное и повторяет ядро:
+ *  • состояние сетапа:  ACTIVE (ожидает входа) → FILLED (в позиции);
+ *  • исход со сделкой:  TARGET_REACHED | INVALIDATED | CLOSED;
+ *  • исход без сделки:  EXPIRED | CANCELLED | UNRESOLVED.
+ * Список приходит и в ответе API (`statuses`) — UI не должен выдумывать свой.
+ */
+export type SignalStatus =
+  | 'ACTIVE'
+  | 'FILLED'
+  | 'TARGET_REACHED'
+  | 'INVALIDATED'
+  | 'CLOSED'
+  | 'EXPIRED'
+  | 'CANCELLED'
+  | 'UNRESOLVED';
+
+/** Состояния, которые считаются открытыми (тот же смысл, что у ledger.getActiveSetups()). */
+export const OPEN_SIGNAL_STATUSES: readonly SignalStatus[] = ['ACTIVE', 'FILLED'];
+
+/** Состояния, у которых есть результат сделки в R. */
+export const TRADE_CLOSED_SIGNAL_STATUSES: readonly SignalStatus[] = [
+  'TARGET_REACHED',
+  'INVALIDATED',
+  'CLOSED',
+];
+
+/** Способ входа, который использует ядро (ReplayEntryType). */
+export type SignalEntryType = 'LIMIT_CORRIDOR' | 'MARKET_NEXT_OPEN';
+
 export interface SignalDto {
   id: string;
   strategyId: string;
+  /** Версия стратегии на момент публикации (например '3.0'). */
+  strategyVersion: string | null;
+  /** Идентификатор сетапа в ядре — связь со journal'ом аудита. */
+  engineSetupId: string | null;
   symbol: string;
   timeframe: string;
   direction: 'LONG' | 'SHORT';
+  /** openTime закрытого бара сетапа (setupOpenTime ядра) — ключ дедупликации. */
   signalCandleTs: string;
+  entryType: SignalEntryType | null;
+  /** Срок действия лимитного коридора в барах (null = без ограничения). */
+  validForBars: number | null;
+  /** Правило выхода стратегии человеческим языком. */
+  exitRule: string | null;
   entryMin: number | null;
   entryMax: number | null;
   stopLoss: number | null;
+  /**
+   * Полная лестница целей TP1..TPn, посчитанная стратегией. `tp1`/`tp2` —
+   * первые два её элемента (сохранены для совместимости). Уровни берутся
+   * ТОЛЬКО отсюда: досчитывать цели на клиенте запрещено.
+   */
+  targets: number[] | null;
   tp1: number | null;
   tp2: number | null;
-  status: 'ACTIVE' | 'INVALIDATED' | 'TARGET_REACHED' | 'EXPIRED';
+  status: SignalStatus;
   createdAt: string;
+  updatedAt: string;
+  // ── Исполнение (факт входа, посчитанный ядром по закрытым свечам) ──
+  fillPrice: number | null;
+  filledAt: string | null;
+  /** Эффективный стоп после исполнения (V2.8 сдвигает уровни на дельту входа). */
+  fillStop: number | null;
+  /** Эффективные цели после исполнения. */
+  fillTargets: number[] | null;
+  // ── Исход ──
   closedAt: string | null;
   closePrice: number | null;
   closeReason: string | null;
+  /** Gross R исхода (без комиссий), посчитанный ядром. Формула не клиентская. */
+  resultR: number | null;
+  /** Net R по модели комиссий 2/5 bps. */
+  netResultR: number | null;
+  pnlResultPct: number | null;
+  barsHeld: number | null;
   metadata: {
+    engineVersion?: string | null;
     riskRewardRatio?: number | null;
     confirmingFactors?: string[];
     invalidationFactors?: string[];
+    latencyBars?: number | null;
+    publishedAt?: string | null;
   } | null;
+  // ── Целостность ──
   hash: string;
   previousHash: string;
+  /** Хэш изменяемой части (исполнение + исход). Публикация при этом неизменяема. */
+  outcomeHash: string | null;
+  /** 1 = строка формы миграции 007, 2 = форма 009. */
+  chainVersion: number;
+}
+
+/** Конверт `GET /api/signals`: лента ограничена, порядок и фильтры явны. */
+export interface SignalsPageDto {
+  signals: SignalDto[];
+  /** Сколько строк в этой странице. */
+  count: number;
+  /** Сколько всего строк под фильтром — для честной пагинации. */
+  total: number;
+  limit: number;
+  offset: number;
+  maxLimit: number;
+  ordering: 'created_at_desc';
+  appliedFilters: {
+    strategyId: string | null;
+    status: SignalStatus | null;
+    open: boolean | null;
+    symbol: string | null;
+    direction: 'LONG' | 'SHORT' | null;
+  };
+  statuses: SignalStatus[];
+  openStatuses: SignalStatus[];
+  source: 'server';
 }
 
 export class ApiError extends Error {
@@ -112,21 +217,39 @@ export async function setStrategyEnabled(
 
 export interface SignalFilters {
   strategy?: string;
-  status?: string;
+  status?: SignalStatus;
   symbol?: string;
+  direction?: 'LONG' | 'SHORT';
+  /** true = ACTIVE+FILLED, false = терминальные состояния. */
+  open?: boolean;
   limit?: number;
+  offset?: number;
 }
 
-/** Сигналы серверного движка. */
-export async function fetchSignals(filters: SignalFilters = {}): Promise<SignalDto[]> {
+function signalsQuery(filters: SignalFilters): string {
   const params = new URLSearchParams();
   if (filters.strategy) params.set('strategy', filters.strategy);
   if (filters.status) params.set('status', filters.status);
   if (filters.symbol) params.set('symbol', filters.symbol);
-  if (filters.limit) params.set('limit', String(filters.limit));
+  if (filters.direction) params.set('direction', filters.direction);
+  if (filters.open !== undefined) params.set('open', String(filters.open));
+  if (filters.limit !== undefined) params.set('limit', String(filters.limit));
+  if (filters.offset !== undefined) params.set('offset', String(filters.offset));
   const qs = params.toString();
-  const res = await request<{ signals: SignalDto[]; count: number }>(
-    `/api/signals${qs ? `?${qs}` : ''}`
-  );
+  return qs ? `?${qs}` : '';
+}
+
+/** Сигналы серверного движка (только лента). */
+export async function fetchSignals(filters: SignalFilters = {}): Promise<SignalDto[]> {
+  const res = await request<SignalsPageDto>(`/api/signals${signalsQuery(filters)}`);
   return res.signals;
+}
+
+/**
+ * Лента целиком с пагинацией и доменом состояний — то, что нужно Signals UI:
+ * `total` для постраничной навигации, `statuses` — вместо хардкода состояний
+ * на клиенте.
+ */
+export async function fetchSignalsPage(filters: SignalFilters = {}): Promise<SignalsPageDto> {
+  return request<SignalsPageDto>(`/api/signals${signalsQuery(filters)}`);
 }

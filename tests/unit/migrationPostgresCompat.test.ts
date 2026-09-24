@@ -125,8 +125,9 @@ describe('migration inventory', () => {
 
   it('found every index definition in the migrations', () => {
     // Guards the parser itself: this is the exact index inventory of
-    // 001–007 (12 from 001–005 + 1 from 006 + 4 from 007). If the count drops,
-    // a regex silently stopped matching and the checks below are void.
+    // 001–009 (12 from 001–005 + 1 from 006 + 4 from 007 + 1 from 009). If the
+    // count drops, a regex silently stopped matching and the checks below are
+    // void.
     expect(indexes.map((i) => i.name).sort()).toEqual([
       'idx_audit_log_action',
       'idx_audit_log_actor',
@@ -140,6 +141,7 @@ describe('migration inventory', () => {
       'idx_signals_previous_hash',
       'idx_signals_strategy_status',
       'idx_signals_symbol',
+      'idx_signals_symbol_status_created',
       'idx_strategy_settings_enabled',
       'idx_users_email_lower',
       'idx_users_email_unverified',
@@ -342,5 +344,116 @@ describe('migrations are safe to replay', () => {
         expect(m[2], `${file}: "${m[0]}" must be IF NOT EXISTS`).toBeTruthy();
       }
     }
+  });
+});
+
+/**
+ * 009_signal_levels_and_lifecycle: статические гарантии additive-миграции.
+ *
+ * Настоящее применение на PostgreSQL проверяется в
+ * tests/integration/migrationsPostgres.test.ts; здесь — то, что видно из текста
+ * и что легко сломать по неосторожности (удаление колонки, переписывание 007,
+ * CONCURRENTLY внутри транзакции раннера).
+ */
+describe('009_signal_levels_and_lifecycle — только добавление', () => {
+  const file = '009_signal_levels_and_lifecycle.sql';
+  const sql = () => fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+  const code = () => stripComments(sql());
+
+  it('файл существует и следует конвенции именования', () => {
+    expect(FILES).toContain(file);
+    expect(FILES[FILES.length - 1]).toBe(file); // лексикографически последний
+  });
+
+  it('ничего не удаляет и не переписывает данные', () => {
+    const body = code();
+    for (const forbidden of [
+      /DROP\s+TABLE/i,
+      /DROP\s+COLUMN/i,
+      /TRUNCATE/i,
+      /\bDELETE\s+FROM\b/i,
+      /\bUPDATE\s+\w+\s+SET\b/i,
+      /RENAME\s+(TABLE|COLUMN|TO)\b/i,
+      /ALTER\s+COLUMN[\s\S]{0,80}\bTYPE\b/i,
+      /DROP\s+DATABASE/i,
+    ]) {
+      expect(body, `${file}: запрещённая операция ${forbidden}`).not.toMatch(forbidden);
+    }
+  });
+
+  it('каждое добавление колонки идемпотентно (IF NOT EXISTS)', () => {
+    const adds = [...code().matchAll(/ADD\s+COLUMN(\s+IF\s+NOT\s+EXISTS)?/gi)];
+    expect(adds.length, 'в 009 должны быть новые колонки').toBeGreaterThanOrEqual(16);
+    for (const a of adds) {
+      expect(a[1], `${file}: "ADD COLUMN" без IF NOT EXISTS`).toBeTruthy();
+    }
+  });
+
+  it('расширение CHECK двухшаговое: NOT VALID + VALIDATE (без долгого ACCESS EXCLUSIVE)', () => {
+    const body = code();
+    expect(body).toMatch(/ADD CONSTRAINT signals_status_check CHECK[\s\S]*?\)\s*NOT VALID/i);
+    expect(body).toMatch(/VALIDATE CONSTRAINT signals_status_check/i);
+    expect(body).toMatch(/ADD CONSTRAINT signals_entry_type_check CHECK[\s\S]*?\)\s*NOT VALID/i);
+    expect(body).toMatch(/VALIDATE CONSTRAINT signals_entry_type_check/i);
+    // Новый домен — надмножество старого: строки 007 проходят валидацию.
+    const statuses = [...body.matchAll(/'(ACTIVE|FILLED|TARGET_REACHED|INVALIDATED|CLOSED|EXPIRED|CANCELLED|UNRESOLVED)'/g)]
+      .map((m) => m[1]);
+    for (const legacy of ['ACTIVE', 'INVALIDATED', 'TARGET_REACHED', 'EXPIRED']) {
+      expect(statuses, `домен 007 потерял ${legacy}`).toContain(legacy);
+    }
+    expect(new Set(statuses).size).toBe(8);
+  });
+
+  it('нет CREATE INDEX CONCURRENTLY: раннер выполняет файл внутри транзакции', () => {
+    for (const f of FILES) {
+      const body = stripComments(fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8'));
+      expect(body, `${f}: CONCURRENTLY невозможен внутри BEGIN/COMMIT раннера`).not.toMatch(
+        /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY/i
+      );
+    }
+    // Причина отсутствия зафиксирована в самом файле, а не только в тесте.
+    expect(sql()).toMatch(/CONCURRENTLY/);
+  });
+
+  it('новые колонки signals разобраны парсером с ожидаемыми типами', () => {
+    expect(typeOf('signals', 'targets')).toBe('numeric'); // NUMERIC[] — массивность проверяется на реальной БД
+    expect(typeOf('signals', 'fill_targets')).toBe('numeric');
+    expect(typeOf('signals', 'chain_version')).toBe('smallint');
+    expect(typeOf('signals', 'valid_for_bars')).toBe('integer');
+    expect(typeOf('signals', 'bars_held')).toBe('integer');
+    expect(typeOf('signals', 'fill_price')).toBe('numeric');
+    expect(typeOf('signals', 'fill_stop')).toBe('numeric');
+    expect(typeOf('signals', 'result_r')).toBe('numeric');
+    expect(typeOf('signals', 'net_result_r')).toBe('numeric');
+    expect(typeOf('signals', 'pnl_result_pct')).toBe('numeric');
+    expect(typeOf('signals', 'outcome_hash')).toBe('text');
+    expect(typeOf('signals', 'strategy_version')).toBe('text');
+    expect(typeOf('signals', 'engine_setup_id')).toBe('text');
+    expect(typeOf('signals', 'entry_type')).toBe('text');
+    expect(typeOf('signals', 'exit_rule')).toBe('text');
+    expect(typeOf('signals', 'filled_at')).toBe('timestamptz');
+  });
+
+  it('миграция 007 не переписана: её колонки и индексы на месте', () => {
+    for (const column of ['tp1', 'tp2', 'entry_min', 'entry_max', 'stop_loss', 'hash', 'previous_hash', 'status', 'close_price', 'close_reason', 'closed_at']) {
+      expect(typeOf('signals', column), `signals.${column} из 007 исчез из инвентаря`).toBeTruthy();
+    }
+    for (const index of ['idx_signals_symbol', 'idx_signals_created_at_desc', 'idx_signals_strategy_status', 'idx_signals_previous_hash']) {
+      expect(indexes.map((i) => i.name)).toContain(index);
+    }
+    // Новый индекс не дублирует существующие по набору колонок.
+    const shape = (name: string) =>
+      indexes.find((i) => i.name === name)?.expression.toLowerCase().replace(/\s+/g, ' ');
+    expect(shape('idx_signals_symbol_status_created')).toBe('symbol, status, created_at desc');
+    expect(shape('idx_signals_symbol')).toBe('symbol, created_at desc');
+    const shapes = indexes.filter((i) => i.table === 'signals').map((i) => i.expression.toLowerCase());
+    expect(new Set(shapes).size, 'два индекса signals с одинаковым набором колонок').toBe(shapes.length);
+  });
+
+  it('цепочка хэшей разделена по версиям: chain_version и outcome_hash', () => {
+    const body = sql();
+    expect(body).toMatch(/chain_version/);
+    expect(body).toMatch(/ALTER TABLE signals ALTER COLUMN chain_version SET DEFAULT 2/i);
+    expect(body).toMatch(/outcome_hash\s+TEXT NULL/i);
   });
 });

@@ -15,3 +15,16 @@ export { SignalsAuditLedger } from '@/services/signals/SignalsAuditLedger';
 export { validateSetupGeometry } from '@/services/signals/live/setupGeometry';
 export { ohlcvToArchive, ohlcvArrayToArchive } from '@/services/signals/live/ohlcvAdapter';
 export { ARCHIVE_TF_MS } from '@/services/strategyArchive/types';
+
+/**
+ * Константы окна и таймфрейма исполнения — экспортируются, чтобы сервер НЕ
+ * держал их ручную копию (именно копия-пересказ математики породила баг V3.3).
+ * Серверный движок и parity-тесты читают требования к данным из того же
+ * скомпилированного ядра, которое исполняют.
+ */
+export {
+  CANDLE_LIMIT_1H,
+  CANDLE_LIMIT_4H,
+  CANDLE_LIMIT_1D,
+  EXEC_TIMEFRAME,
+} from '@/services/signals/live/LiveSignalEngine';

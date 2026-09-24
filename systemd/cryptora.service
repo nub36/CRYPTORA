@@ -1,30 +1,59 @@
 [Unit]
-Description=CRYPTORA Crypto Market Intelligence Terminal & Production Gateway
-After=network.target
+Description=CRYPTORA Backend (Express + PostgreSQL + strategy engine) & Market Gateway
+After=network.target postgresql.service
 
 [Service]
 Type=simple
 User=user
 Group=user
 WorkingDirectory=/home/user/CRYPTORA
-ExecStart=/usr/local/bin/node /home/user/CRYPTORA/server/productionServer.js
+
+# ── ЧТО ЗАПУСКАЕТСЯ ─────────────────────────────────────────────────────────
+# `server/index.js` — настоящий бэкенд: Express, auth/сессии в PostgreSQL,
+# /api/* (включая /api/signals и /api/strategies), gateway рыночных данных и
+# серверный движок стратегий (StrategyScheduler → скомпилированное ядро из src/).
+#
+# `server/productionServer.js` (прежний ExecStart, он же `npm start`) — это
+# legacy static-сервер для dist/ БЕЗ БД, auth и сигналов. Запуск его вместо
+# index.js выглядит как «сайт работает», но /api/signals, /login и /admin
+# перестают отвечать, а сканирование стратегий не начинается. Статику в
+# production раздаёт nginx (см. docs/DEPLOYMENT.md), не Node.
+ExecStart=/usr/local/bin/node /home/user/CRYPTORA/server/index.js
 Restart=always
 RestartSec=5s
 
-# Environment variables
+# ── ОКРУЖЕНИЕ ───────────────────────────────────────────────────────────────
+# Секреты — в /home/user/CRYPTORA/.env (вне Git): DATABASE_URL, SESSION_SECRET,
+# APP_ORIGIN, SMTP_*. EnvironmentFile с префиксом '-' не роняет юнит, если файла
+# нет, но без DATABASE_URL бэкенд стартует в деградированном режиме
+# (/api/health: degraded) и НЕ запускает движок стратегий.
+EnvironmentFile=-/home/user/CRYPTORA/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
-Environment=HOST=0.0.0.0
+# Навигация: nginx проксирует /api → 127.0.0.1:3000. Слушать 0.0.0.0 не нужно
+# и небезопасно: бэкенд не должен быть доступен мимо TLS/WSGW.
+Environment=HOST=127.0.0.1
+Environment=SESSION_STORE=postgres
 Environment=MARKET_DATA_PROXY_ENABLED=true
 Environment=MARKET_DATA_CACHE_TTL_MS=10000
 
-# Security Hardening
+# ── HARDENING ───────────────────────────────────────────────────────────────
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/user/CRYPTORA/dist
+# index.js пишет в рабочее дерево: `server/services/strategyEngine/.generated`
+# — esbuild-бандл ядра стратегий, который пересобирается при старте, если
+# исходники `src/` новее артефакта (каталог создаётся самим процессом, поэтому
+# прав на запись требует и его родитель). Без этого движок не может сканировать
+# ничего: ядро стратегий живёт в TypeScript в `src/` и копируется на сервер
+# только сборкой. журнал — в journald, файловых логов юнит не пишет.
+#
+# При `ProtectHome=read-only` список ReadWritePaths накапливается; несуществующий
+# путь systemd игнорирует, поэтому указан корень приложения, а не только
+# `.generated` (иначе mkdir внутри read-only каталога был бы невозможен).
+ReadWritePaths=/home/user/CRYPTORA
 
-# Resource Limits
+# ── РЕСУРСЫ ─────────────────────────────────────────────────────────────────
 LimitNOFILE=65536
 
 [Install]

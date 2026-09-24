@@ -22,6 +22,8 @@ const state = (over: Partial<StrategyStateDto> = {}): StrategyStateDto => ({
   name: 'HTF Zone Mitigation & LTF Squeeze',
   nameRu: 'Митигация зоны',
   timeframes: ['1h', '4h'],
+  execTimeframe: '1h',
+  contextTimeframes: ['4h'],
   badge: 'Train only',
   enabled: false,
   status: 'OFF',

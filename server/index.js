@@ -10,10 +10,16 @@
 
 import { createApp } from './app.js';
 import { config } from './config.js';
-import { checkDatabase } from './db/pool.js';
+import { checkDatabase, closePool } from './db/pool.js';
 import { getStrategyScheduler } from './services/strategyEngine/strategyScheduler.js';
 
 const app = createApp();
+
+/**
+ * HTTP-сервер создаётся в `start()` и нужен остановке: `shutdown()` закрывает
+ * приём соединений до закрытия пула PostgreSQL (см. порядок ниже).
+ */
+let httpServer = null;
 
 async function start() {
   // Verify DB connectivity before accepting traffic
@@ -43,7 +49,7 @@ async function start() {
     console.warn('[CRYPTORA] Strategy scheduler NOT started: database unreachable.');
   }
 
-  app.listen(config.PORT, config.HOST, () => {
+  httpServer = app.listen(config.PORT, config.HOST, () => {
     console.log('=======================================================');
     console.log('  CRYPTORA Backend Server');
     console.log(`  Listening on: http://${config.HOST}:${config.PORT}`);
@@ -56,6 +62,16 @@ async function start() {
 // Graceful shutdown
 let shuttingDown = false;
 
+/**
+ * Порядок остановки существенен (F-17):
+ *   1. планировщик стратегий — чтобы скан не писал сигнал в закрывающуюся БД;
+ *   2. HTTP — перестать принимать новые запросы и дождаться текущих;
+ *   3. пул PostgreSQL — ПОСЛЕДНИМ. Если закрыть пул раньше, любой запрос,
+ *      долетевший во время остановки, откроет новое соединение к уже
+ *      закрывающейся БД и получит `FATAL 57P01 admin_shutdown` на
+ *      простаивающем клиенте — то самое необработанное событие, из-за которого
+ *      процесс завершался (и из-за которого CI краснел при всех прошедших тестах).
+ */
 const shutdown = async (signal) => {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -67,6 +83,23 @@ const shutdown = async (signal) => {
     console.log('[CRYPTORA] Strategy scheduler stopped.');
   } catch (err) {
     console.error('[CRYPTORA] Error stopping strategy scheduler:', err.message);
+  }
+  try {
+    if (httpServer) {
+      // keep-alive соединения без активного запроса закрываются сразу, иначе
+      // server.close() ждал бы их таймаута.
+      httpServer.closeIdleConnections?.();
+      await new Promise((resolve) => httpServer.close(() => resolve(null)));
+      console.log('[CRYPTORA] HTTP server closed.');
+    }
+  } catch (err) {
+    console.error('[CRYPTORA] Error closing HTTP server:', err.message);
+  }
+  try {
+    await closePool();
+    console.log('[CRYPTORA] PostgreSQL pool closed.');
+  } catch (err) {
+    console.error('[CRYPTORA] Error closing PostgreSQL pool:', err.message);
   }
   process.exit(0);
 };
