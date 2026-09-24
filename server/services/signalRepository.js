@@ -278,6 +278,11 @@ function mapRow(r) {
     previousHash: r.previous_hash,
     outcomeHash: r.outcome_hash ?? null,
     chainVersion: Number(r.chain_version ?? 1),
+    // ── Журнал наблюдения (миграция 010; не влияет на уровни и хэши) ──
+    monitorCheckCount: Number(r.monitor_check_count ?? 0),
+    monitorLastCheckAt: r.monitor_last_check_at ?? null,
+    monitorLastResult: r.monitor_last_result ?? null,
+    monitorLastError: r.monitor_last_error ?? null,
   };
 }
 
@@ -714,8 +719,7 @@ export async function syncSignalLifecycle({
  *
  * @returns {Promise<{rows:number, breaks:number}>}
  */
-export async function verifyChain() {
-  const { rows } = await query('SELECT * FROM signals ORDER BY created_at ASC, id ASC');
+export async function verifyChain() {  const { rows } = await query('SELECT * FROM signals ORDER BY created_at ASC, id ASC');
   let expectedPrev = GENESIS;
   let breaks = 0;
   for (const r of rows) {
@@ -731,4 +735,121 @@ export async function verifyChain() {
     expectedPrev = r.hash;
   }
   return { rows: rows.length, breaks };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Журнал наблюдения (миграция 010)                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Допустимые результаты проверки монитором позиций. Домен держится здесь, чтобы
+ * SQL-фильтр и код не могли разойтись (CHECK-констрейнт 010 — тот же список).
+ */
+export const MONITOR_RESULTS = Object.freeze([
+  'UNCHANGED', 'FILLED', 'RESOLVED', 'SKIP', 'ERROR', 'OUT_OF_WINDOW',
+]);
+
+/**
+ * Фиксирует факт проверки сигнала серверным монитором.
+ *
+ * Это ЖУРНАЛ НАБЛЮДЕНИЯ, а не торговое состояние: уровни, R и хэши он не
+ * трогает. Нужен, чтобы отличать «ещё не закрыт» от «монитор не смотрел» и
+ * «рынок недоступен». Идемпотентен по смыслу: повторная проверка увеличивает
+ * счётчик и перезаписывает результат последней.
+ *
+ * @param {string} id
+ * @param {{result:string, error?:string|null}} patch
+ * @returns {Promise<{changed:boolean}>}
+ */
+export async function recordSignalMonitorCheck(id, { result, error = null }) {
+  if (!MONITOR_RESULTS.includes(result)) {
+    const err = new Error(`Unknown monitor result: ${String(result)}`);
+    /** @type {any} */ (err).statusCode = 400;
+    throw err;
+  }
+  const { rows } = await query(
+    `UPDATE signals
+        SET monitor_check_count  = monitor_check_count + 1,
+            monitor_last_check_at = now(),
+            monitor_last_result  = $2,
+            monitor_last_error   = $3,
+            updated_at           = now()
+      WHERE id = $1
+      RETURNING id`,
+    [id, result, error ?? null]
+  );
+  // Статус и `outcome_hash` здесь намеренно НЕ пишутся: их изменяет только
+  // `syncSignalLifecycle` (через `writeLifecycle`). Иначе журнал наблюдения
+  // стал бы вторым источником правды о жизненном цикле.
+  return { changed: rows.length > 0 };
+}
+
+/** Телеметрия монитора (одна строка, id = 1). */
+export async function readMonitorState() {
+  const { rows } = await query('SELECT * FROM signal_monitor_state WHERE id = 1');
+  return rows.length > 0 ? mapMonitorState(rows[0]) : null;
+}
+
+function mapMonitorState(r) {
+  return {
+    running: Boolean(r.running),
+    lastTickStartedAt: r.last_tick_started_at ?? null,
+    lastTickFinishedAt: r.last_tick_finished_at ?? null,
+    lastTickDurationMs: r.last_tick_duration_ms ?? null,
+    lastError: r.last_error ?? null,
+    lastOpenSignals: r.last_open_signals ?? null,
+    lastGroups: r.last_groups ?? null,
+    lastCandleRequests: r.last_candle_requests ?? null,
+    lastResult: r.last_result ?? null,
+    updatedAt: r.updated_at ?? null,
+  };
+}
+
+/**
+ * Сохраняет телеметрию тика. Идемпотентна по ключу (id = 1): рестарт процесса
+ * не создаёт вторую строку и не теряет предыдущую.
+ */
+export async function writeMonitorState(state) {
+  const { rows } = await query(
+    `INSERT INTO signal_monitor_state
+       (id, running, last_tick_started_at, last_tick_finished_at, last_tick_duration_ms,
+        last_error, last_open_signals, last_groups, last_candle_requests, last_result, updated_at)
+     VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+     ON CONFLICT (id) DO UPDATE SET
+        running               = EXCLUDED.running,
+        last_tick_started_at  = EXCLUDED.last_tick_started_at,
+        last_tick_finished_at = EXCLUDED.last_tick_finished_at,
+        last_tick_duration_ms = EXCLUDED.last_tick_duration_ms,
+        last_error            = EXCLUDED.last_error,
+        last_open_signals     = EXCLUDED.last_open_signals,
+        last_groups           = EXCLUDED.last_groups,
+        last_candle_requests  = EXCLUDED.last_candle_requests,
+        last_result           = EXCLUDED.last_result,
+        updated_at            = now()
+     RETURNING *`,
+    [
+      Boolean(state.running),
+      state.lastTickStartedAt ?? null,
+      state.lastTickFinishedAt ?? null,
+      state.lastTickDurationMs ?? null,
+      state.lastError ?? null,
+      state.lastOpenSignals ?? null,
+      state.lastGroups ?? null,
+      state.lastCandleRequests ?? null,
+      state.lastResult ?? null,
+    ]
+  );
+  return mapMonitorState(rows[0]);
+}
+
+/** Сколько открытых сигналов и сколько групп (символ × ТФ) среди них. */
+export async function countOpenSignalGroups() {
+  const { rows } = await query(
+    `SELECT COUNT(DISTINCT (symbol, timeframe))::int AS groups,
+            COUNT(*)::int AS open_signals
+       FROM signals
+      WHERE status = ANY($1)`,
+    [[...OPEN_SIGNAL_STATUSES]]
+  );
+  return { groups: rows[0].groups, openSignals: rows[0].open_signals };
 }

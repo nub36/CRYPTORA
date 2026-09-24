@@ -10,7 +10,6 @@
  */
 
 import React from 'react';
-import type { TimeDisplayMode } from '@/utils/timePresentation';
 import type { SignalUiModel } from '@/services/signals/ui/signalUiModel';
 import { formatSignalTime } from '@/utils/serverSignalText';
 import { Badge } from '@/components/common/Badge';
@@ -18,7 +17,6 @@ import { SignalStatusChip } from './SignalStatusChip';
 
 interface SignalSummaryCardProps {
   model: SignalUiModel | null;
-  timeMode: TimeDisplayMode;
 }
 
 const LevelValue: React.FC<{ label: string; value: string; tone?: 'red' | 'green' | 'cyan' }> = ({
@@ -38,21 +36,15 @@ const LevelValue: React.FC<{ label: string; value: string; tone?: 'red' | 'green
   </div>
 );
 
-export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model, timeMode }) => {
-  if (!model) {
-    return (
-      <section
-        data-qa="signals-summary-empty"
-        className="rounded-lg border border-surface-border bg-surface p-4 text-center"
-      >
-        <p className="ui-secondary">Сигналов по этому инструменту пока нет.</p>
-        <p className="ui-helper mt-1">
-          Стратегии публикуют сетап редко и только на фактических закрытых свечах. Пустая лента — норма,
-          а не ошибка. График ниже показывает рыночные свечи выбранной монеты.
-        </p>
-      </section>
-    );
-  }
+export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model }) => {
+  // BUG B: пустое состояние здесь БОЛЬШЕ НЕ ДУБЛИРУЕТСЯ. Раньше карточка
+  // выводила свой текст «Сигналов по этому инструменту пока нет», а страница —
+  // ещё один такой же блок: два разных блока про одно и то же состояние, из-за
+  // которых непонятно, сколько причин и какая из них главная. Единственный
+  // блок с причинами (сканер выключен / лента пуста / запрос упал / рынок
+  // недоступен) живёт на странице — `signals-empty[data-state]`. Без сигнала
+  // карточка просто не рисуется.
+  if (!model) return null;
 
   const targets = model.targets;
 
@@ -80,9 +72,21 @@ export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model, tim
       </div>
 
       <p className="ui-helper mt-1.5" title={model.statusHint}>
-        {model.directionHint}. Сигнал {formatSignalTime(model.signalCandleTs, timeMode)}
+        {model.directionHint}. Сигнал {formatSignalTime(model.signalCandleTs)}
         {model.strategyShort ? ` · ${model.strategyShort}` : ''}
       </p>
+
+      {/*
+        §10: результат — если он достоверно известен. Значение приходит из
+        сервера (`resultR` / `netResultR`), здесь только подпись: R на клиенте
+        НЕ пересчитывается. Статусы без сделки (истечение, отмена, не
+        отслежено) строку не получают — «результата нет» != «результат 0».
+      */}
+      {model.hasTrade && (
+        <p className="ui-helper mt-1.5" data-qa="signals-summary-result">
+          Результат: {model.outcome.gross} (gross) · {model.outcome.net} (net)
+        </p>
+      )}
 
       {/* Вход / стоп / цели. Целей может быть 0, 1, 3, 5 — рисуем фактический массив. */}
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">

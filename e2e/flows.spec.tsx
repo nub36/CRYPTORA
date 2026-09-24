@@ -572,17 +572,23 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     expect(document.querySelector('[data-qa="signals-chart-card"]')).not.toBeNull();
     expect(document.querySelector('[data-qa="signals-history"]')).not.toBeNull();
     expect(document.querySelector('[data-qa="signals-audit-section"]')).not.toBeNull();
-    expect(document.querySelector('[data-qa="signals-summary-empty"]')).not.toBeNull();
+    // BUG B: единственный блок пустого состояния на странице (дубль в сводке удалён).
+    expect(document.querySelectorAll('[data-qa="signals-empty"]').length).toBe(1);
+    expect(document.querySelectorAll('[data-qa="signals-summary-empty"]').length).toBe(0);
 
     // Таймфрейм сигнала (исполнения) и переключатель таймфрейма графика.
     expect(document.querySelector('[data-qa="signals-chart-tf-1h"]')).not.toBeNull();
     expect(document.querySelector('[data-qa="signals-chart-tf-4h"]')).not.toBeNull();
 
-    // В QA-режиме (демо-датасет) браузерный LIVE-движок не запускается —
-    // честная подпись источника вместо мнимого скана.
-    const engineStatus = document.querySelector('[data-qa="signals-engine-status"]');
-    expect(engineStatus).not.toBeNull();
-    expect(engineStatus!.getAttribute('data-state')).toBe('stopped');
+    // BUG C: плашка сканирования показывает состояние СЕРВЕРА. В герметичном
+    // окружении `/api/strategies` недоступен, поэтому статус — «недоступен», а
+    // НЕ «выключено» и уж точно не «LIVE-скан»: отсутствие ответа сервера не
+    // является доказательством выключенного сканера.
+    const scanner = document.querySelector('[data-qa="signals-scanner-status"]');
+    expect(scanner).not.toBeNull();
+    expect(['unknown', 'off', 'on', 'error']).toContain(scanner!.getAttribute('data-state'));
+    expect(document.body.textContent).not.toContain('LIVE-скан');
+    expect(document.body.textContent).not.toContain('LIVE');
   });
 
   test('/calendar без доступа к Binance показывает «ИСТОЧНИК НЕДОСТУПЕН», без статических FOMC/CPI', async () => {

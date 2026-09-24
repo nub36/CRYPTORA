@@ -159,6 +159,103 @@ export interface SignalsPageDto {
   source: 'server';
 }
 
+/**
+ * Состояние серверного монитора открытых сигналов (`GET /api/signals/monitor`).
+ *
+ * Нужен UI, чтобы отличить «сигналы отслеживаются» от «монитор не работает»
+ * и «рыночные данные недоступны». Эндпоинт только читает.
+ */
+export interface SignalMonitorStateDto {
+  running: boolean;
+  cycles: number;
+  inFlight: boolean;
+  lastTickStartedAt: string | null;
+  lastTickFinishedAt: string | null;
+  lastTickDurationMs: number | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  /** Рынок не отдал данных несколько тиков подряд — наблюдение отложено. */
+  stale: boolean;
+  lastSummary: {
+    openSignals: number;
+    groups: number;
+    candleRequests: number;
+    checked: number;
+    filled: number;
+    resolved: number;
+    unchanged: number;
+    skipped: number;
+    errors: number;
+    outOfWindow: number;
+    durationMs: number;
+  } | null;
+}
+
+/**
+ * Серверная статистика сигналов (`GET /api/signals/statistics`).
+ *
+ * КЛЮЧЕВОЕ ОТЛИЧИЕ ОТ БРАУЗЕРНОЙ СВОДКИ: источник — PostgreSQL, а не
+ * localStorage одного браузера. «Опубликовано» и «совершилась сделка» —
+ * разные счётчики, знаменатель win rate — завершённые сделки с ИЗВЕСТНЫМ
+ * результатом (wins + losses + breakEven).
+ *
+ * Классификация завершённой сделки: wins (result_r > 0), losses (< 0),
+ * breakEven (= 0, НЕ убыток), unrated (result_r IS NULL). NULL никогда не
+ * считается нулём.
+ */
+export interface SignalStatisticsAggregateDto {
+  published: number;
+  waitingEntry: number;
+  filled: number;
+  completed: number;
+  cancelled: number;
+  expired: number;
+  unresolved: number;
+  targetReached: number;
+  invalidated: number;
+  closed: number;
+  wins: number;
+  losses: number;
+  /** Завершённая сделка с результатом ровно 0 R. НЕ убыток. */
+  breakEven: number;
+  /** Завершённая сделка без результата R: не победа, не поражение, не ноль. */
+  /** Завершённые сделки без рассчитанного результата (result_r IS NULL). */
+  unrated: number;
+  /** То же, что `unrated`; имя не путает со статусом «исход не отслежен». */
+  unratedCompleted: number;
+  /** Завершённые сделки с известным результатом: wins + losses + breakEven. */
+  ratedCompleted: number;
+  /** null — знаменатель ноль: «нет данных» ≠ 0 %. */
+  winRatePct: number | null;
+  avgGrossR: number | null;
+  avgNetR: number | null;
+  grossRSum: number | null;
+  netRSum: number | null;
+  fillRatePct: number | null;
+  completionRatePct: number | null;
+}
+
+export interface SignalStatisticsDto {
+  period: 'all' | '24h' | '7d' | '30d' | '90d';
+  filters: { strategyId: string | null; symbol: string | null };
+  statuses: SignalStatus[];
+  openStatuses: SignalStatus[];
+  tradeClosedStatuses: SignalStatus[];
+  noTradeStatuses: SignalStatus[];
+  closedStatuses: SignalStatus[];
+  totals: SignalStatisticsAggregateDto;
+  byStrategy: Array<SignalStatisticsAggregateDto & { strategyId: string }>;
+  bySymbol: Array<SignalStatisticsAggregateDto & { symbol: string }>;
+  definitions: Record<string, string>;
+  source: 'server';
+}
+
+export interface SignalStatisticsFilters {
+  strategyId?: string;
+  symbol?: string;
+  period?: SignalStatisticsDto['period'];
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -201,6 +298,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * `init` — опционально (Signals V2 передаёт `signal` AbortController'а: смена
  * выбранного инструмента отменяет устаревший запрос, а не игнорирует его).
  */
+/** Состояние серверного монитора открытых сигналов. Только чтение. */
+export async function fetchSignalMonitorState(init?: RequestInit): Promise<SignalMonitorStateDto> {
+  return request<SignalMonitorStateDto>('/api/signals/monitor', init);
+}
+
+/**
+ * Серверная статистика по сохранённому жизненному циклу сигналов.
+ *
+ * Считается в SQL на сервере; клиент НЕ агрегирует ленту и не пересчитывает R.
+ */
+export async function fetchSignalStatistics(
+  filters: SignalStatisticsFilters = {},
+  init?: RequestInit
+): Promise<SignalStatisticsDto> {
+  const params = new URLSearchParams();
+  if (filters.strategyId) params.set('strategyId', filters.strategyId);
+  if (filters.symbol) params.set('symbol', filters.symbol);
+  if (filters.period) params.set('period', filters.period);
+  const qs = params.toString();
+  return request<SignalStatisticsDto>(`/api/signals/statistics${qs ? `?${qs}` : ''}`, init);
+}
+
 export async function fetchStrategies(init?: RequestInit): Promise<StrategyStateDto[]> {
   const res = await request<{ strategies: StrategyStateDto[]; source: string }>('/api/strategies', init);
   return res.strategies;

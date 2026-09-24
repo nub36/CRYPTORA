@@ -33,6 +33,8 @@ import {
   MAX_SIGNALS_OFFSET,
 } from '../services/signalRepository.js';
 import { isKnownStrategyId, KNOWN_STRATEGY_IDS } from '../services/strategyCatalog.js';
+import { getSignalStatistics, STATISTICS_PERIODS } from '../services/signalStatistics.js';
+import { signalMonitorStatus } from '../services/signalMonitor/signalMonitor.js';
 
 const router = Router();
 
@@ -179,6 +181,63 @@ router.get('/', async (req, res, next) => {
       openStatuses: [...OPEN_SIGNAL_STATUSES],
       source: 'server',
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /api/signals/statistics — агрегаты по СОХРАНЁННОМУ жизненному циклу.
+ *
+ * Источник — таблица `signals` (PostgreSQL), не журнал браузера. Поэтому
+ * статистика одинакова для всех пользователей и переживает рестарты.
+ * «Опубликовано» и «совершилась сделка» считаются раздельно: сигнал без входа
+ * не попадает в знаменатель win rate (подробнее в `definitions` ответа).
+ *
+ * Query: `strategyId`, `symbol`, `period` (all|24h|7d|30d|90d).
+ */
+router.get('/statistics', async (req, res, next) => {
+  try {
+    if (typeof req.query.strategyId === 'string' && req.query.strategyId) {
+      if (!isKnownStrategyId(req.query.strategyId)) {
+        return res.status(400).json({
+          error: 'Unknown strategyId',
+          knownStrategyIds: [...KNOWN_STRATEGY_IDS],
+        });
+      }
+    }
+    const period = req.query.period === undefined ? 'all' : String(req.query.period);
+    if (!STATISTICS_PERIODS.includes(period)) {
+      return res.status(400).json({ error: 'Unknown period', allowedPeriods: [...STATISTICS_PERIODS] });
+    }
+    const symbol =
+      typeof req.query.symbol === 'string' && req.query.symbol
+        ? normalizeSymbolParam(req.query.symbol)
+        : { ok: true, value: undefined };
+    if (!symbol.ok) {
+      return res.status(400).json({ error: 'Invalid symbol', reason: symbol.reason });
+    }
+
+    const stats = await getSignalStatistics({
+      strategyId: typeof req.query.strategyId === 'string' ? req.query.strategyId : undefined,
+      symbol: symbol.value,
+      period,
+    });
+    res.json(stats);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /api/signals/monitor — состояние серверного монитора открытых сигналов.
+ *
+ * Нужен UI, чтобы отличить «сигналы отслеживаются» от «монитор не работает».
+ * Эндпоинт только читает: сменить состояние монитора через него нельзя.
+ */
+router.get('/monitor', async (req, res, next) => {
+  try {
+    res.json(signalMonitorStatus());
   } catch (e) {
     next(e);
   }

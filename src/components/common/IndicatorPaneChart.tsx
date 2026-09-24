@@ -6,7 +6,6 @@ import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 import { mergeKlineIntoCandles } from '@/services/realtime/candleHandoff';
 import { ChartTimeRangeSync } from './ChartTimeRangeSync';
 import { formatChartAxisTime } from '@/utils/chartTime';
-import type { TimeDisplayMode } from '@/utils/timePresentation';
 import { readThemeToken } from '@/theme/theme';
 import { useTheme } from '@/context/ThemeContext';
 import { RSI_FIXED_PRICE_RANGE } from './chartPresentationConfig';
@@ -20,12 +19,11 @@ interface IndicatorPaneChartProps {
   interval: string;
   height: number;
   showTimeAxis: boolean;
-  timeMode: TimeDisplayMode;
   timeSync: ChartTimeRangeSync;
 }
 
 export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
-  kind, candles, realtimeKline, expectedSymbol, timeframe, interval, height, showTimeAxis, timeMode, timeSync,
+  kind, candles, realtimeKline, expectedSymbol, timeframe, interval, height, showTimeAxis, timeSync,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -35,8 +33,6 @@ export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
   const zeroRef = useRef<ISeriesApi<'Line'> | null>(null);
   const levelRefs = useRef<Array<ISeriesApi<'Line'> | null>>([]);
   const { resolved: theme } = useTheme();
-  const timeModeRef = useRef(timeMode);
-  timeModeRef.current = timeMode;
 
   const effectiveCandles = useMemo(() => realtimeKline
     ? mergeKlineIntoCandles(candles, realtimeKline, expectedSymbol, interval)
@@ -68,11 +64,11 @@ export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
         rightOffset: 0,
         barSpacing: 10,
         visible: showTimeAxis,
-        tickMarkFormatter: (time: Time, tickType: TickMarkType) => formatChartAxisTime(time, tickType, timeModeRef.current),
+        tickMarkFormatter: (time: Time, tickType: TickMarkType) => formatChartAxisTime(time, tickType),
       },
       localization: {
         locale: 'en-US',
-        timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time, timeModeRef.current, 'ru-RU'),
+        timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time),
       },
     });
     chartRef.current = chart;
@@ -152,9 +148,9 @@ export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
     chart.timeScale().applyOptions({
       visible: showTimeAxis,
     });
-    chart.applyOptions({ localization: { timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time, timeModeRef.current, 'ru-RU') } });
+    chart.applyOptions({ localization: { timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time) } });
     timeSync.syncFrom(chart);
-  }, [showTimeAxis, timeMode, timeSync]);
+  }, [showTimeAxis, timeSync]);
 
   useEffect(() => {
     const times = effectiveCandles.map((candle) => candle.time as Time);

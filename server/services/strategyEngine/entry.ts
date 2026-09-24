@@ -17,6 +17,17 @@ export { ohlcvToArchive, ohlcvArrayToArchive } from '@/services/signals/live/ohl
 export { ARCHIVE_TF_MS } from '@/services/strategyArchive/types';
 
 /**
+ * Ведение ОПУБЛИКОВАННОГО сетапа — та же frozen-функция, которой браузерный
+ * движок ведёт журнал (`LiveSignalEngine.trackOpenSetups` → `trackPublishedSetup`)
+ * и которой серверный движок получает `ReplayRecord.fill` / `ReplayRecord.outcome`
+ * через LIVE-реплеи. Серверный монитор позиций обязан вызывать ИМЕННО ЕЁ, а не
+ * собственную копию правил выхода: любая копия расходится с определением (именно
+ * так появился баг V3.3). Экспорт аддитивен и не меняет поведение функции.
+ */
+export { trackPublishedSetup } from '@/services/signals/live/lifecycle';
+export type { LifecycleResult } from '@/services/signals/live/lifecycle';
+
+/**
  * Константы окна и таймфрейма исполнения — экспортируются, чтобы сервер НЕ
  * держал их ручную копию (именно копия-пересказ математики породила баг V3.3).
  * Серверный движок и parity-тесты читают требования к данным из того же
