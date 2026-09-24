@@ -43,6 +43,9 @@ function dto(overrides: DtoOverrides = {}): SignalStatisticsDto {
     closed: 0,
     wins: 0,
     losses: 0,
+    breakEven: 0,
+    unrated: 0,
+    ratedCompleted: 0,
     winRatePct: null,
     avgGrossR: null,
     avgNetR: null,
@@ -102,6 +105,9 @@ describe('Панель серверной статистики — plain-languag
           closed: 0,
           wins: 2,
           losses: 1,
+          breakEven: 0,
+          unrated: 0,
+          ratedCompleted: 3,
           winRatePct: 66.7,
           avgGrossR: 1.5,
           avgNetR: 1.4,
@@ -118,8 +124,55 @@ describe('Панель серверной статистики — plain-languag
     expect(text('stat-completed')).toBe('3');
     expect(text('stat-wins')).toBe('2');
     expect(text('stat-losses')).toBe('1');
+    expect(text('stat-break-even')).toBe('0');
     expect(text('stat-winrate')).toBe('66.7%');
     expect(text('stat-no-trade')).toBe('2');
+  });
+
+  it('сделка в ноль показывается отдельно и НЕ называется убытком', async () => {
+    await open(
+      dto({
+        totals: {
+          published: 4,
+          completed: 3,
+          wins: 1,
+          losses: 1,
+          breakEven: 1,
+          unrated: 0,
+          ratedCompleted: 3,
+          winRatePct: 33.3,
+        },
+      })
+    );
+    expect(text('stat-wins')).toBe('1');
+    expect(text('stat-break-even')).toBe('1');
+    expect(text('stat-losses')).toBe('1');
+    // Убыток — строго отрицательный результат, поэтому «в ноль» здесь не убыток.
+    expect(text('stat-losses')).not.toBe('2');
+    expect(text('stat-winrate')).toBe('33.3%');
+  });
+
+  it('завершённая сделка без R — не победа, не поражение и не ноль', async () => {
+    await open(
+      dto({
+        totals: {
+          published: 3,
+          completed: 2,
+          wins: 1,
+          losses: 0,
+          breakEven: 0,
+          unrated: 1,
+          ratedCompleted: 1,
+          winRatePct: 100,
+        },
+      })
+    );
+    expect(text('stat-wins')).toBe('1');
+    expect(text('stat-losses')).toBe('0');
+    expect(text('stat-break-even')).toBe('0');
+    expect(text('stat-unrated')).toBe('1');
+    // Знаменатель — только сделки с известным R, поэтому доля остаётся 100 %.
+    expect(text('stat-winrate')).toBe('100%');
   });
 
   it('R и суммы спрятаны под «Подробнее»', async () => {
@@ -153,7 +206,11 @@ describe('Панель серверной статистики — plain-languag
     expect(text('stat-sum-gross')).toBe('+2.50 R');
     expect(text('stat-sum-net')).toBe('+2.20 R');
     // Пояснение знаменателя — на виду, а не спрятано.
-    expect(qa('signals-statistics-details')?.textContent).toContain('только завершённые сделки');
+    expect(qa('signals-statistics-details')?.textContent).toContain(
+      'завершённые сделки с известным результатом'
+    );
+    // И отдельно сказано, что сделка в ноль — не убыток.
+    expect(qa('signals-statistics-details')?.textContent).toContain('не является убыточной');
   });
 
   it('отменённые и истёкшие сигналы не становятся убыточными сделками', async () => {
@@ -225,6 +282,9 @@ describe('Панель серверной статистики — plain-languag
             closed: 0,
             wins: 1,
             losses: 0,
+            breakEven: 0,
+            unrated: 0,
+            ratedCompleted: 1,
             winRatePct: 100,
             avgGrossR: 2,
             avgNetR: 1.9,
@@ -249,6 +309,9 @@ describe('Панель серверной статистики — plain-languag
             closed: 0,
             wins: 1,
             losses: 0,
+            breakEven: 0,
+            unrated: 0,
+            ratedCompleted: 1,
             winRatePct: 100,
             avgGrossR: 2,
             avgNetR: 1.9,

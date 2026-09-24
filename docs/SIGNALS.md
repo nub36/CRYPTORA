@@ -649,6 +649,8 @@ StrategyScheduler (независимо) ──▶ getSignalMonitor().tick()   M
 
 Пусть `TRADE_CLOSED_STATUSES = {TARGET_REACHED, INVALIDATED, CLOSED}` (`signalRepository.js:88`).
 
+### 10.1. Счётчики
+
 | Метрика | Точная формула | Что входит / не входит |
 |---|---|---|
 | `published` | `COUNT(*)` по фильтру | все строки, включая `ACTIVE`, `CANCELLED`, `EXPIRED`, `UNRESOLVED` |
@@ -658,26 +660,69 @@ StrategyScheduler (независимо) ──▶ getSignalMonitor().tick()   M
 | `cancelled` | `COUNT(*) FILTER (status = 'CANCELLED')` | сделки не было |
 | `expired` | `COUNT(*) FILTER (status = 'EXPIRED')` | сделки не было |
 | `unresolved` | `COUNT(*) FILTER (status = 'UNRESOLVED')` | бар сетапа вне окна: **не сделка** |
-| `wins` | `COUNT(*) FILTER (completed AND result_r > 0)` | строго больше нуля |
-| `losses` | `COUNT(*) FILTER (completed AND result_r <= 0)` | **ноль и отрицательные вместе** |
-| `winRate` | `wins / completed × 100`, округление до 0.1 | `completed = 0` ⇒ `null` («—»), не 0 % |
-| `average gross R` | `AVG(result_r) FILTER (completed)` | = `SUM(result_r) FILTER (completed) / completed` |
-| `average net R` | `AVG(net_result_r) FILTER (completed)` | после комиссий |
-| `Σ gross R` | `SUM(result_r) FILTER (completed)` | ΣR по завершённым |
-| `Σ net R` | `SUM(net_result_r) FILTER (completed)` | ΣR после комиссий |
-| `fillRate` | `(filled + completed) / published × 100` | `ACTIVE` в числитель **не** входит |
-| `completionRate` | `completed / published × 100` | — |
 
-**Куда попадает результат 0 R.** Отдельной категории «ничья» нет: условие победы — `result_r > 0`, поэтому
-точный ноль попадает в `losses`. Это не округление и не умолчание, а прямой смысл frozen-исхода: типичный
-носитель нуля — `TP1_THEN_BE`, где половина позиции закрыта по TP1, а половина по цене входа
-(`managedExitPrice('TP1_THEN_BE', …) = entry`, `grossR = 0.5·rOf(tp1) + 0.5·rOf(entry)`), и такая сделка
-завершена (`status = CLOSED`), но прибыли не дала. Поэтому 0 R — **поражение по знаку**, а не «ничья»;
-UI не должен называть такое выигрышем и не должен прятать в третью корзину.
+### 10.2. Классификация завершённой сделки по результату
 
-**Классификация статусов:**
+Четыре **взаимоисключающие** корзины, покрывающие `completed`:
 
-| Статус | `published` | `waiting` | `filled` | `completed` | wins/losses | ΣR |
+| Корзина | Формула | Смысл |
+|---|---|---|
+| `wins` | `COUNT(*) FILTER (status = ANY(T) AND result_r > 0)` | результат строго больше нуля |
+| `losses` | `COUNT(*) FILTER (status = ANY(T) AND result_r < 0)` | результат строго меньше нуля |
+| `breakEven` | `COUNT(*) FILTER (status = ANY(T) AND result_r = 0)` | результат **ровно 0 R — НЕ убыток** |
+| `unrated` | `COUNT(*) FILTER (status = ANY(T) AND result_r IS NULL)` | завершённая сделка без результата |
+
+**NULL никогда не трактуруется как 0.** В PostgreSQL выражение `NULL = 0` даёт `NULL`, а не истину, поэтому
+ни одна из трёх знаковых корзин не захватывает `NULL` неявно; отдельное условие `result_r IS NULL`
+выделяет такие строки явно. Отдельной категории «ничья среди неопределённых» не появляется: неизвестный
+результат — это отсутствие значения, а не ноль.
+
+Тождество: `wins + losses + breakEven + unrated = completed`.
+
+### 10.3. Знаменатель доли успешных
+
+```
+ratedCompleted = wins + losses + breakEven
+winRatePct     = wins / ratedCompleted * 100   (округление до 0.1)
+```
+
+То есть «доля прибыльных среди завершённых сделок **с известным результатом**».
+При `ratedCompleted = 0` результат — `null` («—»), а не `0 %`: «нет данных» ≠ «ноль».
+
+**Почему именно так, а не иначе:**
+
+* не `wins / completed` — завершённая сделка без результата R (`unrated`) не имеет знака, и включать её в
+  знаменатель значит занижать долю успешных по причине «нет данных», а не по причине убытка;
+* не `wins / (wins + losses)` — сделка «в ноль» (`breakEven`) это завершённая сделка с известным
+  результатом, и она обязана быть в знаменателе. Иначе доля успешных росла бы только за счёт ничьих.
+
+Ранее действовавшая формула `wins / completed` с условием `losses = result_r <= 0` считала сделку 0 R
+убыточной. Это было исправлено: 0 R теперь собственная корзина, а убыток требует строгого `< 0`.
+
+### 10.4. Средние и суммы R — поведение при NULL
+
+Условие `result_r IS NOT NULL` написано в SQL **явно**, а не оставлено на неявное правило «SQL-агрегат
+пропускает NULL». Значение то же, но намерение читается из запроса и не зависит от поведения агрегата:
+
+| Метрика | Формула | Что происходит с NULL |
+|---|---|---|
+| `grossRSum` | `SUM(result_r) FILTER (status = ANY(T) AND result_r IS NOT NULL)` | сделка без R не даёт вклада; это **отсутствие значения**, а не `+0` |
+| `netRSum` | `SUM(net_result_r) FILTER (status = ANY(T) AND net_result_r IS NOT NULL)` | то же |
+| `avgGrossR` | `AVG(result_r) FILTER (status = ANY(T) AND result_r IS NOT NULL)` | среднее только по сделкам с известным R; знаменатель — `ratedCompleted`, не `completed` |
+| `avgNetR` | `AVG(net_result_r) FILTER (status = ANY(T) AND net_result_r IS NOT NULL)` | то же |
+
+Если ни у одной завершённой сделки нет R, `SUM`/`AVG` дают `null` — и UI обязан показать «—».
+
+### 10.5. Доли от публикации
+
+| Метрика | Формула |
+|---|---|
+| `fillRatePct` | `(filled + completed) / published × 100` — `ACTIVE` в числитель **не** входит |
+| `completionRatePct` | `completed / published × 100` |
+
+### 10.6. Классификация статусов
+
+| Статус | `published` | `waiting` | `filled` | `completed` | wins/losses/breakEven | ΣR |
 |---|---|---|---|---|---|---|
 | `ACTIVE` | ✓ | ✓ | — | — | — | — |
 | `FILLED` | ✓ | — | ✓ | — | — | — |
@@ -688,7 +733,11 @@ UI не должен называть такое выигрышем и не до
 | `CANCELLED` | ✓ | — | — | — | — | — |
 | `UNRESOLVED` | ✓ | — | — | — | — | — |
 
-**Классификация исходов (frozen-причина выхода → статус):**
+`CANCELLED`, `EXPIRED` и `UNRESOLVED` не становятся победой, поражением или ничьей только из-за наличия
+lifecycle-статуса: они не входят в `TRADE_CLOSED_STATUSES`, поэтому не доходят до знаковой классификации
+вообще.
+
+### 10.7. Классификация исходов (frozen-причина выхода → статус)
 
 | Исход | Стратегия | Статус | Сделка |
 |---|---|---|---|
@@ -703,12 +752,38 @@ UI не должен называть такое выигрышем и не до
 | `TIMEOUT` | V2.8 | `CLOSED` | ✓ |
 | `SL` | V2.8 | `INVALIDATED` | ✓ |
 | `EXPIRED` / `CANCELLED` / `REJECTED_GEOMETRY` | все | `EXPIRED` / `CANCELLED` | ✗ (сделки не было) |
-| `OUT_OF_DATA_WINDOW` | все | `UNRESOLVED` | ✗ |
+| `OUT_OF_DATA_WINDOW` | все | `UNRESOLVED` | ✗ (сделки не было) |
 
 Отображение причины выхода в статус делает frozen-код (`managedStatus` в
 `src/services/signals/live/replays/shared.ts:34`), монитор и статистика его не переоценивают.
 
-Итоговые тождества, проверяемые тестом: `wins + losses = completed` и
+### 10.8. Куда попадает результат 0 R — и достижим ли `unrated`
+
+**0 R — отдельная корзина `breakEven`, а НЕ убыток.** Убыток требует строго `result_r < 0`. Типичный
+носитель нуля — `TP1_THEN_BE`, где половина позиции закрыта по TP1, а половина по цене входа
+(`managedExitPrice('TP1_THEN_BE', …) = entry`, `grossR = 0.5·rOf(tp1) + 0.5·rOf(entry)`): сделка
+завершена (`CLOSED`), но прибыли не дала. UI обязан показывать такую сделку строкой «В ноль», а не
+«Убыточные», и не прятать в третью корзину.
+
+**`unrated` в реальном frozen-потоке не порождается — это защитная корзина.** Единственный источник
+`resultR = null` в frozen-коде — `noTrade()` в `lifecycle.ts:49`, и он используется только для
+`EXPIRED` / `CANCELLED` / `UNRESOLVED`, т.е. для статусов, где сделки не было. Все пути, дающие
+терминальный статус (`TARGET_REACHED` / `INVALIDATED` / `CLOSED`), возвращают числовой
+`round(r.grossR, 4)` (`lifecycle.ts:118`, `lifecycle.ts:154`). При этом схема (`result_r NUMERIC NULL`, миграция 009) терминальный NULL
+допускает, а `syncSignalLifecycle` → `closeSignal` пишет `num(outcome.resultR)` без проверки. Поэтому
+корзина нужна: если такой результат когда-либо появится (будущая стратегия, частичная синхронизация,
+ручная правка), статистика не смешает «результат неизвестен» с убытком. Это зафиксировано тестом
+«frozen-поток ВСЕГДА даёт R для терминального статуса: unrated — защитная корзина».
+
+### 10.9. UI
+
+Панель статистики (`src/components/signals/SignalStatisticsPanel.tsx`) показывает на первом экране
+отдельными строками: **Прибыльные**, **В ноль**, **Убыточные**, **Без оценки R** и **Доля успешных**.
+В блоке «Подробнее» — расшифровка знаменателя: «завершённые сделки с известным результатом = прибыльные +
+убыточные + в ноль», явное «сделка в ноль не является убыточной» и явное «завершённые сделки без
+результата R в знаменатель не входят».
+
+Тождества, проверяемые тестом: `wins + losses + breakEven + unrated = completed` и
 `waiting + filled + cancelled + expired + unresolved + targetReached + invalidated + closed = published`.
 
 ---

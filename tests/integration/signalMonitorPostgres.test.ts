@@ -1020,16 +1020,172 @@ describe('Статистика — знаменатели и результат 
     ).toBe(t.published);
     // completed = только завершённые сделки: TARGET_REACHED + INVALIDATED + 2 × CLOSED.
     expect(t.completed).toBe(4);
-    // 0 R — поражение (победа требует result_r > 0), а не «ничья».
+    // 0 R — ОТДЕЛЬНАЯ корзина breakEven, а НЕ поражение: поражение требует
+    // строго result_r < 0.
     expect(t.wins).toBe(1);
-    expect(t.losses).toBe(3);
-    expect(t.wins + t.losses).toBe(t.completed);
+    expect(t.losses).toBe(2);
+    expect(t.breakEven).toBe(1);
+    expect(t.unrated).toBe(0);
+    // Четыре корзины покрывают completed.
+    expect(t.wins + t.losses + t.breakEven + t.unrated).toBe(t.completed);
     // ΣR считается только по completed; ACTIVE/FILLED/CANCELLED/EXPIRED/UNRESOLVED не входят.
     expect(t.grossRSum).toBeCloseTo(2.0 - 1.0 + 0.0 - 0.25, 6);
+    // Знаменатель — завершённые сделки с известным результатом: 4.
+    expect(t.ratedCompleted).toBe(4);
     expect(t.winRatePct).toBe(25);
     // fillRate: в числителе FILLED + completed = 1 + 4; ACTIVE/CANCELLED/… не входят.
     // Доля округляется до 0.1 % — сравниваем с округлённым значением.
     expect(t.fillRatePct).toBeCloseTo(Math.round(((1 + 4) / 9) * 1000) / 10, 6);
+  }, 120_000);
+
+  it('mix +1 / -1 / 0 / NULL ⇒ wins=1, losses=1, breakEven=1, unrated=1, ratedCompleted=3, winRate=33.33%', async (ctx) => {
+    if (guard(ctx)) return;
+    await q('DELETE FROM signals');
+    // Ровно те четыре случая, которые нельзя путать: плюс, минус, ровно ноль и
+    // «результата нет». Плюс терминальные и нетерминальные статусы рядом.
+    const rows: Array<{ status: string; r: number | null }> = [
+      { status: 'TARGET_REACHED', r: 1.0 },   // win
+      { status: 'INVALIDATED', r: -1.0 },     // loss
+      { status: 'CLOSED', r: 0.0 },           // breakEven
+      { status: 'CLOSED', r: null },          // unrated
+      { status: 'ACTIVE', r: null },          // не сделка
+      { status: 'FILLED', r: null },          // не сделка
+      { status: 'EXPIRED', r: null },         // не сделка
+      { status: 'CANCELLED', r: null },       // не сделка
+      { status: 'UNRESOLVED', r: null },      // не сделка
+    ];
+    for (let i = 0; i < rows.length; i++) {
+      const { status, r } = rows[i]!;
+      const ts = new Date(Date.UTC(2026, 8, 24, i, 0, 0));
+      await seedSignal({ signalCandleTs: ts });
+      await repo.syncSignalLifecycle({
+        strategyId: 'V3_0_HTF_LIQUIDATION_TRAP',
+        symbol: 'BTC/USDT',
+        timeframe: '1h',
+        signalCandleTs: ts,
+        fill: ['ACTIVE', 'FILLED', 'EXPIRED', 'CANCELLED', 'UNRESOLVED'].includes(status)
+          ? null
+          : { price: 64600, at: new Date(Date.UTC(2026, 8, 24, i, 1, 0)).toISOString() },
+        outcome: {
+          status,
+          closedAt: new Date(Date.UTC(2026, 8, 24, i, 5, 0)).toISOString(),
+          exitReason: 'X',
+          exitPrice: null,
+          resultR: r,
+          netResultR: r === null ? null : r - 0.07,
+          barsHeld: null,
+        },
+      });
+    }
+
+    const s = await stats.getSignalStatistics({ nowMs: Date.UTC(2026, 8, 25) });
+    const t = s.totals;
+    expect(t.published).toBe(9);
+    expect(t.completed).toBe(4);
+    expect(t.wins).toBe(1);
+    expect(t.losses).toBe(1);
+    expect(t.breakEven).toBe(1);
+    expect(t.unrated).toBe(1);
+    expect(t.ratedCompleted).toBe(3);
+    // Четыре корзины покрывают completed.
+    expect(t.wins + t.losses + t.breakEven + t.unrated).toBe(t.completed);
+    // Доля успешных — среди завершённых С ИЗВЕСТНЫМ результатом: 1 из 3.
+    expect(t.winRatePct).toBe(33.3);
+    // NULL не даёт вклада в ΣR: +1 + (-1) + 0, без четвёркой «+0».
+    expect(t.grossRSum).toBeCloseTo(0, 6);
+    expect(t.netRSum).toBeCloseTo(1.0 - 0.07 + (-1.0 - 0.07) + (0.0 - 0.07), 6);
+    // Среднее — по тем же трём сделкам, а не по четырём.
+    expect(t.avgGrossR).toBeCloseTo(0, 6);
+    // Тождество полноты статусов.
+    expect(
+      t.waitingEntry + t.filled + t.cancelled + t.expired + t.unresolved +
+      t.targetReached + t.invalidated + t.closed
+    ).toBe(t.published);
+  }, 120_000);
+
+  it('frozen-поток ВСЕГДА даёт R для терминального статуса: unrated — защитная корзина', async (ctx) => {
+    if (guard(ctx)) return;
+    await q('DELETE FROM signals');
+    // Проверяется не «может ли» а «бывает ли»: в реальном frozen-потоке
+    // завершённая сделка (TARGET_REACHED / INVALIDATED / CLOSED) ВСЕГДА имеет
+    // числовой result_r. `noTrade()` (единственный источник resultR = null)
+    // используется только для EXPIRED / CANCELLED / UNRESOLVED, т.е. для
+    // статусов, где сделки не было. Поэтому `unrated` — ЗАЩИТНАЯ корзина:
+    // схема (result_r NUMERIC NULL) её допускает, но frozen-ядро её не
+    // порождает. Статистика обязана держать её отдельно, а не сливать в losses.
+    const setup = Date.UTC(2026, 8, 27, 9, 0, 0);
+    const { signal } = await seedSignal({ signalCandleTs: new Date(setup) });
+    const monitor = makePgMonitor(
+      () => new Date('2026-09-27T13:30:00Z').getTime(),
+      () => [
+        { time: setup / 1000, open: 64400, high: 64500, low: 64300, close: 64450, volume: 1 },
+        { time: (setup + H) / 1000, open: 64600, high: 64700, low: 64550, close: 64650, volume: 1 },
+        { time: (setup + 2 * H) / 1000, open: 64650, high: 65600, low: 64600, close: 65500, volume: 1 },
+        { time: (setup + 3 * H) / 1000, open: 65500, high: 66300, low: 65400, close: 66250, volume: 1 },
+      ]
+    );
+    await monitor.tick();
+    const row = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('TARGET_REACHED');
+    expect(row.result_r).not.toBeNull();
+    expect(row.net_result_r).not.toBeNull();
+
+    const s = await stats.getSignalStatistics({ nowMs: Date.UTC(2026, 8, 28) });
+    expect(s.totals.completed).toBe(1);
+    expect(s.totals.unrated).toBe(0);
+    expect(s.totals.ratedCompleted).toBe(1);
+    expect(s.totals.wins).toBe(1);
+    expect(s.totals.winRatePct).toBe(100);
+  }, 120_000);
+
+  it('терминальные статусы дают сделки, а CANCELLED/EXPIRED/UNRESOLVED — нет', async (ctx) => {
+    if (guard(ctx)) return;
+    await q('DELETE FROM signals');
+    // По три строки каждого вида: терминальные (сделка была) и нет-сделочные.
+    const cases: Array<[string, number | null]> = [
+      ['TARGET_REACHED', 2.0],
+      ['INVALIDATED', -1.0],
+      ['CLOSED', 0.0],
+      ['CANCELLED', null],
+      ['EXPIRED', null],
+      ['UNRESOLVED', null],
+    ];
+    for (let i = 0; i < cases.length; i++) {
+      const [status, r] = cases[i]!;
+      const ts = new Date(Date.UTC(2026, 8, 26, i, 0, 0));
+      await seedSignal({ signalCandleTs: ts });
+      await repo.syncSignalLifecycle({
+        strategyId: 'V3_0_HTF_LIQUIDATION_TRAP',
+        symbol: 'BTC/USDT',
+        timeframe: '1h',
+        signalCandleTs: ts,
+        fill: ['CANCELLED', 'EXPIRED', 'UNRESOLVED'].includes(status)
+          ? null
+          : { price: 64600, at: new Date(Date.UTC(2026, 8, 26, i, 1, 0)).toISOString() },
+        outcome: {
+          status,
+          closedAt: new Date(Date.UTC(2026, 8, 26, i, 5, 0)).toISOString(),
+          exitReason: 'X',
+          exitPrice: null,
+          resultR: r,
+          netResultR: r === null ? null : r - 0.07,
+          barsHeld: null,
+        },
+      });
+    }
+    const s = await stats.getSignalStatistics({ nowMs: Date.UTC(2026, 8, 27) });
+    const t = s.totals;
+    // completed = ТОЛЬКО терминальные статусы.
+    expect(t.completed).toBe(3);
+    expect(t.targetReached + t.invalidated + t.closed).toBe(3);
+    // CANCELLED/EXPIRED/UNRESOLVED не стали ни победой, ни поражением, ни ничьей.
+    expect(t.wins).toBe(1);
+    expect(t.losses).toBe(1);
+    expect(t.breakEven).toBe(1);
+    expect(t.unrated).toBe(0);
+    expect(t.cancelled).toBe(1);
+    expect(t.expired).toBe(1);
+    expect(t.unresolved).toBe(1);
   }, 120_000);
 
   it('EXIT-причины классифицируются ровно так, как их отдаёт frozen-ядро', async (ctx) => {

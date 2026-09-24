@@ -8,12 +8,22 @@
  *   • «опубликован» ≠ «совершилась сделка». Сигнал, который так и не дождался
  *     входа (EXPIRED / CANCELLED / UNRESOLVED), идёт отдельной строкой и НЕ
  *     попадает в знаменатель win rate;
- *   • знаменатель win rate — только завершённые сделки (TARGET_REACHED +
- *     INVALIDATED + CLOSED): сделка была и исход определён frozen-ядром;
+ *   • знаменатель win rate — завершённые сделки С ИЗВЕСТНЫМ результатом:
+ *     wins + losses + breakEven;
  *   • R не пересчитывается: `result_r` / `net_result_r` берутся как их посчитало
  *     ядро. Сервер только агрегирует;
- *   • NULL не превращается в 0: если завершённых сделок нет, win rate = null, а
- *     средний R = null. «Нет данных» ≠ «0 %».
+ *   • NULL не превращается в 0: если завершённых сделок с известным R нет,
+ *     win rate = null, а средний R = null. «Нет данных» ≠ «0 %»;
+ *   • сделка «в ноль» (result_r = 0) — ОТДЕЛЬНАЯ корзина `breakEven`, а не
+ *     убыток. Убыток требует строго `result_r < 0`.
+ *
+ * Классификация завершённой сделки по результату (все четыре корзики
+ * взаимоисключающи и покрывают `completed`):
+ *
+ *   wins       — result_r >  0
+ *   losses     — result_r <  0
+ *   breakEven  — result_r =  0
+ *   unrated    — result_r IS NULL
  *
  * Всё агрегируется в SQL (GROUP BY), поэтому разрезы «по стратегии», «по
  * инструменту» и «по периоду» не требуют выгрузки таблицы в память.
@@ -56,6 +66,8 @@ export function mapAggregate(r) {
   const completed = Number(r.completed ?? 0);
   const wins = Number(r.wins ?? 0);
   const losses = Number(r.losses ?? 0);
+  const breakEven = Number(r.break_even ?? 0);
+  const unrated = Number(r.unrated ?? 0);
   const num = (v) => (v === null || v === undefined ? null : Number(v));
   return {
     published,
@@ -70,11 +82,32 @@ export function mapAggregate(r) {
     closed: Number(r.closed ?? 0),
     wins,
     losses,
+    breakEven,
+    unrated,
     /**
-     * Доля успешных считается ТОЛЬКО по завершённым сделкам. `null` — знаменатель
-     * ноль: «нет данных» ≠ 0 %.
+     * Завершённые сделки с ИЗВЕСТНЫМ результатом = wins + losses + breakEven.
+     * Завершённая сделка без R (unrated) сюда НЕ входит: «результат неизвестен»
+     * не является ни победой, ни поражением, ни ничьей.
      */
-    winRatePct: completed > 0 ? Math.round((wins / completed) * 1000) / 10 : null,
+    ratedCompleted: Number(r.rated_completed ?? 0),
+    /**
+     * Доля успешных: `wins / ratedCompleted`, где
+     * `ratedCompleted = wins + losses + breakEven`.
+     *
+     * Почему не `wins / completed`: завершённая сделка без результата R
+     * (unrated) не имеет знака, и включать её в знаменатель — значит занижать
+     * долю успешных по причине «нет данных», а не по причине убытка.
+     *
+     * Почему не `wins / (wins + losses)`: сделка «в ноль» (breakEven) — это
+     * завершённая сделка с известным результатом, и она должна быть в
+     * знаменателе. Иначе доля успешных росла бы только за счёт ничьих.
+     *
+     * `null` — знаменатель ноль: «нет данных» ≠ 0 %.
+     */
+    winRatePct:
+      Number(r.rated_completed ?? 0) > 0
+        ? Math.round((wins / Number(r.rated_completed)) * 1000) / 10
+        : null,
     avgGrossR: num(r.avg_gross_r),
     avgNetR: num(r.avg_net_r),
     grossRSum: num(r.gross_r_sum),
@@ -109,12 +142,23 @@ function aggregateSelect(tradeIdx) {
   COUNT(*) FILTER (WHERE status = 'TARGET_REACHED')::int                    AS target_reached,
   COUNT(*) FILTER (WHERE status = 'INVALIDATED')::int                       AS invalidated,
   COUNT(*) FILTER (WHERE status = 'CLOSED')::int                            AS closed,
+  -- КЛАССИФИКАЦИЯ ЗАВЕРШЁННЫХ СДЕЛОК ПО РЕЗУЛЬТАТУ.
+  -- Три непустые корзины плюс явная корзина «без оценки». NULL не считается
+  -- нулём: в PostgreSQL 'NULL = 0' даёт NULL, а не истину, поэтому ни одна из
+  -- трёх корзин не захватывает NULL неявно.
   COUNT(*) FILTER (WHERE status = ANY(${T}) AND result_r > 0)::int           AS wins,
-  COUNT(*) FILTER (WHERE status = ANY(${T}) AND result_r <= 0)::int          AS losses,
-  SUM(result_r) FILTER (WHERE status = ANY(${T}))::numeric                  AS gross_r_sum,
-  SUM(net_result_r) FILTER (WHERE status = ANY(${T}))::numeric              AS net_r_sum,
-  AVG(result_r) FILTER (WHERE status = ANY(${T}))::numeric                  AS avg_gross_r,
-  AVG(net_result_r) FILTER (WHERE status = ANY(${T}))::numeric              AS avg_net_r
+  COUNT(*) FILTER (WHERE status = ANY(${T}) AND result_r < 0)::int           AS losses,
+  COUNT(*) FILTER (WHERE status = ANY(${T}) AND result_r = 0)::int           AS break_even,
+  COUNT(*) FILTER (WHERE status = ANY(${T}) AND result_r IS NULL)::int       AS unrated,
+  -- Знаменатель доли успешных: завершённые сделки С ИЗВЕСТНЫМ результатом.
+  COUNT(*) FILTER (WHERE status = ANY(${T}) AND result_r IS NOT NULL)::int   AS rated_completed,
+  -- Σ/среднее R: условие 'result_r IS NOT NULL' сделано ЯВНЫМ, а не оставлено
+  -- на неявное правило «SQL-агрегат пропускает NULL». Значение то же, но
+  -- намерение читается из запроса и не зависит от поведения агрегата.
+  SUM(result_r) FILTER (WHERE status = ANY(${T}) AND result_r IS NOT NULL)::numeric       AS gross_r_sum,
+  SUM(net_result_r) FILTER (WHERE status = ANY(${T}) AND net_result_r IS NOT NULL)::numeric AS net_r_sum,
+  AVG(result_r) FILTER (WHERE status = ANY(${T}) AND result_r IS NOT NULL)::numeric       AS avg_gross_r,
+  AVG(net_result_r) FILTER (WHERE status = ANY(${T}) AND net_result_r IS NOT NULL)::numeric AS avg_net_r
 `;
 }
 
@@ -204,12 +248,24 @@ export async function getSignalStatistics(filters = {}) {
       cancelled: 'Отменены до входа — сделки не было.',
       expired: 'Истекли — коридор входа не сработал, сделки не было.',
       unresolved: 'Исход не отслежен — бар сетапа вне окна наблюдения.',
+      wins: 'Прибыльные — завершённая сделка с результатом строго больше нуля.',
+      losses: 'Убыточные — завершённая сделка с результатом строго меньше нуля.',
+      breakEven:
+        'В ноль — завершённая сделка с результатом ровно 0 R. Это НЕ убыток: отдельная корзина.',
+      unrated:
+        'Без оценки R — завершённая сделка, у которой ядро не вернуло результат. Не победа, не поражение и не ноль.',
+      ratedCompleted:
+        'Завершено с известным результатом — прибыльные + убыточные + в ноль. Знаменатель доли успешных.',
       winRatePct:
-        'Доля успешных — только по завершённым сделкам; отмены и истечения в знаменатель не входят.',
-      avgGrossR: 'Средний результат в R до комиссий (1R = первоначальный риск между входом и стопом).',
-      avgNetR: 'Средний результат в R после комиссий (2 bps вход / 5 bps выход).',
-      grossRSum: 'Сумма gross R по завершённым сделкам.',
-      netRSum: 'Сумма net R по завершённым сделкам.',
+        'Доля успешных — прибыльные среди завершённых сделок с известным результатом (прибыльные + убыточные + в ноль). Отмены, истечения и неотслеженные исходы в знаменатель не входят: там сделки не было.',
+      avgGrossR:
+        'Средний результат в R до комиссий (1R = первоначальный риск между входом и стопом). Считается только по сделкам с известным R.',
+      avgNetR:
+        'Средний результат в R после комиссий (2 bps вход / 5 bps выход). Считается только по сделкам с известным R.',
+      grossRSum:
+        'Сумма gross R по завершённым сделкам с известным R. Сделки без R не дают вклада — это не ноль, а отсутствие значения.',
+      netRSum:
+        'Сумма net R по завершённым сделкам с известным R. Сделки без R не дают вклада — это не ноль, а отсутствие значения.',
     },
     source: 'server',
   };

@@ -14,6 +14,11 @@
  * который так и не дождался входа, идёт отдельной строкой и НЕ попадает в
  * знаменатель win rate. Если завершённых сделок нет, win rate и средний R
  * показываются как «—», а не как 0 %.
+ *
+ * ВТОРОЕ ПРАВИЛО: сделка «в ноль» (0 R) — это НЕ убыток. Убыток требует
+ * строго отрицательного результата; ноль идёт своей строкой «В ноль», а
+ * завершённая сделка без результата R — строкой «Без оценки R». Знаменатель
+ * доли успешных — завершённые сделки с известным результатом.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -129,8 +134,14 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
         <Row label="Ожидают входа" value={num(t.waitingEntry)} qa="stat-waiting" />
         <Row label="Дошли до входа" value={num(t.filled + t.completed)} qa="stat-filled" />
         <Row label="Завершились сделкой" value={num(t.completed)} qa="stat-completed" />
-        <Row label="Прибыльных сделок" value={num(hasTrades ? t.wins : null)} qa="stat-wins" />
-        <Row label="Убыточных сделок" value={num(hasTrades ? t.losses : null)} qa="stat-losses" />
+        <Row label="Прибыльные" value={num(hasTrades ? t.wins : null)} qa="stat-wins" />
+        <Row label="В ноль" value={num(hasTrades ? t.breakEven : null)} qa="stat-break-even" />
+        <Row label="Убыточные" value={num(hasTrades ? t.losses : null)} qa="stat-losses" />
+        <Row
+          label="Без оценки R"
+          value={num(hasTrades ? t.unrated : null)}
+          qa="stat-unrated"
+        />
         <Row label="Доля успешных" value={pct(t.winRatePct)} qa="stat-winrate" />
         <Row label="Средний результат" value={hasTrades ? r(t.avgNetR) : '—'} qa="stat-avg" />
         <Row
@@ -168,6 +179,11 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
             <Row label="Σ net R" value={r(t.netRSum)} qa="stat-sum-net" />
             <Row label="Дошли до входа, %" value={pct(t.fillRatePct)} qa="stat-fill-rate" />
             <Row label="Завершились сделкой, %" value={pct(t.completionRatePct)} qa="stat-completion-rate" />
+            <Row
+              label="Завершено с известным R"
+              value={num(t.ratedCompleted)}
+              qa="stat-rated-completed"
+            />
             <Row label="Целей достигнуто" value={num(t.targetReached)} qa="stat-target" />
             <Row label="Остановов" value={num(t.invalidated)} qa="stat-invalidated" />
           </dl>
@@ -181,6 +197,9 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
                 label: s.strategyId,
                 published: s.published,
                 completed: s.completed,
+                wins: s.wins,
+                breakEven: s.breakEven,
+                losses: s.losses,
                 winRatePct: s.winRatePct,
                 netRSum: s.netRSum,
               }))}
@@ -196,6 +215,9 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
                 label: s.symbol,
                 published: s.published,
                 completed: s.completed,
+                wins: s.wins,
+                breakEven: s.breakEven,
+                losses: s.losses,
                 winRatePct: s.winRatePct,
                 netRSum: s.netRSum,
               }))}
@@ -204,6 +226,8 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
 
           <div className="ui-helper space-y-1 border-t border-surface-border/60 pt-2">
             <p>{stats.definitions.winRatePct}</p>
+            <p>{stats.definitions.breakEven}</p>
+            <p>{stats.definitions.unrated}</p>
             <p>{stats.definitions.avgGrossR}</p>
             <p>{stats.definitions.avgNetR}</p>
             <p>
@@ -211,9 +235,19 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
               сервер по закрытым свечам; интерфейс её не пересчитывает.
             </p>
             <p>
-              Знаменатель доли успешных — только завершённые сделки ({num(t.completed)} из {num(t.published)}{' '}
-              опубликованных). Отмены ({num(t.cancelled)}), истечения ({num(t.expired)}) и неотслеженные
-              исходы ({num(t.unresolved)}) в него не входят: там сделки не было.
+              Знаменатель доли успешных — завершённые сделки с известным результатом:{' '}
+              {num(t.ratedCompleted)} из {num(t.published)} опубликованных. В него входят прибыльные (
+              {num(t.wins)}), убыточные ({num(t.losses)}) и сделки в ноль ({num(t.breakEven)}).
+            </p>
+            <p>
+              Отмены ({num(t.cancelled)}), истечения ({num(t.expired)}) и неотслеженные исходы (
+              {num(t.unresolved)}) в знаменатель не входят: там сделки не было. Завершённые сделки без
+              результата R ({num(t.unrated)}) тоже не входят — «результат неизвестен» не является ни
+              победой, ни поражением, ни ничьей.
+            </p>
+            <p>
+              Сделка в ноль (0 R) не является убыточной: убыток — это строго отрицательный результат.
+              Именно поэтому «В ноль» показывается отдельной строкой.
             </p>
           </div>
         </div>
@@ -244,6 +278,9 @@ interface BreakdownRow {
   label: string;
   published: number;
   completed: number;
+  wins: number;
+  breakEven: number;
+  losses: number;
   winRatePct: number | null;
   netRSum: number | null;
 }
@@ -257,6 +294,9 @@ const Breakdown: React.FC<{ title: string; qa: string; rows: BreakdownRow[] }> =
           <th className="py-1 pr-2 font-normal">Название</th>
           <th className="py-1 pr-2 font-normal">Опубликовано</th>
           <th className="py-1 pr-2 font-normal">Завершено</th>
+          <th className="py-1 pr-2 font-normal">Прибыльные</th>
+          <th className="py-1 pr-2 font-normal">В ноль</th>
+          <th className="py-1 pr-2 font-normal">Убыточные</th>
           <th className="py-1 pr-2 font-normal">Доля успешных</th>
           <th className="py-1 font-normal">Σ net R</th>
         </tr>
@@ -267,6 +307,9 @@ const Breakdown: React.FC<{ title: string; qa: string; rows: BreakdownRow[] }> =
             <td className="py-1 pr-2 font-sans text-slate-200">{row.label}</td>
             <td className="py-1 pr-2">{row.published}</td>
             <td className="py-1 pr-2">{row.completed}</td>
+            <td className="py-1 pr-2">{row.wins}</td>
+            <td className="py-1 pr-2">{row.breakEven}</td>
+            <td className="py-1 pr-2">{row.losses}</td>
             <td className="py-1 pr-2">{pct(row.winRatePct)}</td>
             <td className="py-1">{r(row.netRSum)}</td>
           </tr>

@@ -196,7 +196,12 @@ export interface SignalMonitorStateDto {
  *
  * КЛЮЧЕВОЕ ОТЛИЧИЕ ОТ БРАУЗЕРНОЙ СВОДКИ: источник — PostgreSQL, а не
  * localStorage одного браузера. «Опубликовано» и «совершилась сделка» —
- * разные счётчики, знаменатель win rate — только завершённые сделки.
+ * разные счётчики, знаменатель win rate — завершённые сделки с ИЗВЕСТНЫМ
+ * результатом (wins + losses + breakEven).
+ *
+ * Классификация завершённой сделки: wins (result_r > 0), losses (< 0),
+ * breakEven (= 0, НЕ убыток), unrated (result_r IS NULL). NULL никогда не
+ * считается нулём.
  */
 export interface SignalStatisticsAggregateDto {
   published: number;
@@ -211,6 +216,12 @@ export interface SignalStatisticsAggregateDto {
   closed: number;
   wins: number;
   losses: number;
+  /** Завершённая сделка с результатом ровно 0 R. НЕ убыток. */
+  breakEven: number;
+  /** Завершённая сделка без результата R: не победа, не поражение, не ноль. */
+  unrated: number;
+  /** Завершённые сделки с известным результатом: wins + losses + breakEven. */
+  ratedCompleted: number;
   /** null — знаменатель ноль: «нет данных» ≠ 0 %. */
   winRatePct: number | null;
   avgGrossR: number | null;
