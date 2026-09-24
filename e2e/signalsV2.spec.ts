@@ -406,7 +406,13 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await installSignalsFixtures(page, log);
     await page.goto('/signals');
 
+    // Секция достижима (свёрнутый блок «Статистика и аудит»).
     await expect(page.getByTestId('signals-audit-section')).toBeVisible();
+    const stats = page.locator('[data-testid="signals-stats"]');
+    await expect(stats).toBeVisible();
+
+    // Раскрываем: внутри — браузерный журнал (отдельный источник, не смешан с серверной лентой).
+    await stats.locator('button').first().click();
     await expect(page.getByTestId('signals-ledger-audit')).toBeVisible();
 
     await shot(page, 'signals-audit-section');
