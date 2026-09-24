@@ -97,7 +97,19 @@ export async function startPgHarness(
     await pg.start();
     const admin = await pg.getPgClient('postgres');
     await admin.connect();
-    await admin.query('CREATE DATABASE cryptora');
+    // ЯВНАЯ кодировка UTF8. Без неё `initdb` в песочнице/CI поднимает кластер
+    // с `SQL_ASCII` (локаль не задана), а `CREATE DATABASE` наследует её — и
+    // тогда сервер не может закодировать сообщение об ошибке, в DETAIL которого
+    // попадает строка с кириллицей: вместо ожидаемого `23514`
+    // (check_violation) клиент получает `22021`
+    // (invalid byte sequence for encoding "UTF8"). Ошибка при этом ДЕЙСТВИТЕЛЬНО
+    // происходит, но её класс подменяется — тест, проверяющий именно SQLSTATE,
+    // становится ложно-красным. Production — UTF8, поэтому и тестовая база
+    // обязана быть UTF8: иначе проверяется не тот кластер, что работает на проде.
+    //
+    // TEMPLATE template0 обязателен: явные ENCODING/LOCALE нельзя задать,
+    // копируя template1 с другой кодировкой.
+    await admin.query("CREATE DATABASE cryptora ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0");
     await admin.end();
   } catch (e) {
     try {

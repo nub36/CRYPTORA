@@ -39,6 +39,7 @@
  */
 
 import { query } from '../db/pool.js';
+import { PROVENANCE_VERIFIED } from './signalProvenance.js';
 import {
   OPEN_SIGNAL_STATUSES,
   TRADE_CLOSED_STATUSES,
@@ -187,14 +188,32 @@ function aggregateSelect(tradeIdx) {
 `;
 }
 
-/** Общий конструктор WHERE: период, стратегия, инструмент — один код на все разрезы. */
-function buildFilter({ strategyId, symbol, period, nowMs }) {
+/**
+ * Общий конструктор WHERE: период, стратегия, инструмент, provenance — один код
+ * на все разрезы.
+ *
+ * PROVENANCE (миграция 011). В знаменатель win rate / R и в сравнение стратегий
+ * входят ТОЛЬКО строки с доказанным происхождением (`VERIFIED`). Причина не в
+ * «качестве» строк, а в атрибуции: `result_r` посчитан ядром по логике ТОЙ
+ * стратегии, которая создала сетап, а приписан `strategy_id` строки. Для
+ * перемаркированной строки (MISMATCH) это заведомо ложная атрибуция, для
+ * UNKNOWN — недоказанная. Считать их значит приписать стратегии чужой
+ * результат.
+ *
+ * `includeUnverified: true` снимает фильтр — ТОЛЬКО дляaudit-счётчиков, где
+ * вопрос в том, СКОЛЬКО строк исключено, а не каков их результат.
+ */
+function buildFilter({ strategyId, symbol, period, nowMs, includeUnverified = false }) {
   const where = [];
   const params = [];
   const from = periodStart(period, nowMs);
   if (from) {
     params.push(from);
     where.push(`created_at >= $${params.length}`);
+  }
+  if (!includeUnverified) {
+    params.push(PROVENANCE_VERIFIED);
+    where.push(`provenance_status = $${params.length}`);
   }
   if (strategyId) {
     params.push(strategyId);
@@ -227,7 +246,12 @@ export async function getSignalStatistics(filters = {}) {
   const tradeIdx = params.length;
   const select = aggregateSelect(tradeIdx);
 
-  const [total, byStrategy, bySymbol] = await Promise.all([
+  // Те же фильтры, но БЕЗ предиката provenance: считаем, сколько строк
+  // исключено из показателей и почему. Без этого «статистика обнулилась»
+  // выглядело бы как пропажа данных, а не как карантин.
+  const auditBase = buildFilter({ ...filters, period, nowMs, includeUnverified: true });
+
+  const [total, byStrategy, bySymbol, provenanceRows] = await Promise.all([
     query(`SELECT ${select} FROM signals ${base.clause}`, params),
     query(
       `SELECT strategy_id, ${select}
@@ -244,7 +268,28 @@ export async function getSignalStatistics(filters = {}) {
         LIMIT 100`,
       params
     ),
+    query(
+      `SELECT provenance_status, COUNT(*)::int AS n
+         FROM signals ${auditBase.clause}
+        GROUP BY provenance_status`,
+      auditBase.params
+    ),
   ]);
+
+  /** Аудит-счётчики карантина: считаются по ВСЕМ строкам, в показатели не входят. */
+  const provenance = {
+    verified: 0,
+    mismatch: 0,
+    unknown: 0,
+    total: 0,
+  };
+  for (const r of provenanceRows.rows) {
+    const n = Number(r.n) || 0;
+    if (r.provenance_status === 'VERIFIED') provenance.verified = n;
+    else if (r.provenance_status === 'MISMATCH') provenance.mismatch = n;
+    else provenance.unknown += n;
+    provenance.total += n;
+  }
 
   return {
     period,
@@ -261,6 +306,13 @@ export async function getSignalStatistics(filters = {}) {
     totals: mapAggregate(total.rows[0] ?? {}),
     byStrategy: byStrategy.rows.map((r) => ({ strategyId: r.strategy_id, ...mapAggregate(r) })),
     bySymbol: bySymbol.rows.map((r) => ({ symbol: r.symbol, ...mapAggregate(r) })),
+    /**
+     * Карантин происхождения (миграция 011): сколько строк исключено из
+     * показателей выше и по какой причине. Сами показатели считаются ТОЛЬКО по
+     * `verified` — здесь эти числа нужны, чтобы «показатели обнулились» не
+     * выглядело как пропажа данных.
+     */
+    provenance,
     /**
      * Определения, которые UI обязан показывать рядом с числами. Формулировки
      * намеренно человеческие: «опубликован» и «сделка» — разные события.
@@ -293,6 +345,10 @@ export async function getSignalStatistics(filters = {}) {
         'Средний результат в R после комиссий (2 bps вход / 5 bps выход). Считается только по сделкам с известным R.',
       grossRSum:
         'Сумма gross R по завершённым сделкам с известным R. Сделки без R не дают вклада — это не ноль, а отсутствие значения.',
+      provenance:
+        'Происхождение сигнала: verified — сигнал создан той стратегией, которой приписан; mismatch — создан другой стратегией (доказательство: префикс engine_setup_id); unknown — доказательства нет. В показатели входит только verified: считать чужой результат своим нельзя.',
+      provenanceExcluded:
+        'Строки в карантине не удалены и не изменены — они исключены из расчёта, потому что их результат принадлежит другой стратегии.',
       netRSum:
         'Сумма net R по завершённым сделкам с известным R. Сделки без R не дают вклада — это не ноль, а отсутствие значения.',
     },

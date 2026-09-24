@@ -426,9 +426,19 @@ criteria · Dependencies · Status · PR/commit**.
   `strategyId` того сетапа, который его породил; уровни берутся из raw output ИМЕННО этой
   стратегии. Переименование чужого сетапа запрещено на уровне кода.
 - **Fix (только infrastructure/orchestration, математика стратегий не тронута):**
-  * ссылка на ledger фиксируется **синхронно** с созданием движка, до любого `await`;
+  * **свой движок на скан**: `new core.LiveSignalEngine({...})` вместо
+    `resetInstance() + getInstance()` — глобальный синглтон серверному скану не нужен,
+    чужой скан не может ни обнулить, ни остановить наш движок;
+  * ссылка на ledger фиксируется **синхронно** с созданием движка, до любого `await`
+    (точки внедрения журнала в frozen API нет: `LiveSignalConfig` не содержит `ledger`);
+  * **мьютекс критической секции** (`scanMutex.js`): внутри ядра ровно один скан.
+    Предзагрузка свечей ВНЕ блокировки + in-flight дедупликация `MarketDataFetcher` ⇒
+    платим wall-clock, а не N×запросов к бирже;
+  * `loadStrategyCore()` single-flight целиком: все сканы делят ОДИН объект модуля;
   * `buildSignalRecord()` возвращает `record: null` + `provenanceMismatch`, если
     `setup.strategyId !== strategyId` — чужой сетап НЕ публикуется и НЕ переименовывается;
+  * новый сигнал получает `provenanceStatus` ДО записи: `VERIFIED` только при совпадении,
+    иначе `UNKNOWN` (fail-closed);
   * счётчик `provenanceMismatch` в сводке скана + `console.error` (ЧП не может быть тихим);
   * декларации `strategyEngine.d.ts` обновлены под новый контракт.
 - **Regression-тесты (падают на старом коде, зелёные на новом):**
@@ -443,22 +453,54 @@ criteria · Dependencies · Status · PR/commit**.
     PostgreSQL и находит форму инцидента.
   * `tests/unit/strategyEngineOrchestration.test.ts` — контракт `buildSignalRecord` дополнен
     проверкой provenance.
+  * `tests/unit/strategyProvenanceRace.test.ts` — **барьерное состязательное перемешивание**
+    трёх сканов без слипов и таймингов: прямой, обратный и перемешанный порядок выпуска,
+    шесть одновременных сканов, враждебный `resetInstance()` посередине чужого скана, гонка
+    записи в БД вне мьютекса и падение внутри критической секции. Прямая проверка
+    «в ядре никогда нет двух сканов одновременно» (`maxInsideScan === 1`).
+  * `tests/integration/signalProvenanceQuarantine.test.ts` — 19 проверок на настоящем
+    PostgreSQL с населением, повторяющим production (45 строк / 15 групп / 30 расхождений /
+    12 открытых MATCH): миграция 011, fail-closed по умолчанию, совпадение JS- и
+    SQL-классификаторов, dry-run, `--apply`, идемпотентность, неизменность доказательств и
+    хэшей, валидность цепочки до и после, монитор и статистика.
 - **SQL для владельца (только SELECT):** `scripts/sql/signal-provenance-audit.sql` —
   collision groups по `(symbol, signal_candle_ts, direction, entry_min, entry_max, stop_loss,
   targets)` и ДОКАЗАННАЯ подмена авторства по `engine_setup_id` / `strategy_version` /
   `exit_rule` (все три поля пишутся из сетапа, поэтому называют истинного автора).
-- **Судьба уже записанных production-сигналов:** НЕ удалять и НЕ переписывать. Выбор политики
-  (A — provenance подтверждён ⇒ мониторить; B — подмена ⇒ административно пометить
-  invalid/unresolved с явной причиной; C — карантин строк до фикса) — за владельцем, после
-  прогона SQL-аудита. Черновик — `docs/SIGNALS.md` §12.
+- **Подтверждённая production-картина (read-only аудит владельца):** всего сигналов **45**;
+  ACTIVE 36 / FILLED 6 / CANCELLED 3; **15** collision-групп × 3 strategy_id = 45 строк;
+  **30** доказанных расхождений; открытых с совпадением **12** (ACTIVE 6 + FILLED 6);
+  MISMATCH ACTIVE — 30. Матрица: V2.8←V3.0 6, V2.8←V3.3 9, V3.0←V3.0 6, V3.0←V3.3 9,
+  V3.3←V3.0 6, V3.3←V3.3 9 ⇒ **V2.8 не автор ни одной строки**, MATCH 15, MISMATCH 30.
+  Разбор — `docs/SIGNALS.md` §12.5 и `docs/incidents/2026-09-24-signal-provenance.md`.
+- **Судьба уже записанных production-сигналов:** НЕ удалять и НЕ переписывать. Выбран
+  вариант **C (карантин)**, реализованный аддитивно:
+  * **миграция 011** — `signals.provenance_status` (`VERIFIED | MISMATCH | UNKNOWN`,
+    `DEFAULT 'UNKNOWN'` — fail-closed) + индекс под рабочий набор монитора;
+  * классификация legacy-строк **только по сильному доказательству** — префикс
+    `engine_setup_id` (формат ядра `${strategyId}-${SYMBOL}-${openTime}`): совпал ⇒
+    `VERIFIED`, другой ⇒ `MISMATCH`, нет/не читается ⇒ `UNKNOWN`, и `UNKNOWN` **никогда**
+    не повышается до `VERIFIED` автоматически;
+  * монитор ведёт только открытые `VERIFIED` (MISMATCH — никогда, UNKNOWN — fail-closed);
+    статистика считает только `VERIFIED`, а карантин виден отдельными audit-счётчиками;
+  * процедура `scripts/signal-provenance-classify.mjs`: без аргументов — только отчёт,
+    `--apply` — один UPDATE одной колонки в транзакции, идемпотентна,
+    **на production НЕ запускалась**;
+  * `provenance_status` не входит в `hashPayloadV2` ⇒ хэш-цепочка остаётся валидной
+    до и после карантина (покрыто тестом).
 - **Монитор PR #18:** НЕ деплоить поверх непроверенных ACTIVE-сигналов — монитор начал бы
   сопровождать сетапы, авторство которых не доказано, и записал бы их исходы в строки с
-  чужим `strategy_id`. Порядок: прогнать SQL-аудит → выбрать политику → задеплоить фикс →
-  затем монитор.
+  чужим `strategy_id`. **Точный порядок деплоя (A–I), сверенный с реальным запуском**
+  (`systemd/cryptora.service` → `server/index.js` стартует монитор автоматически и
+  безусловно; `deploy.sh` НЕ применяет миграции и НЕ рестартует сервис; миграции —
+  отдельным `npm run migrate`) — см. `docs/SIGNALS.md` §12.9. Три ловушки: код раньше
+  миграции ⇒ `column does not exist` на старте; классификация раньше кода ⇒ старый монитор
+  увидит все 42 открытые строки; pull без остановки сервиса ⇒ продолжает работать старый код.
 - **Dependencies:** прогноз SQL-аудита на production, решение владельца по политике.
-- **Status:** `[~]` — fix + тесты готовы в этом PR, **не слит и не задеплоен**.
+- **Status:** `[~]` — fix + тесты + карантин готовы в этом PR, **не слит и не задеплоен**.
   **STRATEGY MATH MODIFIED: NO · PRODUCTION STRATEGIES ENABLED: NO ·
-  PRODUCTION SIGNALS DELETED: NO · MIGRATION 010 APPLIED: NO.**
+  PRODUCTION SIGNALS DELETED: NO · MIGRATION 010 APPLIED: NO ·
+  PRODUCTION SIGNALS MODIFIED: NO · PR #19 MERGED: NO · MIGRATION 011 PRODUCTION: NO.**
 
 ---
 

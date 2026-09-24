@@ -32,7 +32,7 @@
  * собственном инварианте TextEncoder (см. strategyEngineCore.test.ts, F-03).
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { startPgHarness, type PgHarness } from '../helpers/embeddedPgHarness';
 
 let H: PgHarness | null = null;
@@ -249,6 +249,20 @@ async function drain(scheduler: any, timeoutMs = 180_000): Promise<void> {
   }
 }
 
+/**
+ * Состояние ядра, которое вернул последний вызов `getStatus()`.
+ *
+ * Движок scan-scoped, поэтому спросить состояние у статического синглтона
+ * после скана нельзя — его там нет. Наблюдаемость берётся с прототипа: так же
+ * проверяется, что сервер действительно работает с ЭКЗЕМПЛЯРОМ ядра.
+ */
+function lastStatus(spy: any): any {
+  const results = spy.mock.results;
+  const last = results[results.length - 1];
+  expect(last, 'getStatus() обязан быть вызван на экземпляре скана').toBeTruthy();
+  return last.value;
+}
+
 async function telemetry(strategyId: string) {
   const rows = await H!.q(
     `SELECT enabled, last_scan_at, last_error, last_signal_at, scan_interval_seconds
@@ -287,6 +301,7 @@ describe('Сквозной сценарий: планировщик → ядро
     const scheduler = schedulerMod.getStrategyScheduler();
     expect(scheduler.stats.running, 'тест не поднимает таймеры приложения').toBe(false);
 
+    const statusSpy = vi.spyOn(core.LiveSignalEngine.prototype, 'getStatus');
     const cycle = await scheduler.tick();
     expect(cycle.launched, 'включённая стратегия обязана быть запущена').toContain(V30);
     await drain(scheduler);
@@ -298,11 +313,16 @@ describe('Сквозной сценарий: планировщик → ядро
     expect(row.last_error, 'успешный скан не оставляет ошибку в телеметрии').toBeNull();
     expect(row.last_signal_at, 'синтетика не даёт сетапов: сигналов нет, и это честно').toBeNull();
 
-    // Состояние рантайма ядра продвинулось (F-01: раньше скан падал с TypeError).
-    const status = core.LiveSignalEngine.getInstance().getStatus();
-    expect(status.scanCount).toBeGreaterThanOrEqual(1);
+    // Состояние рантайма ядра продвинулось (F-01: раньше скан падал с
+    // TypeError). Движок scan-scoped (`new LiveSignalEngine`), поэтому
+    // состояние прошедшего скана берётся с ЭКЗЕМПЛЯРА, а не из статического
+    // синглтона: `getInstance()` после серверного скана обязан быть пуст.
+    expect(core.LiveSignalEngine.getInstance(), 'серверный скан не пользуется статическим синглтоном').toBeNull();
+    const status = lastStatus(statusSpy);
     expect(status.scanning).toBe(false);
     expect(status.lastError, 'ядро не сообщает об ошибке скана').toBeNull();
+    expect(status.scanCount, 'ядро действительно выполнило проход').toBeGreaterThanOrEqual(1);
+    statusSpy.mockRestore();
 
     // Публичный и админский статус отражают реальное состояние.
     const publicStrategies = await H!.client.get('/api/strategies');
@@ -334,6 +354,7 @@ describe('Сквозной сценарий: планировщик → ядро
     let clock = Date.parse('2026-09-20T12:00:00Z');
     const scheduler = new schedulerMod.StrategyScheduler({ now: () => clock });
 
+    const statusSpy2 = vi.spyOn(core.LiveSignalEngine.prototype, 'getStatus');
     const first = await scheduler.tick();
     expect(first.launched).toContain(V30);
     await drain(scheduler);
@@ -363,9 +384,10 @@ describe('Сквозной сценарий: планировщик → ядро
 
     const { rows } = await H!.db.query('SELECT COUNT(*)::int AS n FROM signals');
     expect(rows[0].n, 'повторный скан не создал строк').toBe(0);
-    // Ядро сбрасывает экземпляр на каждый скан (runStrategyScan), поэтому
-    // счётчик здесь снова 1; источник истины о повторах — строки в БД.
-    expect(core.LiveSignalEngine.getInstance().getStatus().scanCount).toBe(1);
+    // Движок создаётся ЗАНОВО на каждый скан (scan-scoped контекст), поэтому
+    // счётчик снова 1; источник истины о повторах — строки в БД.
+    expect(lastStatus(statusSpy2).scanCount).toBe(1);
+    statusSpy2.mockRestore();
   });
 
   withCore('отказ рыночных данных попадает в last_error и в статус ERROR, а не превращается в «сигналов нет»', async () => {

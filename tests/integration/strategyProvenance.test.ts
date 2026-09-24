@@ -305,12 +305,26 @@ describe('Инцидент: конкурентный запуск трёх ст�
 
     // (а) provenance по идентификатору сетапа: его mint'ит сам реплей стратегии.
     for (const rec of h.inserts) {
-      expect(rec.strategyId, 'strategyId строки обязан быть из реестра').toBe(ID_BY_ENGINE_KEY[rec.metadata?.engineVersion] ?? rec.strategyId);
+      // Утверждение без самоподстраховки: ключ движка из metadata обязан быть
+      // известным, а стратегия, которой он соответствует, — ровно та, что в
+      // строке. Фолбэка «а иначе поверим строке» здесь быть не должно: иначе
+      // проверка вырождается в тавтологию и всегда зелёная.
+      const engineVersion = rec.metadata?.engineVersion;
+      expect(engineVersion, 'metadata.engineVersion обязателен и известен').toBeTruthy();
+      expect(
+        Object.prototype.hasOwnProperty.call(ID_BY_ENGINE_KEY, engineVersion),
+        `неизвестный ключ движка: ${engineVersion}`,
+      ).toBe(true);
+      expect(rec.strategyId, 'strategyId строки = стратегия, чей движок её создал').toBe(
+        ID_BY_ENGINE_KEY[engineVersion],
+      );
       expect(
         String(rec.engineSetupId).startsWith(`${rec.strategyId}-`),
         `engine_setup_id=${rec.engineSetupId} не принадлежит strategy_id=${rec.strategyId}`,
       ).toBe(true);
       expect(rec.strategyVersion, 'версия несётся самим реплеем, а не вызывающим').toBe(VERSION_BY_ID[rec.strategyId]);
+      // Происхождение доказано ДО записи и зафиксировано в строке.
+      expect(rec.provenanceStatus, 'новый сигнал пишется только с доказанным происхождением').toBe('VERIFIED');
     }
 
     // (б) provenance по уровням: строка равна СОБСТВЕННОМУ raw output стратегии.

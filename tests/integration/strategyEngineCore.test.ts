@@ -71,6 +71,43 @@ describe('Собранное ядро стратегий', () => {
     expect(core, 'loadStrategyCore() вернул пустой модуль').toBeTruthy();
   });
 
+  /**
+   * Инцидент 2026-09-24, второе следствие разбора конкуренции.
+   *
+   * URL бандла содержит `?v=${Date.now()}` (cache-busting), поэтому два
+   * одновременных вызова `loadStrategyCore()` на холодном старте получали бы
+   * РАЗНЫЕ объекты модуля — а значит РАЗНЫЕ статические синглтоны
+   * `LiveSignalEngine` / `SignalsAuditLedger`. Вопрос «делят ли эти два скана
+   * состояние» перестал бы быть свойством кода и стал бы свойством гонки.
+   *
+   * Здесь проверяется, что такого нет: параллельные вызовы обязаны вернуть
+   * ОДИН И ТОТ ЖЕ объект модуля.
+   */
+  withCore('параллельные loadStrategyCore() дают ОДИН объект модуля (single-flight)', async () => {
+    const mods = await Promise.all([
+      loadStrategyCore(),
+      loadStrategyCore(),
+      loadStrategyCore(),
+    ]);
+    for (const m of mods) {
+      expect(m, 'каждый вызов вернул модуль').toBeTruthy();
+      expect(m, 'объект модуля обязан быть один и тот же').toBe(mods[0]);
+    }
+    expect(mods[0], 'и это тот же модуль, что загружен в beforeAll').toBe(core);
+  });
+
+  withCore('движок ядра создаётся напрямую: серверному скану синглтон не нужен', () => {
+    // Серверный скан делает `new core.LiveSignalEngine({...})` — это и есть
+    // scan-scoped контекст (инцидент 2026-09-24). Конструктор обязан быть
+    // публичным, иначе убрать глобальный синглтон из пути скана нельзя.
+    expect(typeof core.LiveSignalEngine).toBe('function');
+    expect(() => new core.LiveSignalEngine({
+      provider: { getCandles: async () => [] },
+      symbols: [],
+      strategies: ['V3.0'],
+    })).not.toThrow();
+  });
+
   withCore('экспортирует интерфейс, который использует серверный движок', () => {
     for (const name of [
       'LiveSignalEngine',

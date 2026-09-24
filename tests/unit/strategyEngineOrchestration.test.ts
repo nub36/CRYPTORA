@@ -43,6 +43,8 @@ const h = vi.hoisted(() => {
     status: null as any,
     scanNowCalls: 0,
     engineResets: 0,
+    /** Сколько движков создано через `new` (scan-scoped контекст). */
+    enginesCreated: 0,
     ledgerResets: 0,
     instanceConfig: null as any,
     retrospectiveFilter: null as any,
@@ -91,14 +93,31 @@ vi.mock('../../server/services/strategyEngine/strategyCoreBundle.js', () => {
     },
   });
 
+  /**
+   * Движок ядра. Класс, а не объект: серверный скан больше НЕ пользуется
+   * статическим синглтоном, а создаёт СВОЙ экземпляр через `new`
+   * (scan-scoped контекст, инцидент 2026-09-24). `getInstance` /
+   * `resetInstance` остаются в форме настоящего ядра, но серверный путь ими
+   * не пользуется — это и проверяется счётчиком `engineResets`.
+   */
+  class FakeEngine {
+    constructor(config: any) {
+      h.state.enginesCreated++;
+      Object.assign(this, makeEngine(config));
+    }
+
+    static resetInstance() {
+      h.state.engineResets++;
+    }
+
+    static getInstance(config: any) {
+      return makeEngine(config);
+    }
+  }
+
   return {
     loadStrategyCore: async () => ({
-      LiveSignalEngine: {
-        resetInstance: () => {
-          h.state.engineResets++;
-        },
-        getInstance: (config: any) => makeEngine(config),
-      },
+      LiveSignalEngine: FakeEngine,
       SignalsAuditLedger: {
         resetInstance: () => {
           h.state.ledgerResets++;
@@ -294,6 +313,7 @@ beforeEach(() => {
   h.state.status = makeStatus();
   h.state.scanNowCalls = 0;
   h.state.engineResets = 0;
+  h.state.enginesCreated = 0;
   h.state.ledgerResets = 0;
   h.state.instanceConfig = null;
   h.state.retrospectiveFilter = null;
@@ -357,15 +377,32 @@ describe('Движок вызывает ядро по существующему
     expect(result.scan.timeframes).toEqual(['1h', '4h']);
   });
 
-  it('журнал и экземпляр ядра сбрасываются перед каждым сканом', async () => {
+  it('журнал сбрасывается перед каждым сканом, а движок создаётся свой', async () => {
     await runStrategyScan({
       strategyId: V30,
       symbols: ['BTCUSDT'],
       fetcher: makeFetcher() as any,
       persist: false,
     });
-    expect(h.state.engineResets).toBeGreaterThan(0);
+    // Журнал: точки внедрения нет (`LiveSignalConfig` не содержит `ledger`),
+    // поэтому свой журнал на скан получается через статический синглтон и
+    // сбрасывается перед созданием движка.
     expect(h.state.ledgerResets).toBeGreaterThan(0);
+    // Движок: глобальный синглтон НЕ трогается вообще.
+    expect(h.state.enginesCreated, 'свой экземпляр на скан').toBe(1);
+    expect(h.state.engineResets, 'синглтон движка серверному скану не нужен').toBe(0);
+  });
+
+  it('каждый скан получает НОВЫЙ экземпляр движка: состояние не протекает между сканами', async () => {
+    for (let i = 0; i < 3; i += 1) {
+      await runStrategyScan({
+        strategyId: V30,
+        symbols: ['BTCUSDT'],
+        fetcher: makeFetcher() as any,
+        persist: false,
+      });
+    }
+    expect(h.state.enginesCreated, 'три скана — три движка, общего состояния нет').toBe(3);
   });
 
   it('отказ рыночных данных бросается ДО скана: «нет данных» не выглядит как «нет сетапов»', async () => {

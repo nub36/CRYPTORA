@@ -5,7 +5,7 @@
  * из `src/` и переносит то, что ядро посчитало, в PostgreSQL.
  */
 
-import type { SignalRow, SignalStatus, SignalEntryType } from '../signalRepository.js';
+import type { SignalRow, SignalStatus, SignalEntryType, ProvenanceStatus } from '../signalRepository.js';
 import type { MarketDataFetcher } from './marketDataFetcher.js';
 
 /** registry id стратегии ↔ ключ стратегии внутри LiveSignalEngine. */
@@ -46,6 +46,12 @@ export interface SignalInsertRecord {
   /** ВСЯ лестница целей; tp1/tp2 выводит репозиторий. */
   targets: number[] | null;
   status: SignalStatus;
+  /**
+   * Происхождение, доказанное ДО записи: 'VERIFIED' только если
+   * `setup.strategyId === strategyId`, иначе 'UNKNOWN' (fail-closed).
+   * Расхождение даёт `record: null` — строка не публикуется вовсе.
+   */
+  provenanceStatus: ProvenanceStatus;
   metadata: Record<string, unknown> | null;
 }
 
@@ -89,6 +95,14 @@ export interface ScanRuntimeSummary {
   /** Сколько баров реально оценил реплей (из ReplaySummary ядра). */
   evaluatedBars: number;
   providerIsDemo: boolean;
+  /**
+   * Снимок состояния ядра ПОСЛЕ скана (`engine.getStatus()` как есть).
+   *
+   * Движок scan-scoped, поэтому статический синглтон больше не источник
+   * истины о прошедшем скане: спросить `getInstance().getStatus()` нельзя,
+   * там пусто. Наблюдаемость обязана жить в результате.
+   */
+  runtime: Record<string, unknown>;
 }
 
 export interface StrategyScanResult {

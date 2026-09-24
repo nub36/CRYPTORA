@@ -47,6 +47,7 @@
 
 import crypto from 'node:crypto';
 import { query, getClient } from '../db/pool.js';
+import { PROVENANCE_VERIFIED, PROVENANCE_UNKNOWN } from './signalProvenance.js';
 
 /** Фиксированный ключ advisory lock для сериализации дописи в цепочку. */
 export const SIGNAL_CHAIN_LOCK_KEY = 730117;
@@ -283,6 +284,12 @@ function mapRow(r) {
     monitorLastCheckAt: r.monitor_last_check_at ?? null,
     monitorLastResult: r.monitor_last_result ?? null,
     monitorLastError: r.monitor_last_error ?? null,
+    // ── Происхождение (миграция 011; не влияет на уровни и хэши) ──
+    // DEFAULT в БД — 'UNKNOWN' (fail-closed), но форма строки обязана вернуть
+    // значение и для строки, прочитанной со старой схемой: `undefined` здесь
+    // означал бы «фильтры происхождения не применились», что опаснее лишнего
+    // UNKNOWN. НЕ входит в hashPayloadV2 — хэш-цепочка не зависит от карантина.
+    provenanceStatus: r.provenance_status ?? PROVENANCE_UNKNOWN,
   };
 }
 
@@ -292,6 +299,9 @@ const INSERT_COLUMNS = [
   'direction', 'signal_candle_ts', 'entry_type', 'valid_for_bars', 'exit_rule',
   'entry_min', 'entry_max', 'stop_loss', 'tp1', 'tp2', 'targets',
   'status', 'created_at', 'metadata', 'hash', 'previous_hash', 'chain_version',
+  // Миграция 011. НЕ участвует в hashPayloadV2: перенесение строки в карантин
+  // не переписывает `hash` и не рвёт цепочку.
+  'provenance_status',
 ];
 
 /**
@@ -355,6 +365,11 @@ export async function insertSignal(signal) {
       created_at: createdAt,
       metadata: signal.metadata ?? null,
       chain_version: CHAIN_VERSION,
+      // Происхождение. Ставит КОД ГЕНЕРАЦИИ, проверив `setup.strategyId ===
+      // strategyId` ДО записи; здесь нет «доверяй вызывающему»: если статус не
+      // передан, строка уходит в UNKNOWN, а не в VERIFIED (fail-closed).
+      // Поле НЕ входит в hashPayloadV2 — см. комментарий к INSERT_COLUMNS.
+      provenance_status: signal.provenanceStatus ?? PROVENANCE_UNKNOWN,
     };
 
     const hash = computeSignalHash(hashPayloadV2(row), prevHash);
@@ -484,9 +499,21 @@ export async function countSignals(filters = {}) {
  * @param {string} [strategyId]
  * @param {number} [limit]
  */
-export async function listOpenSignals(strategyId, limit = MAX_OPEN_SIGNALS_FOR_SYNC) {
+export async function listOpenSignals(
+  strategyId = null,
+  limit = MAX_OPEN_SIGNALS_FOR_SYNC,
+  opts = {}
+) {
   const params = [OPEN_SIGNAL_STATUSES];
   let sql = `SELECT * FROM signals WHERE status = ANY($1)`;
+  // Карантин происхождения (миграция 011). Рабочий набор монитора — ТОЛЬКО
+  // доказанные строки: доводить до исхода чужой сетап значит записать чужой
+  // result_r в репутацию стратегии. `includeQuarantined` — осознанный сервисный
+  // доступ (диагностика/аудит), а не рабочий путь, поэтому он по имени.
+  if (!opts.includeQuarantined) {
+    params.push(PROVENANCE_VERIFIED);
+    sql += ` AND provenance_status = $${params.length}`;
+  }
   if (strategyId) {
     params.push(strategyId);
     sql += ` AND strategy_id = $${params.length}`;
@@ -503,11 +530,15 @@ export async function listOpenSignals(strategyId, limit = MAX_OPEN_SIGNALS_FOR_S
  * «Активный» = живой сетап: ждёт входа (ACTIVE) или уже в позиции (FILLED) —
  * тот же смысл, что у `SignalsAuditLedger.getActiveSetups()`.
  */
-export async function countActiveSignals(strategyId) {
+export async function countActiveSignals(strategyId = null, opts = {}) {
   const params = [OPEN_SIGNAL_STATUSES];
+  const provenance = !opts.includeQuarantined
+    ? ` AND provenance_status = $${params.length + 1}`
+    : '';
+  if (!opts.includeQuarantined) params.push(PROVENANCE_VERIFIED);
   const base = strategyId
-    ? `SELECT COUNT(*)::int AS n FROM signals WHERE status = ANY($1) AND strategy_id=$2`
-    : `SELECT COUNT(*)::int AS n FROM signals WHERE status = ANY($1)`;
+    ? `SELECT COUNT(*)::int AS n FROM signals WHERE status = ANY($1)${provenance} AND strategy_id=$${params.length + 1}`
+    : `SELECT COUNT(*)::int AS n FROM signals WHERE status = ANY($1)${provenance}`;
   if (strategyId) params.push(strategyId);
   const { rows } = await query(base, params);
   return rows[0].n;
