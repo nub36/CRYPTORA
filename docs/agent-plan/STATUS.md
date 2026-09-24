@@ -26,10 +26,17 @@
 > серверную фильтрацию, ограниченную пагинацию, детерминированный порядок и честные 400 с кодами вместо тихой
 > пустоты; эксплуатационные инструкции исправлены (`npm start` = legacy static-сервер, бэкенд = `npm run server`
 > / systemd → `server/index.js`, шаблон юнита приведён к фактической схеме VPS).
-> Проверено: `npm run typecheck` — 0 ошибок; полный набор `vitest run` — **120 файлов / 1299 тестов passed,
-> 0 unhandled errors** (было 1176 passed + 2 unhandled pg-ошибки); три подряд прогона `tests/integration` —
-> 103 passed, **0 skipped**; `npm run build` — успешно; миграция 009 применена на настоящем PostgreSQL
-> (embedded-postgres) всеми девятью файлами и идемпотентно. Математика стратегий не менялась:
+> Сквозной сценарий стажинга автоматизирован: `tests/integration/schedulerPersistence.test.ts` (настоящий
+> PostgreSQL + настоящие миграции + настоящее приложение + настоящее скомпилированное ядро) проходит цепочку
+> «включённая через админ-API стратегия → `StrategyScheduler.tick()` → `scanNow()` → `last_scan_at` продвинулся,
+> `last_error` = null → повторный цикл уважает интервал и не дублирует → отказ рынка виден в `last_error`/`ERROR` →
+> запись `buildSignalRecord()` доходит до БД и `GET /api/signals` со всей лестницей целей»; подменяется только
+> сетевой слой рыночных данных. Общий bootstrap настоящего PostgreSQL для новых интеграционных тестов —
+> `tests/helpers/embeddedPgHarness.ts`.
+> Проверено: `npm run typecheck` — 0 ошибок; полный набор `vitest run` — **121 файл / 1305 тестов passed,
+> 0 unhandled errors** (было 1176 passed + 2 unhandled pg-ошибки); восемь подряд прогонов `tests/integration` —
+> 109 passed, **0 skipped** (один прогон — с удалённым `.generated/`, холодная сборка бандла); `npm run build` —
+> успешно; миграция 009 применена на настоящем PostgreSQL (embedded-postgres) всеми девятью файлами и идемпотентно. Математика стратегий не менялась:
 > `src/services/strategyArchive/**`, `src/services/signals/**` — нулевой diff
 > (**STRATEGY MATH MODIFIED: NO**). Дизайн Signals V2 (без реализации UI) —
 > `docs/agent-plan/SIGNALS_V2_HANDOFF.md`.

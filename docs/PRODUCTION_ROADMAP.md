@@ -290,7 +290,13 @@ criteria · Dependencies · Status · PR/commit**.
   * `GET /api/signals`: фильтры (symbol/strategy/status/open/direction), `limit` ≤ 200, `offset` ≤ 5000,
     newest-first, `total` + `appliedFilters` + домен состояний в ответе, 400 с кодом вместо тихой пустоты;
   * `pool.on('error')` со структурированной записью без секретов; `closePool()` терминален; остановка закрывает
-    пул последним шагом; три подряд прогона интеграционного набора — 103 passed, 0 skipped, 0 unhandled errors;
+    пул последним шагом; восемь подряд прогонов интеграционного набора — 109 passed, 0 skipped, 0 unhandled errors
+    (один из прогонов — с удалённым `.generated/`, т.е. холодная сборка бандла ядра);
+  * сквозной сценарий автоматизирован: `tests/integration/schedulerPersistence.test.ts` на настоящем PostgreSQL
+    и настоящем скомпилированном ядре проходит цепочку «включённая стратегия (админ-API) → `StrategyScheduler.tick()`
+    → `scanNow()` → `last_scan_at` продвинулся / `last_error` = null → повторный цикл уважает интервал и не дублирует
+    строки → отказ рынка виден в `last_error` и в статусе `ERROR` → запись `buildSignalRecord()` доходит до БД и API
+    со всей лестницей целей» (подменяется только сетевой слой рыночных данных);
   * `npm ci --omit=dev` больше не молчит: отсутствие esbuild даёт явное сообщение (ядро собирается из `src/`).
 - **Остаток работы (не входит в PR #16):** realtime-мониторинг позиции, архивная синхронизация исходов старше окна
   реплея, перевод страницы `/signals` с браузерного журнала на `GET /api/signals`, заполнение `pnl_result_pct`

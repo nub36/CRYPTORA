@@ -237,7 +237,7 @@ B) исход:              TARGET_REACHED | INVALIDATED | CLOSED      ← сд�
 неизменяемой части публикации, а изменяемый исход хэшируется отдельно в `outcome_hash`. Строки формы 007
 (`chain_version = 1`) продолжают проверяться своей формой payload'а. `verifyChain()` возвращает ровно
 `{ rows, breaks }` для обеих форм. Это сознательное расхождение с браузерным журналом, где `auditHash` считается по
-issuance, а `outcomeHash` — по исходу: сервер additionally хэширует исход при КАЖДОМ переходе, включая `FILLED`.
+issuance, а `outcomeHash` — по исходу: сервер дополнительно хэширует исход при КАЖДОМ переходе, включая `FILLED`.
 
 ### 8.4. R в CRYPTORA: что это, кто считает, что нужно для пересчёта
 
@@ -293,3 +293,17 @@ GET /api/signals?symbol=&strategy=&status=&open=&direction=&limit=&offset=
 * не синхронизируется с журналом браузера и не «чинит» его;
 * не включает стратегии: после миграций все три выключены, включение — действие администратора
   (`PATCH /api/admin/strategies/:id`).
+
+### 8.7. Как серверный путь проверен
+
+| Тест | Что доказывает |
+|---|---|
+| `tests/integration/schedulerPersistence.test.ts` | Сквозной сценарий на настоящем PostgreSQL, настоящих миграциях, настоящем приложении и настоящем скомпилированном ядре: включение через админ-API → `StrategyScheduler.tick()` → `scanNow()` → `last_scan_at` продвинулся, `last_error` = null, статус `ON` → повторный цикл уважает `scan_interval_seconds` и не создаёт дублей → отказ рынка виден в `last_error`/`ERROR` → запись `buildSignalRecord()` доходит до `GET /api/signals` со всей лестницей целей. Подменяется только сетевой слой рыночных данных (klines, exchangeInfo) |
+| `tests/integration/strategyEngineScan.test.ts` | Контракт F-01 на настоящем ядре: вызов `scanNow()`, `interval=1d` и лимиты ядра в запросах к Binance, один кэш-ключ на серию (нет веера N×свечи), отказ данных ≠ «сетапов нет» |
+| `tests/integration/strategyEngineCore.test.ts` | Ядро загружается, `scanNow` — функция, `scanOnce` не существует; окружение node, пропуск виден как skipped (F-03) |
+| `tests/integration/strategyOperations.test.ts` | Хранение и дедупликация, лестница целей и TP3 в API, жизненный цикл и монотонность, хэш-цепочка v2, контракт `GET /api/signals` (фильтры, пагинация, порядок, 400 с кодами) |
+| `tests/unit/strategyEngineOrchestration.test.ts` | Стыки движка детерминированно: `buildSignalRecord`, ключ дедупликации, `MARKET_DATA_UNAVAILABLE` до скана, перенос lifecycle без пересчёта R |
+| `tests/unit/serverMarketData.test.ts` | Нормализация таймфреймов/символов, clamp лимита `[1, 1000]`, кэш и дедупликация in-flight |
+| `tests/unit/serverDbPool.test.ts` | Обработчик `'error'` пула на настоящем `pg.Pool`: `FATAL 57P01` логируется и не убивает процесс; guard против запрещённых масок |
+
+Общий bootstrap настоящего PostgreSQL для новых интеграционных тестов — `tests/helpers/embeddedPgHarness.ts`.

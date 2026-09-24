@@ -350,6 +350,20 @@ journalctl -u cryptora -n 200 --no-pager | grep -iE 'strateg|schedul|pg-pool|err
 сигнала `targets` содержит всю лестницу целей (TP1..TPn), `status` = `ACTIVE`,
 а после исполнения — `FILLED` и `fillPrice`.
 
+Та же цепочка автоматизирована: `tests/integration/schedulerPersistence.test.ts`
+поднимает настоящий PostgreSQL, настоящие миграции и настоящее Express-приложение,
+включает стратегию через админ-API и выполняет `StrategyScheduler.tick()` с
+настоящим скомпилированным ядром (подменяется только сетевой слой рыночных
+данных — klines и exchangeInfo). Проверяются: `last_scan_at` продвигается,
+`last_error` = null, статус `ON`, повторный цикл уважает `scan_interval_seconds`
+и не создаёт дублей, отказ рынка попадает в `last_error`/статус `ERROR`, а запись,
+построенная `buildSignalRecord()`, доходит до `GET /api/signals` со всеми целями.
+
+Вручную остаётся одно: прогон с **живыми** данными Binance, на котором ядро
+дейительно публикует сетап (синтетические свечи условиям замороженных стратегий
+не удовлетворяют). Порядок: включить одну стратегию на стейджинге, дождаться
+`lastScanAt`, проверить появившийся сигнал в БД и в API, затем выключить.
+
 ### 10.3. Проверка миграций и надёжности на реальном PostgreSQL
 
 `tests/integration/migrationsPostgres.test.ts` поднимает настоящий PostgreSQL
@@ -358,10 +372,18 @@ journalctl -u cryptora -n 200 --no-pager | grep -iE 'strateg|schedul|pg-pool|err
 честно помечаются skipped через `ctx.skip()` и видны в отчёте как пропущенные —
 молча «зеленеть» непроверенный набор не может.
 
-`tests/integration/strategyEngineScan.test.ts` и `strategyEngineCore.test.ts`
-исполняются в окружении node (`@vitest-environment node`): сборка ядра esbuild
-в jsdom падает на собственном инварианте `TextEncoder`, и раньше это выглядело
-как шесть пройденных тестов, которые на самом деле не выполнялись ни разу.
+`tests/integration/strategyEngineScan.test.ts`, `strategyEngineCore.test.ts` и
+`schedulerPersistence.test.ts` исполняются в окружении node
+(`@vitest-environment node`): сборка ядра esbuild в jsdom падает на собственном
+инварианте `TextEncoder`, и раньше это выглядело как шесть пройденных тестов,
+которые на самом деле не выполнялись ни разу.
+
+Общий bootstrap настоящего PostgreSQL для новых интеграционных тестов вынесен в
+`tests/helpers/embeddedPgHarness.ts` (embedded-postgres → `scripts/migrate.mjs` →
+`server/app.js` → регистрация администратора; закрытие строго в порядке
+«пул приложения → PostgreSQL», иначе `FATAL 57P01` при остановке). Три файла,
+написанные раньше (`migrationsPostgres`, `scanUniverse`, `strategyOperations`),
+несут тот же bootstrap инлайн.
 
 Обработчик ошибок пула (`server/db/pool.js`, `pool.on('error')`) проверяется в
 `tests/unit/serverDbPool.test.ts` на настоящем `pg.Pool`: то же событие
