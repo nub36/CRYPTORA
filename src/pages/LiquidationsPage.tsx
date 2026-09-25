@@ -217,7 +217,7 @@ export const LiquidationsPage: React.FC = () => {
   const feedHidden = Math.max(filteredEvents.length - FEED_LIMIT, 0);
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5 font-sans">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5 font-sans" data-route="liquidations" data-layout="visual-first">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>

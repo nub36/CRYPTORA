@@ -16,7 +16,7 @@ export const ArticlesPage: React.FC = () => {
 
   if (slug && !article) {
     return (
-      <div className="max-w-3xl mx-auto px-3 sm:px-4 py-10 text-center text-slate-400 text-sm font-sans" data-qa="article-not-found">
+      <div className="route-shell max-w-3xl mx-auto px-3 sm:px-4 py-10 text-center text-slate-400 text-sm font-sans" data-route="content" data-layout="editorial" data-qa="article-not-found">
         Статья не найдена.{' '}
         <Link to="/articles" className="text-brand-cyan underline">
           К списку
@@ -61,7 +61,7 @@ export const ArticlesPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="route-shell space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3" data-route="content">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
         <div>
           <div className="flex items-center space-x-2">

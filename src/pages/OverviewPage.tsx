@@ -264,7 +264,7 @@ export const OverviewPage: React.FC = () => {
   const lowestFunding = sortedFunding[sortedFunding.length - 1];
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="overview" data-layout="state-first">
       {/* Статус источника: одна компактная строка, подробности по клику */}
       <div role="status" data-qa="overview-source-status">
         <Collapsible

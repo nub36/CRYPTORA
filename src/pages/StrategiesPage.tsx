@@ -97,7 +97,7 @@ export const StrategiesPage: React.FC = () => {
   }, [candles]);
 
   return (
-    <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4">
+    <div className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4" data-route="strategies" data-layout="operations">
       {sourceUnavailable && <DataSourceUnavailable subject="исторические свечи" />}
 
       {/* ── Заголовок: одна строка, без методологии ─────────────────── */}

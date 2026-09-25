@@ -310,7 +310,7 @@ export const SignalsPage: React.FC = () => {
   const showMarketError = candlesState.phase === 'error';
 
   return (
-    <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4">
+    <div className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4" data-route="signals" data-layout="global-feed">
       {/* Заголовок + источник + часовой пояс пользователя */}
       <div className="flex flex-col justify-between gap-2 border-b border-surface-border pb-3 sm:flex-row sm:items-center">
         <div>

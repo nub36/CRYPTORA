@@ -200,7 +200,7 @@ export const AdminPage: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="route-shell mx-auto max-w-7xl px-4 py-8" data-route="admin" data-layout="operations">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Админ-панель</h1>

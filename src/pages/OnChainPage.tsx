@@ -31,7 +31,7 @@ export const OnChainPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="route-shell space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3" data-route="onchain" data-layout="network-observatory">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">
         <div>
           <div className="flex items-center space-x-2">

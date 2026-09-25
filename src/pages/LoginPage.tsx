@@ -57,7 +57,7 @@ export const LoginPage: React.FC = () => {
   }, [email, resendVerification]);
 
   return (
-    <div className="flex min-h-[70vh] items-center justify-center px-4">
+    <div className="route-shell flex min-h-[70vh] items-center justify-center px-4" data-route="auth" data-layout="auth">
       <div className="w-full max-w-md">
         <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-8 shadow-2xl backdrop-blur-xl">
           <div className="mb-6 text-center">

@@ -27,7 +27,7 @@ export const HeatmapsPage: React.FC = () => {
   useAutoRefresh(load, HEATMAPS_REFRESH_MS);
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3" data-route="heatmaps" data-layout="matrix">
       {sourceUnavailable && <DataSourceUnavailable subject="рыночные данные" />}
       {/* Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-border gap-2">

@@ -110,7 +110,7 @@ export const RadarPage: React.FC = () => {
   }, [briefingFacts]);
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="radar" data-layout="event-stream">
       {sourceUnavailable && <DataSourceUnavailable subject="сигналы радара" />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">

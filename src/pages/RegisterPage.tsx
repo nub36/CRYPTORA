@@ -102,7 +102,7 @@ export const RegisterPage: React.FC = () => {
   // ── Registration closed ─────────────────────────────────────────────
   if (registrationOpen === false) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center px-4">
+      <div className="route-shell flex min-h-[70vh] items-center justify-center px-4" data-route="auth" data-layout="auth">
         <div className="w-full max-w-md">
           <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-8 text-center shadow-2xl backdrop-blur-xl">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-700">
@@ -138,7 +138,7 @@ export const RegisterPage: React.FC = () => {
   // ── Verification screen ─────────────────────────────────────────────
   if (sentTo) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center px-4">
+      <div className="route-shell flex min-h-[70vh] items-center justify-center px-4" data-route="auth">
         <div className="w-full max-w-md">
           <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-8 text-center shadow-2xl backdrop-blur-xl">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500">
@@ -189,7 +189,7 @@ export const RegisterPage: React.FC = () => {
 
   // ── Registration form ───────────────────────────────────────────────
   return (
-    <div className="flex min-h-[70vh] items-center justify-center px-4">
+    <div className="route-shell flex min-h-[70vh] items-center justify-center px-4" data-route="auth">
       <div className="w-full max-w-md">
         <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-8 shadow-2xl backdrop-blur-xl">
           <div className="mb-6 text-center">

@@ -34,7 +34,7 @@ export const NewsPage: React.FC = () => {
   const visible = items.filter((it) => category === 'ALL' || it.category === category);
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5 font-sans">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5 font-sans" data-route="news" data-layout="newswire">
       {/* Заголовок раздела */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div className="flex items-center space-x-2">

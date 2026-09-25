@@ -632,3 +632,55 @@ body { background: var(--terminal-canvas); color: var(--terminal-text); }
 .terminal-footer .grid > div:not(:first-child) { opacity: .82; }
 .terminal-footer .space-y-1\.5 { gap: 2px; }
 .terminal-footer .pt-4 { padding-top: 10px; }
+
+/* Route compositions: each workstation gets a different visual rhythm. */
+.route-shell { --route-gap: 14px; }
+.route-shell[data-route='overview'] { --route-gap: 10px; }
+.route-shell[data-route='market'], .route-shell[data-route='screener'], .route-shell[data-route='futures'] { --route-gap: 8px; }
+.route-shell[data-route='liquidations'], .route-shell[data-route='radar'], .route-shell[data-route='heatmaps'] { --route-gap: 12px; }
+.route-shell[data-route='coin'] { --route-gap: 12px; }
+.route-shell[data-route='strategies'], .route-shell[data-route='admin'] { --route-gap: 10px; }
+.route-shell[data-route='content'], .route-shell[data-route='news'] { --route-gap: 16px; }
+.route-shell > h1, .route-shell h1 { letter-spacing: -.025em; }
+.route-shell > section, .route-shell > div { margin-bottom: var(--route-gap); }
+/* Workstation routes: borders establish data boundaries, not every child card. */
+.route-shell[data-route='market'] table tbody tr { border-color: rgba(148,163,184,.10); }
+.route-shell[data-route='market'] table thead { background: rgba(255,255,255,.035); }
+.route-shell[data-route='market'] table td, .route-shell[data-route='market'] table th { padding-top: 8px; padding-bottom: 8px; }
+.route-shell[data-route='screener'] input, .route-shell[data-route='screener'] select { border-radius: 4px; }
+.route-shell[data-route='screener'] > div:nth-child(2) { padding-block: 6px; }
+.route-shell[data-route='coin'] > section:first-child { background: linear-gradient(90deg, rgba(85,214,194,.08), transparent 55%); border-left: 2px solid var(--terminal-accent); }
+.route-shell[data-route='liquidations'] > section:first-of-type, .route-shell[data-route='radar'] > section:first-of-type { border-bottom: 1px solid var(--terminal-divider); }
+.route-shell[data-route='strategies'] .rounded-xl, .route-shell[data-route='admin'] .rounded-xl { border-radius: 5px; }
+.route-shell[data-route='content'] article { max-width: 72ch; margin-inline: auto; }
+.route-shell[data-route='auth'] { min-height: calc(100vh - 150px); align-items: center; }
+.route-shell[data-route='auth'] > div { box-shadow: 0 18px 40px rgba(0,0,0,.28); }
+@media (max-width: 640px) {
+  .route-shell { padding-top: 10px !important; padding-bottom: 10px !important; }
+  .route-shell[data-route='overview'] > * { min-width: 0; }
+  .route-shell[data-route='market'] table { font-size: 11px; }
+  .route-shell[data-route='coin'] { gap: 10px; }
+}
+
+/* Signals: levels read as one instrument strip, while audit stays inspectable. */
+.route-shell[data-route='signals'] { --route-gap: 10px; }
+.route-shell[data-route='signals'] [data-qa='signals-summary'] { border-left: 2px solid var(--terminal-accent); background: rgba(85,214,194,.045); }
+.route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type { display: flex; flex-wrap: wrap; gap: 18px; }
+.route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type > div { border: 0; border-left: 1px solid var(--terminal-divider); border-radius: 0; background: transparent; padding: 0 0 0 10px; min-width: 100px; }
+.route-shell[data-route='signals'] [data-qa='signals-details'] { background: transparent; border: 0; border-top: 1px solid var(--terminal-divider); border-radius: 0; padding-inline: 0; }
+.route-shell[data-route='signals'] [data-qa='signals-details'] [data-qa='signals-level-list'] li { border-width: 0 0 1px; border-radius: 0; background: transparent; padding-inline: 0; }
+.route-shell[data-route='signals'] [data-qa='signals-asset-history'] [data-qa='signals-history'], .route-shell[data-route='signals'] [data-qa='signals-global-feed'] [data-qa='signals-history'] { border: 0; border-radius: 0; background: transparent; padding-inline: 0; }
+.route-shell[data-route='signals'] [data-qa='signals-ledger-audit'] { border-top: 1px solid var(--terminal-divider); }
+@media (max-width: 640px) {
+  .route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type { gap: 10px; }
+  .route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type > div { min-width: 76px; }
+}
+.route-shell[data-layout='state-first'] .grid { align-items: start; }
+.route-shell[data-layout='table-first'] > div:last-child, .route-shell[data-layout='results-first'] > div:last-child { border-top: 2px solid var(--terminal-accent); }
+.route-shell[data-layout='chart-first'] [data-qa='coin-chart-card'] { border-top: 2px solid var(--terminal-accent); }
+.route-shell[data-layout='visual-first'] [data-qa='liquidation-terminal'] { border-top: 2px solid var(--terminal-accent); }
+.route-shell[data-layout='derivatives-workstation'] table, .route-shell[data-layout='event-stream'] table { border-top: 1px solid var(--terminal-divider); }
+.route-shell[data-layout='matrix'] .grid { gap: 2px; }
+.route-shell[data-layout='operations'] > .mb-6, .route-shell[data-layout='operations'] > header { border-bottom: 1px solid var(--terminal-accent); }
+.route-shell[data-layout='editorial'] h1, .route-shell[data-layout='newswire'] h1 { max-width: 42rem; }
+.route-shell[data-layout='account'] { max-width: 54rem; }

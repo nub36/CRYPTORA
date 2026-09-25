@@ -7,6 +7,7 @@
 - `/signals` primary feed is `GET /api/signals?limit=20` without a symbol filter. Asset history is a distinct bounded view, activated after explicit selection/deep-link. Statistics default is global, with explicit `ALL SIGNALS` / `CURRENT ASSET` scope.
 - No server, strategy engine/math, production settings, or production signal records changed. Not deployed.
 - Verification so far: `npm run typecheck`, `npm run build`, targeted Signals unit tests pass.
+- Phase 2: route-specific layout identities and workstation styling were added across primary routes; screenshot QA and Browser E2E remain blocked in this sandbox because Playwright Chromium download repeatedly fails with `ECONNRESET`.
 
 
 PR #21 (ветка `arena/01a0d727-cryptora` от `a33bd1aba3b4b9998557b2e4d77a1418cad0d98c`) — колокольчик переведён на СЕРВЕРНЫЙ

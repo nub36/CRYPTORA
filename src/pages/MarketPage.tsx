@@ -173,7 +173,7 @@ export const MarketPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="market" data-layout="table-first">
       {sourceUnavailable && <DataSourceUnavailable subject="рыночные данные" />}
       {dataMode === 'live' && marketUniverse.some((asset) => !asset.quote) && (
         <div role="status" className="rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 font-sans text-xs text-amber-200">

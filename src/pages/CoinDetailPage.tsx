@@ -408,7 +408,7 @@ export const CoinDetailPage: React.FC = () => {
   if (!asset || asset.symbol !== routeSymbol) {
     const requestPending = loading || resolvedRouteSymbol !== routeSymbol;
     return (
-      <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-4 sm:px-4" data-qa="coin-page-shell">
+      <div className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-4 sm:px-4" data-route="coin" data-layout="chart-first" data-qa="coin-page-shell">
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface p-4">
           <div className="flex items-center gap-3">
             <CoinIcon symbol={routeSymbol || '?'} size={40} />
