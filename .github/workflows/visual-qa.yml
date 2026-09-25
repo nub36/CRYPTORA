@@ -49,9 +49,13 @@ jobs:
         if: always()
         shell: bash
         run: |
-          find screenshots -type f -name '*?*' -print0 | while IFS= read -r -d '' file; do
-            mv "$file" "${file//\?/-}"
-          done
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('screenshots')
+          for path in root.rglob('*'):
+              if path.is_file() and '?' in path.name:
+                  path.rename(path.with_name(path.name.replace('?', '-')))
+          PY
       - name: Upload visual evidence
         if: always()
         uses: actions/upload-artifact@v4
