@@ -62,6 +62,7 @@ function makeSignal(overrides: Partial<SignalDto> = {}): SignalDto {
     hash: 'a'.repeat(64),
     previousHash: 'GENESIS',
     outcomeHash: null,
+    provenanceStatus: 'VERIFIED',
     chainVersion: 2,
     ...overrides,
   };

@@ -385,4 +385,57 @@ describe('Настоящий серверный путь: миграция 009',
     expect(model.timeframe).toBe('1h');
     expect(model.timeframe).not.toBe('15m');
   });
+
+  /**
+   * Путь 4: GET /api/signals/:id — точечное чтение для deep-link'а колокольчика.
+   *
+   * Уведомление открывает `/signals?symbol=RUNE&signal=<id>`; страница обязана
+   * получить ТУ ЖЕ строку, что и лента (одна идентичность DTO), а не «похожую».
+   * Отдельно фиксируется честная семантика ошибок: нет строки → 404, кривой id →
+   * 400 (а не пустой ответ и не 500 от постгреса).
+   */
+  it('deep-link: GET /api/signals/:id отдаёт ровно ту же строку, что и лента', async (ctx) => {
+    if (guard(ctx)) return;
+    const feed = await client.get('/api/signals?symbol=BTC/USDT');
+    const dto = (feed.body as any).signals.find((s: any) => s.targets?.length === 3);
+    expect(dto).toBeTruthy();
+
+    const res = await client.get(`/api/signals/${dto.id}`);
+    expect(res.status).toBe(200);
+    const body = res.body as any;
+    expect(body.source).toBe('server');
+    // Идентичность: это тот же сигнал, а не копия «похожего вида».
+    expect(body.signal).toEqual(dto);
+    expect(body.signal.id).toBe(dto.id);
+    expect(body.signal.entryMin).toBe(65000);
+    expect(body.signal.stopLoss).toBe(64000);
+    expect(body.signal.targets).toEqual([66500, 68000, 70000]);
+    // Карантин происхождения отдаётся как есть — читатель решает политику сам.
+    expect(typeof body.signal.provenanceStatus).toBe('string');
+  });
+
+  it('deep-link: неизвестный id → 404 SIGNAL_NOT_FOUND, кривой id → 400 INVALID_ID', async (ctx) => {
+    if (guard(ctx)) return;
+    const missing = await client.get('/api/signals/3f8a1c2b-4d5e-4f60-8a1b-2c3d4e5f6071');
+    expect(missing.status).toBe(404);
+    expect((missing.body as any).error).toBe('SIGNAL_NOT_FOUND');
+
+    const malformed = await client.get('/api/signals/not-a-uuid');
+    expect(malformed.status).toBe(400);
+    expect((malformed.body as any).error).toBe('INVALID_ID');
+  });
+
+  it('deep-link: точечное чтение работает и для закрытого сигнала (история)', async (ctx) => {
+    if (guard(ctx)) return;
+    const feed = await client.get('/api/signals?symbol=BTC/USDT');
+    const closed = (feed.body as any).signals.find((s: any) => s.status === 'TARGET_REACHED');
+    expect(closed).toBeTruthy();
+
+    const res = await client.get(`/api/signals/${closed.id}`);
+    expect(res.status).toBe(200);
+    const dto = (res.body as any).signal;
+    expect(dto.status).toBe('TARGET_REACHED');
+    expect(dto.resultR).toBeCloseTo(1.67, 5);
+    expect(dto.closedAt).toBeTruthy();
+  });
 });

@@ -57,6 +57,7 @@ function makeSignal(overrides: Partial<SignalDto> = {}): SignalDto {
     hash: 'h',
     previousHash: 'p',
     outcomeHash: null,
+    provenanceStatus: 'VERIFIED',
     chainVersion: 2,
     ...overrides,
   };
