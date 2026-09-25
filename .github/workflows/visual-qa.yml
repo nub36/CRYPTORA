@@ -45,6 +45,13 @@ jobs:
           node scripts/screenshot-qa.mjs --base=http://127.0.0.1:5173 --tag=after-pr22 --mode=qa-fixture \
             --routes=/,/market,/screener,/coin/BTC,/signals,/signals?symbol=ETH,/liquidations,/strategies,/admin \
             --viewports=1440x900,390x844 --out=screenshots/after
+      - name: Normalize screenshot filenames
+        if: always()
+        shell: bash
+        run: |
+          find screenshots -type f -name '*?*' -print0 | while IFS= read -r -d '' file; do
+            mv "$file" "${file//\?/-}"
+          done
       - name: Upload visual evidence
         if: always()
         uses: actions/upload-artifact@v4
