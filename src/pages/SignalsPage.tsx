@@ -25,10 +25,12 @@
  * могут разойтись.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BarChart3 } from 'lucide-react';
 import type { Timeframe } from '@/types/market';
 import { useMarketData } from '@/context/MarketDataContext';
+import { useServerSignalById } from '@/hooks/useServerSignalById';
 import { SignalsAuditLedger } from '@/services/signals/SignalsAuditLedger';
 import { useServerSignals } from '@/hooks/useServerSignals';
 import { useServerScanner } from '@/hooks/useServerScanner';
@@ -69,20 +71,78 @@ const SCANNER_POLL_MS = 15_000;
 /** Поллинг серверной статистики — тяжёлые агрегаты, чаще минуты не нужно. */
 const STATISTICS_POLL_MS = 60_000;
 
+/**
+ * Символ из URL (`?symbol=`) → BASE-тикер. Принимаются три формы, которые
+ * встречаются в ссылках и уведомлениях: `RUNE`, `RUNE/USDT`, `RUNEUSDT`.
+ * Пустое/нераспознанное значение = «ссылка не задаёт символ».
+ */
+export function deepLinkSymbol(raw: string | null): string | null {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim();
+  if (!value) return null;
+  return signalBaseSymbol(value) || null;
+}
+
+/** Id сигнала из URL (`?signal=`) — как есть, без домысливания формата. */
+export function deepLinkSignalId(raw: string | null): string | null {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim();
+  return value.length > 0 ? value : null;
+}
+
 export const SignalsPage: React.FC = () => {
   const { provider } = useMarketData();
 
-  // ── Выбор инструмента и таймфрейма графика ─────────────────────────────
-  const [baseSymbol, setBaseSymbol] = useState<string>(DEFAULT_SYMBOL);
+  /**
+   * Deep-link уведомления колокольчика: `/signals?symbol=RUNE&signal=<server-id>`.
+   *
+   * Страница ИНИЦИАЛИЗИРУЕТСЯ из URL (символ + выбранный сигнал), а действия
+   * пользователя эту же ссылку поддерживают актуальной. Серверный сигнал,
+   * которого нет на загруженной странице ленты, догружается точечно
+   * (`useServerSignalById`) — уведомление обязано открывать именно свой сигнал.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  /**
+   * URL — ЕДИНСТВЕННЫЙ источник выбранного инструмента и сигнала.
+   *
+   * Раньше это были два `useState`, инициализированных из ссылки, а эффект
+   * «смена монеты сбрасывает сигнал» на монтировании обнулял выбранный по
+   * deep-link'у id: уведомление колокольчика открывало страницу, но сигнал не
+   * выбирался. Теперь состояние выводится из `searchParams` напрямую, поэтому
+   * переход по ссылке (`/signals?symbol=RUNE&signal=<id>`) выбирает ровно тот
+   * сигнал, а действия пользователя эту же ссылку и поддерживают актуальной.
+   */
+  const baseSymbol = deepLinkSymbol(searchParams.get('symbol')) ?? DEFAULT_SYMBOL;
+  const selectedSignalId = deepLinkSignalId(searchParams.get('signal'));
   const [chartTimeframe, setChartTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
-  const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
 
   const pair = signalPairText(baseSymbol);
 
+  const writeDeepLink = useCallback(
+    (symbol: string, signalId: string | null) => {
+      const params = new URLSearchParams();
+      if (symbol) params.set('symbol', symbol);
+      if (signalId) params.set('signal', signalId);
+      setSearchParams(params, { replace: true });
+    },
+    [setSearchParams]
+  );
+
   // Смена монеты сбрасывает выбранный сигнал: линии/детали не должны «прилипать».
-  useEffect(() => {
-    setSelectedSignalId(null);
-  }, [baseSymbol]);
+  const selectSymbol = useCallback(
+    (raw: string) => {
+      writeDeepLink(signalBaseSymbol(raw), null);
+    },
+    [writeDeepLink]
+  );
+
+  const selectSignal = useCallback(
+    (id: string | null) => {
+      writeDeepLink(baseSymbol, id);
+    },
+    [baseSymbol, writeDeepLink]
+  );
 
   // ── Серверная лента выбранного инструмента ────────────────────────────
   const signalsQuery = useServerSignals(
@@ -100,11 +160,47 @@ export const SignalsPage: React.FC = () => {
   // ── Статус сканирования — с сервера, не из браузера (BUG C) ───────────
   const scanner = useServerScanner({ pollMs: SCANNER_POLL_MS });
 
-  // ── Отображение серверных сигналов в модель UI ────────────────────────
-  const models: SignalUiModel[] = useMemo(
-    () => toSignalUiModels(signalsQuery.signals),
-    [signalsQuery.signals]
+  /**
+   * Сигнал по deep-link'у, которого нет на загруженной странице ленты.
+   * Запрос ровно один и только когда сигнал действительно не найден в странице.
+   */
+  const signalInPage = useMemo(
+    () => (selectedSignalId ? signalsQuery.signals.some((s) => s.id === selectedSignalId) : false),
+    [signalsQuery.signals, selectedSignalId]
   );
+  const focusedSignal = useServerSignalById(selectedSignalId, {
+    enabled: Boolean(selectedSignalId) && signalsQuery.phase === 'ready' && !signalInPage,
+  });
+
+  /**
+   * Список для отображения: страница ленты + (при необходимости) сигнал из
+   * deep-link'а. Дубликатов не бывает — добавляем только отсутствующий id.
+   */
+  const focusedSymbolMatches = useMemo(
+    () =>
+      focusedSignal.signal
+        ? signalBaseSymbol(focusedSignal.signal.symbol).toUpperCase() === baseSymbol.toUpperCase()
+        : false,
+    [focusedSignal.signal, baseSymbol]
+  );
+
+  const pageSignals = useMemo(() => {
+    if (!focusedSignal.signal || signalInPage || !focusedSymbolMatches) return signalsQuery.signals;
+    return [...signalsQuery.signals, focusedSignal.signal];
+  }, [signalsQuery.signals, focusedSignal.signal, signalInPage, focusedSymbolMatches]);
+
+  // ── Отображение серверных сигналов в модель UI ────────────────────────
+  const models: SignalUiModel[] = useMemo(() => toSignalUiModels(pageSignals), [pageSignals]);
+
+  /**
+   * Происхождение выбранного сигнала — как его отдал сервер. Показывается явно,
+   * потому что от этого зависит допуск в продакшн-колокольчик: MISMATCH/UNKNOWN
+   * продакшн-событием не считается, и это должно быть видно, а не скрыто.
+   */
+  const selectedProvenance = useMemo(() => {
+    const found = selectedSignalId ? pageSignals.find((s) => s.id === selectedSignalId) : undefined;
+    return found ? found.provenanceStatus : null;
+  }, [pageSignals, selectedSignalId]);
 
   const activeSignal = useMemo(
     () => resolveActiveSignal(models, selectedSignalId),
@@ -215,8 +311,45 @@ export const SignalsPage: React.FC = () => {
         symbol={baseSymbol}
         pair={pair}
         signalPairs={signalPairs}
-        onSelect={(s) => setBaseSymbol(signalBaseSymbol(s))}
+        onSelect={selectSymbol}
       />
+
+      {/*
+        Deep-link: честное состояние точечной загрузки сигнала из уведомления.
+        Страница НЕ подставляет другой сигнал «похожего» вида и не молчит об
+        ошибке — либо выбран ровно тот сигнал, либо показана причина.
+      */}
+      {selectedSignalId && !signalInPage && focusedSignal.phase === 'loading' && (
+        <p className="ui-helper" data-qa="signals-deeplink-loading">
+          Загружаем сигнал из ссылки…
+        </p>
+      )}
+      {selectedSignalId && focusedSignal.phase === 'ready' && !focusedSymbolMatches && (
+        <div
+          className="space-y-1 rounded-lg border border-amber-500/30 bg-surface p-3"
+          data-qa="signals-deeplink-symbol-mismatch"
+        >
+          <div className="font-sans text-sm font-bold text-white">Ссылка не соответствует инструменту</div>
+          <p className="ui-helper leading-relaxed">
+            Сигнал из ссылки относится к другому инструменту, чем выбранный. Показываем ленту выбранного
+            инструмента: сигнал не подставляется в чужой график и не «переезжает» на другую монету.
+          </p>
+        </div>
+      )}
+      {selectedSignalId && !signalInPage && focusedSignal.phase === 'error' && (
+        <div
+          className="space-y-1 rounded-lg border border-rose-500/30 bg-surface p-3"
+          data-qa="signals-deeplink-error"
+        >
+          <div className="font-sans text-sm font-bold text-white">Сигнал из ссылки не загружен</div>
+          <p className="ui-helper leading-relaxed">
+            {focusedSignal.error?.message ?? 'Сервер не отдал сигнал по указанному id.'}
+            {focusedSignal.error?.status === 404
+              ? ' Такой строки нет в серверной БД: ссылка могла быть собрана по локальному событию браузера.'
+              : ''}
+          </p>
+        </div>
+      )}
 
       {/*
         ЕДИНСТВЕННОЕ пустое/ошибочное состояние ленты (BUG B).
@@ -271,8 +404,15 @@ export const SignalsPage: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Сводка последнего/выбранного сигнала */}
+      {/* 2. Сводка последнего/выбранного сигнала + происхождение (карантин 011) */}
       <SignalSummaryCard model={activeSignal} />
+      {activeSignal && selectedProvenance && selectedProvenance !== 'VERIFIED' && (
+        <p className="ui-helper text-amber-300" data-qa="signals-provenance-note">
+          Происхождение строки: <span className="font-mono">{selectedProvenance}</span> — карантин
+          происхождения (миграция 011). Такой сигнал показывается как факт серверной БД, но НЕ попадает в
+          продакшн-уведомления колокольчика.
+        </p>
+      )}
 
       {/* 3. Свечной график */}
       <SignalChartCard
@@ -286,7 +426,7 @@ export const SignalsPage: React.FC = () => {
         candleError={candlesState.errorMessage}
         markers={markers}
         levelLines={levelLines}
-        onMarkerSelect={setSelectedSignalId}
+        onMarkerSelect={selectSignal}
         selectedSignalTimeframe={activeSignal?.timeframe ?? null}
         height={320}
       />
@@ -302,7 +442,7 @@ export const SignalsPage: React.FC = () => {
         loadingMore={signalsQuery.loadingMore}
         onLoadMore={signalsQuery.loadMore}
         selectedId={activeSignal?.id ?? null}
-        onSelect={setSelectedSignalId}
+        onSelect={selectSignal}
       />
 
       {/* 6. Серверная статистика — свои агрегаты, не лента страницы */}

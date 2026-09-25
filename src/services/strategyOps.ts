@@ -134,7 +134,20 @@ export interface SignalDto {
   outcomeHash: string | null;
   /** 1 = строка формы миграции 007, 2 = форма 009. */
   chainVersion: number;
+  /**
+   * Карантин происхождения (миграция 011, `signals.provenance_status`).
+   *
+   * Сервер отдаёт значение для каждой строки; `hashPayloadV2` его НЕ содержит,
+   * поэтому карантин не ломает хэш-цепочку. Клиент обязан трактовать
+   * отсутствие значения как `UNKNOWN` (fail-closed) — см.
+   * `serverSignalNotifications.provenanceOfSignal`. В продакшн-колокольчик
+   * попадают только `VERIFIED`.
+   */
+  provenanceStatus: SignalProvenanceStatus;
 }
+
+/** Домен `signals.provenance_status` — тот же, что в CHECK-ограничении миграции 011. */
+export type SignalProvenanceStatus = 'VERIFIED' | 'MISMATCH' | 'UNKNOWN';
 
 /** Конверт `GET /api/signals`: лента ограничена, порядок и фильтры явны. */
 export interface SignalsPageDto {
@@ -379,6 +392,27 @@ export async function fetchSignalsPage(
   init?: RequestInit
 ): Promise<SignalsPageDto> {
   return request<SignalsPageDto>(`/api/signals${signalsQuery(filters)}`, init);
+}
+
+/**
+ * Один серверный сигнал по его id (`signals.id` в PostgreSQL).
+ *
+ * Нужен deep-link'у `/signals?symbol=RUNE&signal=<id>`: уведомление колокольчика
+ * ссылается на КОНКРЕТНЫЙ сигнал, а первая страница ленты может его не содержать
+ * (лента ограничена и отсортирована по `created_at DESC`). Догружать страницы
+ * «пока не найдётся» значило бы делать неограниченное число запросов; сервер
+ * отдаёт строку точечно.
+ *
+ * Возвращается тот же `SignalDto`, что и в ленте (идентичность одна), включая
+ * `provenanceStatus`: страница обязана показать карантинный статус, если строка
+ * помечена как `MISMATCH`/`UNKNOWN`.
+ */
+export async function fetchSignalById(id: string, init?: RequestInit): Promise<SignalDto> {
+  const res = await request<{ signal: SignalDto; source: string }>(
+    `/api/signals/${encodeURIComponent(id)}`,
+    init
+  );
+  return res.signal;
 }
 
 /**

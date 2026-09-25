@@ -8,7 +8,12 @@ import { SourceHealthTracker } from '@/services/data/adapters/sourceHealth';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { LiveSignalEngine } from '@/services/signals/live/LiveSignalEngine';
 import { getScanUniverse, subscribeScanUniverse, refreshScanUniverse, ensureFreshScanUniverse } from '@/services/signals/scanUniverse';
-import { signalNotifications, type SignalNotification } from '@/services/signals/signalNotifications';
+import { localSignalNotifications, type SignalNotification } from '@/services/signals/signalNotifications';
+import {
+  type ServerNotificationAudit,
+  type ServerSignalNotification,
+} from '@/services/signals/serverSignalNotifications';
+import { useServerSignalNotifications } from '@/hooks/useServerSignalNotifications';
 import { PlanTier, PlanManager } from '@/services/subscription/PlanManager';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
 
@@ -33,6 +38,13 @@ const ALERT_HISTORY_KEY = 'cryptora_alert_history';
 const ALERT_HISTORY_MAX = 100;
 /** Период опроса фандинга для FUNDING_EXTREME (REST premiumIndex, кэш провайдера 60с). */
 const FUNDING_POLL_MS = 60_000;
+/**
+ * Период синхронизации ПРОДАКШН-ленты колокольчика с сервером.
+ *
+ * Один ограниченный запрос первой страницы `GET /api/signals` за цикл (limit ≤ 50):
+ * веера по вселенной нет. В фоновой вкладке цикл приостановлен (`useAutoRefresh`).
+ */
+const SERVER_SIGNAL_FEED_POLL_MS = 60_000;
 
 import { resolveInitialDataMode, QA_FIXTURE_ALLOWED, type DataMode } from '@/config/dataModePolicy';
 
@@ -56,11 +68,24 @@ interface MarketDataContextType {
   clearAlertHistory: () => void;
   unreadAlertCount: number;
   markAlertsRead: () => void;
-  /** Лента событий журнала сигналов (колокольчик): только факты движка. */
-  signalNotifications: SignalNotification[];
+  /**
+   * ПРОДАКШН-лента колокольчика: серверные сигналы (`GET /api/signals`),
+   * только `VERIFIED`, идентичность — `signals.id`.
+   */
+  signalNotifications: ServerSignalNotification[];
   signalUnreadCount: number;
+  /** Аудит серверной ленты: сколько строк исключено политикой происхождения. */
+  signalNotificationsAudit: ServerNotificationAudit;
   markSignalsRead: () => void;
   clearSignalNotifications: () => void;
+  /**
+   * ЛОКАЛЬНЫЙ аудит браузера (`SignalsAuditLedger`) — отдельный источник.
+   * Никогда не показывается как продакшн-сигнал.
+   */
+  localAuditNotifications: SignalNotification[];
+  localAuditUnreadCount: number;
+  markLocalAuditRead: () => void;
+  clearLocalAuditNotifications: () => void;
   alertChannels: AlertChannelsConfig;
   setAlertChannels: (cfg: AlertChannelsConfig) => void;
   deliveryLog: DeliveryRecord[];
@@ -142,10 +167,22 @@ export const MarketDataProviderComponent: React.FC<{
     }
   });
   const [unreadAlertCount, setUnreadAlertCount] = useState(0);
-  const [signalFeed, setSignalFeed] = useState<SignalNotification[]>(() =>
-    signalNotifications.getNotifications(),
+  /**
+   * ПРОДАКШН-лента колокольчика — серверные сигналы (`GET /api/signals`).
+   *
+   * Инцидент 2026-09-25: раньше здесь была лента браузерного `SignalsAuditLedger`,
+   * и колокольчик «звонил» по сетапу RUNE, которого в PostgreSQL нет. Теперь
+   * продакшн-ленту питает сервер (`useServerSignalNotifications`), а журнал
+   * браузера остаётся отдельной ЛОКАЛЬНОЙ лентой аудита ниже.
+   */
+  const serverSignalFeed = useServerSignalNotifications({ pollMs: SERVER_SIGNAL_FEED_POLL_MS });
+  /** Локальный аудит браузера — отдельный источник, в продакшн-колокольчик не попадает. */
+  const [localAuditFeed, setLocalAuditFeed] = useState<SignalNotification[]>(() =>
+    localSignalNotifications.getNotifications(),
   );
-  const [signalUnreadCount, setSignalUnreadCount] = useState(() => signalNotifications.getUnreadCount());
+  const [localAuditUnreadCount, setLocalAuditUnreadCount] = useState(() =>
+    localSignalNotifications.getUnreadCount()
+  );
   const [alertChannels, setAlertChannelsState] = useState<AlertChannelsConfig>(() => {
     try {
       return parseChannelsConfig(localStorage.getItem(ALERT_CHANNELS_STORAGE_KEY));
@@ -226,15 +263,21 @@ export const MarketDataProviderComponent: React.FC<{
     };
   }, [dataMode]);
 
-  // Лента событий журнала сигналов (колокольчик): старт синглтона + подписка.
+  /**
+   * Локальная лента аудита браузера (не продакшн-колокольчик).
+   *
+   * Журнал `SignalsAuditLedger` остаётся доступным явно: он полезен для отладки
+   * и локального аудита, но его события помечены `source: 'local-ledger'` и в
+   * продакшн-ленту (серверную) не попадают ни при каких условиях.
+   */
   useEffect(() => {
-    signalNotifications.start();
+    localSignalNotifications.start();
     const sync = () => {
-      setSignalFeed(signalNotifications.getNotifications());
-      setSignalUnreadCount(signalNotifications.getUnreadCount());
+      setLocalAuditFeed(localSignalNotifications.getNotifications());
+      setLocalAuditUnreadCount(localSignalNotifications.getUnreadCount());
     };
     sync();
-    return signalNotifications.subscribe(sync);
+    return localSignalNotifications.subscribe(sync);
   }, []);
 
   const subscribeSymbol = useCallback((symbol: string) => {
@@ -420,10 +463,15 @@ export const MarketDataProviderComponent: React.FC<{
         clearAlertHistory: () => setAlertHistory([]),
         unreadAlertCount,
         markAlertsRead: () => setUnreadAlertCount(0),
-        signalNotifications: signalFeed,
-        signalUnreadCount,
-        markSignalsRead: () => signalNotifications.markAllRead(),
-        clearSignalNotifications: () => signalNotifications.clear(),
+        signalNotifications: serverSignalFeed.notifications,
+        signalUnreadCount: serverSignalFeed.unreadCount,
+        signalNotificationsAudit: serverSignalFeed.audit,
+        markSignalsRead: serverSignalFeed.markAllRead,
+        clearSignalNotifications: serverSignalFeed.clear,
+        localAuditNotifications: localAuditFeed,
+        localAuditUnreadCount,
+        markLocalAuditRead: () => localSignalNotifications.markAllRead(),
+        clearLocalAuditNotifications: () => localSignalNotifications.clear(),
         alertChannels,
         setAlertChannels,
         deliveryLog,

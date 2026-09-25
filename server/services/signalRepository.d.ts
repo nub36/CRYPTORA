@@ -158,6 +158,14 @@ export function insertSignal(signal: NewSignal): Promise<{ inserted: boolean; si
 export function listSignals(p?: SignalFilters & { limit?: number; offset?: number }): Promise<SignalRow[]>;
 export function countSignals(filters?: SignalFilters): Promise<number>;
 /**
+ * Один сигнал по `signals.id` — точечное чтение для deep-link'а колокольчика.
+ * Карантинные строки не скрываются: `provenanceStatus` отдаётся как есть.
+ */
+export function getSignalById(id: string): Promise<SignalRow | null>;
+/** Форма UUID (любой регистр) — проверка до обращения к БД. */
+export const SIGNAL_ID_PATTERN: RegExp;
+export function isSignalIdShape(id: string): boolean;
+/**
  * Незакрытые сигналы (ACTIVE + FILLED) — рабочий набор синхронизации исходов.
  *
  * По умолчанию — ТОЛЬКО доказанные (`provenance_status = 'VERIFIED'`): монитор

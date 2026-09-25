@@ -489,6 +489,37 @@ export async function countSignals(filters = {}) {
 }
 
 /**
+ * Один сигнал по его `signals.id`.
+ *
+ * Зачем точечное чтение: колокольчик ссылается на КОНКРЕТНЫЙ серверный сигнал
+ * (`/signals?symbol=RUNE&signal=<id>`), а первая страница ленты может его не
+ * содержать — лента ограничена и отсортирована по `created_at DESC`. Догружать
+ * страницы «пока не найдётся» значило бы неограниченное число запросов из
+ * браузера. Здесь — ровно один SELECT по первичному ключу.
+ *
+ * Карантинные строки НЕ скрываются: `provenance_status` отдаётся как есть
+ * (fail-closed решает потребитель, а не чтение). Ничего не вычисляется.
+ *
+ * @param {string} id UUID строки `signals`
+ * @returns {Promise<object|null>} форма `mapRow` или null, если строки нет
+ */
+export async function getSignalById(id) {
+  const value = typeof id === 'string' ? id.trim() : '';
+  if (value.length === 0) return null;
+  const { rows } = await query('SELECT * FROM signals WHERE id = $1', [value]);
+  return rows[0] ? mapRow(rows[0]) : null;
+}
+
+/** Форма UUID (версии 1–5, любой регистр) — до обращения к БД. */
+export const SIGNAL_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Похож ли идентификатор на `signals.id`. Проверка формы, не существования. */
+export function isSignalIdShape(id) {
+  return typeof id === 'string' && SIGNAL_ID_PATTERN.test(id.trim());
+}
+
+/**
  * Незакрытые сигналы стратегии (ACTIVE + FILLED) — рабочий набор для
  * синхронизации жизненного цикла после скана.
  *
