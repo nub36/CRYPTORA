@@ -213,10 +213,11 @@ test.describe('Signals Chart UX: Desktop & Mobile', () => {
     await toggleLabels.click();
     await expect(toggleLabels).toBeChecked();
 
-    const storedSettings = await page.evaluate(() =>
-      localStorage.getItem('cryptora_signals_chart_display_settings')
-    );
-    expect(storedSettings).toContain('"showLevelLabels":true');
+    await expect.poll(async () => {
+      return await page.evaluate(() =>
+        localStorage.getItem('cryptora_signals_chart_display_settings')
+      );
+    }).toContain('"showLevelLabels":true');
 
     // Закрываем модалку по кнопке крестика
     await page.locator('[data-qa="chart-display-settings-close"]').click();

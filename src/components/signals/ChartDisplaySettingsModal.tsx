@@ -85,14 +85,11 @@ const SettingToggle: React.FC<SettingToggleProps> = ({
   checked,
   onChange,
 }) => (
-  <label
-    htmlFor={id}
-    className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border border-surface-border/60 bg-surface-elevated/40 p-2.5 transition-colors hover:border-surface-border hover:bg-surface-elevated/80"
-  >
-    <div className="flex flex-col">
+  <div className="flex items-start justify-between gap-3 rounded-lg border border-surface-border/60 bg-surface-elevated/40 p-2.5 transition-colors hover:border-surface-border hover:bg-surface-elevated/80">
+    <label htmlFor={id} className="flex flex-1 cursor-pointer flex-col">
       <span className="font-sans text-xs font-semibold text-white">{label}</span>
       <span className="text-[11px] text-slate-400">{description}</span>
-    </div>
+    </label>
     <div className="relative inline-flex items-center pt-0.5">
       <input
         id={id}
@@ -104,7 +101,7 @@ const SettingToggle: React.FC<SettingToggleProps> = ({
         className="h-5 w-5 cursor-pointer rounded border border-slate-600 bg-surface text-brand-cyan accent-cyan-400 focus:ring-1 focus:ring-brand-cyan focus:ring-offset-0"
       />
     </div>
-  </label>
+  </div>
 );
 
 export const ChartDisplaySettingsModal: React.FC<ChartDisplaySettingsModalProps> = ({
