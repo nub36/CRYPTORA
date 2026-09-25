@@ -405,6 +405,108 @@ criteria · Dependencies · Status · PR/commit**.
 - **Dependencies:** 9.2, 9.3, 7.1 (миграции на production).
 - **Status:** `[~]`. **PR:** #18 — https://github.com/nub36/CRYPTORA/pull/18
   (ветка `arena/01a0d27d-cryptora`, CI зелёный).
+### [~] 9.5 P0-инцидент: три strategy_id получили ОДИН payload (cross-strategy provenance)
+- **Priority:** **P0** — целостность production-сигналов.
+- **Evidence from production (от владельца, 2026-09-24):** BTC/USDT, `signal_candle_ts`
+  `2026-09-24 14:00 UTC` —V2.8, V3.0 и V3.3 записали **полностью одинаковые**
+  `direction / entry_min / entry_max / stop_loss / targets`:
+  `LONG`, `83612.89569417082 … 83734.64430582919`, стоп `83297.56854125623`, цели
+  `{85389.275, 87278.54}`. Та же картина на SEI, RENDER, NEAR, INJ и, возможно, других.
+- **Root cause (найден кодом, подтверждён падающими regression-тестами):**
+  `server/services/strategyEngine/strategyEngine.js` → `runStrategyScan()`.
+  `SignalsAuditLedger` — СТАТИЧЕСКИЙ синглтон, как и `LiveSignalEngine`. Конструктор движка
+  берёт журнал через `SignalsAuditLedger.getInstance()`, но сам `runStrategyScan` читал
+  `getInstance()` **ПОСЛЕ `await`** предзагрузки свечей. Стратегии запускаются планировщиком
+  **КОНКУРЕНТНО** (`StrategyScheduler.tick()` не дожидается конца скана), поэтому к моменту
+  возобновления статический журнал уже принадлежал движку, созданному последним. Три сканa
+  читали ОДИН чужой журнал, а `buildSignalRecord()` ставил в строку `strategyId` **вызывающего**,
+  а не автора сетапа. Итог: один payload под тремя `strategy_id` плюс тихая потеря сетапов двух
+  других стратегий (их журнал никто не читал).
+- **Desired behavior (инвариант provenance):** `published.strategy_id` обязан равняться
+  `strategyId` того сетапа, который его породил; уровни берутся из raw output ИМЕННО этой
+  стратегии. Переименование чужого сетапа запрещено на уровне кода.
+- **Fix (только infrastructure/orchestration, математика стратегий не тронута):**
+  * **свой движок на скан**: `new core.LiveSignalEngine({...})` вместо
+    `resetInstance() + getInstance()` — глобальный синглтон серверному скану не нужен,
+    чужой скан не может ни обнулить, ни остановить наш движок;
+  * ссылка на ledger фиксируется **синхронно** с созданием движка, до любого `await`
+    (точки внедрения журнала в frozen API нет: `LiveSignalConfig` не содержит `ledger`);
+  * **мьютекс критической секции** (`scanMutex.js`): внутри ядра ровно один скан.
+    Предзагрузка свечей ВНЕ блокировки + in-flight дедупликация `MarketDataFetcher` ⇒
+    платим wall-clock, а не N×запросов к бирже;
+  * `loadStrategyCore()` single-flight целиком: все сканы делят ОДИН объект модуля;
+  * `buildSignalRecord()` возвращает `record: null` + `provenanceMismatch`, если
+    `setup.strategyId !== strategyId` — чужой сетап НЕ публикуется и НЕ переименовывается;
+  * новый сигнал получает `provenanceStatus` ДО записи: `VERIFIED` только при совпадении,
+    иначе `UNKNOWN` (fail-closed);
+  * счётчик `provenanceMismatch` в сводке скана + `console.error` (ЧП не может быть тихим);
+  * декларации `strategyEngine.d.ts` обновлены под новый контракт.
+- **Regression-тесты (падают на старом коде, зелёные на новом):**
+  * `tests/integration/strategyProvenance.test.ts` — настоящее ядро + детерминированные
+    фикстуры, на которых V3.0 и V3.3 реально публикуют сетапы (у них одинаковый коридор, но
+    РАЗНЫЕ цели: равновесие 4H-диапазона против середины displacement-ноги), V2.8 — не публикует
+    ничего. До фикса: `engine_setup_id=V3_3_…-BTCUSDT-1790258400000` уходил в БД под
+    `strategy_id=V3_0_HTF_LIQUIDATION_TRAP`, и V2.8 получал строку без единого своего сетапа.
+  * `tests/unit/strategyProvenanceRace.test.ts` — гонка за статический синглтон без сети и без
+    настоящего ядра (быстро, детерминированно); плюс тесты на отказ от relabel.
+  * `tests/integration/signalProvenanceAuditSql.test.ts` — SQL-аудит исполняется на настоящем
+    PostgreSQL и находит форму инцидента.
+  * `tests/unit/strategyEngineOrchestration.test.ts` — контракт `buildSignalRecord` дополнен
+    проверкой provenance.
+  * `tests/unit/strategyProvenanceRace.test.ts` — **барьерное состязательное перемешивание**
+    трёх сканов без слипов и таймингов: прямой, обратный и перемешанный порядок выпуска,
+    шесть одновременных сканов, враждебный `resetInstance()` посередине чужого скана, гонка
+    записи в БД вне мьютекса и падение внутри критической секции. Прямая проверка
+    «в ядре никогда нет двух сканов одновременно» (`maxInsideScan === 1`).
+  * `tests/integration/signalProvenanceQuarantine.test.ts` — 19 проверок на настоящем
+    PostgreSQL с населением, повторяющим production (45 строк / 15 групп / 30 расхождений /
+    12 открытых MATCH): миграция 011, fail-closed по умолчанию, совпадение JS- и
+    SQL-классификаторов, dry-run, `--apply`, идемпотентность, неизменность доказательств и
+    хэшей, валидность цепочки до и после, монитор и статистика.
+- **SQL для владельца (только SELECT):** `scripts/sql/signal-provenance-audit.sql` —
+  collision groups по `(symbol, signal_candle_ts, direction, entry_min, entry_max, stop_loss,
+  targets)` и ДОКАЗАННАЯ подмена авторства по `engine_setup_id` / `strategy_version` /
+  `exit_rule` (все три поля пишутся из сетапа, поэтому называют истинного автора).
+- **Подтверждённая production-картина (read-only аудит владельца):** всего сигналов **45**;
+  ACTIVE 36 / FILLED 6 / CANCELLED 3; **15** collision-групп × 3 strategy_id = 45 строк;
+  **30** доказанных расхождений; открытых с совпадением **12** (ACTIVE 6 + FILLED 6);
+  MISMATCH ACTIVE — 30. Матрица: V2.8←V3.0 6, V2.8←V3.3 9, V3.0←V3.0 6, V3.0←V3.3 9,
+  V3.3←V3.0 6, V3.3←V3.3 9 ⇒ **V2.8 не автор ни одной строки**, MATCH 15, MISMATCH 30.
+  Разбор — `docs/SIGNALS.md` §12.5 и `docs/incidents/2026-09-24-signal-provenance.md`.
+- **Судьба уже записанных production-сигналов:** НЕ удалять и НЕ переписывать. Выбран
+  вариант **C (карантин)**, реализованный аддитивно:
+  * **миграция 011** — `signals.provenance_status` (`VERIFIED | MISMATCH | UNKNOWN`,
+    `DEFAULT 'UNKNOWN'` — fail-closed) + индекс под рабочий набор монитора;
+  * классификация legacy-строк **только по сильному доказательству** — префикс
+    `engine_setup_id` (формат ядра `${strategyId}-${SYMBOL}-${openTime}`): совпал ⇒
+    `VERIFIED`, другой ⇒ `MISMATCH`, нет/не читается ⇒ `UNKNOWN`, и `UNKNOWN` **никогда**
+    не повышается до `VERIFIED` автоматически;
+  * монитор ведёт только открытые `VERIFIED` (MISMATCH — никогда, UNKNOWN — fail-closed);
+    статистика считает только `VERIFIED`, а карантин виден отдельными audit-счётчиками;
+  * процедура `scripts/signal-provenance-classify.mjs`: без аргументов — только отчёт,
+    `--apply` — один UPDATE одной колонки в транзакции, идемпотентна,
+    **на production НЕ запускалась**;
+  * `provenance_status` не входит в `hashPayloadV2` ⇒ хэш-цепочка остаётся валидной
+    до и после карантина (покрыто тестом).
+- **Монитор PR #18:** НЕ деплоить поверх непроверенных ACTIVE-сигналов — монитор начал бы
+  сопровождать сетапы, авторство которых не доказано, и записал бы их исходы в строки с
+  чужим `strategy_id`. **Точный порядок деплоя (A–P), сверенный с реальным запуском**
+  (`systemd/cryptora.service` → `server/index.js` стартует монитор автоматически и
+  безусловно; `deploy.sh` НЕ применяет миграции и НЕ рестартует сервис; миграции —
+  отдельным `npm run migrate`) — см. `docs/SIGNALS.md` §12.9.
+  **Ключевое правило: бэкенд НЕ стартует между миграциями и классификацией.**
+  Сервис останавливается на шаге **C** и стартует только на шаге **N** — после
+  `npm run migrate` (010, 011), dry-run, сверки плана (45 / 15 / 30), `--apply`,
+  сверки счётчиков (15 / 30 / 12) и проверки хэш-цепочки. Первое, что видит
+  монитор, — 12 доказанных открытых строк, а не 42.
+  Три ловушки: код раньше миграции ⇒ `column does not exist` на старте; классификация
+  раньше кода ⇒ старый монитор увидит все 42 открытые строки; pull без остановки
+  сервиса ⇒ продолжает работать старый код.
+- **Dependencies:** прогноз SQL-аудита на production, решение владельца по политике.
+- **Status:** `[~]` — fix + тесты + карантин готовы в этом PR, **не слит и не задеплоен**.
+  **STRATEGY MATH MODIFIED: NO · PRODUCTION STRATEGIES ENABLED: NO ·
+  PRODUCTION SIGNALS DELETED: NO · MIGRATION 010 APPLIED: NO ·
+  PRODUCTION SIGNALS MODIFIED: NO · PR #19 MERGED: NO · MIGRATION 011 PRODUCTION: NO.**
 
 ---
 

@@ -127,9 +127,9 @@ describe('migration inventory', () => {
 
   it('found every index definition in the migrations', () => {
     // Guards the parser itself: this is the exact index inventory of
-    // 001–010 (12 from 001–005 + 1 from 006 + 4 from 007 + 1 from 009 + 1 from
-    // 010). If the count drops, a regex silently stopped matching and the
-    // checks below are void.
+    // 001–011 (12 from 001–005 + 1 from 006 + 4 from 007 + 1 from 009 + 1 from
+    // 010 + 1 from 011). If the count drops, a regex silently stopped matching
+    // and the checks below are void.
     expect(indexes.map((i) => i.name).sort()).toEqual([
       'idx_audit_log_action',
       'idx_audit_log_actor',
@@ -142,6 +142,7 @@ describe('migration inventory', () => {
       'idx_signals_created_at_desc',
       'idx_signals_open_group',
       'idx_signals_previous_hash',
+      'idx_signals_provenance_open',
       'idx_signals_strategy_status',
       'idx_signals_symbol',
       'idx_signals_symbol_status_created',
@@ -481,7 +482,8 @@ describe('010_signal_monitor_bookkeeping — только добавление',
   it('файл существует и идёт сразу после 009', () => {
     expect(FILES).toContain(file);
     expect(FILES[FILES.indexOf(file) - 1]).toBe('009_signal_levels_and_lifecycle.sql');
-    expect(FILES[FILES.length - 1]).toBe(file);
+    // 010 больше не последняя: 011 добавляет карантин provenance поверх неё.
+    expect(FILES[FILES.indexOf(file) + 1]).toBe('011_signal_provenance_quarantine.sql');
   });
 
   it('ничего не удаляет и не переписывает данные', () => {

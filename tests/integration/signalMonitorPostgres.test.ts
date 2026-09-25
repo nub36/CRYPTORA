@@ -135,6 +135,10 @@ async function seedSignal(overrides: Record<string, unknown> = {}) {
     entryMax: 64700,
     stopLoss: 63800,
     targets: [65500, 66200],
+    // Происхождение доказано: монитор ведёт ТОЛЬКО VERIFIED-строки (миграция
+    // 011). Переопределить можно через overrides — на этом и построены тесты
+    // карантина ниже.
+    provenanceStatus: 'VERIFIED',
     ...overrides,
   };
   return repo.insertSignal(base);
@@ -416,6 +420,69 @@ describe('Серверная статистика', () => {
     const day = await stats.getSignalStatistics({ period: '24h', nowMs: now });
     expect(all.totals.published).toBe(2);
     expect(day.totals.published).toBe(1);
+  });
+});
+
+describe('Монитор и карантин provenance (миграция 011)', () => {
+  /**
+   * Монитор доводит сетап до исхода и записывает `result_r` в историю
+   * стратегии. Для строки с недоказанным или чужим происхождением это значит
+   * записать ЧУЖОЙ исход в репутацию стратегии: сетап создала одна стратегия,
+   * её логика выхода (`exit_rule`) — её собственная, а результат достался бы
+   * другой. Поэтому открытые MISMATCH и UNKNOWN в рабочий набор не попадают
+   * НИКОГДА — только VERIFIED.
+   */
+  it('открытая строка VERIFIED попадает в рабочий набор монитора', async (ctx) => {
+    if (guard(ctx)) return;
+    await seedSignal();
+    const open = await repo.listOpenSignals(null, 100);
+    expect(open).toHaveLength(1);
+    expect(open[0].provenanceStatus).toBe('VERIFIED');
+  });
+
+  it('открытая строка MISMATCH в рабочий набор НЕ попадает', async (ctx) => {
+    if (guard(ctx)) return;
+    await seedSignal({ provenanceStatus: 'MISMATCH' });
+    // Строка физически существует и открыта…
+    expect((await q(`SELECT COUNT(*)::int AS n FROM signals WHERE status = 'ACTIVE'`))[0].n).toBe(1);
+    // …но монитор её не видит.
+    expect(await repo.listOpenSignals(null, 100)).toHaveLength(0);
+    expect(await repo.countActiveSignals()).toBe(0);
+    // Сервисный доступ (аудит/диагностика) видит — но он именованный и
+    // осознанный, а не рабочий путь.
+    expect(await repo.listOpenSignals(null, 100, { includeQuarantined: true })).toHaveLength(1);
+  });
+
+  it('открытая строка UNKNOWN не мониторится: fail-closed', async (ctx) => {
+    if (guard(ctx)) return;
+    await seedSignal({ provenanceStatus: 'UNKNOWN' });
+    expect(await repo.listOpenSignals(null, 100)).toHaveLength(0);
+    expect(await repo.countActiveSignals()).toBe(0);
+  });
+
+  it('монитор не трогает карантин: тик не меняет строки MISMATCH', async (ctx) => {
+    if (guard(ctx)) return;
+    await seedSignal({ provenanceStatus: 'MISMATCH' });
+    await seedSignal({ symbol: 'ETH/USDT', provenanceStatus: 'UNKNOWN' });
+
+    const before = await q(`SELECT id, monitor_check_count, status FROM signals ORDER BY id`);
+    const monitor = new monitorMod.SignalMonitor({
+      now: () => Date.parse('2026-09-20T15:00:00Z'),
+      listOpen: (limit: number) => repo.listOpenSignals(null, limit),
+      sync: (patch: unknown) => repo.syncSignalLifecycle(patch as never),
+      getCandles: async () => [],
+      recordMonitor: (id: string, patch: unknown) => repo.recordSignalMonitorCheck(id, patch as never),
+      loadCore: async () => {
+        const core = await import('../../server/services/strategyEngine/strategyCoreBundle.js');
+        return core.loadStrategyCore();
+      },
+      sleep: async () => {},
+      requestTimeoutMs: 5000,
+    });
+
+    const summary = await monitor.tick();
+    expect(summary.openSignals, 'обе строки в карантине — рабочий набор пуст').toBe(0);
+    expect(await q(`SELECT id, monitor_check_count, status FROM signals ORDER BY id`)).toEqual(before);
   });
 });
 

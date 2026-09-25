@@ -156,7 +156,9 @@ describe('Скан настоящим ядром: контракт F-01', () => 
     expect(result.scan.lastError, 'успешный скан не оставляет ошибку').toBeNull();
     expect(result.scan.execTimeframe).toBe('1h');
 
-    const status = core.LiveSignalEngine.getInstance().getStatus();
+    // Движок scan-scoped: состояние прошедшего скана несёт сам результат,
+    // а не статический синглтон (getInstance() больше не источник истины).
+    const status = result.scan.runtime as any;
     expect(status.scanning, 'движок не должен остаться в состоянии сканирования').toBe(false);
     expect(status.scanCount).toBe(1);
     expect(status.perSymbol.BTCUSDT.pair, 'пара для БД/UI выводится из биржевого символа').toBe('BTC/USDT');

@@ -418,6 +418,7 @@ describe('Сигналы — хранение и дедупликация', () =
     stopLoss: 2625.0,
     tp1: 2600.0,
     tp2: 2570.0,
+    provenanceStatus: 'VERIFIED' as const,
   };
 
   it('повторный скан того же закрытого бара не создаёт второй сигнал', async (ctx) => {
@@ -568,6 +569,10 @@ const V28_SETUP = {
   targets: [116900.5, 118400.25, 121050.0],
   status: 'ACTIVE',
   metadata: { engineVersion: 'V2.8', riskRewardRatio: 1.94, latencyBars: 0 },
+  // Происхождение доказывается ДО записи (инцидент 2026-09-24). Фикстура
+  // копирует строку, которую записал бы исправленный движок; без явного
+  // VERIFIED строка ушла бы в UNKNOWN и выпала бы из монитора и статистики.
+  provenanceStatus: 'VERIFIED' as const,
 };
 
 describe('Сигналы — ничего из посчитанного стратегией не теряется (F-06)', () => {
@@ -627,6 +632,7 @@ describe('Сигналы — ничего из посчитанного стра
       stopLoss: 2625.0,
       tp1: 2600.0,
       tp2: 2570.0,
+      provenanceStatus: 'VERIFIED' as const,
     });
     expect(res.inserted).toBe(true);
 
@@ -882,6 +888,7 @@ describe('GET /api/signals — контракт для будущего Signals 
         stopLoss: 95 + i,
         targets: [110 + i, 120 + i, 130 + i],
         status: r.status,
+        provenanceStatus: 'VERIFIED' as const,
       });
       expect(res.inserted, `seed ${r.symbol} ${r.ts}`).toBe(true);
     }

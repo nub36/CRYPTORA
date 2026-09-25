@@ -116,16 +116,43 @@ function buildOnce() {
   return building;
 }
 
-export async function loadStrategyCore() {
-  if (cached) return cached;
+/**
+ * Одна ЗАГРУЗКА на процесс: параллельные вызовы делят один Promise.
+ *
+ * ПОЧЕМУ ЭТОГО НЕ ХВАТАЛО. Раньше `cached` присваивался только ПОСЛЕ
+ * `await import(...)`, поэтому два одновременных вызова на холодном старте
+ * оба видели `cached === null`, оба доходили до `import()` и получали РАЗНЫЕ
+ * объекты модуля: URL содержит `?v=${Date.now()}` специально, чтобы Node не
+ * отдал устаревший бандл из кэша модулей.
+ *
+ * А раз объектов модуля два — то и статические синглтоны `LiveSignalEngine` /
+ * `SignalsAuditLedger` в них РАЗНЫЕ. Скан, получивший первый модуль, и скан,
+ * получивший второй, перестают делить состояние — и вопрос «общее ли у этих
+ * двух сканов состояние» начинает зависеть от порядка запуска, а не от кода.
+ * Именно на таком неявном разделении и держится класс инцидента 2026-09-24:
+ * часть сканов работала с одной статикой, часть — с другой.
+ *
+ * Теперь загрузка single-flight целиком: все сканы гарантированно получают
+ * ОДИН объект модуля.
+ */
+let loading = null;
+
+function loadOnce() {
+  if (!loading) {
+    loading = importCore().finally(() => {
+      loading = null;
+    });
+  }
+  return loading;
+}
+
+async function importCore() {
   if (!isFresh()) await buildOnce();
 
   // cache-busting: Node кэширует модули по URL, а бандл пересобирается.
   const url = () => `${pathToFileURL(OUT_FILE).href}?v=${Date.now()}`;
   try {
-    const mod = await import(url());
-    cached = mod;
-    return mod;
+    return await import(url());
   } catch (firstError) {
     /**
      * Артефакт мог остаться битым от предыдущего падения процесса (запись
@@ -135,17 +162,22 @@ export async function loadStrategyCore() {
      */
     await buildOnce();
     try {
-      const mod = await import(url());
-      cached = mod;
-      return mod;
+      return await import(url());
     } catch (secondError) {
       throw new Error(
         'Не удалось загрузить скомпилированное ядро стратегий после пересборки. ' +
           `Первая ошибка: ${firstError instanceof Error ? firstError.message : String(firstError)}; ` +
-          `вторая: ${secondError instanceof Error ? secondError.message : String(secondError)}`
+          `вторая: ${secondError instanceof Error ? secondError.message : String(secondError)}`,
       );
     }
   }
+}
+
+export async function loadStrategyCore() {
+  if (cached) return cached;
+  const mod = await loadOnce();
+  cached = mod;
+  return mod;
 }
 
 export const __internals = { isFresh, build, OUT_FILE, OUT_DIR };

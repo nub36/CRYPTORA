@@ -43,6 +43,8 @@ const h = vi.hoisted(() => {
     status: null as any,
     scanNowCalls: 0,
     engineResets: 0,
+    /** Сколько движков создано через `new` (scan-scoped контекст). */
+    enginesCreated: 0,
     ledgerResets: 0,
     instanceConfig: null as any,
     retrospectiveFilter: null as any,
@@ -91,14 +93,31 @@ vi.mock('../../server/services/strategyEngine/strategyCoreBundle.js', () => {
     },
   });
 
+  /**
+   * Движок ядра. Класс, а не объект: серверный скан больше НЕ пользуется
+   * статическим синглтоном, а создаёт СВОЙ экземпляр через `new`
+   * (scan-scoped контекст, инцидент 2026-09-24). `getInstance` /
+   * `resetInstance` остаются в форме настоящего ядра, но серверный путь ими
+   * не пользуется — это и проверяется счётчиком `engineResets`.
+   */
+  class FakeEngine {
+    constructor(config: any) {
+      h.state.enginesCreated++;
+      Object.assign(this, makeEngine(config));
+    }
+
+    static resetInstance() {
+      h.state.engineResets++;
+    }
+
+    static getInstance(config: any) {
+      return makeEngine(config);
+    }
+  }
+
   return {
     loadStrategyCore: async () => ({
-      LiveSignalEngine: {
-        resetInstance: () => {
-          h.state.engineResets++;
-        },
-        getInstance: (config: any) => makeEngine(config),
-      },
+      LiveSignalEngine: FakeEngine,
       SignalsAuditLedger: {
         resetInstance: () => {
           h.state.ledgerResets++;
@@ -163,6 +182,8 @@ import {
 
 const V30 = 'V3_0_HTF_LIQUIDATION_TRAP';
 const V28 = 'V2_8_ZERO_FEE_SNIPER_TRAILING';
+/** Чужая стратегия для проверки инварианта provenance. */
+const V33_FOREIGN = 'V3_3_HTF_ZONE_MITIGATION';
 
 const SETUP_BAR = Date.parse('2026-09-19T10:00:00Z');
 
@@ -292,6 +313,7 @@ beforeEach(() => {
   h.state.status = makeStatus();
   h.state.scanNowCalls = 0;
   h.state.engineResets = 0;
+  h.state.enginesCreated = 0;
   h.state.ledgerResets = 0;
   h.state.instanceConfig = null;
   h.state.retrospectiveFilter = null;
@@ -355,15 +377,32 @@ describe('Движок вызывает ядро по существующему
     expect(result.scan.timeframes).toEqual(['1h', '4h']);
   });
 
-  it('журнал и экземпляр ядра сбрасываются перед каждым сканом', async () => {
+  it('журнал сбрасывается перед каждым сканом, а движок создаётся свой', async () => {
     await runStrategyScan({
       strategyId: V30,
       symbols: ['BTCUSDT'],
       fetcher: makeFetcher() as any,
       persist: false,
     });
-    expect(h.state.engineResets).toBeGreaterThan(0);
+    // Журнал: точки внедрения нет (`LiveSignalConfig` не содержит `ledger`),
+    // поэтому свой журнал на скан получается через статический синглтон и
+    // сбрасывается перед созданием движка.
     expect(h.state.ledgerResets).toBeGreaterThan(0);
+    // Движок: глобальный синглтон НЕ трогается вообще.
+    expect(h.state.enginesCreated, 'свой экземпляр на скан').toBe(1);
+    expect(h.state.engineResets, 'синглтон движка серверному скану не нужен').toBe(0);
+  });
+
+  it('каждый скан получает НОВЫЙ экземпляр движка: состояние не протекает между сканами', async () => {
+    for (let i = 0; i < 3; i += 1) {
+      await runStrategyScan({
+        strategyId: V30,
+        symbols: ['BTCUSDT'],
+        fetcher: makeFetcher() as any,
+        persist: false,
+      });
+    }
+    expect(h.state.enginesCreated, 'три скана — три движка, общего состояния нет').toBe(3);
   });
 
   it('отказ рыночных данных бросается ДО скана: «нет данных» не выглядит как «нет сетапов»', async () => {
@@ -603,22 +642,38 @@ describe('Перенос сетапа в signalRepository', () => {
   });
 
   it('buildSignalRecord — чистое отображение: ничего не пересчитывается', () => {
+    // strategyId вызывающего обязан совпадать с strategyId сетапа: это тот же
+    // инвариант provenance, что закрывает инцидент 2026-09-24 (три strategy_id
+    // с одним payload). Свои сетапы проходят без изменений уровней.
     const built = buildSignalRecord({
       setup: makeSetup({ targets: [10, 20, 30, 40] }),
-      strategyId: V28,
-      fallbackVersion: '2.8',
-      engineKey: 'V2.8',
+      strategyId: V30,
+      fallbackVersion: '3.0',
+      engineKey: 'V3.0',
       execTf: '1h',
     });
     expect(built).not.toBeNull();
-    expect(built!.record.targets).toEqual([10, 20, 30, 40]);
+    expect(built!.record).not.toBeNull();
+    expect(built!.record!.targets).toEqual([10, 20, 30, 40]);
     expect(built!.setupOpenTime).toBe(SETUP_BAR);
+
+    // Чужой сетап НЕ переименовывается: relabel — и есть корень инцидента.
+    const relabel = buildSignalRecord({
+      setup: makeSetup({ strategyId: V33_FOREIGN }),
+      strategyId: V30,
+      fallbackVersion: '3.0',
+      engineKey: 'V3.0',
+      execTf: '1h',
+    });
+    expect(relabel, 'ключ дедупликации есть — null быть не должно').not.toBeNull();
+    expect(relabel!.record, 'публиковать чужой сетап под своим id нельзя').toBeNull();
+    expect(relabel!.provenanceMismatch).toBe(V33_FOREIGN);
 
     // Лестница копируется: последующая мутация сетапа не меняет сохранённое.
     const setup = makeSetup();
     const copy = buildSignalRecord({ setup, strategyId: V30, fallbackVersion: '3.0', engineKey: 'V3.0', execTf: '1h' })!;
     setup.targets.push(999);
-    expect(copy.record.targets).toEqual([116_900.5, 118_400.25, 121_050.0]);
+    expect(copy.record!.targets).toEqual([116_900.5, 118_400.25, 121_050.0]);
 
     expect(buildSignalRecord({ setup: makeSetup({ setupOpenTime: Infinity }), strategyId: V30, fallbackVersion: '3.0', engineKey: 'V3.0', execTf: '1h' })).toBeNull();
     expect(buildSignalRecord({ setup: makeSetup({ setupOpenTime: '1758283200000' }), strategyId: V30, fallbackVersion: '3.0', engineKey: 'V3.0', execTf: '1h' })!.setupOpenTime).toBe(1758283200000);

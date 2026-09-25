@@ -5,7 +5,7 @@
  * из `src/` и переносит то, что ядро посчитало, в PostgreSQL.
  */
 
-import type { SignalRow, SignalStatus, SignalEntryType } from '../signalRepository.js';
+import type { SignalRow, SignalStatus, SignalEntryType, ProvenanceStatus } from '../signalRepository.js';
 import type { MarketDataFetcher } from './marketDataFetcher.js';
 
 /** registry id стратегии ↔ ключ стратегии внутри LiveSignalEngine. */
@@ -46,13 +46,23 @@ export interface SignalInsertRecord {
   /** ВСЯ лестница целей; tp1/tp2 выводит репозиторий. */
   targets: number[] | null;
   status: SignalStatus;
+  /**
+   * Происхождение, доказанное ДО записи: 'VERIFIED' только если
+   * `setup.strategyId === strategyId`, иначе 'UNKNOWN' (fail-closed).
+   * Расхождение даёт `record: null` — строка не публикуется вовсе.
+   */
+  provenanceStatus: ProvenanceStatus;
   metadata: Record<string, unknown> | null;
 }
 
 /**
  * Чистое отображение сетапа ядра (`AnalyticalSetup`) в строку signals.
+ *
  * `null` — у сетапа нет валидного `setupOpenTime`, сохранять его нельзя:
  * без ключа дедупликации рестарт процесса дал бы дубли.
+ *
+ * `record: null` при `provenanceMismatch` — сетап посчитала другая стратегия:
+ * переименовывать его под `strategyId` вызывающего запрещено.
  */
 export declare function buildSignalRecord(params: {
   setup: Record<string, unknown>;
@@ -60,7 +70,11 @@ export declare function buildSignalRecord(params: {
   fallbackVersion: string;
   engineKey: string;
   execTf: string;
-}): { setupOpenTime: number; record: SignalInsertRecord } | null;
+}): {
+  setupOpenTime: number;
+  record: SignalInsertRecord | null;
+  provenanceMismatch?: string;
+} | null;
 
 export interface ScanLifecycleSummary {
   synced: number;
@@ -81,6 +95,14 @@ export interface ScanRuntimeSummary {
   /** Сколько баров реально оценил реплей (из ReplaySummary ядра). */
   evaluatedBars: number;
   providerIsDemo: boolean;
+  /**
+   * Снимок состояния ядра ПОСЛЕ скана (`engine.getStatus()` как есть).
+   *
+   * Движок scan-scoped, поэтому статический синглтон больше не источник
+   * истины о прошедшем скане: спросить `getInstance().getStatus()` нельзя,
+   * там пусто. Наблюдаемость обязана жить в результате.
+   */
+  runtime: Record<string, unknown>;
 }
 
 export interface StrategyScanResult {
@@ -96,6 +118,12 @@ export interface StrategyScanResult {
   duplicates: number;
   /** Сетапы без валидного ключа дедупликации: не сохранены, но видимы. */
   skippedNoKey: number;
+  /**
+   * Сетапы, которые посчитала ДРУГАЯ стратегия: не сохранены и не
+   * переименованы (инвариант provenance). Ненулевое значение — ЧП: оно
+   * означает, что скан читал чужой ledger ядра.
+   */
+  provenanceMismatch: number;
   /** Σ `unpublishable` из ReplaySummary (отклонённые геометрией). */
   rejected: number;
   lifecycle: ScanLifecycleSummary;

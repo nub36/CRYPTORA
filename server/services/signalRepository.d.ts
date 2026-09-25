@@ -21,6 +21,12 @@ export type TerminalSignalStatus = Exclude<SignalStatus, 'ACTIVE' | 'FILLED'>;
 
 export type SignalEntryType = 'LIMIT_CORRIDOR' | 'MARKET_NEXT_OPEN';
 
+/**
+ * Происхождение сигнала (миграция 011). См. `server/services/signalProvenance.d.ts`.
+ * DEFAULT = 'UNKNOWN' (fail-closed): отсутствие доказательства — не согласие.
+ */
+export type ProvenanceStatus = 'VERIFIED' | 'MISMATCH' | 'UNKNOWN';
+
 export interface SignalRow {
   id: string;
   strategyId: string;
@@ -62,6 +68,12 @@ export interface SignalRow {
   outcomeHash: string | null;
   /** 1 = hash-форма 007, 2 = форма 009 (issuance-only + отдельный outcome_hash). */
   chainVersion: number;
+  /**
+   * Происхождение сигнала (миграция 011): VERIFIED | MISMATCH | UNKNOWN.
+   * DEFAULT 'UNKNOWN' — fail-closed. НЕ входит в публикуемый payload, поэтому
+   * не влияет на `hash` / `outcome_hash`.
+   */
+  provenanceStatus: ProvenanceStatus;
 }
 
 export interface NewSignal {
@@ -84,6 +96,11 @@ export interface NewSignal {
   status?: SignalStatus;
   createdAt?: Date;
   metadata?: Record<string, unknown> | null;
+  /**
+   * Происхождение нового сигнала. Заполняет КОД ГЕНЕРАЦИИ (проверка ДО записи),
+   * а не вызывающий: по умолчанию 'UNKNOWN' (fail-closed).
+   */
+  provenanceStatus?: ProvenanceStatus;
 }
 
 export interface SignalFill {
@@ -140,10 +157,24 @@ export function resolveLevels(p?: {
 export function insertSignal(signal: NewSignal): Promise<{ inserted: boolean; signal: SignalRow | null }>;
 export function listSignals(p?: SignalFilters & { limit?: number; offset?: number }): Promise<SignalRow[]>;
 export function countSignals(filters?: SignalFilters): Promise<number>;
-/** Незакрытые сигналы (ACTIVE + FILLED) — рабочий набор синхронизации исходов. */
-export function listOpenSignals(strategyId?: string, limit?: number): Promise<SignalRow[]>;
-/** Незакрытые сетапы: ACTIVE (ждёт входа) + FILLED (в позиции). */
-export function countActiveSignals(strategyId?: string): Promise<number>;
+/**
+ * Незакрытые сигналы (ACTIVE + FILLED) — рабочий набор синхронизации исходов.
+ *
+ * По умолчанию — ТОЛЬКО доказанные (`provenance_status = 'VERIFIED'`): монитор
+ * не должен доводить до исхода чужой сетап. `includeQuarantined: true` —
+ * явный сервисный доступ ко ВСЕМ открытым строкам (диагностика, аудит),
+ * а не рабочий путь.
+ */
+export function listOpenSignals(
+  strategyId?: string | null,
+  limit?: number,
+  opts?: { includeQuarantined?: boolean }
+): Promise<SignalRow[]>;
+/** Незакрытые сетапы: ACTIVE (ждёт входа) + FILLED (в позиции), только VERIFIED. */
+export function countActiveSignals(
+  strategyId?: string | null,
+  opts?: { includeQuarantined?: boolean }
+): Promise<number>;
 export function closeSignal(
   id: string,
   status: TerminalSignalStatus,

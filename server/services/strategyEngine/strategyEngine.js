@@ -31,6 +31,8 @@ import {
   syncSignalLifecycle,
 } from '../signalRepository.js';
 import { getStrategy, PRODUCT_STRATEGIES } from '../strategyCatalog.js';
+import { provenanceOfNewSignal } from '../signalProvenance.js';
+import { withScanLock } from './scanMutex.js';
 import { recordScanResult, recordSignalEmitted } from '../strategySettings.js';
 
 /**
@@ -108,6 +110,19 @@ export function normalizeScanSymbols(requested) {
 /**
  * Отображение сетапа ядра в строку таблицы `signals`.
  *
+ * ── ИНВАРИАНТ PROVENANCE (инцидент 2026-09-24: три strategy_id с одним payload) ──
+ *
+ * `strategyId` строки БД — это НЕ «чей скан сейчас идёт», а «какая стратегия
+ * породила этот сетап». Источник истины — `setup.strategyId`: его ставит сам
+ * LIVE-реплей стратегии (src/services/signals/live/replays/*), и он же входит
+ * в `setup.id` (`${strategyId}-${symbol}-${setupOpenTime}`).
+ *
+ * Переименование чужого сетапа — незаметная подмена: уровни остаются
+ * «правдоподобными», а журнал и статистика стратегии начинают описывать чужую
+ * математику. Поэтому relabel здесь запрещён: сетап с чужим strategyId не
+ * возвращается и не попадает в БД, а факт расхождения виден в сводке скана
+ * (`provenanceMismatch`) и в логе.
+ *
  * Функция ЧИСТАЯ: ни БД, ни математики стратегий. Все значения берутся из
  * `AnalyticalSetup` как есть (src/services/signals/SignalsAuditLedger.ts) —
  * уровень, который стратегия посчитала, здесь не пересчитывается и не
@@ -129,13 +144,33 @@ export function normalizeScanSymbols(requested) {
  * @param {string} p.fallbackVersion — версия из каталога, если сетап её не несёт
  * @param {string} p.engineKey — ключ стратегии в ядре ('V3.0', 'V3.3', 'V2.8')
  * @param {string} p.execTf — таймфрейм исполнения ядра
- * @returns {{setupOpenTime: number, record: object}|null} null — нет валидного
- *   ключа дедупликации: такой сетап НЕ сохраняется (сохранить без ключа =
- *   потерять дедупликацию и получить дубли при каждом рестарте).
+ * @returns {{setupOpenTime: number, record: object|null, provenanceMismatch?: string}|null}
+ *   null — нет валидного ключа дедупликации: такой сетап НЕ сохраняется
+ *   (сохранить без ключа = потерять дедупликацию и получить дубли при каждом
+ *   рестарте). `record: null` при `provenanceMismatch` — сетап порождён другой
+ *   стратегией: публиковать его под этим strategy_id нельзя.
+ *   `record.provenanceStatus` = 'VERIFIED' только когда сетап помнит, какая
+ *   стратегия его создала, и это запрошенная стратегия. Иначе — 'UNKNOWN'
+ *   (fail-closed), а при доказанном расхождении `record` = null.
  */
 export function buildSignalRecord({ setup, strategyId, fallbackVersion, engineKey, execTf }) {
   const setupOpenTime = Number(setup?.setupOpenTime);
   if (!Number.isFinite(setupOpenTime)) return null;
+
+  /**
+   * Provenance-проверка. `setup.strategyId` ставит реплей самой стратегии;
+   * отсутствие поля — это старый/неполный сетап, и молча подставлять вместо
+   * него вызывающего нельзя, иначе проверка вырождается в «всегда ок».
+   *
+   * Правила — из `signalProvenance.provenanceOfNewSignal`, одного источника для
+   * движка и для БД: `setup.strategyId === strategyId` ⇒ VERIFIED, расхождение
+   * ⇒ строка не публикуется вовсе, нет поля ⇒ UNKNOWN (fail-closed: такая
+   * строка сохраняется, но не мониторится и не идёт в статистику).
+   */
+  const provenance = provenanceOfNewSignal(setup, strategyId);
+  if (provenance.mismatch) {
+    return { setupOpenTime, record: null, provenanceMismatch: provenance.generator };
+  }
 
   return {
     setupOpenTime,
@@ -156,6 +191,12 @@ export function buildSignalRecord({ setup, strategyId, fallbackVersion, engineKe
       stopLoss: setup.invalidationLevel ?? null,
       targets: Array.isArray(setup.targets) ? [...setup.targets] : null,
       status: 'ACTIVE',
+      /**
+       * Происхождение доказано ДО записи и НЕ входит в публикуемый payload
+       * (`hashPayloadV2`), поэтому перенос строки в карантин позже не рвёт
+       * хэш-цепочку.
+       */
+      provenanceStatus: provenance.status,
       metadata: {
         engineVersion: engineKey,
         riskRewardRatio: setup.riskRewardRatio ?? null,
@@ -176,7 +217,7 @@ export function buildSignalRecord({ setup, strategyId, fallbackVersion, engineKe
  * @param {boolean} [p.persist] — false только в тестах
  * @returns {Promise<{strategyId:string, symbolsScanned:number, evaluated:boolean,
  *                    setupsFound:number, inserted:number, duplicates:number,
- *                    skippedNoKey:number, rejected:number,
+ *                    skippedNoKey:number, provenanceMismatch:number, rejected:number,
  *                    lifecycle:{synced:number, unchanged:number, notFound:number},
  *                    scan:object, activeSignals:number|null}>}
  */
@@ -207,18 +248,6 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
   const dataFetcher = fetcher ?? getMarketDataFetcher();
   const core = await loadStrategyCore();
 
-  // Ядро — синглтон с ledger внутри. Сбрасываем, чтобы скан другой стратегии
-  // не подмешал чужие сетапы и не переиспользовал устаревший экземпляр.
-  core.SignalsAuditLedger.resetInstance?.();
-  core.LiveSignalEngine.resetInstance();
-
-  const engine = core.LiveSignalEngine.getInstance({
-    provider: dataFetcher.asProvider(),
-    symbols: universe,
-    strategies: [engineKey],
-  });
-  if (!engine) throw new Error('Failed to instantiate strategy core engine');
-
   /**
    * Таймфрейм исполнения — из ЯДРА, а не из копии: публикации сетапов несут
    * `setup.timeframe === EXEC_TIMEFRAME` ядра, и сопоставление с БД обязано
@@ -248,6 +277,11 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
    * Серии — исполнение + контекст из каталога (`timeframes`), включая дневную
    * для V2.8: ядро просит её как `'1D'`, и без предзагрузки этот запрос ушёл бы
    * в сеть уже внутри скана.
+   *
+   * Предзагрузка СОЗНАТЕЛЬНО ВНЕ мьютекса скана (см. критическую секцию ниже):
+   * общий `MarketDataFetcher` дедуплицирует in-flight серии (`inFlight`),
+   * поэтому параллельные сканы стратегий не превращаются в N×запросов к бирже,
+   * а под блокировкой ядро просто берёт свечи из кэша и не дергает сеть.
    */
   const timeframes = [...new Set([execTf, ...meta.timeframes])];
   const fetchResults = await Promise.allSettled(
@@ -268,27 +302,99 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     throw err;
   }
 
-  const ledger = core.SignalsAuditLedger.getInstance();
-  const before = new Set(ledger.getSetups().map((s) => s.id));
-
   /**
-   * ОДИН проход по требованию, без setInterval: расписанием владеет
-   * StrategyScheduler, а не ядро.
+   * ══════════════════════════════════════════════════════════════════════
+   *  КРИТИЧЕСКАЯ СЕКЦИЯ СКАНА (инцидент 2026-09-24: три strategy_id с одним
+   *  payload). Здесь создаётся scan-scoped контекст ядра и он же исполняется.
+   * ══════════════════════════════════════════════════════════════════════
    *
-   * Метод ядра называется `scanNow()` (src/services/signals/live/
-   * LiveSignalEngine.ts:370) и возвращает `Promise<void>`; `scanOnce()` в ядре
-   * никогда не существовало — вызов несуществующего метода давал TypeError на
-   * каждом скане и нуль сигналов (F-01). Контракт проверяется тестом, который
-   * реально исполняется: tests/integration/strategyEngineCore.test.ts.
+   * Что здесь сделано и почему — три рубежа, каждый следующий страхует
+   * предыдущий.
+   *
+   * РУБЕЖ 1. СВОЙ ДВИЖОК НА СКАН — глобальный синглтон не трогается вообще.
+   *   `new core.LiveSignalEngine({...})` вместо
+   *   `resetInstance() + getInstance()`. Класс и конструктор ядра публичны,
+   *   поэтому статический `instance` серверному скану больше не нужен. Это
+   *   снимает сразу два класса аварий:
+   *     • «украсть сетап» — чужой скан больше не может обнулить
+   *       `LiveSignalEngine.instance`, потому что наш движок там не лежит;
+   *     • «сбросить зависимость на ходу» — `resetInstance()` в ядре делает
+   *       `instance.stop()` для запущенного движка; мы этот метод не вызываем,
+   *       значит чужой скан не может остановить наш.
+   *
+   * РУБЕЖ 2. ССЫЛКА НА ЖУРНАЛ ЗАХВАЧЕНА СИНХРОННО С СОЗДАНИЕМ ДВИЖКА.
+   *   Конструктор ядра сам делает `this.ledger =
+   *   SignalsAuditLedger.getInstance()` (src/…/LiveSignalEngine.ts:250), а
+   *   `LiveSignalConfig` НЕ содержит поля `ledger` — точки внедрения нет,
+   *   сделать журнал по-настоящему scan-scoped замороженное API не даёт.
+   *   Поэтому журнал получается через статический синглтон, но:
+   *     • сброс и чтение идут в ОДНОМ синхронном блоке, который планировщик
+   *       не может разорвать — между `resetInstance()` и `getInstance()` нет
+   *       ни одного `await`;
+   *     • после блока журнал больше никто не перечитывает: весь скан
+   *       работает с захваченной ссылкой, а не с синглтоном. Чужой
+   *       `resetInstance()` обнулит статику, но наша ссылка останется на наш
+   *       объект — в JS обнуление поля не трогает уже взятые ссылки.
+   *   Раньше `ledger` читался ПОСЛЕ `await` предзагрузки свечей: к моменту
+   *   возобновления синглтон уже принадлежал движку стратегии, запущенной
+   *   последней. Три скана читали ОДИН чужой журнал, а `buildSignalRecord`
+   *   ставил в строку `strategyId` вызывающего — так один payload ушёл в БД
+   *   под всеми тремя strategy_id, а сетапы двух других стратегий пропали.
+   *
+   * РУБЕЖ 3. МЬЮТЕКС. Внутри замороженного ядра в каждый момент находится
+   *   ровно один скан (см. scanMutex.js). Он страхует то, что сервер не
+   *   видит: статический синглтон журнала и любые модульные кэши бандла.
+   *   Стоимость — wall-clock (сканы идут последовательно), а НЕ нагрузка на
+   *   биржу: свечи предзагружены выше и дедуплицированы in-flight в
+   *   `MarketDataFetcher`, под блокировкой сеть не дергается.
+   *
+   * РУБЕЖ 4 (в `buildSignalRecord`). Даже если чужой сетап всё же попадёт в
+   *   выборку, он не будет переименован: `setup.strategyId` обязан совпасть с
+   *   `strategyId` скана, иначе строка не публикуется, а факт подмены идёт в
+   *   лог и в счётчик `provenanceMismatch`.
    */
-  await engine.scanNow();
+  const { engine, status, fresh } = await withScanLock(async () => {
+    // Свой журнал на скан. `resetInstance` у журнала только обнуляет статику —
+    // уже взятые ссылки это не трогает.
+    core.SignalsAuditLedger.resetInstance?.();
 
-  const status = engine.getStatus();
-  const fresh = ledger.getSetups().filter((s) => !before.has(s.id));
+    const scanEngine = new core.LiveSignalEngine({
+      provider: dataFetcher.asProvider(),
+      symbols: universe,
+      strategies: [engineKey],
+    });
+    if (!scanEngine) throw new Error('Failed to instantiate strategy core engine');
+
+    // СИНХРОННО с конструктором: журнал, который движок только что привязал
+    // к себе (см. рубеж 2). Между двумя строками нет `await`.
+    const scanLedger = core.SignalsAuditLedger.getInstance();
+
+    const before = new Set(scanLedger.getSetups().map((s) => s.id));
+
+    /**
+     * ОДИН проход по требованию, без setInterval: расписанием владеет
+     * StrategyScheduler, а не ядро.
+     *
+     * Метод ядра называется `scanNow()` (src/services/signals/live/
+     * LiveSignalEngine.ts:370) и возвращает `Promise<void>`; `scanOnce()` в
+     * ядре никогда не существовало — вызов несуществующего метода давал
+     * TypeError на каждом скане и нуль сигналов (F-01). Контракт проверяется
+     * тестом, который реально исполняется:
+     * tests/integration/strategyEngineCore.test.ts.
+     */
+    await scanEngine.scanNow();
+
+    const scanStatus = scanEngine.getStatus();
+    const scanFresh = scanLedger.getSetups().filter((s) => !before.has(s.id));
+    return { engine: scanEngine, status: scanStatus, fresh: scanFresh };
+  });
 
   let inserted = 0;
   let duplicates = 0;
   let skippedNoKey = 0;
+  let provenanceMismatch = 0;
+  /** Кто именно породил отвергнутые сетапы — для честного лога, а не «что-то пошло не так». */
+  const alienStrategyIds = new Set();
 
   for (const setup of fresh) {
     /**
@@ -312,11 +418,32 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
       skippedNoKey++;
       continue;
     }
+    /**
+     * Provenance: уровни этого сетапа посчитала ДРУГАЯ стратегия. Публиковать их
+     * под текущим `strategyId` — значит подменить авторство сигнала: в журнале
+     * появится запись, которой эта стратегия не создавала. Такой сетап
+     * пропускается и считается; молча писать его нельзя, поэтому расхождение
+     * уходит и в лог, и в сводку скана.
+     */
+    if (!built.record) {
+      provenanceMismatch++;
+      if (built.provenanceMismatch) alienStrategyIds.add(built.provenanceMismatch);
+      continue;
+    }
     if (!persist) continue;
 
     const res = await insertSignal(built.record);
     if (res.inserted) inserted++;
     else duplicates++;
+  }
+
+  if (provenanceMismatch > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[strategyEngine] provenance violation: скан ${strategyId} получил ${provenanceMismatch} `
+      + `сетап(ов) стратегий ${[...alienStrategyIds].join(', ') || 'UNKNOWN'} — они НЕ опубликованы. `
+      + 'Причина: общий статический ledger ядра между параллельными сканами.',
+    );
   }
 
   if (inserted > 0) await recordSignalEmitted(strategyId);
@@ -349,6 +476,7 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     inserted,
     duplicates,
     skippedNoKey,
+    provenanceMismatch,
     rejected,
     lifecycle,
     scan: {
@@ -361,6 +489,19 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
       lastError: status.lastError ?? null,
       evaluatedBars,
       providerIsDemo: Boolean(status.providerIsDemo),
+      /**
+       * Снимок состояния ядра ПОСЛЕ скана — diagnostics и тесты.
+       *
+       * Движок теперь scan-scoped (`new LiveSignalEngine(...)`), поэтому
+       * статический синглтон больше НЕ является источником истины о прошедшем
+       * скане: спросить `getInstance().getStatus()` после скана нельзя, его
+       * просто нет. Наблюдаемость обязана жить в результате, иначе её нет
+       * вообще — а «скан прошёл, но проверить нечем» хуже любого лишнего поля.
+       *
+       * Это НЕ пересчёт: состояние отдано самим ядром (`engine.getStatus()`),
+       * сервер его не интерпретирует и не переписывает.
+       */
+      runtime: status,
     },
     activeSignals: persist ? await countActiveSignals(strategyId) : null,
   };
