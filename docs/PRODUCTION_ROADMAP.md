@@ -1,5 +1,8 @@
 # CRYPTORA — Production Roadmap & Operational Backlog
 
+> **Frontend redesign pass (2026-09-25):** work is in branch `arena/01a0d9bf-cryptora`, based on verified `origin/main` `bd69cfca3059fa3292f8232d71bd154680185368`. Not merged or deployed. Global Signals Home and authorial terminal presentation are in progress; backend and strategy invariants remain frozen.
+
+
 > **Основной backlog проекта после PR #12 / #13 / #14.** Живой checklist: следующий coding agent
 > берёт задачи отсюда, а не из истории чата. Меняя статус задачи, обновляй её здесь (статус +
 > PR/commit) и в `docs/agent-plan/STATUS.md`.

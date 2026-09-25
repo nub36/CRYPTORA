@@ -1,5 +1,12 @@
 # SIGNALS — LIVE-сетапы архивных стратегий и неизменяемый журнал
 
+## Frontend redesign note — 2026-09-25
+
+Signals Home is global by default. `/signals` requests the bounded server feed without `symbol`; it does not use BTC as an implicit scope. Selecting a server row writes `/signals?symbol=<BASE>&signal=<server-id>` and synchronizes the chart, exact server levels, summary, and selected asset. The global feed remains visible after selection; current-asset history is a separate section. Statistics default to `GET /api/signals/statistics?period=all` without `symbol`; the asset scope is explicit.
+
+This is frontend presentation/query-scope behavior only. Provenance, notification eligibility, persisted DTOs, lifecycle math, strategy settings, and backend behavior are unchanged.
+
+
 > **Последнее обновление:** 2026-09-25 (ветка `arena/01a0d727-cryptora` от `a33bd1aba3b4b9998557b2e4d77a1418cad0d98c`,
 > PR открыт — НЕ слит, НЕ задеплоен).
 > Раздел 13 описывает колокольчик и deep-link: серверный источник истины, версионированное
