@@ -87,6 +87,13 @@ export interface SignalMarkersResult {
   skipped: number;
 }
 
+export interface MapSignalMarkersOptions {
+  /** Выбранный сигнал: выделяется крупнее. */
+  selectedId?: string | null;
+  /** Показывать текстовые подписи у маркеров на графике. По умолчанию false (компактные маркеры). */
+  showLabels?: boolean;
+}
+
 /** Время сигнала в unix-секундах; null — если сервер отдал невалидное значение. */
 export function signalTimeSeconds(iso: string | null | undefined): number | null {
   if (!iso) return null;
@@ -105,17 +112,25 @@ function candleTimeSeconds(time: number): number | null {
 /**
  * Маркеры истории сигналов поверх свечей.
  *
- * @param models      сигналы выбранного инструмента (порядок сервера)
- * @param candles     загруженные свечи ВЫБРАННОГО таймфрейма
- * @param timeframeSec длительность бара графика в секундах
- * @param selectedId  выбранный сигнал — маркер крупнее и с точкой в подписи
+ * @param models               сигналы выбранного инструмента (порядок сервера)
+ * @param candles              загруженные свечи ВЫБРАННОГО таймфрейма
+ * @param timeframeSec         длительность бара графика в секундах
+ * @param optionsOrSelectedId  опции или selectedId (для обратной совместимости)
  */
 export function mapSignalMarkers(
   models: readonly SignalUiModel[],
   candles: readonly CandleTime[],
   timeframeSec: number,
-  selectedId?: string | null
+  optionsOrSelectedId?: MapSignalMarkersOptions | string | null
 ): SignalMarkersResult {
+  const isLegacyCall =
+    typeof optionsOrSelectedId === 'string' ||
+    optionsOrSelectedId === null ||
+    optionsOrSelectedId === undefined;
+
+  const selectedId = isLegacyCall ? optionsOrSelectedId ?? null : optionsOrSelectedId.selectedId ?? null;
+  const showLabels = isLegacyCall ? true : optionsOrSelectedId.showLabels ?? false;
+
   const candleTimes = new Set<number>();
   for (const candle of candles) {
     const seconds = candleTimeSeconds(candle.time);
@@ -145,6 +160,16 @@ export function mapSignalMarkers(
     }
     const isLong = model.direction === 'LONG';
     const selected = Boolean(selectedId) && model.id === selectedId;
+
+    // Компактные маркеры без гигантского текста поверх свечей.
+    // Сторона читается формой и положением: LONG = arrowUp под баром,
+    // SHORT = arrowDown над баром. Открытые (ACTIVE/FILLED) ярче и крупнее,
+    // закрытая история — аккуратная и менее заметная.
+    const size = selected ? (model.isOpen ? 3 : 2) : model.isOpen ? 2 : 1;
+    const text = showLabels
+      ? `${model.directionText} · ${model.strategyShort}${selected ? ' •' : ''}`
+      : undefined;
+
     markers.push({
       id: model.id,
       time: snapped,
@@ -157,17 +182,21 @@ export function mapSignalMarkers(
         : model.isOpen
           ? SIGNAL_MARKER_COLORS.SHORT_OPEN
           : SIGNAL_MARKER_COLORS.SHORT_CLOSED,
-      text: `${model.directionText} · ${model.strategyShort}${selected ? ' •' : ''}`,
-      size: selected ? 3 : 2,
+      ...(text !== undefined ? { text } : {}),
+      size,
       payload: {
         signalId: model.id,
         pair: model.pair,
         direction: model.direction,
         strategyId: model.strategyId,
+        strategyShort: model.strategyShort,
         status: model.status,
         statusLabel: model.statusLabel,
         timeframe: model.timeframe,
         selected,
+        isOpen: model.isOpen,
+        signalCandleTs: model.signalCandleTs,
+        model,
       },
     });
   }
@@ -211,9 +240,43 @@ export function pickMarkerAtTime(
   )[0] ?? null;
 }
 
-function lineTitle(row: SignalLevelRow): string {
+export interface BuildLevelLinesOptions {
+  showEffective?: boolean;
+  /** Показывать текстовые подписи у линий на графике. Default: true. */
+  showLabels?: boolean;
+  /** Использовать компактные названия (Вход ↓, Стоп, TP1) вместо длинных предложений. Default: false. */
+  compact?: boolean;
+}
+
+/**
+ * Компактная подпись уровня для графика (не занимать половину экрана).
+ * Полные названия остаются в карточке / попапе выбранного сигнала.
+ */
+export function compactLevelLabel(row: SignalLevelRow): string {
+  if (row.effective) {
+    if (row.kind === 'entry') return 'Факт';
+    if (row.kind === 'stop') return 'SL эфф';
+    if (row.kind === 'target') return `TP${(row.targetIndex ?? 0) + 1} эфф`;
+  }
+  if (row.kind === 'entry') {
+    if (row.id === 'entry-low') return 'Вход ↓';
+    if (row.id === 'entry-high') return 'Вход ↑';
+    return 'Вход';
+  }
+  if (row.kind === 'stop') {
+    return 'Стоп';
+  }
+  if (row.kind === 'target') {
+    return `TP${(row.targetIndex ?? 0) + 1}`;
+  }
+  return row.label;
+}
+
+function lineTitle(row: SignalLevelRow, compact = false, showLabels = true): string {
+  if (!showLabels) return '';
+  const label = compact ? compactLevelLabel(row) : row.label;
   const comparator = row.comparator ? `${row.comparator} ` : '';
-  return `${row.label} ${comparator}${formatSignalPrice(row.price)}`;
+  return `${label} ${comparator}${formatSignalPrice(row.price)}`;
 }
 
 function levelStyle(row: SignalLevelRow): ChartLevelLine['style'] {
@@ -223,15 +286,15 @@ function levelStyle(row: SignalLevelRow): ChartLevelLine['style'] {
   return 'solid';
 }
 
-function rowToLine(row: SignalLevelRow): ChartLevelLine {
+function rowToLine(row: SignalLevelRow, compact = false, showLabels = true): ChartLevelLine {
   return {
     id: row.effective ? `eff-${row.id}` : row.id,
     price: row.price,
-    title: lineTitle(row),
+    title: lineTitle(row, compact, showLabels),
     color: LEVEL_LINE_COLORS[row.kind],
     style: levelStyle(row),
     lineWidth: row.kind === 'stop' ? 2 : 1,
-    axisLabelVisible: true,
+    axisLabelVisible: showLabels,
   };
 }
 
@@ -244,11 +307,15 @@ function rowToLine(row: SignalLevelRow): ChartLevelLine {
  */
 export function buildSignalLevelLines(
   model: SignalUiModel | null,
-  opts: { showEffective?: boolean } = {}
+  opts: BuildLevelLinesOptions = {}
 ): { lines: ChartLevelLine[]; skippedLevels: number } {
   if (!model) return { lines: [], skippedLevels: 0 };
-  const rows = opts.showEffective ? [...model.levels, ...model.effectiveLevels] : model.levels;
-  const lines = rows.map(rowToLine);
+  const showEffective = opts.showEffective ?? false;
+  const showLabels = opts.showLabels ?? true;
+  const compact = opts.compact ?? false;
+
+  const rows = showEffective ? [...model.levels, ...model.effectiveLevels] : model.levels;
+  const lines = rows.map((r) => rowToLine(r, compact, showLabels));
   if (lines.length <= LEVEL_LINES_MAX) return { lines, skippedLevels: 0 };
   return { lines: lines.slice(0, LEVEL_LINES_MAX), skippedLevels: lines.length - LEVEL_LINES_MAX };
 }
