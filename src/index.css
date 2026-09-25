@@ -684,3 +684,25 @@ body { background: var(--terminal-canvas); color: var(--terminal-text); }
 .route-shell[data-layout='operations'] > .mb-6, .route-shell[data-layout='operations'] > header { border-bottom: 1px solid var(--terminal-accent); }
 .route-shell[data-layout='editorial'] h1, .route-shell[data-layout='newswire'] h1 { max-width: 42rem; }
 .route-shell[data-layout='account'] { max-width: 54rem; }
+
+/* Presentation primitives used by route JSX compositions. */
+.terminal-region { min-width: 0; }
+.terminal-region__header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--terminal-divider); }
+.terminal-region__title { margin:.2rem 0 0; font-size:15px; font-weight:650; letter-spacing:-.015em; }
+.terminal-region__meta { color:var(--terminal-tertiary); font:10px 'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:.05em; }
+.market-workspace { border-top:2px solid var(--terminal-accent); }
+.market-table { overflow:hidden; background:rgba(13,18,26,.5); }
+.screener-workbench { border-left:2px solid var(--terminal-warning); }
+.screener-filter { padding:10px 0 2px; }
+.screener-results { border-top:2px solid var(--terminal-accent); }
+.screener-result-table { overflow:hidden; }
+.coin-identity { border-left:2px solid var(--terminal-accent); }
+.coin-state-strip { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; }
+.coin-workspace-region { border-top:2px solid var(--terminal-accent); }
+.liquidation-workspace { border-top:2px solid var(--terminal-accent); }
+.strategy-operations { border-top:2px solid var(--terminal-accent); }
+@media (max-width:640px) {
+  .terminal-region__header { align-items:flex-start; flex-direction:column; }
+  .coin-state-strip { align-items:flex-start; }
+  .terminal-region__meta { align-self:flex-start; }
+}

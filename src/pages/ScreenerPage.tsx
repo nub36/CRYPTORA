@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
@@ -168,8 +169,9 @@ export const ScreenerPage: React.FC = () => {
         </div>
       </div>
 
+      <TerminalSection label="FILTER WORKBENCH" title="Screen conditions" className="screener-workbench">
       {/* Filter Parameters Form */}
-      <div className="bg-surface border border-white/[0.08] rounded-xl p-3.5 sm:p-4 space-y-3 font-sans text-xs shadow-panel">
+      <div className="screener-filter">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Query search */}
           <div>
@@ -263,8 +265,11 @@ export const ScreenerPage: React.FC = () => {
         </div>
       </div>
 
+      </TerminalSection>
+
+      <TerminalSection label="RESULTS" title="Matching assets" meta={`${results.length} rows`} className="screener-results">
       {/* Results Table */}
-      <div className="bg-surface border border-surface-border rounded-lg overflow-hidden shadow-xl font-sans text-xs">
+      <div className="screener-result-table">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-surface-elevated/80 text-slate-400 text-[11px] uppercase border-b border-surface-border">
@@ -372,6 +377,7 @@ export const ScreenerPage: React.FC = () => {
           </table>
         </div>
       </div>
+      </TerminalSection>
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -512,8 +513,9 @@ export const CoinDetailPage: React.FC = () => {
         </div>
       </div>
 
+      <TerminalSection label="ASSET STATE" title={`${asset.symbol} market state`} className="coin-identity">
       {/* Asset Header Card */}
-      <div className="bg-surface border border-surface-border rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="coin-state-strip">
         <div className="flex items-center space-x-4">
           <CoinIcon symbol={asset.symbol} size={48} className="shadow-md" />
 
@@ -596,6 +598,7 @@ export const CoinDetailPage: React.FC = () => {
           </button>
         </div>
       </div>
+      </TerminalSection>
 
       {/* Quick Action Navigation Bar */}
       <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
@@ -622,6 +625,7 @@ export const CoinDetailPage: React.FC = () => {
         </Link>
       </div>
 
+      <TerminalSection label="PRIMARY WORKSPACE" title={`${asset.symbol} chart and context`} className="coin-workspace-region">
       {/* Переставляемая рабочая область (UX-цикл п. 5): порядок модулей хранится в localStorage
           (схема v1), внутреннее устройство модулей неизменно. */}
       <div className="flex items-center justify-between gap-2 border-b border-surface-border pb-1.5">
@@ -1215,6 +1219,7 @@ export const CoinDetailPage: React.FC = () => {
         current={asset.symbol}
         title="Выбор монеты для графика"
       />
+      </TerminalSection>
     </div>
   );
 };

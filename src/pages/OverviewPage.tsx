@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -352,6 +353,7 @@ export const OverviewPage: React.FC = () => {
         </div>
       </div>
 
+      <TerminalSection label="MARKET PULSE" title="Regime at a glance" className="overview-pulse">
       {/* SECTION A: Market Summary Cards */}
       <div
         data-testid="overview-kpi-grid"
@@ -485,7 +487,9 @@ export const OverviewPage: React.FC = () => {
 
 
       </div>
+      </TerminalSection>
 
+      <TerminalSection label="PRIMARY MARKET STATE" title="BTC command view" className="overview-command">
       {/* SECTION B & C: Main Chart & Futures/Liquidations Row */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Main BTC Chart Column (7 cols) - The Command Center Focal Point */}
@@ -771,6 +775,8 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      </TerminalSection>
 
       {/* SECTION C: Heatmap Grid Preview */}
       <HeatmapGrid assets={assets} limit={18} compact={true} />

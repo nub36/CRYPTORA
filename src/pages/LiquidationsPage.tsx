@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { useMarketData } from '@/context/MarketDataContext';
 import { LiquidationPipeline, LIQUIDATION_SOURCE_LABELS, type LiquidationSourceId, type LiquidationStreamState } from '@/services/liquidations/LiquidationPipeline';
 import { LiquidationData, OHLCV, Timeframe } from '@/types/market';
@@ -291,6 +292,7 @@ export const LiquidationsPage: React.FC = () => {
         </p>
       </details>
 
+      <TerminalSection label="PRIMARY VISUAL" title="Price and liquidation events" className="liquidation-workspace">
       {/* Terminal chart: candles are independent of the actual liquidation stream. */}
       <section className="overflow-hidden rounded-xl border border-white/[0.09] bg-surface shadow-[0_18px_50px_rgba(0,0,0,.24)]" data-qa="liquidation-terminal">
         <div className="flex flex-col gap-3 border-b border-white/[0.07] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -381,6 +383,7 @@ export const LiquidationsPage: React.FC = () => {
           </aside>
         </div>
       </section>
+      </TerminalSection>
       <SymbolPickerModal
         open={liqPickerOpen}
         onClose={() => setLiqPickerOpen(false)}

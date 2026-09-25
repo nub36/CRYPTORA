@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { paginate, DEFAULT_PAGE_SIZE } from '@/utils/pagination';
 import { Pagination } from '@/components/common/Pagination';
 import { getCoinNames } from '@/services/data/registry/coinLogoRegistry';
@@ -248,8 +249,9 @@ export const MarketPage: React.FC = () => {
         </div>
       </div>
 
+      <TerminalSection label="MARKET UNIVERSE" title="Spot instruments" meta={`${filteredAssets.length} visible`} className="market-workspace">
       {/* Main High-Density Table */}
-      <div className="bg-surface border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
+      <div className="market-table">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left font-sans">
             <thead className="bg-surface-elevated/80 text-slate-400 font-sans text-[11px] border-b border-surface-border select-none sticky top-0 z-10">
@@ -408,6 +410,7 @@ export const MarketPage: React.FC = () => {
           </div>
         </div>
       </div>
+      </TerminalSection>
     </div>
   );
 };
