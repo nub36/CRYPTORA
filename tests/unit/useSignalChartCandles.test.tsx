@@ -48,7 +48,8 @@ interface StubProvider {
   pending: Map<string, ReturnType<typeof deferred<OHLCV[]>>>;
 }
 
-function makeStub(): StubProvider & MarketDataProvider {
+function makeStub(options: { manual?: string[] } = {}): StubProvider & MarketDataProvider {
+  const manual = new Set(options.manual ?? []);
   const pending = new Map<string, ReturnType<typeof deferred<OHLCV[]>>>();
   const getCandles = vi.fn((symbol: string, timeframe: Timeframe, _limit: number) => {
     const key = `${symbol}_${timeframe}`;
@@ -57,7 +58,8 @@ function makeStub(): StubProvider & MarketDataProvider {
       pending.set(key, d);
       // Ответ по умолчанию — свечи с узнаваемой ценой символа.
       const price = symbol === 'BTC' ? 65_000 : symbol === 'SOL' ? 140 : 3_200;
-      Promise.resolve().then(() => d.resolve(candles(price)));
+      // Символы из `manual` не отвечают сами: тест управляет ответом (гонка/отказ).
+      if (!manual.has(symbol)) Promise.resolve().then(() => d.resolve(candles(price)));
     }
     return pending.get(key)!.promise;
   });
@@ -175,5 +177,62 @@ describe('useSignalChartCandles: выбранный символ, смена, г
     const calls = provider.getCandles.mock.calls;
     expect(calls[0]).toEqual(['BTC', '1h', 500]);
     expect(calls[calls.length - 1]).toEqual(['BTC', '4h', 500]);
+  });
+  /**
+   * RUNE (инцидент 2026-09-25). Отказ источника по RUNE — это честная ошибка
+   * графика: свечи BTC не остаются на экране и не подставляются как RUNE.
+   */
+  it('отказ RUNE оставляет график пустым: свечей BTC в состоянии нет', async () => {
+    const provider = makeStub({ manual: ['RUNE'] });
+    const { result, rerender } = renderHook(
+      ({ symbol }: { symbol: string }) =>
+        useSignalChartCandles(provider, { symbol, timeframe: '1h', realtime: false }),
+      { initialProps: { symbol: 'BTC' } }
+    );
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.candles[0].close).toBe(65_000);
+
+    // RUNE отвечает только вручную — показываем честный отказ источника.
+    rerender({ symbol: 'RUNE' });
+    await waitFor(() => expect(result.current.phase).toBe('loading'));
+    // Данные прошлого инструмента сброшены СРАЗУ, а не после ответа.
+    expect(result.current.candles).toEqual([]);
+
+    const pending = provider.pending.get('RUNE_1h');
+    expect(pending).toBeDefined();
+    await act(async () => {
+      pending!.reject(new Error('Candle data unavailable from live exchanges for RUNE'));
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe('error'));
+    // Ни одной свечи BTC — и никакого «резерва» чужим инструментом.
+    expect(result.current.candles).toEqual([]);
+    expect(result.current.errorMessage).toContain('RUNE');
+    expect(provider.getCandles.mock.calls.map((c) => c[0])).toEqual(['BTC', 'RUNE']);
+  });
+
+  it('BTC → RUNE → SOL → RUNE заканчивается данными RUNE и без дублей запросов', async () => {
+    const provider = makeStub();
+    const { result, rerender } = renderHook(
+      ({ symbol }: { symbol: string }) =>
+        useSignalChartCandles(provider, { symbol, timeframe: '1h', realtime: false }),
+      { initialProps: { symbol: 'BTC' } }
+    );
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    rerender({ symbol: 'RUNE' });
+    rerender({ symbol: 'SOL' });
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    rerender({ symbol: 'RUNE' });
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    // Финальный инструмент — RUNE (цена из заглушки этого символа), не SOL.
+    expect(result.current.candles[0].close).toBe(3_200);
+    // В запросах нет ничего, кроме трёх выбранных инструментов: перебора
+    // вселенной нет, и последним состоянием остаётся RUNE.
+    const called = provider.getCandles.mock.calls.map((c) => c[0]);
+    expect(new Set(called)).toEqual(new Set(['BTC', 'RUNE', 'SOL']));
+    expect(called.at(-1)).toBe('RUNE');
+    expect(called.length).toBeLessThanOrEqual(4);
   });
 });

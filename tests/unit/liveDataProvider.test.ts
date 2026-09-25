@@ -315,6 +315,89 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     const radar = await provider.getRadarEvents();
     expect(radar).toEqual([]);
   });
+
+  /**
+   * RUNE (инцидент 2026-09-25): BTC и RUNE обязаны иметь РАЗНЫЕ записи кэша
+   * свечей и разные запросы к бирже. Общая запись означала бы, что один
+   * инструмент получает свечи другого (в проде заголовок показывал RUNE, а
+   * шкала — BTC).
+   */
+  it('RUNE: отдельный запрос RUNEUSDT и отдельная запись кэша (не свечи BTC)', async () => {
+    const binanceMock = new BinanceSpotAdapter();
+    const requested: string[] = [];
+    vi.spyOn(binanceMock, 'fetchKlines').mockImplementation(async (rawSymbol: string) => {
+      requested.push(rawSymbol);
+      const close = rawSymbol === 'RUNEUSDT' ? 0.64 : 65_000;
+      return [[1726358400000, String(close), String(close), String(close), String(close), '1000',
+        1726361999999, '64000000', 1000, '500', '32000000', '0']] as any;
+    });
+
+    const provider = new LiveMarketDataProvider({ binanceAdapter: binanceMock, cacheTtlMs: 60_000 });
+
+    const btc = await provider.getCandles('BTC', '1h');
+    const rune = await provider.getCandles('RUNE', '1h');
+
+    expect(requested).toEqual(['BTCUSDT', 'RUNEUSDT']);
+    expect(btc[0].close).toBe(65_000);
+    expect(rune[0].close).toBe(0.64);
+    expect(rune[0].provenance?.exchange).toBe('binance');
+
+    // Повторный BTC обслуживается из своей записи кэша: RUNE её не вытеснил.
+    const btcAgain = await provider.getCandles('BTC', '1h');
+    expect(requested).toEqual(['BTCUSDT', 'RUNEUSDT']);
+    expect(btcAgain[0].close).toBe(65_000);
+
+    // И наоборот: RUNE не подменился свечами BTC.
+    const runeAgain = await provider.getCandles('RUNE', '1h');
+    expect(runeAgain[0].close).toBe(0.64);
+  });
+
+  it('отказ Binance по RUNE: KuCoin-резерв запрашивает ТОТ ЖЕ инструмент (RUNE-USDT)', async () => {
+    const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchKlines').mockRejectedValue(new AdapterNetworkError('binance'));
+    const kucoinMock = new KuCoinSpotAdapter();
+    const kucoinCalls: Array<{ symbol: string; type?: string }> = [];
+    vi.spyOn(kucoinMock, 'fetchCandles').mockImplementation(async (symbol: string, type?: string) => {
+      kucoinCalls.push({ symbol, type });
+      return SAMPLE_KUCOIN_CANDLES as any;
+    });
+
+    const provider = new LiveMarketDataProvider({
+      binanceAdapter: binanceMock,
+      kucoinAdapter: kucoinMock,
+      cacheTtlMs: 0,
+    });
+
+    const rune = await provider.getCandles('RUNE', '1h');
+    // Резерв — тот же инструмент на другой бирже, а не «какой-нибудь другой символ».
+    expect(kucoinCalls).toEqual([{ symbol: 'RUNE-USDT', type: '1hour' }]);
+    expect(rune[0].provenance?.exchange).toBe('kucoin');
+    expect(rune[0].provenance?.isFallback).toBe(true);
+    expect(rune[0].close).toBe(64950);
+  });
+
+  it('оба источника молчат по RUNE — честная ошибка, свечей BTC нет', async () => {
+    const binanceMock = new BinanceSpotAdapter();
+    vi.spyOn(binanceMock, 'fetchKlines').mockImplementation(async (rawSymbol: string) =>
+      rawSymbol === 'BTCUSDT' ? (SAMPLE_BINANCE_KLINES as any) : Promise.reject(new AdapterNetworkError('binance'))
+    );
+    const kucoinMock = new KuCoinSpotAdapter();
+    vi.spyOn(kucoinMock, 'fetchCandles').mockRejectedValue(new AdapterNetworkError('kucoin'));
+
+    const provider = new LiveMarketDataProvider({
+      binanceAdapter: binanceMock,
+      kucoinAdapter: kucoinMock,
+      cacheTtlMs: 0,
+    });
+
+    // BTC уже загружен — это не повод отдать его для RUNE.
+    const btc = await provider.getCandles('BTC', '1h');
+    expect(btc[0].close).toBe(65000);
+
+    await expect(provider.getCandles('RUNE', '1h')).rejects.toThrow(
+      /Candle data unavailable from live exchanges for RUNE/i
+    );
+  });
 });
 
 describe('LiveMarketDataProvider — честность detail-данных (З3/З7, v0.8.50)', () => {

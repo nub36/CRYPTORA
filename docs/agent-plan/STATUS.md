@@ -1,7 +1,11 @@
 # STATUS — Текущий статус проекта CRYPTORA
 
+PR #21 (ветка `arena/01a0d727-cryptora` от `a33bd1aba3b4b9998557b2e4d77a1418cad0d98c`) — колокольчик переведён на СЕРВЕРНЫЙ
+источник продакшн-событий; deep-link `/signals?symbol=<BASE>&signal=<server-id>`; RUNE-инцидент 2026-09-25 разобран в
+`docs/incidents/2026-09-25-bell-dual-source.md`. **НЕ СЛИТО, НЕ ЗАДЕПЛОЕНО.**
+
 > **ЕДИНСТВЕННАЯ ТОЧКА ОСТАНОВКИ ДЛЯ СЛЕДУЮЩЕГО АГЕНТА**  
-> **Последнее обновление:** 2026-09-24
+> **Последнее обновление:** 2026-09-25
 > **Текущая версия:** v0.9.3 — ИНТЕГРАЦИЯ ВЕТОК + UX-ПРОХОД ПО СКРИНШОТАМ (навигация, график монеты, новости)  
 > **ТЕКУЩИЙ ЭТАП (2026-09-24, ветка `arena/01a0d27d-cryptora` от `45c01b80`, PR #18):** Signals
 > end-to-end — исправления производства (BUG A/B/C/D), серверный монитор открытых сигналов, серверная
@@ -20,6 +24,64 @@
 > произвольная длина `targets[]`; таймфрейм сигнала (исполнения, `1h`, V2.8 — не «15m») отделён от таймфрейма
 > графика; защита от гонок и запрет веера (свечи — только выбранный символ и таймфрейм). Математика стратегий не
 > тронута; серверный фундамент — из слитого #16. Подробности: `docs/SIGNALS.md` §8.8, roadmap 9.3.
+> **ТЕКУЩИЙ ЭТАП (2026-09-25, ветка `arena/01a0d727-cryptora`, PR #21, НЕ слит):**
+> **P0-инцидент RUNE: колокольчик звонил по сигналу, которого нет в PostgreSQL. Колокольчик переведён на серверный источник.**
+>
+> **1. Root cause (подтверждён production-доказательствами владельца).** В production работали ДВА независимых
+> рантайма сигналов. Страница `/signals` читала `GET /api/signals` (PostgreSQL, миграции 007/009/011), а
+> колокольчик — `signalNotifications.ts` ← подписка на браузерный `SignalsAuditLedger` →
+> `localStorage cryptora_signal_notifications_v1`. Событие RUNE было **браузерным сетапом**: серверного
+> `signal_id` у него не было, в БД оно никогда не публиковалось — отсюда `SELECT` → `[]` и
+> `GET /api/signals?symbol=RUNE%2FUSDT` → `count = 0` при звонящем колокольчике. Данные RUNE в PostgreSQL
+> НЕ вставлялись и НЕ мигрировались; состояние стратегий (V3.0 on, V3.3/V2.8 off, lastScanAt/lastSignalAt/
+> lastError) и `scan_universe` не менялись.
+>
+> **2. Серверный источник продакшн-событий.** `src/services/signals/serverSignalNotifications.ts`: лента
+> строится ТОЛЬКО по `SignalDto` из `GET /api/signals`, id события `srv-<signalId>-<KIND>`, в записи
+> серверный `signalId` + symbol/strategy/direction/timeframe/status/уровни/время/provenance. Смена статуса —
+> по сохранённому снапшоту `seen` (переход при закрытой вкладке не теряется, первая синхронизация только
+> «сеет» базу и не звонит, уже известные строки не дублируются). Политика происхождения fail-closed: только
+> `VERIFIED`; `MISMATCH`/`UNKNOWN` в ленту не попадают, но их число показано честно. Отказ источника
+> (`GET /api/signals` упал) не удаляет уже подтверждённые события.
+>
+> **3. Версионированное хранилище и миграция.** `src/services/signals/signalNotificationStorage.ts`: конверт
+> со `schemaVersion` + `source`. ЛЕГАСИ `cryptora_signal_notifications_v1` переносится в карантин
+> `cryptora_signal_notifications_v1_legacy_quarantine` (сохранён целиком, лентами НЕ читается) — старое
+> локальное событие не может выглядеть серверным. Серверная лента — `…_v2`, локальный аудит браузера —
+> `…_local_v1` (отдельный источник `local-ledger`, событий продукта не создаёт). `SignalsAuditLedger` не
+> удалён: он остаётся явным локальным аудитом/отладкой.
+>
+> **4. Deep-link уведомления.** Каждое событие ссылается на `/signals?symbol=<BASE>&signal=<server-id>`.
+> `SignalsPage` выводит символ и выбранный сигнал ИЗ URL (ранее эффект «смена монеты сбрасывает сигнал»
+> обнулял выбранный по ссылке id на монтировании — теперь URL единственный источник). Сигнал за пределами
+> первой страницы догружается точечно новым `server/routes/signals.js` `GET /api/signals/:id`
+> (`signalRepository.getSignalById`: один `SELECT` по первичному ключу; `400 INVALID_ID`,
+> `404 SIGNAL_NOT_FOUND`; карантинные строки отдаются как есть). Неизвестный id — честная ошибка без
+> подстановки чужого сигнала; сигнал другого инструмента не «переезжает» на выбранную монету. «Открыть
+> актив» сохранено отдельным действием.
+>
+> **5. Свечи и шкала цены при смене инструмента (второй дефект того же инцидента).** `CandleChart` —
+> persistent: при смене символа снимаются данные ВСЕХ серий (`setData([])`), линии текущей цены и уровней,
+> маркеры, и ЯВНО возвращается авто-масштаб цены (`autoScale: true`) у серий и правой шкалы; подгонка
+> времени нового инструмента выполняется приходом его данных; график не пересоздаётся. Кэш свечей раздельный
+> (`${symbol}_${timeframe}_${klineLimit}`), резерв KuCoin запрашивает тот же инструмент; при отказе
+> источника по RUNE — честная ошибка/пустота, подстановки свечей BTC нет. «KLINE STALE» (свежесть WS-тика,
+> не отказ REST) оставлен на отдельную диагностику — поведение не менялось.
+>
+> **6. Проверено (локально, честно):** `npx tsc --noEmit` — 0 ошибок; `npx vitest run tests/unit` —
+> **132 файла / 1419 тестов passed**; `npx vitest run tests/integration` — **11 файлов / 189 passed**
+> (настоящий embedded PostgreSQL); `npm run build` — успешно; Browser E2E на локально распакованном
+> Chromium (`@sparticuz/chromium`, см. §5.1) — **97 сценариев passed**, включая новый
+> `e2e/signalsBellServerSource.spec.ts`; `git diff --check` — чисто. Новые тесты:
+> `serverSignalNotifications` 16, `useServerSignalNotifications` 6, `signalsDeepLink` 5,
+> `candleChartSymbolTransition` 5, +2 в `useSignalChartCandles`, +3 в `liveDataProvider`,
+> +3 в `signalsRealBackendPath`, +3 Browser E2E.
+>
+> **7. Математика стратегий не менялась:** нулевой diff по `src/services/strategyArchive/**`,
+> `src/services/signals/live/**` и ядру (**STRATEGY MATH MODIFIED: NO**); production-БД не изменялась
+> (**PRODUCTION SIGNALS MODIFIED: NO**); deploy не выполнялся (**PRODUCTION DEPLOYED: NO**);
+> PR не слит (**PR MERGED: NO**). **BELL SOURCE OF TRUTH: server · SIGNALS SOURCE OF TRUTH: server.**
+
 > **ТЕКУЩИЙ ЭТАП (2026-09-24, ветка `arena/01a0d27d-cryptora`, PR #18, не слит):**
 > **Сигналы end-to-end. База:** `origin/main` = `45c01b80f72f129388d86d7b7ac7a2ab207247b0`, HEAD ветки — см. `git log`.
 >
@@ -1033,6 +1095,13 @@ DEMO-режима не должно быть вообще. Оставались:
   локально распакованный Chromium (`@sparticuz/chromium`), подключаемый через переменные окружения
   `CRYPTORA_CHROMIUM_PATH` / `CRYPTORA_CHROMIUM_LD_PATH` — они опциональны, в CI/на VPS
   скрипт использует браузер, установленный Playwright'ом.
+- **Browser E2E в песочнице (2026-09-25):** при прогоне `playwright test` в песочнице использован
+  ВРЕМЕННЫЙ (не коммитится) конфиг поверх `playwright.config.ts` с `use.launchOptions.executablePath`
+  на локально распакованный Chromium, аргументами `@sparticuz/chromium` **без** `--single-process`
+  (в lambda-профиле он роняет рендерер на странице с графиком) и `LD_LIBRARY_PATH=/tmp/al2023/lib`
+  (библиотеки берутся из `node_modules/@sparticuz/chromium/bin/al2023.tar.br`). Сам пакет
+  установлен через `npm install --no-save`, поэтому helper в репозитории не хранится: на VPS/CI
+  браузер ставит Playwright. Результат прогона: 97 сценариев passed.
 - **Шрифты в песочнице:** Google Fonts недоступен; для совпадения метрик текста с продакшеном
   QA-скрипт подставляет локальные WOFF2-сабсеты Inter / JetBrains Mono (`CRYPTORA_QA_FONTS_DIR`,
   по умолчанию ищется `node_modules/@fontsource/*`).

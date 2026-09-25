@@ -64,6 +64,7 @@ function makePage(symbol: string, count: number, total = count): SignalsPageDto 
     hash: 'h',
     previousHash: 'p',
     outcomeHash: null,
+    provenanceStatus: 'VERIFIED',
     chainVersion: 2,
   }));
   return {

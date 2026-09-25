@@ -168,6 +168,17 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   const chartDataLengthRef = useRef(0);
   const chartDataInitializedRef = useRef(false);
   const chartTimeframeRef = useRef<Timeframe | null>(null);
+  /**
+   * Символ, данные которого сейчас РЕАЛЬНО лежат на графике.
+   *
+   * График persistent: при переходе BTC → RUNE компонент не пересоздаётся, а
+   * `header` сразу показывает новый символ. Пока здесь не было символа, сброс
+   * данных и масштаба не был привязан к смене инструмента — на проде это
+   * выглядело как «в шапке RUNE/USDT, а шкала и свечи BTC ~60k–110k».
+   * Авто-масштаб цены обязан пересчитываться от нового символа, иначе диапазон
+   * остаётся от прошлого и свечи нового актива рисуются вне окна.
+   */
+  const chartSymbolRef = useRef<string | null>(null);
   const timeSyncRef = useRef(new ChartTimeRangeSync());
   /** Маркеры — для обработки клика (подписка создаётся один раз вместе с графиком). */
   const markersRef = useRef<ChartMarker[]>([]);
@@ -419,11 +430,91 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     };
   }, [height]);
 
+  /**
+   * Смена инструмента: сброс состояния графика под НОВЫЙ символ.
+   *
+   * Контракт (BUG «RUNE с чужой шкалой»):
+   *  1. данные прошлого инструмента удаляются НЕМЕДЛЕННО (`setData([])` по всем
+   *     сериям), а не остаются на экране до прихода новых;
+   *  2. линии (текущая цена, уровни сигнала) и маркеры прошлого инструмента
+   *     снимаются: уровень BTC на графике RUNE — недостоверное состояние;
+   *  3. масштаб ЦЕНЫ явно возвращается в авто-режим (`autoScale: true`). Раньше
+   *     при смене символа подгонялась только ВРЕМЕННАЯ шкала (`fitContent()`), а
+   *     диапазон цены оставался от прошлого актива;
+   *  4. подгонка времени нового символа выполняется приходом его данных
+   *     (`shouldFit` сброшен ниже), поэтому пустое состояние честно пустое, а не
+   *     «чужой график»;
+   *  5. ничего не пересоздаётся: серии и график переиспользуются.
+   *
+   * Эффект объявлен ДО эффекта наполнения данными: в одном коммите сброс обязан
+   * выполниться раньше, чем на график лягут данные нового символа.
+   */
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    if (chartSymbolRef.current === symbol) return;
+    const isFirstSymbol = chartSymbolRef.current === null;
+    chartSymbolRef.current = symbol;
+
+    candleSeriesRef.current?.setData([]);
+    barSeriesRef.current?.setData([]);
+    lineSeriesRef.current?.setData([]);
+    volumeSeriesRef.current?.setData([]);
+    for (const indicator of [sma20Ref, sma50Ref, sma200Ref, bbUpperRef, bbMiddleRef, bbLowerRef]) {
+      indicator.current?.setData([]);
+    }
+
+    if (currentPriceRef.current && candleSeriesRef.current) {
+      try { candleSeriesRef.current.removePriceLine(currentPriceRef.current as any); } catch { /* линия уже снята */ }
+    }
+    currentPriceRef.current = null;
+    for (const { line } of levelLineRefs.current.values()) {
+      try { candleSeriesRef.current?.removePriceLine(line); } catch { /* линия уже снята */ }
+    }
+    levelLineRefs.current = new Map();
+
+    markersRef.current = [];
+    candleSeriesRef.current?.setMarkers([]);
+    barSeriesRef.current?.setMarkers([]);
+    lineSeriesRef.current?.setMarkers([]);
+
+    for (const series of [candleSeriesRef, barSeriesRef, lineSeriesRef]) {
+      series.current?.priceScale().applyOptions({ autoScale: true });
+    }
+    try { chart.priceScale('right').applyOptions({ autoScale: true }); } catch { /* шкала может быть ещё не создана */ }
+
+    lastAppliedTimeRef.current = null;
+    chartDataLengthRef.current = 0;
+    chartDataInitializedRef.current = false;
+    chartTimeframeRef.current = null;
+
+    if (!isFirstSymbol) {
+      chart.timeScale().applyOptions({ rightOffset: CHART_RIGHT_OFFSET });
+      timeSyncRef.current.syncFrom(chart);
+    }
+  }, [symbol]);
+
   // REST snapshot seeds the chart in UTC seconds, then the WS path updates T or appends T+interval.
   useEffect(() => {
     const candles = data ?? [];
     if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
     const chart = chartRef.current;
+
+    /**
+     * Возврат шкалы цены в авто-режим. `lightweight-charts` держит диапазон
+     * цены, пока `autoScale` включён, но после ручных изменений/перерисовок
+     * persistent-графика диапазон прошлого инструмента может сохраниться —
+     * поэтому при смене символа (и на пустых данных) авто-масштаб включается
+     * ЯВНО, а не «по умолчанию».
+     */
+    const restorePriceAutoscale = () => {
+      for (const series of [candleSeriesRef, barSeriesRef, lineSeriesRef]) {
+        series.current?.priceScale().applyOptions({ autoScale: true });
+      }
+      if (chart) {
+        try { chart.priceScale('right').applyOptions({ autoScale: true }); } catch { /* шкала ещё не создана */ }
+      }
+    };
     const priorRange = chart?.timeScale().getVisibleLogicalRange() ?? null;
     const oldLength = chartDataLengthRef.current;
     const shouldFit = !chartDataInitializedRef.current || chartTimeframeRef.current !== timeframe;
@@ -444,6 +535,9 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       chartTimeframeRef.current = timeframe;
       if (currentPriceRef.current) candleSeriesRef.current.removePriceLine(currentPriceRef.current as any);
       currentPriceRef.current = null;
+      // Пустое состояние тоже возвращает авто-масштаб: иначе следующий символ
+      // рисовался бы в диапазоне цены предыдущего (шкала «залипала»).
+      restorePriceAutoscale();
       return;
     }
     chartDataInitializedRef.current = true;
@@ -462,6 +556,10 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     if (chart) {
       const timeScale = chart.timeScale();
       if (shouldFit) {
+        // Новый инструмент (или новый таймфрейм): диапазон цены возвращаем в
+        // авто-масштаб ДО подгонки времени, чтобы свечи не рисовались в
+        // диапазоне прошлого символа.
+        restorePriceAutoscale();
         timeScale.fitContent();
         timeScale.applyOptions({ rightOffset: CHART_RIGHT_OFFSET });
       } else if (priorRange) {

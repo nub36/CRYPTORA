@@ -508,6 +508,71 @@ criteria · Dependencies · Status · PR/commit**.
   PRODUCTION SIGNALS DELETED: NO · MIGRATION 010 APPLIED: NO ·
   PRODUCTION SIGNALS MODIFIED: NO · PR #19 MERGED: NO · MIGRATION 011 PRODUCTION: NO.**
 
+### [~] 9.6 P0-инцидент: колокольчик звонил по сигналу, которого нет в PostgreSQL (RUNE)
+- **Priority:** **P0** — источник истины продакшн-уведомлений и расхождение страницы/колокольчика.
+- **Evidence from production (от владельца, 2026-09-25):** прямой `SELECT` по RUNE → `[]`;
+  `GET /api/signals?symbol=RUNE%2FUSDT` → `signals=[]`, `count=0`, `total=0`; Binance
+  `RUNEUSDT` `status=TRADING` (1h klines ≈ `0.63–0.64`); вселенная скана — 25 символов,
+  RUNE присутствует (`added_at 2026-09-23T15:19:23.217Z`); состояние стратегий на
+  2026-09-25 ≈ 05:58 UTC: V3.0 `enabled=true`, V3.3 `enabled=false`
+  (`lastScanAt=2026-09-24T15:26:33.454Z`, `lastSignalAt=2026-09-24T15:01:10.361Z`,
+  `lastError=null`), V2.8 `enabled=false`. **Состояние не изменялось.**
+- **Root cause (подтверждён):** в production работали ДВА независимых рантайма сигналов.
+  Страница `/signals` читала `GET /api/signals` (PostgreSQL), а колокольчик —
+  `signalNotifications.ts` ← подписка на браузерный `SignalsAuditLedger`
+  (`cryptora_signal_notifications_v1` в localStorage). Событие RUNE было **браузерным
+  сетапом**: серверного `signal_id` у него не было, в PostgreSQL оно никогда не
+  публиковалось. Разбор — `docs/incidents/2026-09-25-bell-dual-source.md`.
+- **Fix (источник истины — сервер, без изменения данных и стратегий):**
+  * `src/services/signals/serverSignalNotifications.ts` — продакшн-лента строится ТОЛЬКО по
+    `SignalDto` из `GET /api/signals`; id события `srv-<signalId>-<KIND>`; в записи есть
+    серверный `signalId`, символ/стратегия/направление/ТФ/статус/уровни/время/provenance;
+    смена статуса определяется по сохранённому снапшоту `seen` (переход при закрытой вкладке
+    не теряется, уже известные строки не звонят повторно); первая синхронизация только
+    «сеет» базу;
+  * политика происхождения fail-closed: продакшн-событием считается только `VERIFIED`;
+    `MISMATCH`/`UNKNOWN` не показываются, но их число видно в модалке;
+  * `src/services/signals/signalNotificationStorage.ts` — конверт с версией и источником:
+    серверная лента `…_v2`, локальный аудит `…_local_v1`, ЛЕГАСИ `…_v1` (только чтение) →
+    карантин `…_v1_legacy_quarantine` (записи сохранены целиком, лентами не читаются);
+  * локальный браузерный аудит сохранён как отдельный источник (`localSignalNotifications`,
+    `source: 'local-ledger'`), продакшн-событий не создаёт; `SignalsAuditLedger` не удалён;
+  * deep-link: событие ведёт на `/signals?symbol=<BASE>&signal=<server-id>`; страница
+    выводит символ и выбранный сигнал ИЗ URL; сигнал за пределами первой страницы
+    догружается точечно новым `GET /api/signals/:id` (один `SELECT` по PK; 400 `INVALID_ID`,
+    404 `SIGNAL_NOT_FOUND`; карантинные строки отдаются как есть); неизвестный id — честная
+    ошибка без подстановки чужого сигнала; сигнал другого инструмента не «переезжает» на
+    выбранную монету (`signals-deeplink-symbol-mismatch`);
+  * свечи/шкала: persistent `CandleChart` при смене символа снимает данные всех серий, линии
+    текущей цены и уровней, маркеры и ЯВНО возвращает авто-масштаб цены; подгонка времени —
+    по приходу данных нового инструмента; график не пересоздаётся; кэш свечей раздельный
+    (`${symbol}_${timeframe}_${klineLimit}`), резерв — тот же инструмент, подстановки BTC нет.
+- **Тесты:** `tests/unit/serverSignalNotifications.test.ts` (16) — идентичность DTO страницы и
+  колокольчика, отсутствие продакшн-события для браузерного сетапа, `MISMATCH`/`UNKNOWN`,
+  карантин легаси-хранилища; `tests/unit/useServerSignalNotifications.test.tsx` (6) — один
+  ограниченный запрос на цикл, «первая синхронизация не звонит», отказ источника не удаляет
+  показанное; `tests/unit/signalsDeepLink.test.tsx` (5) — ссылка продакшн-кода открывает
+  именно свой серверный сигнал; `tests/unit/candleChartSymbolTransition.test.tsx` (5) + новые
+  кейсы в `useSignalChartCandles.test.tsx` (8) и `liveDataProvider.test.ts` (20) — сброс
+  свечей/шкалы, раздельный кэш, отсутствие подстановки BTC при отказе RUNE; `signalsRealBackendPath`
+  (9, настоящее PostgreSQL + Express) — `/:id` отдаёт ту же строку, 404/400 честны;
+  `e2e/signalsBellServerSource.spec.ts` (3) — браузерная проверка легаси/серверного события,
+  deep-link и отказа свечей RUNE без подстановки BTC.
+- **Гейты (локально):** `tsc --noEmit` — 0; `vitest run tests/unit` — 132 файла / 1419 passed;
+  `tests/integration` — 11 файлов / 189 passed; `npm run build` — успешно; Browser E2E —
+  97 сценариев passed; `git diff --check` — чисто.
+- **Не делалось:** production-БД не изменялась (никаких `INSERT`/`UPDATE`/`DELETE`); RUNE-сетап
+  из браузера НЕ мигрировался в PostgreSQL; состояние стратегий и `scan_universe` не менялись;
+  математика стратегий не менялась; деплой не выполнялся.
+- **Остаётся наблюдать:** индикатор «KLINE STALE» отражает свежесть WS-тика, а не отказ REST
+  (REST RUNE подтверждён рабочим) — отдельная задача диагностики потока, поведение не менялось.
+- **Dependencies:** 9.2, 9.4 (серверный путь сигналов), 7.1 (миграции на production).
+- **Status:** `[~]` — реализовано и проверено локально в этом PR, **не слито и не задеплоено**.
+  **PR:** #21 — https://github.com/nub36/CRYPTORA/pull/21
+  (ветка `arena/01a0d727-cryptora` от `a33bd1aba3b4b9998557b2e4d77a1418cad0d98c`; перекрывается с #20 по `CandleChart.tsx`
+  и `SignalsPage.tsx` — мобильный UX из #20 не копировался).
+  **PRODUCTION SIGNALS MODIFIED: NO · PRODUCTION DEPLOYED: NO · PR MERGED: NO.**
+
 ---
 
 ## 10. P1: Свежесть данных

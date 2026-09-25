@@ -1,15 +1,29 @@
 /**
- * signalNotifications — события журнала сигналов в колокольчик.
+ * signalNotifications — ЛОКАЛЬНЫЙ АУДИТ браузерного журнала (`SignalsAuditLedger`).
  *
- * Центр подписывается на SignalsAuditLedger и сравнивает снапшоты статусов:
- * новая запись → НОВЫЙ СИГНАЛ, ACTIVE→FILLED → ВХОД ИСПОЛНЕН, закрытие →
- * ИСХОД (с чистым R и причиной). Тексты — те же формулировки, что и на
- * /signals (см. utils/signalText), время — из журнала, а не «сейчас».
+ * ⚠️ ЭТО НЕ ПРОДАКШН-КОЛОКОЛЬЧИК. Инцидент 2026-09-25 (RUNE): продакшн-колокольчик
+ * получал события отсюда, то есть из журнала ОДНОГО браузера, который не пишет в
+ * PostgreSQL. Владелец видел «НОВЫЙ СИГНАЛ RUNE» при `GET /api/signals?symbol=RUNE%2FUSDT`
+ * → `signals = [], count = 0, total = 0`: в серверной БД сигнала не было.
  *
- * Хранение — localStorage (лента переживает перезагрузку; непрочитанные
- * события прошлого запуска показываются при входе). При первом старте уже
- * лежащие в журнале записи НЕ порождают событий — только новые изменения.
- * Журнал при этом не меняется: центр только читает и диффает.
+ * Поэтому роли разделены жёстко:
+ *   • продакшн-лента колокольчика — `serverSignalNotifications.ts`
+ *     (источник `GET /api/signals`, только VERIFIED, идентичность = `signals.id`);
+ *   • этот модуль — локальный аудит/отладка браузера. Он продолжает читать и
+ *     диффать браузерный журнал, но создаёт события ТОЛЬКО с пометкой
+ *     `source: 'local-ledger'`, лежит в ОТДЕЛЬНОМ ключе хранилища и никогда не
+ *     попадает в продакшн-ленту.
+ *
+ * Хранение легаси-ключей. До этого прохода модуль писал в
+ * `cryptora_signal_notifications_v1` — тот же ключ, из которого колокольчик читал
+ * события. Легаси-записи переносятся в карантин
+ * (`signalNotificationStorage.quarantineLegacySignalNotifications`) и больше не
+ * читаются ни одной лентой продукта: у них нет серверного `signal_id`, и
+ * показывать их как серверные факты запрещено.
+ *
+ * Дифф и тексты — прежние (журнал не менялся): новая запись → НОВЫЙ СИГНАЛ,
+ * ACTIVE→FILLED → ВХОД ИСПОЛНЕН, закрытие → ИСХОД. Числа берутся из журнала как
+ * есть, время — из журнала, а не «сейчас».
  */
 
 import {
@@ -23,13 +37,23 @@ import {
 } from '@/utils/signalText';
 import { sideLabel } from '@/utils/labels';
 import { formatCurrency } from '@/utils/formatters';
+import {
+  LOCAL_NOTIFICATIONS_SCHEMA_VERSION,
+  LOCAL_SIGNAL_NOTIFICATIONS_STORAGE_KEY,
+  browserNotificationStorage,
+  readNotificationEnvelope,
+  writeNotificationEnvelope,
+  type NotificationStorageLike,
+} from './signalNotificationStorage';
 
 export type SignalNotificationKind = 'NEW_SIGNAL' | 'FILL' | 'OUTCOME';
 
+/** Событие локального аудита браузера. Продакшн-фактом не является. */
 export interface SignalNotification {
-  /** Детерминированный id: sig-<setupId>-<KIND> (никакого Math.random). */
+  /** Детерминированный id: `local-<setupId>-<KIND>` (никакого Math.random). */
   id: string;
   kind: SignalNotificationKind;
+  /** Идентификатор сетапа В ЖУРНАЛЕ БРАУЗЕРА (не `signals.id` в PostgreSQL). */
   setupId: string;
   symbol: string;
   title: string;
@@ -37,9 +61,10 @@ export interface SignalNotification {
   /** ISO-время события из журнала. */
   at: string;
   read: boolean;
+  /** Всегда `local-ledger`: лента явно помечена как локальная. */
+  source: 'local-ledger';
 }
 
-export const SIGNAL_NOTIFICATIONS_STORAGE_KEY = 'cryptora_signal_notifications_v1';
 const MAX_ITEMS = 50;
 
 type Listener = () => void;
@@ -60,7 +85,7 @@ function newSignalNotification(s: AnalyticalSetup): SignalNotification {
   const dir = sideLabel(s.direction).toUpperCase();
   const short = strategyShortLabel(s.strategyId);
   return {
-    id: `sig-${s.id}-NEW_SIGNAL`,
+    id: `local-${s.id}-NEW_SIGNAL`,
     kind: 'NEW_SIGNAL',
     setupId: s.id,
     symbol: s.symbol,
@@ -68,12 +93,13 @@ function newSignalNotification(s: AnalyticalSetup): SignalNotification {
     detail: `${s.symbol} · ${dir} · ${short} · вход ${fmtPriceShort(s.entryZone[0])}–${fmtPriceShort(s.entryZone[1])} · стоп ${fmtPriceShort(s.invalidationLevel)}`,
     at: s.createdAt,
     read: false,
+    source: 'local-ledger',
   };
 }
 
 function fillNotification(s: AnalyticalSetup): SignalNotification {
   return {
-    id: `sig-${s.id}-FILL`,
+    id: `local-${s.id}-FILL`,
     kind: 'FILL',
     setupId: s.id,
     symbol: s.symbol,
@@ -81,12 +107,13 @@ function fillNotification(s: AnalyticalSetup): SignalNotification {
     detail: `${s.symbol} · вход по ${s.fill ? fmtPriceShort(s.fill.price) : '—'} · ${strategyShortLabel(s.strategyId)}`,
     at: s.fill?.at ?? s.createdAt,
     read: false,
+    source: 'local-ledger',
   };
 }
 
 function outcomeNotification(s: AnalyticalSetup): SignalNotification {
   return {
-    id: `sig-${s.id}-OUTCOME`,
+    id: `local-${s.id}-OUTCOME`,
     kind: 'OUTCOME',
     setupId: s.id,
     symbol: s.symbol,
@@ -94,12 +121,16 @@ function outcomeNotification(s: AnalyticalSetup): SignalNotification {
     detail: `${s.symbol} · ${describeSetupOutcome(s)}`,
     at: s.closedAt ?? s.createdAt,
     read: false,
+    source: 'local-ledger',
   };
 }
 
 /**
- * Дифф снапшота журнала: какие уведомления породить. Чистая функция —
+ * Дифф снапшота журнала: какие локальные события породить. Чистая функция —
  * покрыта юнит-тестами отдельно от синглтона.
+ *
+ * ВАЖНО: на вход сюда попадают ТОЛЬКО браузерные сетапы. Результат никогда не
+ * становится продакшн-уведомлением (см. `serverSignalNotifications`).
  */
 export function diffLedgerForNotifications(
   prevStatusById: ReadonlyMap<string, string>,
@@ -133,19 +164,31 @@ function snapshotOf(setups: readonly AnalyticalSetup[]): Map<string, string> {
   return m;
 }
 
-class SignalNotificationCenter {
+/**
+ * Лента локального аудита браузера. Отдельный ключ хранилища, отдельный конверт
+ * с явным `source: 'local-ledger'`. Продакшн-колокольчик её не читает.
+ */
+export class LocalLedgerSignalNotificationCenter {
   private started = false;
   private seen = new Map<string, string>();
   private items: SignalNotification[] = [];
   private listeners = new Set<Listener>();
   private unsubscribeLedger: (() => void) | null = null;
+  private storage: NotificationStorageLike | null = null;
 
-  constructor() {
-    this.items = this.loadFromStorage();
-  }
+  constructor(private readonly storageKey: string = LOCAL_SIGNAL_NOTIFICATIONS_STORAGE_KEY) {}
 
   /** Идемпотентный старт: первичное состояние — без событий за прошлое. */
-  public start(): void {
+  public start(storage: NotificationStorageLike | null = browserNotificationStorage()): void {
+    this.storage = storage;
+    if (storage) {
+      const read = readNotificationEnvelope<SignalNotification>(
+        storage,
+        this.storageKey,
+        { schemaVersion: LOCAL_NOTIFICATIONS_SCHEMA_VERSION, source: 'local-ledger' }
+      );
+      this.items = read.status === 'ok' ? read.items.slice(-MAX_ITEMS) : [];
+    }
     if (this.started) return;
     this.started = true;
     try {
@@ -195,8 +238,9 @@ class SignalNotificationCenter {
     this.stop();
     this.seen = new Map();
     this.items = [];
+    this.storage = null;
     try {
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(SIGNAL_NOTIFICATIONS_STORAGE_KEY);
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(this.storageKey);
     } catch {
       /* ignore */
     }
@@ -229,31 +273,18 @@ class SignalNotificationCenter {
     }
   }
 
-  private loadFromStorage(): SignalNotification[] {
-    try {
-      if (typeof localStorage === 'undefined') return [];
-      const raw = localStorage.getItem(SIGNAL_NOTIFICATIONS_STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as SignalNotification[];
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((n) => n && typeof n.id === 'string' && typeof n.setupId === 'string').slice(-MAX_ITEMS);
-    } catch {
-      return [];
-    }
-  }
-
   private saveToStorage(): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(SIGNAL_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.items.slice(-MAX_ITEMS)));
-      }
-    } catch {
-      /* localStorage недоступен — лента живёт в памяти */
-    }
+    if (!this.storage) return;
+    writeNotificationEnvelope<SignalNotification, Record<string, unknown>>(this.storage, this.storageKey, {
+      schemaVersion: LOCAL_NOTIFICATIONS_SCHEMA_VERSION,
+      source: 'local-ledger',
+      items: this.items.slice(-MAX_ITEMS),
+    });
   }
 }
 
-export const signalNotifications = new SignalNotificationCenter();
+/** Лента локального аудита. НЕ продакшн-колокольчик (см. шапку файла). */
+export const localSignalNotifications = new LocalLedgerSignalNotificationCenter();
 
 /**
  * Maps a signal symbol to the /coin/:symbol route segment.

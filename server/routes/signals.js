@@ -2,6 +2,7 @@
  * CRYPTORA — Публичное чтение сигналов.
  *
  * GET /api/signals?symbol=&strategy=&status=&open=&direction=&limit=&offset=
+ * GET /api/signals/:id — один сигнал по `signals.id` (deep-link колокольчика)
  *
  * Данные берутся из PostgreSQL (миграции 007 + 009), а не из localStorage
  * браузера. Чтение публичное и только на чтение: торговля не выполняется,
@@ -25,6 +26,8 @@ import { Router } from 'express';
 import {
   listSignals,
   countSignals,
+  getSignalById,
+  isSignalIdShape,
   SIGNAL_STATUSES,
   OPEN_SIGNAL_STATUSES,
   CLOSED_SIGNAL_STATUSES,
@@ -238,6 +241,41 @@ router.get('/statistics', async (req, res, next) => {
 router.get('/monitor', async (req, res, next) => {
   try {
     res.json(signalMonitorStatus());
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * GET /api/signals/:id — один серверный сигнал по `signals.id`.
+ *
+ * Нужен deep-link'у: уведомление колокольчика открывает
+ * `/signals?symbol=RUNE&signal=<id>`, а сигнал может быть за пределами первой
+ * страницы ленты. Догрузка страниц «пока не найдётся» — неограниченное число
+ * запросов; точечное чтение — один SELECT по первичному ключу.
+ *
+ * Отличия от ленты сознательные:
+ *  • карантинные строки тоже возвращаются (`provenanceStatus` — как в БД):
+ *    если пользователь открыл уведомление/ссылку, он обязан увидеть честный
+ *    статус происхождения, а не «сигнал не найден»;
+ *  • форма id проверяется до БД: 400 `INVALID_ID` (а не 500 от постгреса и не
+ *    пустой ответ), 404 `SIGNAL_NOT_FOUND` — если строки нет;
+ *  • ничего не вычисляется и не подставляется: тот же `SignalDto`, что в ленте.
+ */
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!isSignalIdShape(id)) {
+      return res.status(400).json({
+        error: 'INVALID_ID',
+        message: "id must be a signal UUID (as returned in the 'signals' feed)",
+      });
+    }
+    const signal = await getSignalById(id);
+    if (!signal) {
+      return res.status(404).json({ error: 'SIGNAL_NOT_FOUND', message: 'Signal not found' });
+    }
+    res.json({ signal, source: 'server' });
   } catch (e) {
     next(e);
   }

@@ -9,6 +9,7 @@ import type { AlertChannelId, UserAlertCondition } from '@/services/alerts/alert
 import { conditionLabelRu } from '@/services/alerts/alertEvaluator';
 import { isPlausibleBotToken, isValidWebhookUrl, maskToken } from '@/services/alerts/deliveryChannels';
 import { signalSymbolToRoute } from '@/services/signals/signalNotifications';
+import { Collapsible } from '@/components/common/Collapsible';
 
 type Tab = 'rules' | 'signals' | 'history' | 'channels';
 
@@ -43,8 +44,13 @@ export const AlertsModal: React.FC = () => {
     unreadAlertCount,
     signalNotifications,
     signalUnreadCount,
+    signalNotificationsAudit,
     markSignalsRead,
     clearSignalNotifications,
+    localAuditNotifications,
+    localAuditUnreadCount,
+    markLocalAuditRead,
+    clearLocalAuditNotifications,
     alertChannels,
     setAlertChannels,
     deliveryLog,
@@ -326,9 +332,16 @@ export const AlertsModal: React.FC = () => {
 
         {tab === 'signals' && (
           <div>
+            {/*
+              ПРОДАКШН-лента колокольчика. Источник — `GET /api/signals`
+              (PostgreSQL), а не браузерный журнал: у каждого события есть
+              серверный `signalId`, и ссылка открывает ИМЕННО этот сигнал на
+              /signals. Инцидент 2026-09-25 (RUNE): колокольчик звонил по сетапу,
+              которого в серверной БД нет — источник события был другим.
+            */}
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs font-semibold text-slate-400 tracking-wide">
-                События журнала сигналов ({signalNotifications.length})
+                Серверные сигналы ({signalNotifications.length})
               </div>
               <div className="flex items-center gap-3">
                 <Link
@@ -346,12 +359,15 @@ export const AlertsModal: React.FC = () => {
               </div>
             </div>
             <p className="text-[11px] text-slate-500 font-sans mb-2">
-              Новый сигнал, исполнение входа и исходы стратегий V3.0 / V3.3 / V2.8 — только факты журнала этого браузера.
+              Новый сигнал, исполнение входа и исходы — ТОЛЬКО из серверной ленты (PostgreSQL,
+              <span className="font-mono"> GET /api/signals</span>). Показываются лишь строки со статусом
+              происхождения VERIFIED: карантинные (MISMATCH/UNKNOWN) продакшн-событием не считаются.
             </p>
-            <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+            <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1" data-qa="signal-notifications-server">
               {signalNotifications.length === 0 ? (
                 <div className="text-center py-6 text-slate-500 text-xs">
-                  Событий пока не было — движок публикует сетапы только на закрытых барах.
+                  Серверных событий пока не было — сетапы публикуются только на закрытых барах, а лента
+                  синхронизируется с сервером.
                 </div>
               ) : (
                 [...signalNotifications].reverse().map((n) => (
@@ -371,18 +387,107 @@ export const AlertsModal: React.FC = () => {
                       <span className="font-mono text-[11px] text-slate-500">{new Date(n.at).toLocaleString('ru-RU')}</span>
                     </div>
                     <div className="text-slate-300 font-sans mt-0.5">{n.detail}</div>
-                    {/* Jump straight to the asset behind the signal (FET/USDT -> /coin/FET). */}
-                    <Link
-                      to={`/coin/${signalSymbolToRoute(n.symbol)}`}
-                      onClick={closeAlertsModal}
-                      data-qa="signal-open-asset"
-                      className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-cyan hover:underline"
-                    >
-                      Открыть актив {signalSymbolToRoute(n.symbol)} →
-                    </Link>
+                    <div className="mt-1 font-mono text-[11px] text-slate-500" data-qa="signal-notification-identity">
+                      id {n.signalId} · {n.symbol} · {n.strategyId} · {n.status} · {n.provenance}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                      {/* Явное действие: открыть сигнал на странице (символ + серверный id). */}
+                      <Link
+                        to={n.href}
+                        onClick={closeAlertsModal}
+                        data-qa="signal-open-signal"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-cyan hover:underline"
+                      >
+                        Открыть сигнал {n.baseSymbol} →
+                      </Link>
+                      {/* Отдельное действие — «Открыть актив» (карточка монеты), не сигнал. */}
+                      <Link
+                        to={`/coin/${signalSymbolToRoute(n.symbol)}`}
+                        onClick={closeAlertsModal}
+                        data-qa="signal-open-asset"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-slate-200"
+                      >
+                        Открыть актив {signalSymbolToRoute(n.symbol)} →
+                      </Link>
+                    </div>
                   </div>
                 ))
               )}
+            </div>
+
+            {/*
+              Честная причина «почему пусто»: если сервер отдал строки, но все они
+              в карантине, пользователь видит это число, а не «сигналов нет».
+            */}
+            {(signalNotificationsAudit.excludedMismatch > 0 || signalNotificationsAudit.excludedUnknown > 0) && (
+              <p className="mt-2 text-[11px] text-amber-300/90 font-sans" data-qa="signal-notifications-excluded">
+                Не показано как продакшн-события: MISMATCH {signalNotificationsAudit.excludedMismatch} ·
+                UNKNOWN {signalNotificationsAudit.excludedUnknown} (карантин происхождения, миграция 011).
+              </p>
+            )}
+            {signalNotificationsAudit.lastError && (
+              <p className="mt-2 text-[11px] text-rose-300/90 font-sans" data-qa="signal-notifications-source-error">
+                Серверная лента недоступна: {signalNotificationsAudit.lastError}. Показанные события не удалены —
+                это последнее, что подтвердил сервер.
+              </p>
+            )}
+
+            {/*
+              ЛОКАЛЬНЫЙ аудит браузера — отдельный источник (SignalsAuditLedger).
+              Он сохранён для отладки, но продакшн-событием не является и в
+              серверную ленту выше не попадает.
+            */}
+            <div className="mt-3 border-t border-surface-border pt-2">
+              <Collapsible
+                testId="alerts-local-audit"
+                tone="muted"
+                label={`Локальный аудит браузера (${localAuditNotifications.length})`}
+                hint={
+                  localAuditUnreadCount > 0
+                    ? `не серверные сигналы · новых ${localAuditUnreadCount}`
+                    : 'не серверные сигналы'
+                }
+              >
+                <p className="text-[11px] text-slate-500 font-sans mb-2">
+                  Журнал сетапов этого браузера (<span className="font-mono">SignalsAuditLedger</span>, localStorage).
+                  Он не подтверждён PostgreSQL и никогда не показывается как продакшн-сигнал: у записей нет
+                  серверного id. Оставлен для отладки и локального аудита.
+                </p>
+                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1" data-qa="local-audit-notifications">
+                  {localAuditNotifications.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 text-xs">Локальный журнал пуст.</div>
+                  ) : (
+                    [...localAuditNotifications].reverse().map((n) => (
+                      <div key={n.id} data-qa="local-audit-notification" className="p-2 rounded bg-surface border border-surface-border/60 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-400">{n.title}</span>
+                          <span className="font-mono text-[11px] text-slate-500">{new Date(n.at).toLocaleString('ru-RU')}</span>
+                        </div>
+                        <div className="text-slate-400 font-sans mt-0.5">{n.detail}</div>
+                        <div className="mt-1 font-mono text-[11px] text-slate-500">
+                          локально · setup {n.setupId} · без серверного id
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {localAuditNotifications.length > 0 && (
+                  <div className="mt-2 flex items-center gap-3">
+                    {localAuditUnreadCount > 0 && (
+                      <button
+                        onClick={markLocalAuditRead}
+                        data-qa="local-audit-mark-read"
+                        className="text-[11px] text-slate-400 hover:text-slate-200"
+                      >
+                        Пометить прочитанным
+                      </button>
+                    )}
+                    <button onClick={clearLocalAuditNotifications} className="text-[11px] text-slate-500 hover:text-rose-400">
+                      Очистить локальный аудит
+                    </button>
+                  </div>
+                )}
+              </Collapsible>
             </div>
           </div>
         )}

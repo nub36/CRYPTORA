@@ -134,6 +134,7 @@ function makeSignal(pair: string, s: FixtureSignalInput): Record<string, unknown
     hash: `hash-${s.id}`,
     previousHash: `prev-${s.id}`,
     outcomeHash: s.closed ? `outcome-${s.id}` : null,
+    provenanceStatus: 'VERIFIED',
     chainVersion: 2,
   };
 }
@@ -302,12 +303,24 @@ interface RequestLog {
   klinesTotal: number;
   /** Запросы ленты сигналов по символу (не должно быть веера по вселенной). */
   signalsBySymbol: Map<string, number>;
+  /**
+   * Запросы ПРИКЛАДНОЙ ленты колокольчика (без `symbol`, `limit≤50`) — один
+   * ограниченный запрос в минуту, независимо от страницы. Считается отдельно:
+   * это не веер по вселенной и не запрос страницы.
+   */
+  bellFeedCount: number;
   /** Запросы вселенной селектора (открытие/поиск не должны грузить свечи). */
   universeCount: number;
 }
 
 function newLog(): RequestLog {
-  return { klinesBySymbol: new Map(), klinesTotal: 0, signalsBySymbol: new Map(), universeCount: 0 };
+  return {
+    klinesBySymbol: new Map(),
+    klinesTotal: 0,
+    signalsBySymbol: new Map(),
+    bellFeedCount: 0,
+    universeCount: 0,
+  };
 }
 
 interface FixtureOptions {
@@ -364,7 +377,11 @@ async function installSignalsFixtures(page: Page, log: RequestLog, opts: Fixture
     const url = new URL(route.request().url());
     const pair = url.searchParams.get('symbol') ?? '';
     const base = pair.split('/')[0];
-    log.signalsBySymbol.set(base || '*', (log.signalsBySymbol.get(base || '*') ?? 0) + 1);
+    // Запросы БЕЗ символа — прикладная лента колокольчика (`limit=50`): она
+    // живёт в провайдере, а не на странице, поэтому в «веер страницы» не входит
+    // и считается отдельно, чтобы проверки страницы оставались строгими.
+    if (!base) log.bellFeedCount += 1;
+    else log.signalsBySymbol.set(base, (log.signalsBySymbol.get(base) ?? 0) + 1);
     const signals = opts.feed ? opts.feed() : base === 'BTC' ? BTC_SIGNALS : base === 'SOL' ? SOL_SIGNALS : [];
     return route.fulfill({
       status: 200,
@@ -619,13 +636,17 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     expect(log.klinesBySymbol.size).toBeLessThanOrEqual(2);
     // Поллинг 60с не должен сработать за время теста → дуп-луп отсутствует.
     expect(afterLoad.feed).toBeGreaterThanOrEqual(1);
+    // Лента колокольчика — один прикладной запрос (без веера по вселенной и без
+    // дуп-лупа): за время теста не больше двух обращений.
+    expect(log.bellFeedCount).toBeGreaterThanOrEqual(1);
+    expect(log.bellFeedCount).toBeLessThanOrEqual(2);
 
     // Реальные счётчики — в файл для CI-сводки (артефакт аудита запросов).
     try {
       fs.mkdirSync('e2e', { recursive: true });
       fs.writeFileSync(
         'e2e/.request-audit.json',
-        JSON.stringify({ phases, signalsBySymbol: Object.fromEntries(log.signalsBySymbol), klinesBySymbol: Object.fromEntries(log.klinesBySymbol), klinesTotal: log.klinesTotal, universeCount: log.universeCount }, null, 2)
+        JSON.stringify({ phases, signalsBySymbol: Object.fromEntries(log.signalsBySymbol), klinesBySymbol: Object.fromEntries(log.klinesBySymbol), klinesTotal: log.klinesTotal, bellFeedCount: log.bellFeedCount, universeCount: log.universeCount }, null, 2)
       );
     } catch {
       /* нефатально */
