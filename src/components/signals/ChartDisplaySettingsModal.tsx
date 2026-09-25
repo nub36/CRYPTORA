@@ -32,11 +32,15 @@ export const DEFAULT_CHART_DISPLAY_SETTINGS: ChartDisplaySettings = {
   showBadges: false,
 };
 
-export const CHART_SETTINGS_STORAGE_KEY = 'cryptora_chart_display_settings';
+export const CHART_SETTINGS_STORAGE_KEY = 'cryptora_signals_chart_display_settings';
 
 export function loadChartDisplaySettings(): ChartDisplaySettings {
   try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(CHART_SETTINGS_STORAGE_KEY) : null;
+    const raw =
+      typeof window !== 'undefined'
+        ? localStorage.getItem(CHART_SETTINGS_STORAGE_KEY) ??
+          localStorage.getItem('cryptora_chart_display_settings')
+        : null;
     if (!raw) return DEFAULT_CHART_DISPLAY_SETTINGS;
     const parsed = JSON.parse(raw);
     return {
