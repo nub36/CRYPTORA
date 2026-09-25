@@ -43,6 +43,12 @@ interface CandleChartProps {
   chartType?: CandleChartType;
   /** Показывать MA-линии поверх цены (SMA20/50/200 + полосы Боллинджера). Default: true. */
   showMA?: boolean;
+  /** Показывать ли гистограмму объёма под графиком. Default: true. */
+  showVolume?: boolean;
+  /** Показывать ли технические бейджи (источник, WS) в шапке графика. Default: true. */
+  showBadges?: boolean;
+  /** Показывать ли оверлей с часовым поясом на графике. Default: true. */
+  showTimezone?: boolean;
   /**
    * Маркеры событий поверх свечей (аддитивный props; существующие потребители
    * его не передают и ведут себя как раньше). Время — unix-секунды openTime бара,
@@ -88,7 +94,7 @@ export function toSeriesMarkers(markers: readonly ChartMarker[]): SeriesMarker<T
     color: m.color,
     id: m.id,
     size: (m.size ?? 1) as 0 | 1 | 2 | 3 | 4,
-    ...(m.text !== undefined ? { text: m.text } : {}),
+    ...(m.text !== undefined && m.text.length > 0 ? { text: m.text } : {}),
   }));
 }
 
@@ -145,6 +151,9 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   timeframe = '15m',
   chartType = 'candles',
   showMA = true,
+  showVolume = true,
+  showBadges = true,
+  showTimezone = true,
   markers,
   levelLines,
   onMarkerClick,
@@ -688,6 +697,11 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     lineSeriesRef.current?.applyOptions({ visible: chartType === 'line' });
   }, [chartType]);
 
+  // Переключение видимости объёма
+  useEffect(() => {
+    volumeSeriesRef.current?.applyOptions({ visible: showVolume });
+  }, [showVolume]);
+
   const handleResetView = useCallback(() => {
     const timeScale = chartRef.current?.timeScale();
     timeScale?.fitContent();
@@ -701,28 +715,43 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       <div className="absolute top-0 left-1/4 w-96 h-36 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Header: Symbol + Badge + OHLCV + Reset */}
-      <div className="absolute top-3 left-3.5 z-10 flex items-start justify-between w-[calc(100%-28px)]">
-        <div className="flex items-center space-x-2 text-xs font-sans text-slate-300">
+      <div className="absolute top-3 left-3.5 z-10 flex items-start justify-between w-[calc(100%-28px)] pointer-events-none">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs font-sans text-slate-300 pointer-events-auto">
           <span className="font-bold text-white tracking-tight text-sm drop-shadow-sm">{symbol}</span>
-          <span
-            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${
-              isDemoCandles
-                ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-            }`}
-          >
-            {isDemoCandles ? 'QA-СВЕЧИ' : `LIVE · ${(candleSource || 'binance').toUpperCase()}`}
-          </span>
-          <span
-            className={`rounded-full border px-2 py-0.5 font-mono text-[11px] ${klineFresh ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300' : 'border-slate-600/40 bg-slate-800/50 text-slate-400'}`}
-            title={realtimeKline ? `Время последнего kline-события: ${new Date(realtimeKline.timestamp).toISOString()} UTC` : 'Последнее изменение пока только из REST'}
-            data-testid="kline-freshness"
-          >{klineFresh ? 'KLINE WS' : realtimeKline ? 'KLINE STALE' : 'KLINE REST'}</span>
+          {showBadges && (
+            <>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold tracking-wide ${
+                  isDemoCandles
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                }`}
+              >
+                {isDemoCandles ? 'QA-СВЕЧИ' : (
+                  <>
+                    <span className="hidden sm:inline">LIVE · </span>
+                    <span>{(candleSource || 'binance').toUpperCase()}</span>
+                  </>
+                )}
+              </span>
+              <span
+                className={`rounded-full border px-2 py-0.5 font-mono text-[10px] sm:text-[11px] ${
+                  klineFresh
+                    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
+                    : 'border-slate-600/40 bg-slate-800/50 text-slate-400'
+                }`}
+                title={realtimeKline ? `Время последнего kline-события: ${new Date(realtimeKline.timestamp).toISOString()} UTC` : 'Последнее изменение пока только из REST'}
+                data-testid="kline-freshness"
+              >
+                {klineFresh ? 'KLINE WS' : realtimeKline ? 'KLINE STALE' : 'KLINE REST'}
+              </span>
+            </>
+          )}
         </div>
 
         {/* OHLCV tooltip when crosshair active */}
         {crosshair && (
-          <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-300 bg-slate-900/80 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-slate-700/50">
+          <div className="pointer-events-auto hidden md:flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-300 bg-slate-900/80 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-slate-700/50">
             <span className="text-slate-500">{formatChartCrosshairTime(crosshair.time)}</span>
             <span><span className="text-slate-500">O</span> <span className="text-slate-200">{crosshair.open.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></span>
             <span><span className="text-slate-500">H</span> <span className="text-white">{crosshair.high.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></span>
@@ -731,17 +760,13 @@ export const CandleChart: React.FC<CandleChartProps> = ({
             <span><span className="text-slate-500">Vol</span> <span className="text-sky-400">{crosshair.volume >= 1e9 ? `${(crosshair.volume / 1e9).toFixed(1)}B` : crosshair.volume >= 1e6 ? `${(crosshair.volume / 1e6).toFixed(1)}M` : crosshair.volume.toLocaleString()}</span></span>
           </div>
         )}
-        {/*
-          BUG D. Здесь выводился технический токен зоны (`LOCAL` / `UTC`) как
-          кнопка-переключатель. Токен убран: вместо него — имя часового пояса
-          пользователя, полученное из браузера (не захардкоженное). Метка
-          справочная: переключать зону нельзя, время везде одно.
-        */}
-        <span
-          className="ml-auto rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1 font-sans text-[11px] text-slate-400"
-          data-qa="chart-timezone-label"
-          title={`Время на графике — ваш часовой пояс (${browserTimeZone()})`}
-        >{timeZoneLabelText}</span>
+        {showTimezone && (
+          <span
+            className="pointer-events-auto ml-auto hidden sm:inline-block rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1 font-sans text-[11px] text-slate-400"
+            data-qa="chart-timezone-label"
+            title={`Время на графике — ваш часовой пояс (${browserTimeZone()})`}
+          >{timeZoneLabelText}</span>
+        )}
       </div>
 
       <div className="relative w-full" style={{ height }}>

@@ -213,12 +213,20 @@ export const SignalsPage: React.FC = () => {
   const timeframeSec = timeframeToSeconds(chartTimeframe);
   const markers = useMemo(
     () =>
-      mapSignalMarkers(models, candlesState.candles, timeframeSec, activeSignal?.id ?? null).markers,
+      mapSignalMarkers(models, candlesState.candles, timeframeSec, {
+        selectedId: activeSignal?.id ?? null,
+        showLabels: false,
+      }).markers,
     [models, candlesState.candles, timeframeSec, activeSignal?.id]
   );
 
   const { lines: levelLines } = useMemo(
-    () => buildSignalLevelLines(activeSignal, { showEffective: true }),
+    () =>
+      buildSignalLevelLines(activeSignal, {
+        showEffective: true,
+        showLabels: false,
+        compact: true,
+      }),
     [activeSignal]
   );
 
@@ -426,6 +434,7 @@ export const SignalsPage: React.FC = () => {
         candleError={candlesState.errorMessage}
         markers={markers}
         levelLines={levelLines}
+        activeSignal={activeSignal}
         onMarkerSelect={selectSignal}
         selectedSignalTimeframe={activeSignal?.timeframe ?? null}
         height={320}

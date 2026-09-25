@@ -20,7 +20,7 @@
  *   • неизвестный серверу статус не подменяется нейтральным словом.
  */
 
-import type { SignalDto } from '@/services/strategyOps';
+import type { SignalDto, SignalProvenanceStatus } from '@/services/strategyOps';
 import { OPEN_SIGNAL_STATUSES } from '@/services/strategyOps';
 import {
   describeServerSignalOutcome,
@@ -152,6 +152,9 @@ export interface SignalUiModel {
     /** Короткая форма для компактного индикатора (§7: хэши не доминируют). */
     hashShort: string;
   };
+
+  /** Происхождение сигнала (миграция 011), скопированное дословно из SignalDto. */
+  provenanceStatus: SignalProvenanceStatus;
 }
 
 /** Обрезка хэша до читаемого префикса — полные значения остаются в деталях. */
@@ -362,6 +365,8 @@ export function toSignalUiModel(signal: SignalDto): SignalUiModel {
       outcomeHash: signal.outcomeHash,
       hashShort: shortHash(signal.hash),
     },
+
+    provenanceStatus: signal.provenanceStatus,
   };
 }
 
