@@ -568,7 +568,9 @@ criteria · Dependencies · Status · PR/commit**.
   (REST RUNE подтверждён рабочим) — отдельная задача диагностики потока, поведение не менялось.
 - **Dependencies:** 9.2, 9.4 (серверный путь сигналов), 7.1 (миграции на production).
 - **Status:** `[~]` — реализовано и проверено локально в этом PR, **не слито и не задеплоено**.
-  **PR:** #<PR_NUMBER> (ветка `arena/01a0d727-cryptora` от `a33bd1aba3b4b9998557b2e4d77a1418cad0d98c`).
+  **PR:** #21 — https://github.com/nub36/CRYPTORA/pull/21
+  (ветка `arena/01a0d727-cryptora` от `a33bd1aba3b4b9998557b2e4d77a1418cad0d98c`; перекрывается с #20 по `CandleChart.tsx`
+  и `SignalsPage.tsx` — мобильный UX из #20 не копировался).
   **PRODUCTION SIGNALS MODIFIED: NO · PRODUCTION DEPLOYED: NO · PR MERGED: NO.**
 
 ---
