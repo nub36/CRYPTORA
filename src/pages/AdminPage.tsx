@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard,
@@ -201,7 +202,8 @@ export const AdminPage: React.FC = () => {
 
   return (
     <div className="route-shell mx-auto max-w-7xl px-4 py-8" data-route="admin" data-layout="operations">
-      <div className="mb-6 flex items-center justify-between">
+      <TerminalSection label="OPERATIONS CONSOLE" title="Administration" meta="privileged workspace" className="admin-command-bar">
+      <div className="admin-heading">
         <div>
           <h1 className="text-2xl font-bold text-white">Админ-панель</h1>
           <p className="mt-1 text-sm text-slate-400">Управление CRYPTORA</p>
@@ -241,6 +243,7 @@ export const AdminPage: React.FC = () => {
           </button>
         ))}
       </div>
+      </TerminalSection>
 
       {loading && (
         <div className="flex items-center justify-center py-12">
@@ -258,7 +261,7 @@ export const AdminPage: React.FC = () => {
       {tab === 'dashboard' && dashboard && (
         <div className="space-y-6">
           {/* Health Cards */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="admin-health-strip grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-4 backdrop-blur-xl">
               <div className="text-xs text-slate-400">Статус</div>
               <div className={`mt-1 text-lg font-bold ${dashboard.health.status === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>

@@ -1,0 +1,63 @@
+name: Visual QA artifacts
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Before and after desktop/mobile screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Start baseline server
+        shell: bash
+        run: |
+          git worktree add --detach /tmp/cryptora-before origin/main
+          ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/cryptora-before/node_modules
+          (cd /tmp/cryptora-before && npm run dev -- --port 5174 > /tmp/cryptora-before.log 2>&1 & echo $! > /tmp/cryptora-before.pid)
+          for i in {1..60}; do curl -fsS http://127.0.0.1:5174/ >/dev/null && break; sleep 1; done
+      - name: Start candidate server
+        shell: bash
+        run: |
+          (npm run dev -- --port 5173 > /tmp/cryptora-after.log 2>&1 & echo $! > /tmp/cryptora-after.pid)
+          for i in {1..60}; do curl -fsS http://127.0.0.1:5173/ >/dev/null && break; sleep 1; done
+      - name: Capture baseline screenshots
+        run: |
+          node scripts/screenshot-qa.mjs --base=http://127.0.0.1:5174 --tag=before-origin-main --mode=qa-fixture \
+            --routes=/,/market,/screener,/coin/BTC,/signals,/liquidations,/strategies,/admin \
+            --viewports=1440x900,390x844 --out=screenshots/before
+      - name: Capture candidate screenshots
+        run: |
+          node scripts/screenshot-qa.mjs --base=http://127.0.0.1:5173 --tag=after-pr22 --mode=qa-fixture \
+            --routes=/,/market,/screener,/coin/BTC,/signals,/signals?symbol=ETH,/liquidations,/strategies,/admin \
+            --viewports=1440x900,390x844 --out=screenshots/after
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptora-pr22-before-after-visual-qa
+          path: screenshots
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload server diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptora-pr22-visual-qa-logs
+          path: /tmp/cryptora-*.log
+          if-no-files-found: ignore
+          retention-days: 7

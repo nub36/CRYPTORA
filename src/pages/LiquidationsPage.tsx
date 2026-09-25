@@ -272,26 +272,6 @@ export const LiquidationsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* CRITICAL METHODOLOGY DISCLAIMER — компактная форма: принцип виден сразу, полный текст раскрывается */}
-      <details className="group bg-amber-500/[0.08] border border-amber-500/30 rounded-xl text-xs font-sans text-slate-300 shadow-panel">
-        <summary className="cursor-pointer list-none p-3 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
-          <span className="flex items-center space-x-2 text-amber-300 font-semibold">
-            <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-400" />
-            <span>Фактическая ликвидация ≠ расчётный уровень</span>
-          </span>
-          <span className="text-[11px] text-slate-300 sm:flex-1">
-            Слева — публичные события принудительного закрытия (факт); карта уровней — математическая модель по OI и стандартным
-            плечам, помечается <code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300 font-mono">MODEL / ESTIMATED</code>.
-          </span>
-          <span className="text-[11px] text-amber-300/80 whitespace-nowrap group-open:hidden">подробнее ▾</span>
-          <span className="text-[11px] text-amber-300/80 whitespace-nowrap hidden group-open:inline">свернуть ▴</span>
-        </summary>
-        <p className="px-3 pb-3 text-[11px] leading-relaxed text-slate-300">
-          <strong>Фактическое событие ликвидации:</strong> Публичный биржевой ордер принудительного закрытия позиции при наступлении маржин-колла. Это подтвержденный свершившийся факт.<br />
-          <strong>Расчётный ликвидационный уровень:</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">MODEL / ESTIMATED</code> (расчётная модель).
-        </p>
-      </details>
-
       <TerminalSection label="PRIMARY VISUAL" title="Price and liquidation events" className="liquidation-workspace">
       {/* Terminal chart: candles are independent of the actual liquidation stream. */}
       <section className="overflow-hidden rounded-xl border border-white/[0.09] bg-surface shadow-[0_18px_50px_rgba(0,0,0,.24)]" data-qa="liquidation-terminal">
@@ -384,6 +364,27 @@ export const LiquidationsPage: React.FC = () => {
         </div>
       </section>
       </TerminalSection>
+
+      {/* CRITICAL METHODOLOGY DISCLAIMER — компактная форма: принцип виден сразу, полный текст раскрывается */}
+      <details className="group bg-amber-500/[0.08] border border-amber-500/30 rounded-xl text-xs font-sans text-slate-300 shadow-panel">
+        <summary className="cursor-pointer list-none p-3 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
+          <span className="flex items-center space-x-2 text-amber-300 font-semibold">
+            <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-400" />
+            <span>Фактическая ликвидация ≠ расчётный уровень</span>
+          </span>
+          <span className="text-[11px] text-slate-300 sm:flex-1">
+            Слева — публичные события принудительного закрытия (факт); карта уровней — математическая модель по OI и стандартным
+            плечам, помечается <code className="bg-slate-800 px-1 py-0.5 rounded text-amber-300 font-mono">MODEL / ESTIMATED</code>.
+          </span>
+          <span className="text-[11px] text-amber-300/80 whitespace-nowrap group-open:hidden">подробнее ▾</span>
+          <span className="text-[11px] text-amber-300/80 whitespace-nowrap hidden group-open:inline">свернуть ▴</span>
+        </summary>
+        <p className="px-3 pb-3 text-[11px] leading-relaxed text-slate-300">
+          <strong>Фактическое событие ликвидации:</strong> Публичный биржевой ордер принудительного закрытия позиции при наступлении маржин-колла. Это подтвержденный свершившийся факт.<br />
+          <strong>Расчётный ликвидационный уровень:</strong> Математическая гипотетическая модель, построенная на оценке открытого интереса и стандартных плеч (10x, 25x, 50x, 100x). Трейдеры могут довносить обеспечение, закрывать сделки лимитными ордерами или хеджироваться на других площадках. CRYPTORA не обладает и не заявляет доступ к скрытым персональным ликвидационным уровням пользователей бирж. Любая тепловая карта уровней обязана маркироваться как <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono">MODEL / ESTIMATED</code> (расчётная модель).
+        </p>
+      </details>
+
       <SymbolPickerModal
         open={liqPickerOpen}
         onClose={() => setLiqPickerOpen(false)}

@@ -600,31 +600,6 @@ export const CoinDetailPage: React.FC = () => {
       </div>
       </TerminalSection>
 
-      {/* Quick Action Navigation Bar */}
-      <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-        <Link
-          to="/strategies"
-          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-purple text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
-        >
-          <Cpu className="w-3.5 h-3.5 text-brand-purple" />
-          <span>Симуляция в лаборатории стратегий</span>
-        </Link>
-        <Link
-          to="/tools"
-          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-cyan text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
-        >
-          <Wrench className="w-3.5 h-3.5 text-brand-cyan" />
-          <span>Калькуляторы риска & DCA</span>
-        </Link>
-        <Link
-          to="/liquidations"
-          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-rose-500 text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
-        >
-          <Flame className="w-3.5 h-3.5 text-rose-400" />
-          <span>Кластеры ликвидаций</span>
-        </Link>
-      </div>
-
       <TerminalSection label="PRIMARY WORKSPACE" title={`${asset.symbol} chart and context`} className="coin-workspace-region">
       {/* Переставляемая рабочая область (UX-цикл п. 5): порядок модулей хранится в localStorage
           (схема v1), внутреннее устройство модулей неизменно. */}
@@ -1220,6 +1195,32 @@ export const CoinDetailPage: React.FC = () => {
         title="Выбор монеты для графика"
       />
       </TerminalSection>
+
+      {/* Quick Action Navigation Bar */}
+      <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+        <Link
+          to="/strategies"
+          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-purple text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
+        >
+          <Cpu className="w-3.5 h-3.5 text-brand-purple" />
+          <span>Симуляция в лаборатории стратегий</span>
+        </Link>
+        <Link
+          to="/tools"
+          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-cyan text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
+        >
+          <Wrench className="w-3.5 h-3.5 text-brand-cyan" />
+          <span>Калькуляторы риска & DCA</span>
+        </Link>
+        <Link
+          to="/liquidations"
+          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-rose-500 text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
+        >
+          <Flame className="w-3.5 h-3.5 text-rose-400" />
+          <span>Кластеры ликвидаций</span>
+        </Link>
+      </div>
+
     </div>
   );
 };

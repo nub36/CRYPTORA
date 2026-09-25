@@ -706,3 +706,8 @@ body { background: var(--terminal-canvas); color: var(--terminal-text); }
   .coin-state-strip { align-items:flex-start; }
   .terminal-region__meta { align-self:flex-start; }
 }
+.admin-command-bar { border-bottom: 2px solid var(--terminal-accent); }
+.admin-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.admin-health-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--terminal-divider); }
+.admin-health-strip > div { border:0 !important; border-radius:0 !important; background:var(--terminal-surface) !important; padding:12px !important; }
+@media (max-width:640px) { .admin-heading { align-items:flex-start; flex-direction:column; } .admin-health-strip { grid-template-columns:repeat(2,minmax(0,1fr)); } }
