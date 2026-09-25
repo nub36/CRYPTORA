@@ -387,7 +387,7 @@ export const Header: React.FC = () => {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-surface-inset/90 shadow-panel backdrop-blur-xl">
+    <header className="terminal-header sticky top-0 z-40">
       <div className="mx-auto flex min-w-0 max-w-[1920px] flex-wrap items-center gap-x-2 px-3 sm:px-4">
         {/* ----------------------------- Brand ----------------------------- */}
         <div className="order-1 flex h-14 shrink-0 items-center gap-x-2 pr-1 sm:gap-x-3 sm:pr-2">

@@ -582,3 +582,53 @@ pre,
     }
   }
 }
+
+/* ============================================================
+   CRYPTORA authorial terminal layer
+   Composition comes from rhythm and typography, not nested cards.
+   ============================================================ */
+:root {
+  --terminal-canvas: #080b11;
+  --terminal-surface: #0d121a;
+  --terminal-raised: #121923;
+  --terminal-divider: rgba(148, 163, 184, .16);
+  --terminal-text: #edf2f7;
+  --terminal-secondary: #9aa8b8;
+  --terminal-tertiary: #647286;
+  --terminal-accent: #55d6c2;
+  --terminal-positive: #57d39b;
+  --terminal-negative: #f07a89;
+  --terminal-warning: #e9b86a;
+  --terminal-radius: 6px;
+}
+body { background: var(--terminal-canvas); color: var(--terminal-text); }
+.terminal-section {
+  background: var(--terminal-surface);
+  border: 1px solid var(--terminal-divider);
+  border-radius: var(--terminal-radius);
+  padding: 14px;
+}
+.terminal-section__header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-bottom: 1px solid var(--terminal-divider); padding-bottom: 10px; margin-bottom: 10px;
+}
+.terminal-section__title { margin: 3px 0 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+.terminal-section__meta, .eyebrow { color: var(--terminal-tertiary); font: 10px/1.2 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.scope-switch { display: flex; gap: 2px; padding: 2px; background: #080c12; border: 1px solid var(--terminal-divider); border-radius: 4px; }
+.scope-switch button { min-height: 28px; padding: 0 8px; border: 0; background: transparent; color: var(--terminal-secondary); font: 10px 'JetBrains Mono', monospace; letter-spacing: .04em; }
+.scope-switch button.is-active { color: var(--terminal-accent); background: rgba(85,214,194,.12); }
+.signal-feed > section, .terminal-section [data-qa='signals-history'] { border: 0; padding: 0; background: transparent; }
+@media (max-width: 640px) {
+  .terminal-section { padding: 11px; }
+  .terminal-section__header { align-items: flex-start; flex-direction: column; }
+  .scope-switch { width: 100%; }
+  .scope-switch button { flex: 1; }
+}
+.terminal-header { background: rgba(8,11,17,.94); border-color: var(--terminal-divider); box-shadow: 0 8px 24px rgba(0,0,0,.18); backdrop-filter: blur(14px); }
+.terminal-footer { background: var(--terminal-canvas); border-color: var(--terminal-divider); }
+.terminal-footer > div { gap: 10px; }
+.terminal-footer .grid { gap: 14px; padding-top: 10px; }
+.terminal-footer .grid > div:first-child p { max-width: 32rem; }
+.terminal-footer .grid > div:not(:first-child) { opacity: .82; }
+.terminal-footer .space-y-1\.5 { gap: 2px; }
+.terminal-footer .pt-4 { padding-top: 10px; }
