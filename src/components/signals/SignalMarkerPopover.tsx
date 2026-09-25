@@ -101,7 +101,7 @@ export const SignalMarkerPopover: React.FC<SignalMarkerPopoverProps> = ({
         <span>Сигнал: {formatSignalTime(model.signalCandleTs)}</span>
         {isQuarantined && (
           <span
-            className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.2 text-[10px] text-amber-300 font-medium"
+            className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300 font-medium"
             data-qa="popover-quarantine-badge"
             data-testid="popover-quarantine-badge"
           >
@@ -124,7 +124,7 @@ export const SignalMarkerPopover: React.FC<SignalMarkerPopoverProps> = ({
       <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-xs">
         {/* Entry */}
         <div className="rounded border border-surface-border/60 bg-surface-elevated/40 px-2 py-1.5">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400">Вход</div>
+          <div className="text-[11px] font-medium tracking-wide text-slate-400">Вход</div>
           <div className="font-mono font-semibold text-cyan-300 truncate" title={model.entry.text}>
             {model.entry.min !== null && model.entry.max !== null && model.entry.min !== model.entry.max
               ? `${formatSignalPrice(model.entry.min)} – ${formatSignalPrice(model.entry.max)}`
@@ -134,7 +134,7 @@ export const SignalMarkerPopover: React.FC<SignalMarkerPopoverProps> = ({
 
         {/* Stop */}
         <div className="rounded border border-surface-border/60 bg-surface-elevated/40 px-2 py-1.5">
-          <div className="text-[10px] uppercase tracking-wider text-slate-400">Стоп</div>
+          <div className="text-[11px] font-medium tracking-wide text-slate-400">Стоп</div>
           <div className="font-mono font-semibold text-rose-400 truncate" title={model.stop.text}>
             {model.stop.price !== null ? formatSignalPrice(model.stop.price) : '—'}
           </div>
@@ -146,7 +146,7 @@ export const SignalMarkerPopover: React.FC<SignalMarkerPopoverProps> = ({
             key={t.index}
             className="rounded border border-surface-border/60 bg-surface-elevated/40 px-2 py-1.5"
           >
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">
+            <div className="text-[11px] font-medium tracking-wide text-slate-400">
               Цель {t.index + 1}
             </div>
             <div className="font-mono font-semibold text-emerald-400 truncate">

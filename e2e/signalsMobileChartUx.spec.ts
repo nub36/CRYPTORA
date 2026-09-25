@@ -237,7 +237,7 @@ test.describe('Signals Chart UX: Desktop & Mobile', () => {
     await expect(toolbarTz).toBeHidden();
 
     // В истории сигналов кликаем по второму сигналу (SHORT FILLED)
-    const historyItem = page.locator('[data-qa="signal-history-row-sig-btc-filled"]');
+    const historyItem = page.locator('[data-qa="signal-card"][data-signal-id="sig-btc-filled"]');
     if (await historyItem.isVisible()) {
       await historyItem.click();
     }

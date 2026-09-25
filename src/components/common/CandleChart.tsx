@@ -721,7 +721,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
           {showBadges && (
             <>
               <span
-                className={`rounded-full border px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold tracking-wide ${
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${
                   isDemoCandles
                     ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
                     : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
@@ -735,7 +735,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
                 )}
               </span>
               <span
-                className={`rounded-full border px-2 py-0.5 font-mono text-[10px] sm:text-[11px] ${
+                className={`rounded-full border px-2 py-0.5 font-mono text-[11px] ${
                   klineFresh
                     ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
                     : 'border-slate-600/40 bg-slate-800/50 text-slate-400'

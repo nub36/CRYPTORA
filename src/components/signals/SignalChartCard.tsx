@@ -237,6 +237,7 @@ export const SignalChartCard: React.FC<SignalChartCardProps> = ({
         Свечи — только выбранный инструмент и таймфрейм. Маркеры — сохранённые сервером сигналы; клик по
         маркеру выбирает сигнал и показывает его уровни. Линии — уровни выбранного сигнала.
       </p>
+      <span className="sr-only" aria-live="polite" data-qa="signals-chart-symbol" data-testid="signals-chart-symbol">{symbol}</span>
     </section>
   );
 };

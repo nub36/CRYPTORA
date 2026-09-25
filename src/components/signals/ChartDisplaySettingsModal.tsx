@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { X, Check } from 'lucide-react';
+import { X } from 'lucide-react';
 import { timeZoneLabelWithOffset } from '@/utils/timePresentation';
 
 export interface ChartDisplaySettings {
@@ -101,18 +101,8 @@ const SettingToggle: React.FC<SettingToggleProps> = ({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="sr-only peer"
+        className="h-5 w-5 cursor-pointer rounded border border-slate-600 bg-surface text-brand-cyan accent-cyan-400 focus:ring-1 focus:ring-brand-cyan focus:ring-offset-0"
       />
-      <div
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
-          checked
-            ? 'border-brand-cyan bg-brand-cyan text-slate-950 font-bold'
-            : 'border-slate-600 bg-surface text-transparent'
-        }`}
-        aria-hidden="true"
-      >
-        <Check className={`h-3.5 w-3.5 ${checked ? 'opacity-100' : 'opacity-0'}`} />
-      </div>
     </div>
   </label>
 );
