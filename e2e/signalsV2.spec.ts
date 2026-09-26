@@ -377,12 +377,13 @@ async function installSignalsFixtures(page: Page, log: RequestLog, opts: Fixture
     const url = new URL(route.request().url());
     const pair = url.searchParams.get('symbol') ?? '';
     const base = pair.split('/')[0];
-    // Запросы БЕЗ символа — прикладная лента колокольчика (`limit=50`): она
-    // живёт в провайдере, а не на странице, поэтому в «веер страницы» не входит
-    // и считается отдельно, чтобы проверки страницы оставались строгими.
-    if (!base) log.bellFeedCount += 1;
-    else log.signalsBySymbol.set(base, (log.signalsBySymbol.get(base) ?? 0) + 1);
-    const signals = opts.feed ? opts.feed() : base === 'BTC' ? BTC_SIGNALS : base === 'SOL' ? SOL_SIGNALS : [];
+    const isBellFeed = !base && url.searchParams.get('limit') === '50';
+    // The redesigned page owns an unfiltered global feed (limit=20); the
+    // bell's application feed is the separate unfiltered limit=50 request.
+    // Keep both boundaries explicit so the audit does not confuse them.
+    if (!base && isBellFeed) log.bellFeedCount += 1;
+    else if (base) log.signalsBySymbol.set(base, (log.signalsBySymbol.get(base) ?? 0) + 1);
+    const signals = opts.feed ? opts.feed() : !base ? BTC_SIGNALS : base === 'BTC' ? BTC_SIGNALS : base === 'SOL' ? SOL_SIGNALS : [];
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -688,17 +689,19 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
       const top = (qa: string) =>
         document.querySelector(`[data-qa="${qa}"]`)?.getBoundingClientRect().top ?? Infinity;
       return {
+        globalFeed: top('signals-global-feed'),
         selector: top('signals-coin-selector'),
         summary: top('signals-summary'),
         chart: top('signals-chart-card'),
         details: top('signals-details'),
-        history: top('signals-history'),
       };
     });
+    // The authorized redesign puts the all-symbol server feed first; the
+    // selected-asset controls and its detail surfaces follow it.
+    expect(order.globalFeed).toBeLessThan(order.selector);
     expect(order.selector).toBeLessThan(order.summary);
     expect(order.summary).toBeLessThan(order.chart);
     expect(order.chart).toBeLessThan(order.details);
-    expect(order.details).toBeLessThan(order.history);
 
     await shot(page, 'signals-mobile-top');
     await shot(page, 'signals-mobile');
