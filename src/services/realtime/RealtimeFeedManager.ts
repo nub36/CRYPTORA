@@ -1,5 +1,5 @@
 import { EventBus } from './EventBus';
-import { AnomalyEngine } from './AnomalyEngine';
+import { AnomalyEngine, type AnomalyEngineStatus } from './AnomalyEngine';
 import { BinanceWebSocketClient, BinanceWebSocketOptions } from './BinanceWebSocketClient';
 import {
   BinanceFuturesLiquidationStream,
@@ -188,6 +188,10 @@ export class RealtimeFeedManager {
 
   public getRadarEvents(symbol?: string): RadarEvent[] {
     return this.anomalyEngine.getEvents(symbol);
+  }
+
+  public getRadarDetectorStatus(symbols?: readonly string[]): AnomalyEngineStatus {
+    return this.anomalyEngine.getStatus(symbols);
   }
 
   public destroy(): void {

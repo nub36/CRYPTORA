@@ -1,5 +1,7 @@
 # CRYPTORA — Production Roadmap & Operational Backlog
 
+> **Market Radar live lifecycle fix (2026-09-26):** work is in branch `arena/01a0dce5-cryptora`, based on verified `origin/main` `a12928afa20e9421fb1b9ab6e24b0a57c0b193cd` (PR #24 merge commit). Radar now reads the existing server Scan Universe and acquires bounded route-scoped realtime leases while `/radar` is mounted; warm-up, ready-empty, filter-empty, and source-error states are distinct. Browser-memory Radar math/status only; no anomaly thresholds, strategy math, scan_universe data, production signals, server persistence, merge, or deploy changed.
+>
 > **Frontend redesign pass (2026-09-25):** work is in branch `arena/01a0d9bf-cryptora`, based on verified `origin/main` `bd69cfca3059fa3292f8232d71bd154680185368`. Not merged or deployed. Global Signals Home and authorial terminal presentation are in progress; backend and strategy invariants remain frozen.
 
 

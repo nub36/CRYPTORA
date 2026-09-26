@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { RadarEvent } from '@/types/market';
@@ -8,9 +8,39 @@ import { Badge } from '@/components/common/Badge';
 import { Link } from 'react-router-dom';
 import { Radio, ArrowUpRight, Sparkles, AlertCircle } from 'lucide-react';
 import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
+import { TickerTick, RealtimeConnectionState } from '@/types/realtime';
+import { AnomalyEngineStatus } from '@/services/realtime/AnomalyEngine';
+import {
+  getScanUniverse,
+  refreshScanUniverse,
+  subscribeScanUniverse,
+  isScanUniverseConfirmed,
+} from '@/services/signals/scanUniverse';
+import {
+  releaseRadarScopedSubscriptions,
+  syncRadarScopedSubscriptions,
+  type ScopedSymbolReleases,
+} from '@/services/realtime/radarScopedSubscriptions';
 import { AiExplanationEngine, AiMarketBriefing, MarketContextFact } from '@/services/ai/AiExplanationEngine';
 import { requestLlmExplanation, marketContextFactToStructured, type AiExplainResponse } from '@/services/ai/LlmExplainClient';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
+
+function renderableRadarEvents(events: RadarEvent[], dataMode: 'demo' | 'live'): RadarEvent[] {
+  return dataMode === 'live' ? events.filter((event) => !event.isDemo) : events;
+}
+
+function liveRadarStatusText(
+  universeSize: number,
+  status: AnomalyEngineStatus | null,
+  sourceError: boolean,
+): string {
+  if (sourceError) return `ERROR · ${universeSize} symbols`;
+  if (!status || universeSize === 0) return `LIVE · ${universeSize} symbols`;
+  if (status.warmedSymbols < universeSize) {
+    return `WARMING · ${status.warmedSymbols}/${universeSize} symbols · max ${status.maxObservations}/${status.windowSize}`;
+  }
+  return `LIVE · ${universeSize} symbols`;
+}
 
 export const RadarPage: React.FC = () => {
   const { provider, dataMode } = useMarketData();
@@ -18,30 +48,117 @@ export const RadarPage: React.FC = () => {
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
+  const [radarUniverse, setRadarUniverse] = useState<string[]>([]);
+  const [detectorStatus, setDetectorStatus] = useState<AnomalyEngineStatus | null>(null);
+  const [connectionState, setConnectionState] = useState<RealtimeConnectionState>('idle');
+  const [universeChecked, setUniverseChecked] = useState(false);
+  const radarLeasesRef = useRef<ScopedSymbolReleases>(new Map());
+  const radarUniverseRef = useRef<string[]>([]);
 
   useEffect(() => {
+    let active = true;
     provider
       .getRadarEvents()
       .then((data) => {
-        setEvents(data);
+        if (!active) return;
+        setEvents(renderableRadarEvents(data, dataMode));
         setSourceUnavailable(false);
       })
-      .catch(() => setSourceUnavailable(true));
-
-    if (dataMode === 'live') {
-      const feed = RealtimeFeedManager.getInstance();
-      const unsub = feed.eventBus.subscribe<RadarEvent>('radar', (newEvent) => {
-        setEvents((prev) => [newEvent, ...prev.filter((e) => e.id !== newEvent.id)]);
+      .catch(() => {
+        if (active) setSourceUnavailable(true);
       });
-      return () => unsub();
-    }
+
+    return () => {
+      active = false;
+    };
   }, [provider, dataMode]);
+
+  useEffect(() => {
+    if (dataMode !== 'live') {
+      releaseRadarScopedSubscriptions(radarLeasesRef.current);
+      radarUniverseRef.current = [];
+      setRadarUniverse([]);
+      setDetectorStatus(null);
+      setConnectionState('idle');
+      setUniverseChecked(true);
+      return;
+    }
+
+    let active = true;
+    const feed = RealtimeFeedManager.getInstance();
+
+    const refreshStatus = (symbols = radarUniverseRef.current) => {
+      if (!active) return;
+      setDetectorStatus(feed.getRadarDetectorStatus(symbols));
+    };
+
+    const applyUniverse = (symbols: readonly string[]) => {
+      if (!active) return;
+      const normalized = syncRadarScopedSubscriptions(feed, radarLeasesRef.current, symbols);
+      radarUniverseRef.current = normalized;
+      setRadarUniverse(normalized);
+      refreshStatus(normalized);
+    };
+
+    applyUniverse(getScanUniverse());
+    setUniverseChecked(false);
+    void refreshScanUniverse().then((symbols) => {
+      if (!active) return;
+      applyUniverse(symbols);
+      setUniverseChecked(true);
+    });
+
+    const unsubscribeUniverse = subscribeScanUniverse(() => {
+      applyUniverse(getScanUniverse());
+    });
+
+    const unsubscribeRadar = feed.eventBus.subscribe<RadarEvent>('radar', (newEvent) => {
+      if (newEvent.isDemo) return;
+      setSourceUnavailable(false);
+      setEvents((prev) => [newEvent, ...prev.filter((e) => e.id !== newEvent.id)]);
+      refreshStatus();
+    });
+
+    const unsubscribeTicker = feed.eventBus.subscribe<TickerTick>('ticker:*', () => {
+      refreshStatus();
+    });
+
+    const unsubscribeConnection = feed.eventBus.subscribe<RealtimeConnectionState>('connection', (state) => {
+      setConnectionState(state);
+    });
+
+    setConnectionState(feed.getConnectionState());
+    refreshStatus();
+
+    return () => {
+      active = false;
+      unsubscribeUniverse();
+      unsubscribeRadar();
+      unsubscribeTicker();
+      unsubscribeConnection();
+      releaseRadarScopedSubscriptions(radarLeasesRef.current);
+      radarUniverseRef.current = [];
+    };
+  }, [dataMode]);
 
   const filteredEvents = events.filter((e) => {
     if (selectedType !== 'all' && e.type !== selectedType) return false;
     if (selectedSeverity !== 'all' && e.severity !== selectedSeverity) return false;
     return true;
   });
+  const liveUniverseUnconfirmed = dataMode === 'live' && universeChecked && !isScanUniverseConfirmed() && radarUniverse.length === 0;
+  const liveSourceUnavailable = dataMode === 'live' && (connectionState === 'error' || liveUniverseUnconfirmed);
+  const radarSourceError = sourceUnavailable || liveSourceUnavailable;
+  const isFilterEmpty = events.length > 0 && filteredEvents.length === 0;
+  const isWarming =
+    dataMode === 'live' &&
+    !radarSourceError &&
+    events.length === 0 &&
+    (!universeChecked || (radarUniverse.length > 0 && (!detectorStatus || detectorStatus.warmedSymbols < radarUniverse.length)));
+  const isReadyNoEvents = dataMode === 'live' && universeChecked && !radarSourceError && events.length === 0 && !isWarming;
+  const statusBadgeText = dataMode === 'live'
+    ? liveRadarStatusText(radarUniverse.length, detectorStatus, radarSourceError)
+    : 'QA-СТРИМ';
 
   // Брифинг по активу главной аномалии — ТОЛЬКО из фактов провайдера (цена/Δ24ч/фандинг/Δ OI/RSI по свечам);
   // если факт недоступен, поле опускается, а не подставляется (docs/AI.md).
@@ -109,9 +226,41 @@ export const RadarPage: React.FC = () => {
     };
   }, [briefingFacts]);
 
+  const emptyState = radarSourceError
+    ? {
+        state: 'source-error',
+        title: 'Источник LIVE-радара недоступен.',
+        detail: 'Проверьте соединение realtime-потока и серверный Scan Universe. Демо-события в LIVE не подставляются.',
+      }
+    : isFilterEmpty
+      ? {
+          state: 'filtered',
+          title: 'Нет событий, соответствующих выбранным фильтрам.',
+          detail: 'События в текущем LIVE-буфере есть; измените тип аномалии или важность, чтобы увидеть их.',
+        }
+      : isWarming
+        ? {
+            state: 'warming',
+            title: 'Радар набирает окно наблюдений…',
+            detail: `Подписано символов: ${radarUniverse.length}. Прогрето: ${detectorStatus?.warmedSymbols ?? 0}/${radarUniverse.length}. Максимум наблюдений: ${detectorStatus?.maxObservations ?? 0}/${detectorStatus?.windowSize ?? 20}.`,
+          }
+        : isReadyNoEvents
+          ? {
+              state: 'ready-empty',
+              title: 'В текущем LIVE-окне аномалий не обнаружено.',
+              detail: 'Детектор прогрет по доступной Scan Universe и ждёт фактических отклонений из ticker-потока.',
+            }
+          : {
+              state: 'empty',
+              title: 'Нет событий радара.',
+              detail: dataMode === 'live'
+                ? 'LIVE-буфер пуст.'
+                : 'QA-поток не вернул событий для текущего сценария.',
+            };
+
   return (
     <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="radar" data-layout="event-stream">
-      {sourceUnavailable && <DataSourceUnavailable subject="сигналы радара" />}
+      {radarSourceError && <DataSourceUnavailable subject="LIVE-радар" />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">
         <div>
@@ -121,13 +270,22 @@ export const RadarPage: React.FC = () => {
               Рыночный радар: детектор аномалий
             </h1>
             {dataMode === 'live' ? (
-              <span className="text-[11px] font-mono font-semibold text-cyan-300 bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse mr-1.5" />
-                LIVE-детектор аномалий
+              <span
+                data-qa="radar-live-status"
+                className={`text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full border flex items-center ${
+                  radarSourceError
+                    ? 'text-rose-300 bg-rose-950/30 border-rose-500/30'
+                    : isWarming
+                      ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+                      : 'text-cyan-300 bg-cyan-950/40 border-cyan-500/30'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${radarSourceError ? 'bg-rose-400' : isWarming ? 'bg-amber-400 animate-pulse' : 'bg-cyan-400 animate-pulse'}`} />
+                LIVE-детектор аномалий · {statusBadgeText}
               </span>
             ) : (
-              <span className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                QA-СТРИМ
+              <span data-qa="radar-live-status" className="text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                {statusBadgeText}
               </span>
             )}
           </div>
@@ -136,12 +294,18 @@ export const RadarPage: React.FC = () => {
               ? 'Математический движок детекции аномалий (Z-Score объемов, ценовой импульс, расширение волатильности) в реальном времени.'
               : 'Поток зафиксированных аномалий объема, открытого интереса, фандинга и ликвидаций на QA-датасете.'}
           </p>
+          {dataMode === 'live' && (
+            <p data-qa="radar-source-telemetry" className="text-[11px] text-slate-500 font-mono mt-1">
+              Scan Universe: {radarUniverse.length} · warmed: {detectorStatus?.warmedSymbols ?? 0}/{radarUniverse.length} · WS: {connectionState}
+            </p>
+          )}
         </div>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 font-sans text-xs">
           {/* Type filter */}
           <select
+            aria-label="Тип аномалии"
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
             className="bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
@@ -157,6 +321,7 @@ export const RadarPage: React.FC = () => {
 
           {/* Severity filter */}
           <select
+            aria-label="Важность аномалии"
             value={selectedSeverity}
             onChange={(e) => setSelectedSeverity(e.target.value)}
             className="bg-surface-elevated border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 min-h-[32px]"
@@ -241,13 +406,20 @@ export const RadarPage: React.FC = () => {
       {/* Events Stream List */}
       <div className="space-y-3 font-sans">
         {filteredEvents.length === 0 ? (
-          <div className="bg-surface border border-surface-border rounded-lg p-12 text-center text-slate-500 text-xs font-sans">
-            Нет событий, удовлетворяющих заданным критериям фильтрации радара.
+          <div
+            data-qa="radar-empty-state"
+            data-state={emptyState.state}
+            className="bg-surface border border-surface-border rounded-lg p-12 text-center text-slate-500 text-xs font-sans space-y-2"
+          >
+            <div className="text-slate-300 font-semibold">{emptyState.title}</div>
+            <div>{emptyState.detail}</div>
           </div>
         ) : (
           filteredEvents.map((event) => (
             <div
               key={event.id}
+              data-qa="radar-event-row"
+              data-event-id={event.id}
               className="bg-surface border border-surface-border rounded-lg p-4 hover:border-slate-600 transition-all shadow-md flex flex-col md:flex-row md:items-center justify-between gap-3 group"
             >
               <div className="space-y-1.5 flex-1">

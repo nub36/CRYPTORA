@@ -122,3 +122,54 @@ export interface DataProvenance {
 инициаторами. Эти общие запросы не привязаны к выбранному BTC и не свидетельствуют о повторном
 рендере CoinPage. Маршрутные WS-подписки CoinPage (`ticker`, `trade`, `depth`, `kline`) освобождаются
 при смене символа/размонтировании; в частности, ticker/trade теперь используют scoped lease.
+
+---
+
+## 6. LIVE Market Radar — браузерный детектор и честный прогрев (2026-09-26)
+
+`/radar` остаётся **browser/live** функцией: события создаёт `AnomalyEngine` в памяти браузера из
+Binance Spot ticker WS, а `LiveMarketDataProvider.getRadarEvents()` только читает текущий буфер
+этого движка. Серверной таблицы Radar и 24/7 фонового процесса пока нет.
+
+### Источник universe
+
+При монтировании LIVE-маршрута Radar читает общий серверный Scan Universe через уже существующий
+клиент `src/services/signals/scanUniverse.ts` (`GET /api/strategies/scan-universe`). Это тот же
+bounded список `saved ∩ active`, которым пользуется браузерный слой стратегий; Admin Scan Universe
+при этом **не изменяется**. Отдельный hardcoded coin-list для Radar запрещён.
+
+### Подписки
+
+Radar теперь владеет собственными маршрутными WS-lease для этой вселенной:
+
+```ts
+const release = RealtimeFeedManager.getInstance().subscribeSymbolScoped(symbol);
+```
+
+Изменение universe применяется delta-логикой: удалённые символы освобождаются, общие символы
+сохраняют lease, новые символы приобретаются. На размонтировании `/radar`, смене режима LIVE → QA
+или потере universe освобождаются только Radar-owned leases. Refcount в `RealtimeFeedManager`
+сохраняет независимые подписки Coin page, watchlist и alerts; Radar unmount не должен отписывать
+чужой BTC/ETH stream. Новый WebSocket-клиент не создаётся — используется существующий Binance
+combined-stream transport.
+
+### Warm-up и lifetime
+
+`AnomalyEngine` хранит `volumes[]`, `prices[]`, `ranges[]` по символам в памяти вкладки; размер окна
+по умолчанию — 20 наблюдений. После reload/закрытия вкладки истории и буфер событий сбрасываются,
+поэтому Radar снова проходит warm-up. UI различает четыре состояния:
+
+- `WARMING` — «Радар набирает окно наблюдений…»;
+- `READY`, событий нет — «В текущем LIVE-окне аномалий не обнаружено.»;
+- `FILTERED` — события есть, но фильтры их скрыли;
+- `SOURCE ERROR` — realtime/source или Scan Universe недоступны.
+
+Телеметрия UI показывает subscribed symbol count, warmed symbols / total, максимум наблюдений / window
+и состояние WS. Это read-only статус существующих историй; thresholds, Z-score/velocity/volatility
+расчёты, cooldown и severity math не менялись.
+
+### Roadmap
+
+Если нужен Radar, работающий 24/7 независимо от открытой вкладки и переживающий reload, требуется
+отдельный future track: server-side Radar process + persistence/read API. В этом минимальном исправлении
+persistence намеренно не добавлялась.

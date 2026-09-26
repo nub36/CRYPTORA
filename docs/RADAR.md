@@ -2,6 +2,8 @@
 
 > **Назначение:** Освободить трейдера от необходимости непрерывно листать сотни монет, доставляя структурированные оповещения об отклонениях от нормы.
 
+> **Implementation note (2026-09-26):** current LIVE Radar is browser-owned and in-memory. `/radar` reads the existing server Scan Universe (`GET /api/strategies/scan-universe`) and, only while the route is mounted, acquires bounded `RealtimeFeedManager.subscribeSymbolScoped(symbol)` leases for that universe. Ticker ticks feed the existing `AnomalyEngine`; no demo events are substituted in LIVE. Histories/events reset on browser reload and require warm-up again. A 24/7 persisted/server Radar is a future track, not part of the current minimal fix.
+
 ---
 
 ## 1. Типология событий радара
