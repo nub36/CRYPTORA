@@ -49,7 +49,7 @@ import {
   SignalsLedgerAuditSection,
   type ServerSignalsStats,
 } from '@/components/signals/SignalsLedgerAuditSection';
-import { shortOffset, timeZoneLabel } from '@/utils/timePresentation';
+import { shortOffset, timeZoneLabel, timeZoneLabelWithOffset } from '@/utils/timePresentation';
 
 const DEFAULT_SYMBOL = 'BTC';
 const DEFAULT_TIMEFRAME: Timeframe = '1h';
@@ -278,11 +278,11 @@ export const SignalsPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <ScannerStatusChip state={scanner} />
           <span
-            className="rounded border border-surface-border bg-surface-elevated px-2 py-0.5 text-xs font-mono text-slate-300"
+            className="rounded border border-surface-border bg-surface-elevated/80 px-2 py-0.5 text-xs text-slate-400 font-mono tracking-tight"
             data-qa="signals-timezone-label"
             title={`Ваш часовой пояс: ${timeZoneLabel('BROWSER')} (${shortOffset('BROWSER')}). В базе и API время хранится в UTC.`}
           >
-            {shortOffset('BROWSER')}
+            {timeZoneLabelWithOffset('BROWSER')}
           </span>
         </div>
       </div>
