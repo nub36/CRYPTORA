@@ -690,7 +690,8 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(finalChart).toHaveAttribute('aria-label', 'График BTC/USDT');
     await expect(finalChart).toHaveAttribute('data-active-signal-id', 'btc-long-active');
     await expect(finalChart).toHaveAttribute('data-active-signal-symbol', 'BTC');
-    await expect(finalChart).toHaveAttribute('data-level-count', '5');
+    // Entry zone has two persisted boundaries + stop + three targets.
+    await expect(finalChart).toHaveAttribute('data-level-count', '6');
     await expect(page.getByTestId('signals-summary')).toHaveAttribute('data-signal-id', 'btc-long-active');
 
     // 6) Переключение таймфрейма: свеча того же символа, не новый символ.
