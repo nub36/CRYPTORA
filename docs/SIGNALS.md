@@ -6,6 +6,14 @@ Signals Home is global by default. `/signals` requests the bounded server feed w
 
 This is frontend presentation/query-scope behavior only. Provenance, notification eligibility, persisted DTOs, lifecycle math, strategy settings, and backend behavior are unchanged.
 
+## Owner correction — 2026-09-26
+
+The left master tape is now an explicitly current/actionable view, titled «Актуальные сигналы». Its bounded global request is `GET /api/signals?open=true`, using the existing server contract (`ACTIVE`, `FILLED`). Terminal states (`TARGET_REACHED`, `INVALIDATED`, `CLOSED`, `EXPIRED`, `CANCELLED`, `UNRESOLVED`) are neither deleted nor reclassified: selected-asset History requests `open=false`, and server Statistics remains lifecycle-complete.
+
+The selected-signal workspace has one compact disclosure row between Summary and Chart: «УРОВНИ / ИСТОРИЯ / СТАТИСТИКА». One inspector can be open at a time; clicking it again closes it. Levels contains only persisted selected-signal levels, History contains terminal records for the selected asset, and Statistics reuses the existing server aggregation and global/asset scopes. Large duplicate panels below the chart were removed.
+
+Common `CandleChart` initial framing now presents the latest 72 bars plus the existing right offset for a readable default. It is applied once per new symbol/timeframe (and explicit reset), not on ordinary data/WS updates, so manual zoom/pan is preserved. Symbol changes still clear old series and restore price autoscale before the new asset is framed.
+
 
 > **Последнее обновление:** 2026-09-25 (ветка `arena/01a0d727-cryptora` от `a33bd1aba3b4b9998557b2e4d77a1418cad0d98c`,
 > PR открыт — НЕ слит, НЕ задеплоен).

@@ -25,6 +25,8 @@ import { SignalStatusChip } from './SignalStatusChip';
 
 interface SignalDetailsPanelProps {
   model: SignalUiModel | null;
+  /** Inspector mode used by the compact disclosure: levels only, no outcome/audit duplication. */
+  levelsOnly?: boolean;
 }
 
 const ROW_TONE: Record<string, string> = {
@@ -33,7 +35,7 @@ const ROW_TONE: Record<string, string> = {
   green: 'text-emerald-400',
 };
 
-export const SignalDetailsPanel: React.FC<SignalDetailsPanelProps> = ({ model }) => {
+export const SignalDetailsPanel: React.FC<SignalDetailsPanelProps> = ({ model, levelsOnly = false }) => {
   if (!model) {
     return (
       <section data-qa="signals-details-empty" className="rounded-lg border border-surface-border bg-surface p-4">
@@ -114,6 +116,8 @@ export const SignalDetailsPanel: React.FC<SignalDetailsPanelProps> = ({ model })
 
       <p className="ui-helper">{model.entry.typeText} · {STATUS_SOURCE_NOTE}</p>
 
+      {!levelsOnly && (
+        <>
       {/* Исход и R — второстепенно (§12). Формулы не пересчитываются. */}
       <Collapsible testId="signals-outcome" tone="muted" label="Исход и результат (R)" hint="gross / net">
         <div className="space-y-2">
@@ -223,6 +227,8 @@ export const SignalDetailsPanel: React.FC<SignalDetailsPanelProps> = ({ model })
           </p>
         </div>
       </Collapsible>
+        </>
+      )}
     </section>
   );
 };

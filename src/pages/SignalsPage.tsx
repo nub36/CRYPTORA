@@ -26,7 +26,6 @@ import { useServerSignals } from '@/hooks/useServerSignals';
 import { useServerScanner } from '@/hooks/useServerScanner';
 import { useSignalChartCandles } from '@/hooks/useSignalChartCandles';
 import {
-  resolveActiveSignal,
   symbolsWithSignals,
   toSignalUiModels,
   type SignalUiModel,
@@ -60,6 +59,7 @@ const SIGNALS_POLL_MS = 60_000;
 const SCANNER_POLL_MS = 15_000;
 /** Поллинг серверной статистики — тяжёлые агрегаты, чаще минуты не нужно. */
 const STATISTICS_POLL_MS = 60_000;
+type SignalDisclosure = 'levels' | 'history' | 'statistics';
 
 /**
  * Символ из URL (`?symbol=`) → BASE-тикер. Принимаются три формы, которые
@@ -71,6 +71,19 @@ export function deepLinkSymbol(raw: string | null): string | null {
   const value = raw.trim();
   if (!value) return null;
   return signalBaseSymbol(value) || null;
+}
+
+/**
+ * Hard presentation boundary: a server signal can affect only its own chart.
+ * Both sides are normalized through the existing server-symbol helper.
+ */
+export function signalMatchesChartSymbol(
+  signal: Pick<SignalUiModel, 'baseSymbol'> | null | undefined,
+  chartSymbol: string
+): boolean {
+  if (!signal) return false;
+  return signalBaseSymbol(signal.baseSymbol).toUpperCase()
+    === signalBaseSymbol(chartSymbol).toUpperCase();
 }
 
 /** Id сигнала из URL (`?signal=`) — как есть, без домысливания формата. */
@@ -92,6 +105,7 @@ export const SignalsPage: React.FC = () => {
   const selectedSignalId = deepLinkSignalId(searchParams.get('signal'));
   const [chartTimeframe, setChartTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
   const [assetHistoryRequested, setAssetHistoryRequested] = useState(Boolean(selectedSignalId));
+  const [activeDisclosure, setActiveDisclosure] = useState<SignalDisclosure | null>(null);
 
   const pair = signalPairText(baseSymbol);
 
@@ -108,7 +122,6 @@ export const SignalsPage: React.FC = () => {
   // Смена монеты сбрасывает выбранный сигнал: линии/детали не должны «прилипать».
   const selectSymbol = useCallback(
     (raw: string) => {
-      setAssetHistoryRequested(true);
       writeDeepLink(signalBaseSymbol(raw), null);
     },
     [writeDeepLink]
@@ -116,11 +129,20 @@ export const SignalsPage: React.FC = () => {
 
   // ── Серверные ленты: global feed is the primary surface; asset history is separate ──
   const signalsQuery = useServerSignals(
-    { limit: SIGNALS_PAGE_LIMIT },
+    // The master tape is explicitly the server's open lifecycle contract:
+    // ACTIVE + FILLED. Terminal rows remain in the separate history query.
+    { open: true, limit: SIGNALS_PAGE_LIMIT },
+    { pollMs: SIGNALS_POLL_MS }
+  );
+  // Workspace selection is asset-scoped. This query must never be replaced by
+  // "first row of the global tape": a manually selected asset either gets its
+  // own first open server signal or no selected signal at all.
+  const assetOpenQuery = useServerSignals(
+    { symbol: pair, open: true, limit: SIGNALS_PAGE_LIMIT },
     { pollMs: SIGNALS_POLL_MS }
   );
   const assetHistoryQuery = useServerSignals(
-    { symbol: pair, limit: SIGNALS_PAGE_LIMIT },
+    { symbol: pair, open: false, limit: SIGNALS_PAGE_LIMIT },
     { pollMs: SIGNALS_POLL_MS, enabled: assetHistoryRequested }
   );
   const [statisticsScope, setStatisticsScope] = useState<'global' | 'asset'>('global');
@@ -131,10 +153,14 @@ export const SignalsPage: React.FC = () => {
         return;
       }
       setAssetHistoryRequested(true);
-      const signal = [...signalsQuery.signals, ...assetHistoryQuery.signals].find((item) => item.id === id);
+      const signal = [
+        ...signalsQuery.signals,
+        ...assetOpenQuery.signals,
+        ...assetHistoryQuery.signals,
+      ].find((item) => item.id === id);
       writeDeepLink(signal ? signalBaseSymbol(signal.symbol) : baseSymbol, id);
     },
-    [assetHistoryQuery.signals, baseSymbol, signalsQuery.signals, writeDeepLink]
+    [assetHistoryQuery.signals, assetOpenQuery.signals, baseSymbol, signalsQuery.signals, writeDeepLink]
   );
 
   // ── Свечи ТОЛЬКО выбранного инструмента и таймфрейма ──────────────────
@@ -148,8 +174,11 @@ export const SignalsPage: React.FC = () => {
   const scanner = useServerScanner({ pollMs: SCANNER_POLL_MS });
 
   const signalInPage = useMemo(
-    () => (selectedSignalId ? signalsQuery.signals.some((s) => s.id === selectedSignalId) : false),
-    [signalsQuery.signals, selectedSignalId]
+    () => selectedSignalId
+      ? [...signalsQuery.signals, ...assetOpenQuery.signals, ...assetHistoryQuery.signals]
+          .some((signal) => signal.id === selectedSignalId)
+      : false,
+    [assetHistoryQuery.signals, assetOpenQuery.signals, signalsQuery.signals, selectedSignalId]
   );
   const focusedSignal = useServerSignalById(selectedSignalId, {
     enabled: Boolean(selectedSignalId) && signalsQuery.phase === 'ready' && !signalInPage,
@@ -164,38 +193,76 @@ export const SignalsPage: React.FC = () => {
   );
 
   const pageSignals = useMemo(() => {
-    if (!focusedSignal.signal || signalInPage || !focusedSymbolMatches) return signalsQuery.signals;
-    return [...signalsQuery.signals, focusedSignal.signal];
-  }, [signalsQuery.signals, focusedSignal.signal, signalInPage, focusedSymbolMatches]);
+    const selectedFromWorkspace = selectedSignalId
+      ? [...assetOpenQuery.signals, ...assetHistoryQuery.signals]
+          .find((signal) => signal.id === selectedSignalId)
+      : undefined;
+    const withLoadedSelection = selectedFromWorkspace
+      && !signalsQuery.signals.some((signal) => signal.id === selectedFromWorkspace.id)
+      ? [...signalsQuery.signals, selectedFromWorkspace]
+      : signalsQuery.signals;
+    if (!focusedSignal.signal || signalInPage || !focusedSymbolMatches) return withLoadedSelection;
+    return [...withLoadedSelection, focusedSignal.signal];
+  }, [
+    assetHistoryQuery.signals,
+    assetOpenQuery.signals,
+    signalsQuery.signals,
+    focusedSignal.signal,
+    signalInPage,
+    focusedSymbolMatches,
+    selectedSignalId,
+  ]);
 
   // ── Отображение серверных сигналов в модель UI ────────────────────────
-  const models: SignalUiModel[] = useMemo(() => toSignalUiModels(pageSignals), [pageSignals]);
+  // The tape follows the server's open-status contract. An open deep-link that
+  // sits outside the first page is appended so the selected server row remains
+  // visible; a terminal deep-link is selected in the workspace but never leaks
+  // into the current-signals tape.
+  const tapeSignals = useMemo(
+    () => pageSignals.filter((signal) => (OPEN_SIGNAL_STATUSES as readonly string[]).includes(signal.status)),
+    [pageSignals]
+  );
+  const models: SignalUiModel[] = useMemo(() => toSignalUiModels(tapeSignals), [tapeSignals]);
+  const selectableModels: SignalUiModel[] = useMemo(() => toSignalUiModels(pageSignals), [pageSignals]);
+  const assetOpenModels: SignalUiModel[] = useMemo(
+    () => toSignalUiModels(assetOpenQuery.signals),
+    [assetOpenQuery.signals]
+  );
   const assetHistoryModels: SignalUiModel[] = useMemo(
     () => toSignalUiModels(assetHistoryQuery.signals),
     [assetHistoryQuery.signals]
   );
 
-  const selectedProvenance = useMemo(() => {
-    const found = selectedSignalId ? pageSignals.find((s) => s.id === selectedSignalId) : undefined;
-    return found ? found.provenanceStatus : null;
-  }, [pageSignals, selectedSignalId]);
+  // Exact id wins only when it belongs to the current chart. Without an id
+  // (including immediately after manual asset selection), use the first row of
+  // the ASSET-SCOPED open query — never the first row of the global tape.
+  const activeSignal = useMemo(() => {
+    const candidate = selectedSignalId
+      ? selectableModels.find((model) => model.id === selectedSignalId) ?? null
+      : assetOpenModels[0] ?? null;
+    return signalMatchesChartSymbol(candidate, baseSymbol) ? candidate : null;
+  }, [assetOpenModels, baseSymbol, selectableModels, selectedSignalId]);
 
-  const activeSignal = useMemo(
-    () => resolveActiveSignal(models, selectedSignalId),
-    [models, selectedSignalId]
-  );
+  const selectedProvenance = activeSignal?.provenanceStatus ?? null;
 
   const signalPairs = useMemo(() => symbolsWithSignals(signalsQuery.signals), [signalsQuery.signals]);
 
   // ── Проекция на график: маркеры истории + линии выбранного сигнала ───
   const timeframeSec = timeframeToSeconds(chartTimeframe);
+  const markerModels = useMemo(() => {
+    const byId = new Map<string, SignalUiModel>();
+    for (const model of [...assetOpenModels, ...assetHistoryModels, ...(activeSignal ? [activeSignal] : [])]) {
+      if (signalMatchesChartSymbol(model, baseSymbol)) byId.set(model.id, model);
+    }
+    return [...byId.values()];
+  }, [activeSignal, assetHistoryModels, assetOpenModels, baseSymbol]);
   const markers = useMemo(
     () =>
-      mapSignalMarkers(models, candlesState.candles, timeframeSec, {
+      mapSignalMarkers(markerModels, candlesState.candles, timeframeSec, {
         selectedId: activeSignal?.id ?? null,
         showLabels: false,
       }).markers,
-    [models, candlesState.candles, timeframeSec, activeSignal?.id]
+    [markerModels, candlesState.candles, timeframeSec, activeSignal?.id]
   );
 
   const { lines: levelLines } = useMemo(
@@ -255,6 +322,11 @@ export const SignalsPage: React.FC = () => {
   const showApiError = signalsQuery.phase === 'error';
   const showMarketError = candlesState.phase === 'error';
 
+  const toggleDisclosure = useCallback((next: SignalDisclosure) => {
+    if (next === 'history') setAssetHistoryRequested(true);
+    setActiveDisclosure((current) => current === next ? null : next);
+  }, []);
+
   return (
     <div
       className="route-shell mx-auto max-w-[1920px] space-y-3 px-3 py-3 sm:px-4"
@@ -295,10 +367,10 @@ export const SignalsPage: React.FC = () => {
             <div className="terminal-section__header">
               <div>
                 <span className="eyebrow">SERVER / PRODUCTION</span>
-                <h2 className="terminal-section__title">Все сигналы</h2>
+                <h2 className="terminal-section__title">Актуальные сигналы</h2>
               </div>
               <span className="terminal-section__meta font-mono text-xs">
-                {signalsQuery.total} всего · {signalsQuery.source ?? 'server'}
+                {signalsQuery.total} открыто · {signalsQuery.source ?? 'server'}
               </span>
             </div>
             <div className="max-h-60 sm:max-h-72 lg:max-h-[calc(100vh-170px)] overflow-y-auto pr-0.5">
@@ -310,7 +382,7 @@ export const SignalsPage: React.FC = () => {
                 onLoadMore={signalsQuery.loadMore}
                 selectedId={activeSignal?.id ?? null}
                 onSelect={selectSignal}
-                title="Все сигналы"
+                title="Актуальные сигналы"
               />
             </div>
           </section>
@@ -397,7 +469,7 @@ export const SignalsPage: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <div className="font-sans text-sm font-bold text-white">Сигналов по этому инструменту нет</div>
+                  <div className="font-sans text-sm font-bold text-white">Открытых сигналов сейчас нет</div>
                   <p className="ui-helper leading-relaxed">
                     Стратегии публикуют сетап редко и только на фактических закрытых свечах. Пустая лента —
                     норма, а не ошибка. График показывает рыночные свечи выбранной монеты.
@@ -417,7 +489,92 @@ export const SignalsPage: React.FC = () => {
             </p>
           )}
 
-          {/* 3. Доминантный свечной график выбранного инструмента */}
+          {/* 3. Compact inspectors live in the exact summary → chart workspace. */}
+          <section data-qa="signals-disclosures" className="min-w-0">
+            <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Инспекторы сигнала">
+              {([
+                ['levels', 'УРОВНИ'],
+                ['history', 'ИСТОРИЯ'],
+                ['statistics', 'СТАТИСТИКА'],
+              ] as const).map(([id, label]) => {
+                const active = activeDisclosure === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    data-qa={`signals-disclosure-${id}`}
+                    aria-expanded={active}
+                    aria-controls="signals-compact-inspector"
+                    onClick={() => toggleDisclosure(id)}
+                    className={`min-h-[34px] min-w-0 rounded border px-1.5 text-[11px] font-bold tracking-wide transition-colors sm:px-3 sm:text-xs ${
+                      active
+                        ? 'border-brand-cyan/60 bg-brand-cyan/10 text-cyan-300'
+                        : 'border-surface-border bg-surface-elevated/50 text-slate-400 hover:border-surface-border-active hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeDisclosure && (
+              <div
+                id="signals-compact-inspector"
+                data-qa="signals-compact-inspector"
+                data-panel={activeDisclosure}
+                className="mt-1.5 min-w-0 overflow-hidden rounded-lg border border-surface-border bg-surface-inset/40 p-2"
+              >
+                {activeDisclosure === 'levels' && <SignalDetailsPanel model={activeSignal} levelsOnly />}
+
+                {activeDisclosure === 'history' && (
+                  <section data-qa="signals-asset-history" className="min-w-0">
+                    <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+                      <span className="ui-card-title">История {pair}</span>
+                      <span className="ui-helper font-mono">{assetHistoryQuery.total} терминальных</span>
+                    </div>
+                    <SignalHistoryList
+                      models={assetHistoryModels}
+                      total={assetHistoryQuery.total}
+                      hasMore={assetHistoryQuery.hasMore}
+                      loadingMore={assetHistoryQuery.loadingMore}
+                      onLoadMore={assetHistoryQuery.loadMore}
+                      selectedId={activeSignal?.id ?? null}
+                      onSelect={selectSignal}
+                      title={`История ${pair}`}
+                    />
+                  </section>
+                )}
+
+                {activeDisclosure === 'statistics' && (
+                  <section data-qa="signals-statistics-scope" className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <span className="ui-card-title">Статистика</span>
+                      <div className="scope-switch" role="group" aria-label="Область статистики">
+                        <button
+                          type="button"
+                          className={statisticsScope === 'global' ? 'is-active' : ''}
+                          onClick={() => setStatisticsScope('global')}
+                        >
+                          ВСЕ СИГНАЛЫ
+                        </button>
+                        <button
+                          type="button"
+                          className={statisticsScope === 'asset' ? 'is-active' : ''}
+                          onClick={() => setStatisticsScope('asset')}
+                        >
+                          ТЕКУЩАЯ МОНЕТА
+                        </button>
+                      </div>
+                    </div>
+                    <SignalStatisticsPanel symbol={statisticsScope === 'asset' ? baseSymbol : null} pollMs={STATISTICS_POLL_MS} />
+                  </section>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* 4. Доминантный свечной график выбранного инструмента */}
           <SignalChartCard
             symbol={baseSymbol}
             pair={pair}
@@ -435,58 +592,7 @@ export const SignalsPage: React.FC = () => {
             height={380}
           />
 
-          {/* 4. Детали и уровни выбранного сигнала */}
-          <SignalDetailsPanel model={activeSignal} />
-
-          {/* 5. История выбранного инструмента (второстепенно) */}
-          <section className="terminal-section" data-qa="signals-asset-history">
-            <div className="terminal-section__header">
-              <div>
-                <span className="eyebrow">CURRENT ASSET</span>
-                <h2 className="terminal-section__title">История {pair}</h2>
-              </div>
-              <span className="terminal-section__meta font-mono text-xs">{assetHistoryQuery.total} записей</span>
-            </div>
-            <SignalHistoryList
-              models={assetHistoryModels}
-              total={assetHistoryQuery.total}
-              hasMore={assetHistoryQuery.hasMore}
-              loadingMore={assetHistoryQuery.loadingMore}
-              onLoadMore={assetHistoryQuery.loadMore}
-              selectedId={activeSignal?.id ?? null}
-              onSelect={selectSignal}
-              title={`История ${pair}`}
-            />
-          </section>
-
-          {/* 6. Статистика эффективности */}
-          <section className="terminal-section" data-qa="signals-statistics-scope">
-            <div className="terminal-section__header">
-              <div>
-                <span className="eyebrow">PERFORMANCE</span>
-                <h2 className="terminal-section__title">Статистика</h2>
-              </div>
-              <div className="scope-switch" role="group" aria-label="Statistics scope">
-                <button
-                  type="button"
-                  className={statisticsScope === 'global' ? 'is-active' : ''}
-                  onClick={() => setStatisticsScope('global')}
-                >
-                  ВСЕ СИГНАЛЫ
-                </button>
-                <button
-                  type="button"
-                  className={statisticsScope === 'asset' ? 'is-active' : ''}
-                  onClick={() => setStatisticsScope('asset')}
-                >
-                  ТЕКУЩАЯ МОНЕТА
-                </button>
-              </div>
-            </div>
-            <SignalStatisticsPanel symbol={statisticsScope === 'asset' ? baseSymbol : null} pollMs={STATISTICS_POLL_MS} />
-          </section>
-
-          {/* 7. Аудит и кодекс прозрачности */}
+          {/* 5. Аудит и кодекс прозрачности — separate from the three compact inspectors. */}
           <SignalsLedgerAuditSection
             serverStats={serverStats}
             ledgerSummary={ledgerSummary}

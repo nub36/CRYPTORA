@@ -114,6 +114,9 @@ export const SignalChartCard: React.FC<SignalChartCardProps> = ({
   return (
     <section
       data-qa="signals-chart-card"
+      data-active-signal-id={activeSignal?.id ?? ''}
+      data-active-signal-symbol={activeSignal?.baseSymbol ?? ''}
+      data-level-count={levelLines.length}
       className="space-y-2 rounded-lg border border-surface-border bg-surface p-3"
       aria-label={`График ${pair}`}
     >

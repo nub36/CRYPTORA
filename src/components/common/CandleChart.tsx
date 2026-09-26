@@ -11,7 +11,10 @@ import { formatChartAxisTime, formatChartCrosshairTime } from '@/utils/chartTime
 import { browserTimeZone, timeZoneLabel } from '@/utils/timePresentation';
 import { klineTimeSeconds } from '@/services/realtime/candleHandoff';
 import { mapTimeframeToBinanceInterval } from '@/hooks/useRealtimeKline';
-import { CHART_RIGHT_OFFSET } from './chartPresentationConfig';
+import {
+  CHART_RIGHT_OFFSET,
+  initialChartLogicalRange,
+} from './chartPresentationConfig';
 import { OHLCV } from '@/types/market';
 import { KlineTick } from '@/types/realtime';
 
@@ -566,10 +569,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       const timeScale = chart.timeScale();
       if (shouldFit) {
         // Новый инструмент (или новый таймфрейм): диапазон цены возвращаем в
-        // авто-масштаб ДО подгонки времени, чтобы свечи не рисовались в
-        // диапазоне прошлого символа.
+        // авто-масштаб, затем один раз ставим общий читаемый стартовый диапазон.
+        // Обычные обновления сюда не попадают, поэтому пользовательский zoom/pan
+        // ниже сохраняется и не сбрасывается каждым REST/WS обновлением.
         restorePriceAutoscale();
-        timeScale.fitContent();
+        const initialRange = initialChartLogicalRange(candles.length);
+        if (initialRange) {
+          try { timeScale.setVisibleLogicalRange(initialRange); } catch { timeScale.fitContent(); }
+        }
         timeScale.applyOptions({ rightOffset: CHART_RIGHT_OFFSET });
       } else if (priorRange) {
         const added = candles.length - oldLength;
@@ -703,10 +710,16 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   }, [showVolume]);
 
   const handleResetView = useCallback(() => {
-    const timeScale = chartRef.current?.timeScale();
-    timeScale?.fitContent();
+    const chart = chartRef.current;
+    const timeScale = chart?.timeScale();
+    const range = initialChartLogicalRange(chartDataLengthRef.current);
+    if (timeScale && range) timeScale.setVisibleLogicalRange(range);
     timeScale?.applyOptions({ rightOffset: CHART_RIGHT_OFFSET });
-    if (chartRef.current) timeSyncRef.current.syncFrom(chartRef.current);
+    for (const series of [candleSeriesRef, barSeriesRef, lineSeriesRef]) {
+      series.current?.priceScale().applyOptions({ autoScale: true });
+    }
+    try { chart?.priceScale('right').applyOptions({ autoScale: true }); } catch { /* scale is not ready */ }
+    if (chart) timeSyncRef.current.syncFrom(chart);
   }, []);
 
   return (

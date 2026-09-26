@@ -11,9 +11,10 @@
  *   2. линии и маркеры прошлого инструмента удаляются;
  *   3. шкала цены явно возвращается в `autoScale: true` (и у серий, и у правой
  *      шкалы графика) — иначе следующий инструмент рисуется в чужом диапазоне;
- *   4. на данных нового инструмента вызывается `fitContent()` временной шкалы;
- *   5. график НЕ пересоздаётся (серии переиспользуются);
- *   6. после перехода на графике нет ни одной цены BTC.
+ *   4. новый инструмент получает единое читаемое стартовое окно;
+ *   5. обычное обновление не сбрасывает пользовательский zoom/pan;
+ *   6. график НЕ пересоздаётся (серии переиспользуются);
+ *   7. после перехода на графике нет ни одной цены BTC.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,6 +42,7 @@ interface ChartStub {
   rightScaleOptions: unknown[];
   fitContent: ReturnType<typeof vi.fn>;
   timeScaleOptions: unknown[];
+  visibleRanges: Array<{ from: number; to: number }>;
 }
 
 const capture = vi.hoisted(() => ({ charts: [] as unknown[] }));
@@ -84,14 +86,17 @@ vi.mock('lightweight-charts', async (importOriginal) => {
         rightScaleOptions: [],
         fitContent: vi.fn(),
         timeScaleOptions: [],
+        visibleRanges: [],
       };
       const timeScale = {
         fitContent: chart.fitContent,
         applyOptions: vi.fn((o: unknown) => {
           chart.timeScaleOptions.push(o);
         }),
-        getVisibleLogicalRange: vi.fn(() => null),
-        setVisibleLogicalRange: vi.fn(),
+        getVisibleLogicalRange: vi.fn(() => chart.visibleRanges.at(-1) ?? null),
+        setVisibleLogicalRange: vi.fn((range: { from: number; to: number }) => {
+          chart.visibleRanges.push(range);
+        }),
         subscribeVisibleLogicalRangeChange: vi.fn(),
         unsubscribeVisibleLogicalRangeChange: vi.fn(),
       };
@@ -209,14 +214,17 @@ describe('CandleChart: переход BTC → RUNE', () => {
 
     rerender(<CandleChart data={[]} symbol="RUNE/USDT" timeframe="1h" />);
     chart.fitContent.mockClear();
+    chart.visibleRanges.length = 0;
     // Смотрим только на то, что применено ПОСЛЕ перехода: история вызовов
     // первого рендера (BTC) не должна попадать в проверку «нет цен BTC».
     for (const s of chart.series) s.dataCalls.length = 0;
 
     rerender(<CandleChart data={runeCandles()} symbol="RUNE/USDT" timeframe="1h" />);
 
-    // Временная шкала подогнана под новый инструмент.
-    expect(chart.fitContent).toHaveBeenCalled();
+    // Новый инструмент получает единый стартовый диапазон один раз; все две
+    // доступные свечи видимы и справа остаётся общий offset 6.
+    expect(chart.visibleRanges).toContainEqual({ from: 0, to: 7 });
+    expect(chart.fitContent).not.toHaveBeenCalled();
 
     // Последние данные серии — RUNE (0.63–0.66), ни одной цены BTC.
     const lastPayload = series.dataCalls.at(-1)?.[0] as Array<{ close: number }>;
@@ -224,6 +232,32 @@ describe('CandleChart: переход BTC → RUNE', () => {
 
     const prices = pricesSeenInSeries(chart);
     expect(prices.some((p) => p >= 60_000)).toBe(false);
+  });
+
+  it('ставит читаемое стартовое окно и не сбрасывает пользовательский zoom при обновлении', () => {
+    const many = Array.from({ length: 100 }, (_, i) => ({
+      time: 1_780_000_000 + i * 3600,
+      open: 100 + i,
+      high: 102 + i,
+      low: 99 + i,
+      close: 101 + i,
+      volume: 10 + i,
+    }));
+    const { rerender } = render(<CandleChart data={many} symbol="BTC/USDT" timeframe="1h" />);
+    const chart = lastChart();
+    expect(chart.visibleRanges.at(-1)).toEqual({ from: 28, to: 105 });
+
+    // Simulate a user zoom/pan away from the default, then append one REST bar.
+    chart.visibleRanges.push({ from: 70, to: 90 });
+    rerender(
+      <CandleChart
+        data={[...many, { time: 1_780_360_000, open: 200, high: 202, low: 199, close: 201, volume: 20 }]}
+        symbol="BTC/USDT"
+        timeframe="1h"
+      />
+    );
+    expect(chart.visibleRanges.at(-1)).toEqual({ from: 70, to: 90 });
+    expect(chart.visibleRanges.at(-1)).not.toEqual({ from: 29, to: 106 });
   });
 
   it('переключение внутри одного символа не сбрасывает шкалу и не теряет данные', () => {
