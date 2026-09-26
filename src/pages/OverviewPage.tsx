@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -264,94 +265,8 @@ export const OverviewPage: React.FC = () => {
   const lowestFunding = sortedFunding[sortedFunding.length - 1];
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
-      {/* Статус источника: одна компактная строка, подробности по клику */}
-      <div role="status" data-qa="overview-source-status">
-        <Collapsible
-          testId="overview-source-collapsible"
-          tone={dataMode === 'live' ? 'neutral' : 'warning'}
-          icon={
-            <span className="relative flex h-2 w-2">
-              <span
-                className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
-                  dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
-                }`}
-              />
-              <span
-                className={`relative inline-flex h-2 w-2 rounded-full ${
-                  dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-500'
-                }`}
-              />
-            </span>
-          }
-          label={
-            <span className="ui-num font-semibold tracking-tight">
-              {dataMode === 'live'
-                ? 'LIVE Data · Binance / KuCoin'
-                : 'QA Data · внутренний датасет'}
-            </span>
-          }
-        >
-          <p className="ui-secondary text-[11px]">
-            {dataMode === 'live'
-              ? 'Котировки, объёмы и ликвидации поступают из фактических источников. При недоступности источника значения не подставляются и не заменяются другим датасетом.'
-              : 'Значения зафиксированы для воспроизводимых проверок интерфейса и не выдаются за фактический рыночный поток.'}
-          </p>
-        </Collapsible>
-      </div>
-
-      {/* Quick Terminal Intelligence Hub */}
-      <div className="bg-surface border border-white/[0.08] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-panel">
-        <span className="text-slate-400 font-bold tracking-wide text-[11px] flex items-center space-x-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-          <span>Специализированные аналитические разделы:</span>
-        </span>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to="/portfolio"
-            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
-          >
-            <PieChart className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Портфель & VaR</span>
-          </Link>
-          <Link
-            to="/correlations"
-            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
-          >
-            <Grid className="w-3.5 h-3.5 text-violet-400" />
-            <span>Корреляции & Beta</span>
-          </Link>
-          <Link
-            to="/onchain"
-            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-emerald-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
-          >
-            <Network className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Он-чейн BTC</span>
-          </Link>
-          <Link
-            to="/calendar"
-            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-amber-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
-          >
-            <Calendar className="w-3.5 h-3.5 text-amber-400" />
-            <span>Макро-календарь</span>
-          </Link>
-          <Link
-            to="/ecosystem"
-            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
-          >
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span>TVL DeFi и L2</span>
-          </Link>
-          <Link
-            to="/journal"
-            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-violet-400" />
-            <span>Журнал трейдера</span>
-          </Link>
-        </div>
-      </div>
-
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="overview" data-layout="state-first">
+      <TerminalSection label="MARKET PULSE" title="Regime at a glance" className="overview-pulse">
       {/* SECTION A: Market Summary Cards */}
       <div
         data-testid="overview-kpi-grid"
@@ -485,7 +400,9 @@ export const OverviewPage: React.FC = () => {
 
 
       </div>
+      </TerminalSection>
 
+      <TerminalSection label="PRIMARY MARKET STATE" title="BTC command view" className="overview-command">
       {/* SECTION B & C: Main Chart & Futures/Liquidations Row */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Main BTC Chart Column (7 cols) - The Command Center Focal Point */}
@@ -771,6 +688,96 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      </TerminalSection>
+
+      {/* Статус источника: одна компактная строка, подробности по клику */}
+      <div role="status" data-qa="overview-source-status">
+        <Collapsible
+          testId="overview-source-collapsible"
+          tone={dataMode === 'live' ? 'neutral' : 'warning'}
+          icon={
+            <span className="relative flex h-2 w-2">
+              <span
+                className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${
+                  dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
+                }`}
+              />
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full ${
+                  dataMode === 'live' ? 'bg-cyan-400' : 'bg-amber-500'
+                }`}
+              />
+            </span>
+          }
+          label={
+            <span className="ui-num font-semibold tracking-tight">
+              {dataMode === 'live'
+                ? 'LIVE Data · Binance / KuCoin'
+                : 'QA Data · внутренний датасет'}
+            </span>
+          }
+        >
+          <p className="ui-secondary text-[11px]">
+            {dataMode === 'live'
+              ? 'Котировки, объёмы и ликвидации поступают из фактических источников. При недоступности источника значения не подставляются и не заменяются другим датасетом.'
+              : 'Значения зафиксированы для воспроизводимых проверок интерфейса и не выдаются за фактический рыночный поток.'}
+          </p>
+        </Collapsible>
+      </div>
+
+      {/* Quick Terminal Intelligence Hub */}
+      <div className="bg-surface border border-white/[0.08] rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-panel">
+        <span className="text-slate-400 font-bold tracking-wide text-[11px] flex items-center space-x-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          <span>Специализированные аналитические разделы:</span>
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/portfolio"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+          >
+            <PieChart className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Портфель & VaR</span>
+          </Link>
+          <Link
+            to="/correlations"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+          >
+            <Grid className="w-3.5 h-3.5 text-violet-400" />
+            <span>Корреляции & Beta</span>
+          </Link>
+          <Link
+            to="/onchain"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-emerald-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+          >
+            <Network className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Он-чейн BTC</span>
+          </Link>
+          <Link
+            to="/calendar"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-amber-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+          >
+            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+            <span>Макро-календарь</span>
+          </Link>
+          <Link
+            to="/ecosystem"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-cyan-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+          >
+            <Layers className="w-3.5 h-3.5 text-cyan-400" />
+            <span>TVL DeFi и L2</span>
+          </Link>
+          <Link
+            to="/journal"
+            className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-white/[0.08] hover:border-violet-500/40 text-slate-200 hover:text-white flex items-center space-x-1.5 transition-all text-xs font-medium"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-violet-400" />
+            <span>Журнал трейдера</span>
+          </Link>
+        </div>
+      </div>
+
 
       {/* SECTION C: Heatmap Grid Preview */}
       <HeatmapGrid assets={assets} limit={18} compact={true} />

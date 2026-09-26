@@ -582,3 +582,132 @@ pre,
     }
   }
 }
+
+/* ============================================================
+   CRYPTORA authorial terminal layer
+   Composition comes from rhythm and typography, not nested cards.
+   ============================================================ */
+:root {
+  --terminal-canvas: #080b11;
+  --terminal-surface: #0d121a;
+  --terminal-raised: #121923;
+  --terminal-divider: rgba(148, 163, 184, .16);
+  --terminal-text: #edf2f7;
+  --terminal-secondary: #9aa8b8;
+  --terminal-tertiary: #647286;
+  --terminal-accent: #55d6c2;
+  --terminal-positive: #57d39b;
+  --terminal-negative: #f07a89;
+  --terminal-warning: #e9b86a;
+  --terminal-radius: 6px;
+}
+body { background: var(--terminal-canvas); color: var(--terminal-text); }
+.terminal-section {
+  background: var(--terminal-surface);
+  border: 1px solid var(--terminal-divider);
+  border-radius: var(--terminal-radius);
+  padding: 14px;
+}
+.terminal-section__header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border-bottom: 1px solid var(--terminal-divider); padding-bottom: 10px; margin-bottom: 10px;
+}
+.terminal-section__title { margin: 3px 0 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+.terminal-section__meta, .eyebrow { color: var(--terminal-tertiary); font: 10px/1.2 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.scope-switch { display: flex; gap: 2px; padding: 2px; background: #080c12; border: 1px solid var(--terminal-divider); border-radius: 4px; }
+.scope-switch button { min-height: 28px; padding: 0 8px; border: 0; background: transparent; color: var(--terminal-secondary); font: 10px 'JetBrains Mono', monospace; letter-spacing: .04em; }
+.scope-switch button.is-active { color: var(--terminal-accent); background: rgba(85,214,194,.12); }
+.signal-feed > section, .terminal-section [data-qa='signals-history'] { border: 0; padding: 0; background: transparent; }
+@media (max-width: 640px) {
+  .terminal-section { padding: 11px; }
+  .terminal-section__header { align-items: flex-start; flex-direction: column; }
+  .scope-switch { width: 100%; }
+  .scope-switch button { flex: 1; }
+}
+.terminal-header { background: rgba(8,11,17,.94); border-color: var(--terminal-divider); box-shadow: 0 8px 24px rgba(0,0,0,.18); backdrop-filter: blur(14px); }
+.terminal-footer { background: var(--terminal-canvas); border-color: var(--terminal-divider); }
+.terminal-footer > div { gap: 10px; }
+.terminal-footer .grid { gap: 14px; padding-top: 10px; }
+.terminal-footer .grid > div:first-child p { max-width: 32rem; }
+.terminal-footer .grid > div:not(:first-child) { opacity: .82; }
+.terminal-footer .space-y-1\.5 { gap: 2px; }
+.terminal-footer .pt-4 { padding-top: 10px; }
+
+/* Route compositions: each workstation gets a different visual rhythm. */
+.route-shell { --route-gap: 14px; }
+.route-shell[data-route='overview'] { --route-gap: 10px; }
+.route-shell[data-route='market'], .route-shell[data-route='screener'], .route-shell[data-route='futures'] { --route-gap: 8px; }
+.route-shell[data-route='liquidations'], .route-shell[data-route='radar'], .route-shell[data-route='heatmaps'] { --route-gap: 12px; }
+.route-shell[data-route='coin'] { --route-gap: 12px; }
+.route-shell[data-route='strategies'], .route-shell[data-route='admin'] { --route-gap: 10px; }
+.route-shell[data-route='content'], .route-shell[data-route='news'] { --route-gap: 16px; }
+.route-shell > h1, .route-shell h1 { letter-spacing: -.025em; }
+.route-shell > section, .route-shell > div { margin-bottom: var(--route-gap); }
+/* Workstation routes: borders establish data boundaries, not every child card. */
+.route-shell[data-route='market'] table tbody tr { border-color: rgba(148,163,184,.10); }
+.route-shell[data-route='market'] table thead { background: rgba(255,255,255,.035); }
+.route-shell[data-route='market'] table td, .route-shell[data-route='market'] table th { padding-top: 8px; padding-bottom: 8px; }
+.route-shell[data-route='screener'] input, .route-shell[data-route='screener'] select { border-radius: 4px; }
+.route-shell[data-route='screener'] > div:nth-child(2) { padding-block: 6px; }
+.route-shell[data-route='coin'] > section:first-child { background: linear-gradient(90deg, rgba(85,214,194,.08), transparent 55%); border-left: 2px solid var(--terminal-accent); }
+.route-shell[data-route='liquidations'] > section:first-of-type, .route-shell[data-route='radar'] > section:first-of-type { border-bottom: 1px solid var(--terminal-divider); }
+.route-shell[data-route='strategies'] .rounded-xl, .route-shell[data-route='admin'] .rounded-xl { border-radius: 5px; }
+.route-shell[data-route='content'] article { max-width: 72ch; margin-inline: auto; }
+.route-shell[data-route='auth'] { min-height: calc(100vh - 150px); align-items: center; }
+.route-shell[data-route='auth'] > div { box-shadow: 0 18px 40px rgba(0,0,0,.28); }
+@media (max-width: 640px) {
+  .route-shell { padding-top: 10px !important; padding-bottom: 10px !important; }
+  .route-shell[data-route='overview'] > * { min-width: 0; }
+  .route-shell[data-route='market'] table { font-size: 11px; }
+  .route-shell[data-route='coin'] { gap: 10px; }
+}
+
+/* Signals: levels read as one instrument strip, while audit stays inspectable. */
+.route-shell[data-route='signals'] { --route-gap: 10px; }
+.route-shell[data-route='signals'] [data-qa='signals-summary'] { border-left: 2px solid var(--terminal-accent); background: rgba(85,214,194,.045); }
+.route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type { display: flex; flex-wrap: wrap; gap: 18px; }
+.route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type > div { border: 0; border-left: 1px solid var(--terminal-divider); border-radius: 0; background: transparent; padding: 0 0 0 10px; min-width: 100px; }
+.route-shell[data-route='signals'] [data-qa='signals-details'] { background: transparent; border: 0; border-top: 1px solid var(--terminal-divider); border-radius: 0; padding-inline: 0; }
+.route-shell[data-route='signals'] [data-qa='signals-details'] [data-qa='signals-level-list'] li { border-width: 0 0 1px; border-radius: 0; background: transparent; padding-inline: 0; }
+.route-shell[data-route='signals'] [data-qa='signals-asset-history'] [data-qa='signals-history'], .route-shell[data-route='signals'] [data-qa='signals-global-feed'] [data-qa='signals-history'] { border: 0; border-radius: 0; background: transparent; padding-inline: 0; }
+.route-shell[data-route='signals'] [data-qa='signals-ledger-audit'] { border-top: 1px solid var(--terminal-divider); }
+@media (max-width: 640px) {
+  .route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type { gap: 10px; }
+  .route-shell[data-route='signals'] [data-qa='signals-summary'] > div:last-of-type > div { min-width: 76px; }
+}
+.route-shell[data-layout='state-first'] .grid { align-items: start; }
+.route-shell[data-layout='table-first'] > div:last-child, .route-shell[data-layout='results-first'] > div:last-child { border-top: 2px solid var(--terminal-accent); }
+.route-shell[data-layout='chart-first'] [data-qa='coin-chart-card'] { border-top: 2px solid var(--terminal-accent); }
+.route-shell[data-layout='visual-first'] [data-qa='liquidation-terminal'] { border-top: 2px solid var(--terminal-accent); }
+.route-shell[data-layout='derivatives-workstation'] table, .route-shell[data-layout='event-stream'] table { border-top: 1px solid var(--terminal-divider); }
+.route-shell[data-layout='matrix'] .grid { gap: 2px; }
+.route-shell[data-layout='operations'] > .mb-6, .route-shell[data-layout='operations'] > header { border-bottom: 1px solid var(--terminal-accent); }
+.route-shell[data-layout='editorial'] h1, .route-shell[data-layout='newswire'] h1 { max-width: 42rem; }
+.route-shell[data-layout='account'] { max-width: 54rem; }
+
+/* Presentation primitives used by route JSX compositions. */
+.terminal-region { min-width: 0; }
+.terminal-region__header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--terminal-divider); }
+.terminal-region__title { margin:.2rem 0 0; font-size:15px; font-weight:650; letter-spacing:-.015em; }
+.terminal-region__meta { color:var(--terminal-tertiary); font:10px 'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:.05em; }
+.market-workspace { border-top:2px solid var(--terminal-accent); }
+.market-table { overflow:hidden; background:rgba(13,18,26,.5); }
+.screener-workbench { border-left:2px solid var(--terminal-warning); }
+.screener-filter { padding:10px 0 2px; }
+.screener-results { border-top:2px solid var(--terminal-accent); }
+.screener-result-table { overflow:hidden; }
+.coin-identity { border-left:2px solid var(--terminal-accent); }
+.coin-state-strip { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; }
+.coin-workspace-region { border-top:2px solid var(--terminal-accent); }
+.liquidation-workspace { border-top:2px solid var(--terminal-accent); }
+.strategy-operations { border-top:2px solid var(--terminal-accent); }
+@media (max-width:640px) {
+  .terminal-region__header { align-items:flex-start; flex-direction:column; }
+  .coin-state-strip { align-items:flex-start; }
+  .terminal-region__meta { align-self:flex-start; }
+}
+.admin-command-bar { border-bottom: 2px solid var(--terminal-accent); }
+.admin-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.admin-health-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--terminal-divider); }
+.admin-health-strip > div { border:0 !important; border-radius:0 !important; background:var(--terminal-surface) !important; padding:12px !important; }
+@media (max-width:640px) { .admin-heading { align-items:flex-start; flex-direction:column; } .admin-health-strip { grid-template-columns:repeat(2,minmax(0,1fr)); } }

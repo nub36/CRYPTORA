@@ -27,7 +27,7 @@ export const Footer: React.FC = () => {
 
 
   return (
-    <footer className="mt-6 border-t border-white/[0.08] bg-surface-inset/90 px-4 py-6 font-sans text-xs text-slate-400 backdrop-blur-md">
+    <footer className="terminal-footer mt-4 border-t px-4 py-3 font-sans text-xs">
       <div className="mx-auto max-w-[1920px] space-y-5">
         <SponsorSlot slot="footer-banner" />
         {/* Дисклеймер: компактный collapsible, по умолчанию свёрнут. Текст сохранён полностью. */}

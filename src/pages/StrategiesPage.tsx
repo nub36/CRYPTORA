@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import {
   AlertTriangle,
   Archive,
@@ -97,7 +98,7 @@ export const StrategiesPage: React.FC = () => {
   }, [candles]);
 
   return (
-    <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4">
+    <div className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4" data-route="strategies" data-layout="operations">
       {sourceUnavailable && <DataSourceUnavailable subject="исторические свечи" />}
 
       {/* ── Заголовок: одна строка, без методологии ─────────────────── */}
@@ -108,8 +109,10 @@ export const StrategiesPage: React.FC = () => {
         </p>
       </header>
 
+      <TerminalSection label="LIVE OPERATIONS" title="Product strategies" meta="server state" className="strategy-operations">
       {/* ── Primary UI: три продуктовые стратегии ───────────────────── */}
       <ProductStrategiesSection />
+      </TerminalSection>
 
       {/* ── Исследовательский архив: вторичный, свёрнут по умолчанию ── */}
       <Collapsible

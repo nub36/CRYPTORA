@@ -99,7 +99,7 @@ export const FuturesPage: React.FC = () => {
   );
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="futures" data-layout="derivatives-workstation">
       {sourceUnavailable && <DataSourceUnavailable subject="данные деривативов (OI, фандинг)" />}
       {/* Page Title & Badges */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] gap-2">

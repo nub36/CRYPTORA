@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
@@ -408,7 +409,7 @@ export const CoinDetailPage: React.FC = () => {
   if (!asset || asset.symbol !== routeSymbol) {
     const requestPending = loading || resolvedRouteSymbol !== routeSymbol;
     return (
-      <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-4 sm:px-4" data-qa="coin-page-shell">
+      <div className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-4 sm:px-4" data-route="coin" data-layout="chart-first" data-qa="coin-page-shell">
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface p-4">
           <div className="flex items-center gap-3">
             <CoinIcon symbol={routeSymbol || '?'} size={40} />
@@ -512,8 +513,9 @@ export const CoinDetailPage: React.FC = () => {
         </div>
       </div>
 
+      <TerminalSection label="ASSET STATE" title={`${asset.symbol} market state`} className="coin-identity">
       {/* Asset Header Card */}
-      <div className="bg-surface border border-surface-border rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="coin-state-strip">
         <div className="flex items-center space-x-4">
           <CoinIcon symbol={asset.symbol} size={48} className="shadow-md" />
 
@@ -596,32 +598,9 @@ export const CoinDetailPage: React.FC = () => {
           </button>
         </div>
       </div>
+      </TerminalSection>
 
-      {/* Quick Action Navigation Bar */}
-      <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-        <Link
-          to="/strategies"
-          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-purple text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
-        >
-          <Cpu className="w-3.5 h-3.5 text-brand-purple" />
-          <span>Симуляция в лаборатории стратегий</span>
-        </Link>
-        <Link
-          to="/tools"
-          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-cyan text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
-        >
-          <Wrench className="w-3.5 h-3.5 text-brand-cyan" />
-          <span>Калькуляторы риска & DCA</span>
-        </Link>
-        <Link
-          to="/liquidations"
-          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-rose-500 text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
-        >
-          <Flame className="w-3.5 h-3.5 text-rose-400" />
-          <span>Кластеры ликвидаций</span>
-        </Link>
-      </div>
-
+      <TerminalSection label="PRIMARY WORKSPACE" title={`${asset.symbol} chart and context`} className="coin-workspace-region">
       {/* Переставляемая рабочая область (UX-цикл п. 5): порядок модулей хранится в localStorage
           (схема v1), внутреннее устройство модулей неизменно. */}
       <div className="flex items-center justify-between gap-2 border-b border-surface-border pb-1.5">
@@ -1215,6 +1194,33 @@ export const CoinDetailPage: React.FC = () => {
         current={asset.symbol}
         title="Выбор монеты для графика"
       />
+      </TerminalSection>
+
+      {/* Quick Action Navigation Bar */}
+      <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+        <Link
+          to="/strategies"
+          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-purple text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
+        >
+          <Cpu className="w-3.5 h-3.5 text-brand-purple" />
+          <span>Симуляция в лаборатории стратегий</span>
+        </Link>
+        <Link
+          to="/tools"
+          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-brand-cyan text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
+        >
+          <Wrench className="w-3.5 h-3.5 text-brand-cyan" />
+          <span>Калькуляторы риска & DCA</span>
+        </Link>
+        <Link
+          to="/liquidations"
+          className="px-3 py-1.5 bg-surface border border-surface-border hover:border-rose-500 text-slate-300 hover:text-white rounded transition-colors flex items-center space-x-1.5"
+        >
+          <Flame className="w-3.5 h-3.5 text-rose-400" />
+          <span>Кластеры ликвидаций</span>
+        </Link>
+      </div>
+
     </div>
   );
 };

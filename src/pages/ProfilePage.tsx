@@ -67,7 +67,7 @@ export const ProfilePage: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="route-shell mx-auto max-w-2xl px-4 py-8" data-route="profile" data-layout="account">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Профиль</h1>
         <p className="mt-1 text-sm text-slate-400">Управление вашим аккаунтом</p>

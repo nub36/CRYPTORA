@@ -116,6 +116,7 @@ export const SignalsPage: React.FC = () => {
   const baseSymbol = deepLinkSymbol(searchParams.get('symbol')) ?? DEFAULT_SYMBOL;
   const selectedSignalId = deepLinkSignalId(searchParams.get('signal'));
   const [chartTimeframe, setChartTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
+  const [assetHistoryRequested, setAssetHistoryRequested] = useState(Boolean(selectedSignalId));
 
   const pair = signalPairText(baseSymbol);
 
@@ -132,23 +133,40 @@ export const SignalsPage: React.FC = () => {
   // Смена монеты сбрасывает выбранный сигнал: линии/детали не должны «прилипать».
   const selectSymbol = useCallback(
     (raw: string) => {
+      setAssetHistoryRequested(true);
       writeDeepLink(signalBaseSymbol(raw), null);
     },
     [writeDeepLink]
   );
 
-  const selectSignal = useCallback(
-    (id: string | null) => {
-      writeDeepLink(baseSymbol, id);
-    },
-    [baseSymbol, writeDeepLink]
-  );
-
-  // ── Серверная лента выбранного инструмента ────────────────────────────
+  // ── Серверные ленты: global feed is the primary surface; asset history is separate ──
+  // The default screen must not inherit the selected asset as a hidden filter.
   const signalsQuery = useServerSignals(
-    { symbol: pair, limit: SIGNALS_PAGE_LIMIT },
+    { limit: SIGNALS_PAGE_LIMIT },
     { pollMs: SIGNALS_POLL_MS }
   );
+  const assetHistoryQuery = useServerSignals(
+    { symbol: pair, limit: SIGNALS_PAGE_LIMIT },
+    // Do not fan out on the untouched global landing view. Asset history starts
+    // when a user explicitly selects an asset or arrives through a deep link.
+    { pollMs: SIGNALS_POLL_MS, enabled: assetHistoryRequested }
+  );
+  const [statisticsScope, setStatisticsScope] = useState<'global' | 'asset'>('global');
+  const selectSignal = useCallback(
+    (id: string | null) => {
+      if (!id) {
+        writeDeepLink(baseSymbol, null);
+        return;
+      }
+      setAssetHistoryRequested(true);
+      const signal = [...signalsQuery.signals, ...assetHistoryQuery.signals].find((item) => item.id === id);
+      // A global row owns its market. Selecting it is the only action needed to
+      // move the chart, summary and URL together.
+      writeDeepLink(signal ? signalBaseSymbol(signal.symbol) : baseSymbol, id);
+    },
+    [assetHistoryQuery.signals, baseSymbol, signalsQuery.signals, writeDeepLink]
+  );
+
 
   // ── Свечи ТОЛЬКО выбранного инструмента и таймфрейма ──────────────────
   const candlesState = useSignalChartCandles(provider, {
@@ -191,6 +209,10 @@ export const SignalsPage: React.FC = () => {
 
   // ── Отображение серверных сигналов в модель UI ────────────────────────
   const models: SignalUiModel[] = useMemo(() => toSignalUiModels(pageSignals), [pageSignals]);
+  const assetHistoryModels: SignalUiModel[] = useMemo(
+    () => toSignalUiModels(assetHistoryQuery.signals),
+    [assetHistoryQuery.signals]
+  );
 
   /**
    * Происхождение выбранного сигнала — как его отдал сервер. Показывается явно,
@@ -288,7 +310,7 @@ export const SignalsPage: React.FC = () => {
   const showMarketError = candlesState.phase === 'error';
 
   return (
-    <div className="mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4">
+    <div className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4" data-route="signals" data-layout="global-feed">
       {/* Заголовок + источник + часовой пояс пользователя */}
       <div className="flex flex-col justify-between gap-2 border-b border-surface-border pb-3 sm:flex-row sm:items-center">
         <div>
@@ -314,7 +336,16 @@ export const SignalsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. Селектор монеты */}
+      {/* Global feed is always visible, even after an asset is selected. */}
+      <section className="terminal-section signal-feed" data-qa="signals-global-feed">
+        <div className="terminal-section__header">
+          <div><span className="eyebrow">SERVER / PRODUCTION</span><h2 className="terminal-section__title">All signals</h2></div>
+          <span className="terminal-section__meta">{signalsQuery.total} total · {signalsQuery.source ?? 'server'}</span>
+        </div>
+        <SignalHistoryList models={models} total={signalsQuery.total} hasMore={signalsQuery.hasMore} loadingMore={signalsQuery.loadingMore} onLoadMore={signalsQuery.loadMore} selectedId={activeSignal?.id ?? null} onSelect={selectSignal} />
+      </section>
+
+      {/* 1. Asset selector: selection changes the chart and secondary history only. */}
       <SignalsCoinSelector
         symbol={baseSymbol}
         pair={pair}
@@ -443,19 +474,37 @@ export const SignalsPage: React.FC = () => {
       {/* 4. Уровни выбранного сигнала + детали */}
       <SignalDetailsPanel model={activeSignal} />
 
-      {/* 5. История сигналов монеты */}
-      <SignalHistoryList
-        models={models}
-        total={signalsQuery.total}
-        hasMore={signalsQuery.hasMore}
-        loadingMore={signalsQuery.loadingMore}
-        onLoadMore={signalsQuery.loadMore}
-        selectedId={activeSignal?.id ?? null}
-        onSelect={selectSignal}
-      />
+      {/* 5. Asset history is intentionally separate from the global feed. */}
+      <section className="terminal-section" data-qa="signals-asset-history">
+        <div className="terminal-section__header">
+          <div>
+            <span className="eyebrow">CURRENT ASSET</span>
+            <h2 className="terminal-section__title">{pair} history</h2>
+          </div>
+          <span className="terminal-section__meta">{assetHistoryQuery.total} records</span>
+        </div>
+        <SignalHistoryList
+          models={assetHistoryModels}
+          total={assetHistoryQuery.total}
+          hasMore={assetHistoryQuery.hasMore}
+          loadingMore={assetHistoryQuery.loadingMore}
+          onLoadMore={assetHistoryQuery.loadMore}
+          selectedId={activeSignal?.id ?? null}
+          onSelect={selectSignal}
+        />
+      </section>
 
-      {/* 6. Серверная статистика — свои агрегаты, не лента страницы */}
-      <SignalStatisticsPanel symbol={baseSymbol} pollMs={STATISTICS_POLL_MS} />
+      {/* 6. Global statistics by default; asset scope requires an explicit action. */}
+      <section className="terminal-section" data-qa="signals-statistics-scope">
+        <div className="terminal-section__header">
+          <div><span className="eyebrow">PERFORMANCE</span><h2 className="terminal-section__title">Statistics</h2></div>
+          <div className="scope-switch" role="group" aria-label="Statistics scope">
+            <button type="button" className={statisticsScope === 'global' ? 'is-active' : ''} onClick={() => setStatisticsScope('global')}>ALL SIGNALS</button>
+            <button type="button" className={statisticsScope === 'asset' ? 'is-active' : ''} onClick={() => setStatisticsScope('asset')}>CURRENT ASSET</button>
+          </div>
+        </div>
+        <SignalStatisticsPanel symbol={statisticsScope === 'asset' ? baseSymbol : null} pollMs={STATISTICS_POLL_MS} />
+      </section>
 
       {/* 7. Статистика и аудит — второстепенно, сворачиваемо */}
       <SignalsLedgerAuditSection

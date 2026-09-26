@@ -78,7 +78,7 @@ export const ToolsPage: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+    <div className="route-shell space-y-6 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="tools" data-layout="calculation-bench">
       {/* Title */}
       <div className="pb-3 border-b border-white/[0.08]">
         <div className="flex items-center space-x-2">

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { TerminalSection } from '@/components/layout/TerminalSection';
 import { paginate, DEFAULT_PAGE_SIZE } from '@/utils/pagination';
 import { Pagination } from '@/components/common/Pagination';
 import { getCoinNames } from '@/services/data/registry/coinLogoRegistry';
@@ -173,7 +174,7 @@ export const MarketPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5">
+    <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="market" data-layout="table-first">
       {sourceUnavailable && <DataSourceUnavailable subject="рыночные данные" />}
       {dataMode === 'live' && marketUniverse.some((asset) => !asset.quote) && (
         <div role="status" className="rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 font-sans text-xs text-amber-200">
@@ -248,8 +249,9 @@ export const MarketPage: React.FC = () => {
         </div>
       </div>
 
+      <TerminalSection label="MARKET UNIVERSE" title="Spot instruments" meta={`${filteredAssets.length} visible`} className="market-workspace">
       {/* Main High-Density Table */}
-      <div className="bg-surface border border-white/[0.08] rounded-xl overflow-hidden shadow-panel">
+      <div className="market-table">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left font-sans">
             <thead className="bg-surface-elevated/80 text-slate-400 font-sans text-[11px] border-b border-surface-border select-none sticky top-0 z-10">
@@ -408,6 +410,7 @@ export const MarketPage: React.FC = () => {
           </div>
         </div>
       </div>
+      </TerminalSection>
     </div>
   );
 };

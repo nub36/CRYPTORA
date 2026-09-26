@@ -359,7 +359,7 @@ test.describe('Колокольчик: продакшн-события толь�
 
     // Страница инициализировалась из ссылки: выбран ровно серверный сигнал, а не
     // «последний в ленте» и не локальный сетап.
-    const card = page.locator(`[data-qa="signal-card"][data-signal-id="${RUNE_ID}"]`);
+    const card = page.getByTestId('signals-global-feed').locator(`[data-qa="signal-card"][data-signal-id="${RUNE_ID}"]`);
     await expect(card).toBeVisible();
     await expect(card).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('signals-summary')).toContainText('RUNE/USDT');
