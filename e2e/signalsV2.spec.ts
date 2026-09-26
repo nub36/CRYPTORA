@@ -465,7 +465,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     // Иерархия блоков на месте.
     await expect(page.getByTestId('signals-coin-selector')).toBeVisible();
     await expect(page.getByTestId('signals-chart-card')).toBeVisible();
-    await expect(page.getByTestId('signals-history')).toBeVisible();
+    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history')).toBeVisible();
 
     // Сводка последнего сигнала: LONG по BTC.
     const summary = page.getByTestId('signals-summary');
@@ -478,7 +478,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(details.getByText('Цель 1').first()).toBeVisible();
 
     // История: 3 сигнала выбранной монеты.
-    const historyRows = page.getByTestId('signals-history').locator('[data-qa="signal-card"]');
+    const historyRows = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]');
     await expect(historyRows).toHaveCount(3);
 
     // Таймфреймы графика (15m/1h/4h/1D) присутствуют; исполнение сигнала — 1h.
@@ -498,7 +498,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await page.goto('/signals');
 
     // Выбираем первый (последний) сигнал — LONG с 3 целями.
-    const firstRow = page.getByTestId('signals-history').locator('[data-qa="signal-card"]').first();
+    const firstRow = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]').first();
     await firstRow.click();
 
     const levelList = page.getByTestId('signals-level-list');
@@ -523,7 +523,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await page.goto('/signals');
 
     // Клик по SHORT-сигналу (третья строка истории).
-    const rows = page.getByTestId('signals-history').locator('[data-qa="signal-card"]');
+    const rows = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]');
     await rows.nth(2).click();
 
     const summary = page.getByTestId('signals-summary');
@@ -534,7 +534,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(page.getByTestId('signals-summary-result')).toContainText('+1.60 R');
 
     // История: 3 строки, у каждой время, направление, стратегия, статус.
-    const historyRows = page.getByTestId('signals-history').locator('[data-qa="signal-card"]');
+    const historyRows = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]');
     await expect(historyRows).toHaveCount(3);
     await expect(page.getByTestId('signal-card-time').first()).toBeVisible();
     await shot(page, 'signals-history');
@@ -559,7 +559,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(page.getByTestId('signals-empty')).toHaveAttribute('data-state', 'empty');
     await expect(page.getByTestId('signals-empty')).toContainText('Сигналов по этому инструменту нет');
     await expect(page.getByTestId('signals-empty')).toHaveCount(1);
-    await expect(page.getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(0);
+    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(0);
 
     // График при этом рисуется (свечи выбранного инструмента).
     await expect(page.getByTestId('signals-chart-card')).toBeVisible();
@@ -680,7 +680,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(page.getByTestId('signals-summary')).toBeVisible();
     await expect(page.getByTestId('signals-chart-card')).toBeVisible();
     await expect(page.getByTestId('signals-details')).toBeVisible();
-    await expect(page.getByTestId('signals-history')).toBeVisible();
+    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history')).toBeVisible();
     await expect(page.getByTestId('signals-audit-section')).toBeVisible();
 
     // Мобильный порядок: селектор → сводка → график → детали → история.
@@ -805,7 +805,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await page.goto('/signals');
 
     // Вторая строка истории — FILLED (вход по коридору исполнен).
-    const rows = page.getByTestId('signals-history').locator('[data-qa="signal-card"]');
+    const rows = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]');
     await rows.nth(1).click();
 
     const summary = page.getByTestId('signals-summary');
@@ -888,7 +888,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     expect(chipText).not.toContain('выключено');
 
     // Лента при этом работает: пустое состояние остаётся про сигналы.
-    await expect(page.getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(3);
+    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(3);
     await expect(page.getByTestId('signals-empty')).toHaveCount(0);
   });
 
@@ -966,6 +966,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
 
       // Время сигнала в истории показано в поясе браузера.
       const historyTime = await page
+        .getByTestId('signals-global-feed')
         .getByTestId('signals-history')
         .locator('[data-qa="signal-card-time"]')
         .first()
@@ -1056,7 +1057,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(page.getByTestId('signals-statistics-error')).toBeVisible();
     await expect(page.getByTestId('signals-statistics')).toHaveCount(0);
     // Лента работает как обычно.
-    await expect(page.getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(3);
+    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(3);
     await expect(page.getByTestId('signals-empty')).toHaveCount(0);
   });
 
