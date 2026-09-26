@@ -26,6 +26,7 @@ import adminRouter from './routes/admin.js';
 import strategiesRouter from './routes/strategies.js';
 import signalsRouter from './routes/signals.js';
 import marketDataRouter, { marketDataLimiter } from './routes/marketData.js';
+import radarRouter from './routes/radar.js';
 
 const PgStore = connectPgSimple(session);
 
@@ -117,6 +118,8 @@ export function createApp(options = {}) {
   // Публичное чтение: состояние стратегий и сигналы серверного движка.
   app.use('/api/strategies', strategiesRouter);
   app.use('/api/signals', signalsRouter);
+  // Persisted server detector state/history; no browser exchange WebSocket is authoritative.
+  app.use('/api/radar', radarRouter);
 
   // 404 for unmatched API routes
   app.use('/api', apiNotFound);

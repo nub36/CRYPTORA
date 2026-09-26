@@ -25,7 +25,7 @@ import {
   normalizeBinanceKlines,
   normalizeKuCoinCandles,
 } from './adapters/normalization';
-import { AnomalyEngine } from '../realtime/AnomalyEngine';
+import { fetchServerRadarEvents } from '../radar/serverRadarClient';
 import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
 import { AdapterNetworkError } from './adapters/errors';
 import { AlternativeMeAdapter, type FearGreedReading } from './adapters/AlternativeMeAdapter';
@@ -62,7 +62,8 @@ export interface LiveMarketDataProviderConfig {
   fearGreedAdapter?: AlternativeMeAdapter;
   coingeckoAdapter?: CoinGeckoAdapter;
   cacheTtlMs?: number;
-  anomalyEngine?: AnomalyEngine;
+  /** Test seam; production defaults to same-origin persisted server Radar API. */
+  radarEventsFetcher?: (symbol?: string) => Promise<RadarEvent[]>;
   candleHistoryService?: CandleHistoryService;
   /**
    * Authoritative active Spot USDT bases (Binance exchangeInfo via server).
@@ -89,7 +90,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
   private fearGreedCache: { data: FearGreedReading; timestamp: number } | null = null;
   private readonly fearGreedTtlMs = 10 * 60 * 1000;
   private readonly cacheTtlMs: number;
-  private readonly anomalyEngine?: AnomalyEngine;
+  private readonly radarEventsFetcher: (symbol?: string) => Promise<RadarEvent[]>;
   private readonly activeSpotSymbols: () => Promise<Set<string> | null>;
   private readonly futuresUniverse: () => Promise<FuturesUniverse | null>;
 
@@ -113,7 +114,7 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     this.coingeckoAdapter = config.coingeckoAdapter ?? new CoinGeckoAdapter();
     this.candleHistory = config.candleHistoryService ?? CandleHistoryService.getInstance();
     this.cacheTtlMs = config.cacheTtlMs ?? 10000; // 10s default TTL
-    this.anomalyEngine = config.anomalyEngine;
+    this.radarEventsFetcher = config.radarEventsFetcher ?? ((symbol) => fetchServerRadarEvents({ symbol }));
     this.activeSpotSymbols = config.activeSpotSymbols ?? (() => getActiveSpotBaseSet());
     this.futuresUniverse = config.futuresUniverse ?? (() => getFuturesUniverse());
   }
@@ -716,15 +717,13 @@ export class LiveMarketDataProvider implements MarketDataProvider {
     return LiquidationPipeline.getInstance().getLiquidationSnapshot();
   }
 
+  /**
+   * Radar is server-authoritative. This client never derives browser-local
+   * anomaly events; it reads durable monitor history so Overview and Radar see
+   * the same facts even after every browser tab was closed.
+   */
   public async getRadarEvents(symbol?: string): Promise<RadarEvent[]> {
-    if (this.anomalyEngine) {
-      const liveEvents = this.anomalyEngine.getEvents(symbol);
-      if (liveEvents.length > 0) {
-        return liveEvents;
-      }
-    }
-    // Нет фактических аномалий — пустой список. Демо-события за фактические не выдаются.
-    return [];
+    return this.radarEventsFetcher(symbol);
   }
 
   public async getScreenerResults(filters: ScreenerFilters): Promise<AssetSummary[]> {

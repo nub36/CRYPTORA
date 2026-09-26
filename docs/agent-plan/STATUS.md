@@ -1,3 +1,14 @@
+## 2026-09-26 — Radar authoritative server monitor (current branch, unmerged)
+
+- **Base / branch:** `4edbe168ce9ded9c236b81190072ab078ab64a49` (`origin/main`, PR #25 merge), branch `arena/01a0dd53-cryptora`. Arena fixes this session branch; no work occurred on `main`, PR #25, production, or another branch.
+- **Architecture:** the only authoritative production Radar path in this branch is `Admin Scan Universe → server monitor → shared frozen AnomalyCalculationCore → PostgreSQL radar_events → /api/radar → browser`. `/radar` and Overview are consumers; browser Radar no longer acquires Radar ticker leases, owns detector warm-up, or creates production Radar events.
+- **Lifecycle / market data:** `server/index.js` starts one idempotent `RadarMonitor` after PostgreSQL health is confirmed and stops it before the DB pool. The monitor uses one server Binance Spot dynamic ticker WebSocket for the effective server Scan Universe, bounded by its existing cap, with subscription chunking, backoff and stale state. Tab count does not affect server subscription topology.
+- **Universe / warm-up:** server uses `saved ∩ active` Scan Universe, never a hardcoded count. Admin writes notify the in-process monitor for fast convergence; it rereads effective state periodically, clears removed symbols' windows, and warms additions honestly. A server/feed error is reported as such, never as LIVE.
+- **Persistence:** additive migration `012_radar_events.sql`; UUID event ids, UI facts/provenance/metadata, source ticker time and a unique durable replay dedupe key. The explicit branch proposal is configurable `RADAR_EVENT_RETENTION_DAYS=30`, bounded cleanup batches, pending owner production-retention review. No production migration was run.
+- **Frozen scope:** calculations are extracted, not copied, into `shared/radar/anomalyCalculationCore.js`; parity/golden coverage proves browser adapter and server-imported core agree. No anomaly threshold/formula/window/cooldown/severity math or strategy math changed.
+- **Verification:** `npm run typecheck` passed; `npm test` passed (**149 files / 1650 tests**); `npx vitest run tests/integration` passed (**12 files / 196 tests**, real embedded PostgreSQL); `npm run build` passed; `git diff --check` passed. Targeted Chromium Radar E2E was attempted but did not execute product assertions because the sandbox has no `chromium_headless_shell-1243`; `npx playwright install chromium` retried and failed with `ECONNRESET` from `cdn.playwright.dev`. The server-history/reload Browser E2E is committed for CI/browser-equipped execution; no result was fabricated.
+- **Not changed:** production Scan Universe/settings/signals/database/deployment; no merge. The separate Signals/RUNE/Bell work is untouched.
+
 # STATUS — Текущий статус проекта CRYPTORA
 
 ## 2026-09-26 — LIVE Market Radar bounded subscriptions + honest warm-up (current branch)

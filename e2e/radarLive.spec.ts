@@ -1,100 +1,64 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
-const RADAR_UNIVERSE = ['DOT', 'AEVO', 'RUNE'] as const;
+const persistedEvent = {
+  id: 'fa0e7c8c-0b56-4de4-9d41-8d6020c8a001',
+  timestamp: '2026-09-26T10:05:00.000Z',
+  symbol: 'DOT',
+  type: 'PRICE_MOVE',
+  severity: 'HIGH',
+  metricValue: '+5.00%',
+  observation: 'Persisted while all Radar browser clients were closed.',
+  isDemo: false,
+  provenance: { exchange: 'binance', market: 'spot', symbol: 'DOTUSDT', timestamp: Date.UTC(2026, 8, 26, 10, 5, 0) },
+  metadata: { priceChangePct: 5 },
+};
 
-type WsMessage = { method?: string; params?: string[] };
+const liveStatus = {
+  source: 'server',
+  running: true,
+  lifecycle: 'live',
+  configuredUniverseCount: 3,
+  activeUniverseCount: 3,
+  inactiveUniverseCount: 0,
+  activeUniverseKnown: true,
+  detector: { windowSize: 20, trackedSymbols: 3, warmedSymbols: 3, maxObservations: 20, warm: true, symbols: [] },
+  marketFeed: { state: 'connected', subscribedSymbols: 3, lastMessageAt: '2026-09-26T10:05:00.000Z', stale: false, reconnectAttempt: 0, source: 'binance-spot-ticker' },
+  startedAt: '2026-09-26T09:00:00.000Z',
+  lastUniverseRefreshAt: '2026-09-26T10:05:00.000Z',
+  lastPersistedEventAt: '2026-09-26T10:05:00.000Z',
+  persistedEvents: 1,
+  deduplicatedEvents: 0,
+  retainedDeletes: 0,
+  retentionDays: 30,
+  lastError: null,
+};
 
-async function installMockRealtime(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const win = window as unknown as {
-      __radarWsInstances: any[];
-      __radarWsSent: any[];
-      __radarEmitTicker: (symbol: string, price: number, volume: number, index: number) => void;
-    };
-    try {
-      window.localStorage.removeItem('cryptora_qa_fixture');
-      window.localStorage.setItem('cryptora_watchlist', '[]');
-      window.localStorage.setItem('cryptora_alerts', '[]');
-    } catch {
-      /* noop */
-    }
-    win.__radarWsInstances = [];
-    win.__radarWsSent = [];
-
-    class MockWebSocket {
-      public url: string;
-      public onopen: ((event?: Event) => void) | null = null;
-      public onmessage: ((event: { data: string }) => void) | null = null;
-      public onerror: ((event?: Event) => void) | null = null;
-      public onclose: ((event?: Event) => void) | null = null;
-      public sentMessages: string[] = [];
-
-      constructor(url: string) {
-        this.url = url;
-        win.__radarWsInstances.push(this);
-        setTimeout(() => this.onopen?.(new Event('open')), 0);
-      }
-
-      send(raw: string) {
-        this.sentMessages.push(raw);
-        try {
-          win.__radarWsSent.push(JSON.parse(raw));
-        } catch {
-          win.__radarWsSent.push(raw);
-        }
-      }
-
-      close() {
-        this.onclose?.(new Event('close'));
-      }
-
-      emit(payload: unknown) {
-        this.onmessage?.({ data: JSON.stringify(payload) });
-      }
-    }
-
-    (window as unknown as { WebSocket: unknown }).WebSocket = MockWebSocket;
-
-    win.__radarEmitTicker = (symbol: string, price: number, volume: number, index: number) => {
-      const upper = symbol.toUpperCase();
-      const payload = {
-        stream: `${upper.toLowerCase()}usdt@ticker`,
-        data: {
-          e: '24hrTicker',
-          E: Date.now() + index,
-          s: `${upper}USDT`,
-          P: '0.00',
-          c: String(price),
-          h: String(price + 1),
-          l: String(price - 1),
-          v: String(volume),
-          q: String(volume * price),
-        },
-      };
-      for (const ws of win.__radarWsInstances) ws.emit(payload);
-    };
-  });
-}
-
-async function installApiFixtures(page: Page): Promise<void> {
+async function installServerRadarFixtures(page: Page): Promise<void> {
+  await page.route(/\/api\/radar\/events(?:\?.*)?$/, (route: Route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ events: [persistedEvent], count: 1, source: 'server' }),
+  }));
+  await page.route('**/api/radar/status', (route: Route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(liveStatus),
+  }));
   await page.route(/\/api\/strategies\/scan-universe(?:\?.*)?$/, (route: Route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ symbols: RADAR_UNIVERSE, activeKnown: true }),
+    body: JSON.stringify({ symbols: ['DOT', 'AEVO', 'RUNE'], activeKnown: true }),
   }));
-
   await page.route('**/api/signals**', (route: Route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({ signals: [], count: 0, total: 0, source: 'server' }),
   }));
-
   await page.route('**/api/strategies', (route: Route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({ strategies: [], source: 'server' }),
   }));
-
   await page.route('**/api/market/**', (route: Route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
@@ -102,96 +66,20 @@ async function installApiFixtures(page: Page): Promise<void> {
   }));
 }
 
-async function emitBaselineTicks(page: Page): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
-    for (const symbol of RADAR_UNIVERSE) {
-      await page.evaluate(([s, idx]) => {
-        (window as unknown as { __radarEmitTicker: (symbol: string, price: number, volume: number, index: number) => void })
-          .__radarEmitTicker(s, 100, 1000 + (idx % 2), idx);
-      }, [symbol, i] as const);
-    }
-  }
-}
-
-function tickerStreams(messages: WsMessage[], method: string): string[] {
-  return messages
-    .filter((message) => message.method === method)
-    .flatMap((message) => message.params ?? [])
-    .filter((stream) => stream.endsWith('@ticker'))
-    .sort();
-}
-
-test.describe('Market Radar LIVE lifecycle', () => {
-  test('subscribes bounded Scan Universe, warms, renders anomaly, filters, and releases leases', async ({ page }) => {
-    const pageErrors: string[] = [];
-    page.on('pageerror', (err) => pageErrors.push(String(err)));
-    await installMockRealtime(page);
-    await installApiFixtures(page);
-
+test.describe('Market Radar server-authoritative lifecycle', () => {
+  test('renders persisted server event after a page reload without local Radar warm-up or subscriptions', async ({ page }) => {
+    await installServerRadarFixtures(page);
     await page.goto('/radar');
-    await expect(page.getByTestId('radar-empty-state')).toHaveAttribute('data-state', 'warming', { timeout: 15_000 });
 
-    await page.waitForFunction(() => {
-      const messages = ((window as any).__radarWsSent ?? []) as WsMessage[];
-      const urlStreams = (((window as any).__radarWsInstances ?? []) as Array<{ url: string }>).flatMap((ws) => {
-        try {
-          return new URL(ws.url).searchParams.get('streams')?.split('/') ?? [];
-        } catch {
-          return [];
-        }
-      });
-      const subscribed = messages
-        .filter((message) => message.method === 'SUBSCRIBE')
-        .flatMap((message) => message.params ?? [])
-        .concat(urlStreams);
-      return ['aevousdt@ticker', 'dotusdt@ticker', 'runeusdt@ticker'].every((stream) => subscribed.includes(stream));
-    });
+    await expect(page.getByText('Persisted while all Radar browser clients were closed.')).toBeVisible();
+    await expect(page.getByTestId('radar-live-status')).toContainText('LIVE · 3 symbols');
+    await expect(page.getByTestId('radar-source-telemetry')).toContainText('SERVER · Scan Universe: 3 · warmed: 3/3 · feed: connected');
 
-    const subscribedTickers = await page.evaluate(() => {
-      const messages = ((window as any).__radarWsSent ?? []) as WsMessage[];
-      const urlStreams = (((window as any).__radarWsInstances ?? []) as Array<{ url: string }>).flatMap((ws) => {
-        try {
-          return new URL(ws.url).searchParams.get('streams')?.split('/') ?? [];
-        } catch {
-          return [];
-        }
-      });
-      return Array.from(new Set(messages
-        .filter((message) => message.method === 'SUBSCRIBE')
-        .flatMap((message) => message.params ?? [])
-        .concat(urlStreams)
-        .filter((stream) => stream.endsWith('@ticker') && stream !== 'btcusdt@ticker')))
-        .sort();
-    });
-    expect(subscribedTickers).toEqual(['aevousdt@ticker', 'dotusdt@ticker', 'runeusdt@ticker']);
-
-    await emitBaselineTicks(page);
-    await expect(page.getByTestId('radar-empty-state')).toHaveAttribute('data-state', 'ready-empty', { timeout: 10_000 });
-
-    await page.evaluate(() => {
-      (window as unknown as { __radarEmitTicker: (symbol: string, price: number, volume: number, index: number) => void })
-        .__radarEmitTicker('DOT', 105, 1000, 101);
-    });
-    await expect(page.getByTestId('radar-event-row')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('DOT').first()).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('Persisted while all Radar browser clients were closed.')).toBeVisible();
+    await expect(page.getByTestId('radar-live-status')).toContainText('LIVE · 3 symbols');
 
     await page.getByLabel('Важность аномалии').selectOption('MEDIUM');
     await expect(page.getByTestId('radar-empty-state')).toHaveAttribute('data-state', 'filtered');
-
-    await page.getByRole('link', { name: 'CRYPTORA Главная' }).click();
-    await page.waitForFunction(() => {
-      const messages = ((window as any).__radarWsSent ?? []) as WsMessage[];
-      const unsubscribed = messages
-        .filter((message) => message.method === 'UNSUBSCRIBE')
-        .flatMap((message) => message.params ?? []);
-      return ['aevousdt@ticker', 'dotusdt@ticker', 'runeusdt@ticker'].every((stream) => unsubscribed.includes(stream));
-    });
-
-    const messages = await page.evaluate(() => ((window as any).__radarWsSent ?? []) as WsMessage[]);
-    expect(tickerStreams(messages, 'UNSUBSCRIBE')).toEqual(['aevousdt@ticker', 'dotusdt@ticker', 'runeusdt@ticker']);
-
-    const responsive = await page.evaluate(() => new Promise<boolean>((resolve) => requestAnimationFrame(() => resolve(true))));
-    expect(responsive).toBe(true);
-    expect(pageErrors, `pageerror: ${pageErrors.join('; ')}`).toEqual([]);
   });
 });

@@ -20,7 +20,6 @@ import { HeatmapGrid } from '@/components/common/HeatmapGrid';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
 import { MarketRadarPreview } from '@/components/market/MarketRadarPreview';
 import { AnalyticsSetupsPreview } from '@/components/market/AnalyticsSetupsPreview';
-import { RealtimeFeedManager } from '@/services/realtime/RealtimeFeedManager';
 import { mergeRadarEvents } from '@/services/realtime/radarEventFeed';
 import { Link } from 'react-router-dom';
 import { SponsorSlot } from '@/components/ads/SponsorSlot';
@@ -115,18 +114,8 @@ export const OverviewPage: React.FC = () => {
     [provider, dataMode]
   );
 
-  // Provider snapshot is the REST-like fallback; this subscription catches
-  // fresh real anomalies immediately instead of waiting for the 30s overview poll.
-  useEffect(() => {
-    if (dataMode !== 'live') return;
-    const feed = RealtimeFeedManager.getInstance();
-    const unsubscribe = feed.eventBus.subscribe<RadarEvent>('radar', (event) => {
-      if (event.isDemo) return;
-      setRadarEvents((current) => mergeRadarEvents(current, [event]));
-      setRadarUnavailable(false);
-    });
-    return unsubscribe;
-  }, [dataMode]);
+  // Radar snapshots are server-authoritative; no browser EventBus detector is
+  // subscribed here. The existing bounded Overview refresh reads durable history.
 
   useEffect(() => {
     void loadData();

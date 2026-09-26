@@ -32,6 +32,8 @@
                 │   - Auth/session and application APIs   │
                 │   - Allowlisted /api/market gateway    │
                 │   - Fixed Binance/KuCoin upstreams     │
+                │   - Server Radar monitor (one Binance  │
+                │     ticker WS + PostgreSQL history)    │
                 │   - Managed via Systemd / PM2           │
                 └─────────────────────────────────────────┘
 
@@ -48,7 +50,7 @@ systemd template (`systemd/cryptora.service`) starts `server/index.js`.
 
 - **Production (`vite build`):** единственный режим — **LIVE**. Browser REST adapters use the same-origin
   `/api/market` gateway; the server forwards only fixed public Binance Spot/Futures and KuCoin endpoints.
-  Binance realtime WSS remains browser-to-exchange. Пользовательского DEMO-режима нет: ни переключателей
+  Browser realtime WSS remains browser-to-exchange for ordinary ticker/trade/depth UI. Radar is the exception: its authoritative Binance ticker WSS is backend-to-exchange and its UI reads same-origin `/api/radar/*`; closing browsers never stops it. Пользовательского DEMO-режима нет: ни переключателей
   DEMO/LIVE, ни кнопок «включить демо», ни восстановления demo из `localStorage` (устаревший ключ
   `cryptora_data_mode` не читается и не пишется). Если upstream API недоступен с сервера, выводится
   честный статус «Источник недоступен / Нет данных» — demo-fallback строго запрещён.

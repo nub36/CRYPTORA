@@ -13,6 +13,7 @@ import { config } from './config.js';
 import { checkDatabase, closePool } from './db/pool.js';
 import { getStrategyScheduler } from './services/strategyEngine/strategyScheduler.js';
 import { getSignalMonitor } from './services/signalMonitor/signalMonitor.js';
+import { getRadarMonitor } from './services/radar/radarMonitor.js';
 
 const app = createApp();
 
@@ -48,6 +49,21 @@ async function start() {
     }
   } else {
     console.warn('[CRYPTORA] Strategy scheduler NOT started: database unreachable.');
+  }
+
+  // ── Серверный Radar monitor ─────────────────────────────────────────
+  // Единственный production detector: сервер держит bounded ticker-подписки
+  // эффективной Admin Scan Universe, владеет warm-up и пишет события в
+  // PostgreSQL. Браузер только читает /api/radar и не влияет на этот lifecycle.
+  if (dbOk) {
+    try {
+      await getRadarMonitor().start();
+      console.log('[CRYPTORA] Radar monitor started (server source of truth).');
+    } catch (err) {
+      console.error('[CRYPTORA] Radar monitor failed to start:', err.message);
+    }
+  } else {
+    console.warn('[CRYPTORA] Radar monitor NOT started: database unreachable.');
   }
 
   // ── Серверный монитор сигналов ─────────────────────────────────────
@@ -104,6 +120,13 @@ const shutdown = async (signal) => {
     console.log('[CRYPTORA] Strategy scheduler stopped.');
   } catch (err) {
     console.error('[CRYPTORA] Error stopping strategy scheduler:', err.message);
+  }
+  try {
+    // Radar monitor stops before the pool: ticker events may be awaiting durable writes.
+    await getRadarMonitor().stop();
+    console.log('[CRYPTORA] Radar monitor stopped.');
+  } catch (err) {
+    console.error('[CRYPTORA] Error stopping radar monitor:', err.message);
   }
   try {
     // Монитор останавливается ДО закрытия пула: тик может писать в signals.
