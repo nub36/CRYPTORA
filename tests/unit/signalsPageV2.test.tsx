@@ -209,7 +209,32 @@ function stubSignalsFetch(
       if (opts.fail) {
         return { ok: false, status: 500, text: async () => JSON.stringify({ error: 'DB_UNAVAILABLE' }) };
       }
-      return { ok: true, status: 200, text: async () => JSON.stringify(signalsPageDto(signals)) };
+      const requestUrl = new URL(u, 'http://localhost');
+      const open = requestUrl.searchParams.get('open');
+      const requestedSymbol = requestUrl.searchParams.get('symbol')?.split('/')[0]?.toUpperCase() ?? null;
+      const bySymbol = requestedSymbol
+        ? signals.filter((signal) => signal.symbol.split('/')[0]!.toUpperCase() === requestedSymbol)
+        : signals;
+      const filtered = open === 'true'
+        ? bySymbol.filter((signal) => signal.status === 'ACTIVE' || signal.status === 'FILLED')
+        : open === 'false'
+          ? bySymbol.filter((signal) => signal.status !== 'ACTIVE' && signal.status !== 'FILLED')
+          : bySymbol;
+      return { ok: true, status: 200, text: async () => JSON.stringify(signalsPageDto(filtered)) };
+    }
+    if (u.includes('/api/market/universe/spot')) {
+      const symbols = ['BTC', 'DOT', 'AEVO', 'ETH', 'SOL'].map((symbol) => ({
+        symbol,
+        exchangeSymbol: `${symbol}USDT`,
+        quoteAsset: 'USDT',
+      }));
+      const body = { count: symbols.length, symbols, fetchedAt: '2026-09-26T00:00:00.000Z', stale: false };
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(body),
+        json: async () => body,
+      };
     }
     if (u.includes('/api/market/metadata/assets')) {
       return { ok: true, status: 200, text: async () => JSON.stringify({ assets: {} }) };
@@ -223,6 +248,16 @@ function mockProvider(): MarketDataProvider & { getCandles: ReturnType<typeof vi
     Array.from({ length: 40 }, (_, i) => candle(symbol, i))
   );
   return { getCandles } as unknown as MarketDataProvider & { getCandles: ReturnType<typeof vi.fn> };
+}
+
+async function pickAsset(symbol: string): Promise<void> {
+  fireEvent.click(document.querySelector('[data-qa="signals-coin-picker-open"]')!);
+  const option = await waitFor(() => {
+    const element = document.querySelector(`[data-qa="symbol-picker-option-${symbol}"]`);
+    expect(element).not.toBeNull();
+    return element as HTMLElement;
+  });
+  fireEvent.click(option);
 }
 
 function renderSignals(provider: MarketDataProvider, fetchImpl: unknown) {
@@ -256,8 +291,8 @@ describe('SignalsPage V2: иерархия и источник данных', ()
     await waitFor(() => expect(document.querySelector('[data-qa="signals-summary"]')).not.toBeNull());
     expect(document.querySelector('[data-qa="signals-coin-selector"]')).not.toBeNull();
     expect(document.querySelector('[data-qa="signals-chart-card"]')).not.toBeNull();
-    expect(document.querySelector('[data-qa="signals-details"]')).not.toBeNull();
-    expect(document.querySelector('[data-qa="signals-history"]')).not.toBeNull();
+    expect(document.querySelector('[data-qa="signals-disclosures"]')).not.toBeNull();
+    expect(document.querySelector('[data-qa="signals-compact-inspector"]')).toBeNull();
     expect(document.querySelector('[data-qa="signals-audit-section"]')).not.toBeNull();
 
     // Сводка показывает серверные данные человеческим языком.
@@ -298,6 +333,8 @@ describe('SignalsPage V2: иерархия и источник данных', ()
   it('три цели отображаются всеми строками (Цель 1/2/3)', async () => {
     const provider = mockProvider();
     renderSignals(provider, stubSignalsFetch([makeSignal()]));
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-disclosure-levels"]')).not.toBeNull());
+    fireEvent.click(document.querySelector('[data-qa="signals-disclosure-levels"]')!);
     await waitFor(() => expect(document.querySelector('[data-qa="signals-level-list"]')).not.toBeNull());
     const list = document.querySelector('[data-qa="signals-level-list"]')!;
     const targetRows = list.querySelectorAll('[data-kind="target"]');
@@ -320,6 +357,138 @@ describe('SignalsPage V2: иерархия и источник данных', ()
     expect(summary.textContent).toContain('V2.8');
     expect(summary.textContent).toContain('1h');
     expect(summary.textContent).not.toContain('15m');
+  });
+
+  it('лента актуальных сигналов показывает только ACTIVE/FILLED, а терминальные записи остаются в истории', async () => {
+    const provider = mockProvider();
+    const fixtures: SignalDto[] = [
+      makeSignal({ id: 'active-id', status: 'ACTIVE' }),
+      makeSignal({ id: 'filled-id', symbol: 'ETH/USDT', status: 'FILLED', fillPrice: 3200 }),
+      makeSignal({ id: 'target-id', status: 'TARGET_REACHED' }),
+      makeSignal({ id: 'invalid-id', status: 'INVALIDATED' }),
+      makeSignal({ id: 'closed-id', status: 'CLOSED' }),
+      makeSignal({ id: 'expired-id', status: 'EXPIRED' }),
+      makeSignal({ id: 'cancelled-id', status: 'CANCELLED' }),
+      makeSignal({ id: 'unresolved-id', status: 'UNRESOLVED' }),
+    ];
+    renderSignals(provider, stubSignalsFetch(fixtures));
+
+    const tape = await waitFor(() => document.querySelector('[data-qa="signals-global-feed"]')!);
+    const tapeCards = [...tape.querySelectorAll('[data-qa="signal-card"]')];
+    expect(tapeCards.map((card) => card.getAttribute('data-status'))).toEqual(['ACTIVE', 'FILLED']);
+    for (const status of ['TARGET_REACHED', 'INVALIDATED', 'CLOSED', 'EXPIRED', 'CANCELLED', 'UNRESOLVED']) {
+      expect(tape.querySelector(`[data-status="${status}"]`)).toBeNull();
+    }
+
+    fireEvent.click(tape.querySelector('[data-signal-id="filled-id"]')!);
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-chart-card"]')?.getAttribute('aria-label')).toBe('График ETH/USDT'));
+    expect(document.querySelector('[data-qa="signals-summary"]')?.getAttribute('data-signal-id')).toBe('filled-id');
+
+    // Return workspace to BTC before checking its terminal history fixture.
+    fireEvent.click(tape.querySelector('[data-signal-id="active-id"]')!);
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-chart-card"]')?.getAttribute('aria-label')).toBe('График BTC/USDT'));
+    fireEvent.click(document.querySelector('[data-qa="signals-disclosure-history"]')!);
+    const history = await waitFor(() => {
+      const element = document.querySelector('[data-qa="signals-asset-history"]');
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    expect(history.querySelector('[data-status="TARGET_REACHED"]')).not.toBeNull();
+    expect(history.querySelector('[data-status="INVALIDATED"]')).not.toBeNull();
+  });
+
+  it('DOT → AEVO без сигналов очищает summary и уровни, не используя первый глобальный DOT', async () => {
+    const provider = mockProvider();
+    const dot = makeSignal({ id: 'dot-open', symbol: 'DOT/USDT', entryMin: 1.01, entryMax: 1.02, stopLoss: 0.95, targets: [1.1] });
+    renderSignals(provider, stubSignalsFetch([dot]));
+
+    const dotRow = await waitFor(() => {
+      const element = document.querySelector('[data-signal-id="dot-open"]');
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    fireEvent.click(dotRow);
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-chart-card"]')?.getAttribute('aria-label')).toBe('График DOT/USDT'));
+    expect(document.querySelector('[data-qa="signals-summary"]')?.getAttribute('data-signal-id')).toBe('dot-open');
+
+    await pickAsset('AEVO');
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-chart-card"]')?.getAttribute('aria-label')).toBe('График AEVO/USDT'));
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-summary"]')).toBeNull());
+    const chart = document.querySelector('[data-qa="signals-chart-card"]')!;
+    expect(chart.getAttribute('data-active-signal-id')).toBe('');
+    expect(chart.getAttribute('data-active-signal-symbol')).toBe('');
+    expect(chart.getAttribute('data-level-count')).toBe('0');
+    expect(provider.getCandles).toHaveBeenLastCalledWith('AEVO', '1h', 500);
+    // The global tape remains global and still contains DOT, but it is not the workspace selection.
+    expect(document.querySelector('[data-qa="signals-global-feed"] [data-signal-id="dot-open"]')).not.toBeNull();
+  });
+
+  it('DOT → ETH selects the first ETH server signal and projects no DOT levels', async () => {
+    const provider = mockProvider();
+    const dot = makeSignal({ id: 'dot-open', symbol: 'DOT/USDT', entryMin: 1, entryMax: 1.1, stopLoss: 0.9, targets: [1.2] });
+    const eth = makeSignal({ id: 'eth-open', symbol: 'ETH/USDT', entryMin: 3200, entryMax: 3210, stopLoss: 3100, targets: [3400] });
+    renderSignals(provider, stubSignalsFetch([dot, eth]));
+
+    fireEvent.click(await waitFor(() => {
+      const element = document.querySelector('[data-signal-id="dot-open"]');
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    }));
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-summary"]')?.getAttribute('data-signal-id')).toBe('dot-open'));
+    await pickAsset('ETH');
+
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-summary"]')?.getAttribute('data-signal-id')).toBe('eth-open'));
+    const chart = document.querySelector('[data-qa="signals-chart-card"]')!;
+    expect(chart.getAttribute('aria-label')).toBe('График ETH/USDT');
+    expect(chart.getAttribute('data-active-signal-symbol')).toBe('ETH');
+    expect(Number(chart.getAttribute('data-level-count'))).toBeGreaterThan(0);
+    expect(document.querySelector('[data-qa="signals-summary"]')?.textContent).not.toContain('DOT/USDT');
+  });
+
+  it('быстрая гонка DOT → AEVO → SOL → AEVO заканчивается только AEVO selection', async () => {
+    const provider = mockProvider();
+    const fixtures = [
+      makeSignal({ id: 'dot-race', symbol: 'DOT/USDT' }),
+      makeSignal({ id: 'aevo-race', symbol: 'AEVO/USDT', entryMin: 0.026, entryMax: 0.027, stopLoss: 0.024, targets: [0.03] }),
+      makeSignal({ id: 'sol-race', symbol: 'SOL/USDT' }),
+    ];
+    const baseFetch = stubSignalsFetch(fixtures);
+    const delayedFetch = vi.fn(async (url: string) => {
+      const parsed = new URL(String(url), 'http://localhost');
+      const symbol = parsed.searchParams.get('symbol')?.split('/')[0];
+      if (parsed.pathname === '/api/signals' && parsed.searchParams.get('open') === 'true' && symbol) {
+        const delay = symbol === 'AEVO' ? 60 : symbol === 'SOL' ? 30 : 5;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      return baseFetch(url);
+    });
+    renderSignals(provider, delayedFetch);
+
+    await pickAsset('DOT');
+    await pickAsset('AEVO');
+    await pickAsset('SOL');
+    await pickAsset('AEVO');
+
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-summary"]')?.getAttribute('data-signal-id')).toBe('aevo-race'));
+    const chart = document.querySelector('[data-qa="signals-chart-card"]')!;
+    expect(chart.getAttribute('aria-label')).toBe('График AEVO/USDT');
+    expect(chart.getAttribute('data-active-signal-symbol')).toBe('AEVO');
+    expect(provider.getCandles).toHaveBeenLastCalledWith('AEVO', '1h', 500);
+  });
+
+  it('УРОВНИ / ИСТОРИЯ / СТАТИСТИКА открываются и повторным кликом закрываются', async () => {
+    renderSignals(mockProvider(), stubSignalsFetch([makeSignal()]));
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-disclosure-levels"]')).not.toBeNull());
+
+    for (const id of ['levels', 'history', 'statistics'] as const) {
+      const button = document.querySelector(`[data-qa="signals-disclosure-${id}"]`)!;
+      fireEvent.click(button);
+      await waitFor(() => expect(document.querySelector('[data-qa="signals-compact-inspector"]')?.getAttribute('data-panel')).toBe(id));
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.click(button);
+      await waitFor(() => expect(document.querySelector('[data-qa="signals-compact-inspector"]')).toBeNull());
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+    }
   });
 });
 

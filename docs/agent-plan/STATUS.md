@@ -1,5 +1,29 @@
 # STATUS — Текущий статус проекта CRYPTORA
 
+## 2026-09-26 — critical signal/chart consistency correction (PR #24)
+
+- **Base / branch:** `41ed8aa7455b91a2d83a26e10dd37975ba6468b3` (`origin/main` after PR #23), branch `arena/01a0dc82-cryptora`. Implementation commit: `56c5be4` (`fix(signals): keep chart projections asset scoped`). No work was done on `main`.
+- **Selection invariant:** summary, provenance, marker models, and level lines accept a selected server signal only when its normalized symbol equals the normalized chart symbol. A mismatched or unresolved selection is presentation-null.
+- **Manual selection:** changing the picker asset immediately removes `signal` from the URL. Selection then comes only from the first asset-scoped open server record; an unrelated first global-feed row is never used as fallback. An asset with no eligible signal retains its own candles with no summary or levels.
+- **Identity / history:** global-row clicks still move the chart to that row's symbol and preserve its exact server id. Exact valid deep-links, including terminal History rows, remain selectable. Asset-open, asset-history, and active marker records are deduplicated and symbol-filtered.
+- **Race protection:** symbol-keyed query cancellation plus defensive render-time symbol checks prevent prior-symbol responses from restoring stale summary, markers, or levels. Regression coverage includes DOT → AEVO (none), DOT → ETH (eligible), mismatched deep-link, and DOT → AEVO → SOL → AEVO.
+- **E2E assertions:** picker no-signal and rapid final-symbol scenarios now assert chart pair, active signal id/symbol, summary identity, and projected level count.
+- **Verification:** `npm run typecheck` passed; `npm test` passed (**144 files / 1632 tests**); targeted Signals regressions passed (**18/18**); `npm run build` passed; `git diff --check` passed. Local `npm run test:e2e` ran all non-browser scenarios (**68 passed**) but the 32 browser scenarios could not launch because the sandbox has no Playwright Chromium executable; CI must run them in its browser-equipped environment.
+- **Frozen scope:** strategy/lifecycle math, server persistence/PostgreSQL, server signal data, production settings/data, `enabled`, `symbols`, and `scan_universe` were not changed. No merge and no deploy.
+- **Next:** push the branch to existing PR #24, let all CI/browser/screenshot checks complete, then owner review. Do not merge or deploy from this handoff.
+
+## 2026-09-26 — owner Signals correction (branch `arena/01a0dc82-cryptora`)
+
+- **Base:** merge commit of PR #23, `41ed8aa7455b91a2d83a26e10dd37975ba6468b3` (`origin/main` at task start). Arena fixes this session to `arena/01a0dc82-cryptora`; no work was done on `main`.
+- **Current tape:** `/signals` now requests `GET /api/signals?open=true`, is honestly titled «Актуальные сигналы», and renders only server-contract `ACTIVE` / `FILLED`. An open deep-link outside page 1 remains selected/visible; terminal deep-links remain selectable but cannot leak into the tape. Rows are compact (~42 px). No records were deleted or changed.
+- **History / statistics:** the selected-asset History inspector uses `open=false`, preserving all terminal states. Statistics reuses the existing server endpoint, definitions, and global/asset scope.
+- **Disclosures:** compact adjacent «УРОВНИ / ИСТОРИЯ / СТАТИСТИКА» controls sit between Summary and Chart; one panel opens at a time and the active control closes it on a repeated click. Duplicated large levels/history/statistics panels below the chart were removed.
+- **Chart:** common `CandleChart` initially frames the latest 72 bars plus right offset once per symbol/timeframe. Ordinary refresh/WS updates preserve user zoom/pan. Symbol transitions still clear old series and restore price autoscale, including BTC → small-price assets.
+- **Verification:** `npm run typecheck` passed; full `npm test` passed (**144 files / 1628 tests**); `npm run build` passed. Browser E2E/screenshots are implemented in `e2e/signalsV2.spec.ts` but could not execute locally: Playwright Chromium download failed repeatedly with `ECONNRESET`, and the npm fallback binary could not start because sandbox system libraries (`libnspr4.so`, `libnss3.so`) are unavailable; apt repositories are unreachable. No screenshot was fabricated.
+- **Not changed:** strategy math, lifecycle math, server persistence, PostgreSQL, production settings/data/signals, `enabled`, `symbols`, `scan_universe`, provenance policy, bell identity/deep-link. No merge and no deploy.
+- **Implementation commit:** `e404b13` (`fix(signals): show only actionable signals in current tape`).
+- **Next:** CI/browser environment should run `npm run test:e2e` and capture the existing desktop/mobile screenshot hooks; owner review/merge remains separate.
+
 ## 2026-09-25 — authorial frontend redesign pass (this branch)
 
 - Base verified after `git fetch origin`: `origin/main` = `bd69cfca3059fa3292f8232d71bd154680185368`.

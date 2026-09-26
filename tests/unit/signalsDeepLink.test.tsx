@@ -264,6 +264,22 @@ describe('SignalsPage: deep-link уведомления колокольчика
     expect(cards[0]!.getAttribute('data-signal-id')).toBe(dto.id);
   });
 
+  it('mismatch deep-link AEVO + RUNE id никогда не проецирует RUNE на AEVO chart', async () => {
+    const dto = runeSignal();
+    const provider = mockProvider();
+    const fetchImpl = stubFetch([], { value: dto });
+    renderAt(`/signals?symbol=AEVO&signal=${dto.id}`, provider, fetchImpl);
+
+    await waitFor(() => expect(document.querySelector('[data-qa="signals-deeplink-symbol-mismatch"]')).not.toBeNull());
+    expect(document.querySelector('[data-qa="signals-summary"]')).toBeNull();
+    const chart = document.querySelector('[data-qa="signals-chart-card"]')!;
+    expect(chart.getAttribute('aria-label')).toBe('График AEVO/USDT');
+    expect(chart.getAttribute('data-active-signal-symbol')).toBe('');
+    expect(chart.getAttribute('data-level-count')).toBe('0');
+    await waitFor(() => expect(provider.getCandles).toHaveBeenCalled());
+    expect(new Set(provider.getCandles.mock.calls.map((call) => call[0]))).toEqual(new Set(['AEVO']));
+  });
+
   it('ссылка с неизвестным серверу id — честная ошибка, а не чужой сигнал', async () => {
     const dto = runeSignal();
     const provider = mockProvider();

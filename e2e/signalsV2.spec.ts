@@ -387,7 +387,13 @@ async function installSignalsFixtures(page: Page, log: RequestLog, opts: Fixture
     if (!base && isBellFeed) log.bellFeedCount += 1;
     else if (!base) log.globalFeedCount += 1;
     else log.signalsBySymbol.set(base, (log.signalsBySymbol.get(base) ?? 0) + 1);
-    const signals = opts.feed ? opts.feed() : !base ? BTC_SIGNALS : base === 'BTC' ? BTC_SIGNALS : base === 'SOL' ? SOL_SIGNALS : [];
+    const allSignals = opts.feed ? opts.feed() : !base ? BTC_SIGNALS : base === 'BTC' ? BTC_SIGNALS : base === 'SOL' ? SOL_SIGNALS : [];
+    const open = url.searchParams.get('open');
+    const signals = open === 'true'
+      ? allSignals.filter((signal) => signal.status === 'ACTIVE' || signal.status === 'FILLED')
+      : open === 'false'
+        ? allSignals.filter((signal) => signal.status !== 'ACTIVE' && signal.status !== 'FILLED')
+        : allSignals;
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -477,14 +483,16 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(summary).toBeVisible();
     await expect(summary.getByText('LONG').first()).toBeVisible();
 
-    // Активный (последний) сигнал с 3 целями → детали показывают «Цель 1».
+    // Уровни открываются в компактном инспекторе между сводкой и графиком.
+    await page.getByTestId('signals-disclosure-levels').click();
     const details = page.getByTestId('signals-details');
     await expect(details).toBeVisible();
     await expect(details.getByText('Цель 1').first()).toBeVisible();
 
-    // История: 3 сигнала выбранной монеты.
+    // Актуальная лента: только ACTIVE + FILLED; терминальный сигнал не смешан с ней.
     const historyRows = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]');
-    await expect(historyRows).toHaveCount(3);
+    await expect(historyRows).toHaveCount(2);
+    await expect(page.getByTestId('signals-global-feed').locator('[data-status="TARGET_REACHED"]')).toHaveCount(0);
 
     // Таймфреймы графика (15m/1h/4h/1D) присутствуют; исполнение сигнала — 1h.
     await expect(page.getByTestId('signals-chart-tf-1h')).toBeVisible();
@@ -497,6 +505,45 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     expect(pageErrors).toHaveLength(0);
   });
 
+  test('current tape statuses + compact disclosures open/close', async ({ page }) => {
+    const log = newLog();
+    const terminalStatuses = ['TARGET_REACHED', 'INVALIDATED', 'CLOSED', 'EXPIRED', 'CANCELLED', 'UNRESOLVED'];
+    const fixture = [
+      BTC_SIGNALS[0]!,
+      BTC_SIGNALS[1]!,
+      ...terminalStatuses.map((status, index) => ({
+        ...BTC_SIGNALS[2]!,
+        id: `terminal-${status.toLowerCase()}`,
+        status,
+        createdAt: iso(barTs(44 - index)),
+      })),
+    ];
+    await installSignalsFixtures(page, log, { feed: () => fixture });
+    await page.goto('/signals');
+
+    const tape = page.getByTestId('signals-global-feed');
+    await expect(tape.locator('[data-status="ACTIVE"]')).toHaveCount(1);
+    await expect(tape.locator('[data-status="FILLED"]')).toHaveCount(1);
+    for (const status of terminalStatuses) await expect(tape.locator(`[data-status="${status}"]`)).toHaveCount(0);
+
+    await tape.locator('[data-signal-id="btc-long-filled"]').click();
+    await expect(page.getByTestId('signals-summary')).toHaveAttribute('data-signal-id', 'btc-long-filled');
+    await expect(page.getByTestId('signals-chart-card')).toHaveAttribute('aria-label', 'График BTC/USDT');
+
+    for (const panel of ['levels', 'history', 'statistics'] as const) {
+      const control = page.getByTestId(`signals-disclosure-${panel}`);
+      await control.click();
+      await expect(page.getByTestId('signals-compact-inspector')).toHaveAttribute('data-panel', panel);
+      if (panel === 'history') {
+        for (const status of terminalStatuses) {
+          await expect(page.getByTestId('signals-asset-history').locator(`[data-status="${status}"]`)).toHaveCount(1);
+        }
+      }
+      await control.click();
+      await expect(page.getByTestId('signals-compact-inspector')).toHaveCount(0);
+    }
+  });
+
   test('targets[3]: выбор сигнала из истории рисует все 3 цели + стоп в панели уровней', async ({ page }) => {
     const log = newLog();
     await installSignalsFixtures(page, log);
@@ -505,6 +552,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     // Выбираем первый (последний) сигнал — LONG с 3 целями.
     const firstRow = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]').first();
     await firstRow.click();
+    await page.getByTestId('signals-disclosure-levels').click();
 
     const levelList = page.getByTestId('signals-level-list');
     await expect(levelList).toBeVisible();
@@ -527,9 +575,11 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await installSignalsFixtures(page, log);
     await page.goto('/signals');
 
-    // Клик по SHORT-сигналу (третья строка истории).
-    const rows = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]');
-    await rows.nth(2).click();
+    // Терминальный SHORT доступен только в истории выбранного актива.
+    await page.getByTestId('signals-disclosure-history').click();
+    const rows = page.getByTestId('signals-asset-history').locator('[data-qa="signal-card"]');
+    await expect(rows).toHaveCount(1);
+    await rows.first().click();
 
     const summary = page.getByTestId('signals-summary');
     await expect(summary.getByText('SHORT').first()).toBeVisible();
@@ -538,9 +588,9 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(page.getByTestId('signals-summary-result')).toContainText('+1.67 R');
     await expect(page.getByTestId('signals-summary-result')).toContainText('+1.60 R');
 
-    // История: 3 строки, у каждой время, направление, стратегия, статус.
-    const historyRows = page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]');
-    await expect(historyRows).toHaveCount(3);
+    // Терминальная история остаётся доступна отдельно от двух открытых строк ленты.
+    const historyRows = page.getByTestId('signals-asset-history').locator('[data-qa="signal-card"]');
+    await expect(historyRows).toHaveCount(1);
     await expect(page.getByTestId('signal-card-time').first()).toBeVisible();
     await shot(page, 'signals-history');
     await shot(page, 'signals-terminal');
@@ -560,14 +610,22 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     // BUG B: пустое состояние ОДНО. Раньше на экране были два разных блока
     // про «нет сигналов» (страничный и внутри сводки) — тест обновлён под
     // единственный блок, дубль удалён из продукта.
+    await page.getByTestId('signals-disclosure-history').click();
     const assetHistory = page.getByTestId('signals-asset-history');
     await expect(assetHistory.getByTestId('signals-history')).toContainText('Сигналов пока нет');
     await expect(assetHistory.getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(0);
     // The global feed remains populated; empty state is scoped to the selected asset.
     await expect(page.getByTestId('signals-empty')).toHaveCount(0);
 
-    // График при этом рисуется (свечи выбранного инструмента).
-    await expect(page.getByTestId('signals-chart-card')).toBeVisible();
+    // График при этом остаётся на выбранном инструменте, но старый BTC-сигнал
+    // не может проецироваться ни в сводку, ни в линии уровней.
+    const chart = page.getByTestId('signals-chart-card');
+    await expect(chart).toBeVisible();
+    await expect(chart).toHaveAttribute('aria-label', 'График SOL/USDT');
+    await expect(chart).toHaveAttribute('data-active-signal-id', '');
+    await expect(chart).toHaveAttribute('data-active-signal-symbol', '');
+    await expect(chart).toHaveAttribute('data-level-count', '0');
+    await expect(page.getByTestId('signals-summary')).toHaveCount(0);
 
     await shot(page, 'signals-no-signal-coin');
   });
@@ -627,6 +685,15 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await page.waitForTimeout(1200);
     snap('rapid SOL→BTC→SOL→BTC');
 
+    // Поздний ответ SOL не вправе вернуть старую проекцию после финального BTC.
+    const finalChart = page.getByTestId('signals-chart-card');
+    await expect(finalChart).toHaveAttribute('aria-label', 'График BTC/USDT');
+    await expect(finalChart).toHaveAttribute('data-active-signal-id', 'btc-long-active');
+    await expect(finalChart).toHaveAttribute('data-active-signal-symbol', 'BTC');
+    // Entry zone has two persisted boundaries + stop + three targets.
+    await expect(finalChart).toHaveAttribute('data-level-count', '6');
+    await expect(page.getByTestId('signals-summary')).toHaveAttribute('data-signal-id', 'btc-long-active');
+
     // 6) Переключение таймфрейма: свеча того же символа, не новый символ.
     await page.getByTestId('signals-chart-tf-4h').click();
     await page.waitForTimeout(800);
@@ -684,7 +751,8 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(page.getByTestId('signals-coin-selector')).toBeVisible();
     await expect(page.getByTestId('signals-summary')).toBeVisible();
     await expect(page.getByTestId('signals-chart-card')).toBeVisible();
-    await expect(page.getByTestId('signals-details')).toBeVisible();
+    await expect(page.getByTestId('signals-disclosures')).toBeVisible();
+    await expect(page.getByTestId('signals-compact-inspector')).toHaveCount(0);
     await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history')).toBeVisible();
     await expect(page.getByTestId('signals-audit-section')).toBeVisible();
 
@@ -696,16 +764,18 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
         globalFeed: top('signals-global-feed'),
         selector: top('signals-coin-selector'),
         summary: top('signals-summary'),
+        disclosures: top('signals-disclosures'),
         chart: top('signals-chart-card'),
-        details: top('signals-details'),
       };
     });
     // The authorized redesign puts the all-symbol server feed first; the
     // selected-asset controls and its detail surfaces follow it.
     expect(order.globalFeed).toBeLessThan(order.selector);
     expect(order.selector).toBeLessThan(order.summary);
-    expect(order.summary).toBeLessThan(order.chart);
-    expect(order.chart).toBeLessThan(order.details);
+    expect(order.summary).toBeLessThan(order.disclosures);
+    expect(order.disclosures).toBeLessThan(order.chart);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
 
     await shot(page, 'signals-mobile-top');
     await shot(page, 'signals-mobile');
@@ -796,6 +866,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     // 8) Выбор из результатов не сбрасывает ввод обратно в пустую строку.
     await search.fill('SOL');
     await page.getByTestId('symbol-picker-option-SOL').click();
+    await page.getByTestId('signals-disclosure-history').click();
     await expect(page.getByTestId('signals-asset-history').getByTestId('signals-history')).toContainText('Сигналов пока нет');
     await expect(page.getByTestId('signals-empty')).toHaveCount(0);
 
@@ -817,6 +888,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
 
     const summary = page.getByTestId('signals-summary');
     await expect(summary).toHaveAttribute('data-status', 'FILLED');
+    await page.getByTestId('signals-disclosure-levels').click();
     await expect(page.getByTestId('signals-details')).toContainText('Вход');
     await shot(page, 'signals-filled');
   });
@@ -895,7 +967,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     expect(chipText).not.toContain('выключено');
 
     // Лента при этом работает: пустое состояние остаётся про сигналы.
-    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(3);
+    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(2);
     await expect(page.getByTestId('signals-empty')).toHaveCount(0);
   });
 
@@ -1030,6 +1102,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     const log = newLog();
     await installSignalsFixtures(page, log);
     await page.goto('/signals');
+    await page.getByTestId('signals-disclosure-statistics').click();
 
     const stats = page.getByTestId('signals-statistics');
     await expect(stats).toBeVisible();
@@ -1059,12 +1132,13 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     const log = newLog();
     await installSignalsFixtures(page, log, { statisticsStatus: 500 });
     await page.goto('/signals');
+    await page.getByTestId('signals-disclosure-statistics').click();
 
     // Ошибка агрегатов не выдаётся за «сигналов нет».
     await expect(page.getByTestId('signals-statistics-error')).toBeVisible();
     await expect(page.getByTestId('signals-statistics')).toHaveCount(0);
     // Лента работает как обычно.
-    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(3);
+    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(2);
     await expect(page.getByTestId('signals-empty')).toHaveCount(0);
   });
 

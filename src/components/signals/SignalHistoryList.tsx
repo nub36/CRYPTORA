@@ -56,61 +56,47 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
                   data-status={m.status}
                   data-direction={m.direction}
                   data-strategy={m.strategyId}
-                  className={`group relative flex w-full flex-col justify-center gap-1 rounded border px-2.5 py-1.5 text-left transition-all ${
+                  className={`group relative flex min-h-[42px] w-full flex-col justify-center gap-0.5 rounded border px-2 py-0.5 text-left transition-all ${
                     selected
-                      ? 'border-l-4 border-l-brand-cyan border-brand-cyan/50 bg-brand-cyan/10 shadow-sm'
+                      ? 'border-l-4 border-l-brand-cyan border-brand-cyan/60 bg-brand-cyan/10 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.12)]'
                       : 'border-l-2 border-l-transparent border-surface-border/40 bg-surface-elevated/30 hover:border-surface-border hover:bg-surface-hover'
                   }`}
                 >
-                  {/* Primary Row: Symbol prominently + Direction + Strategy + Timeframe + Time */}
-                  <div className="flex items-center justify-between gap-1.5 min-w-0">
-                    <div className="flex items-center gap-1.5 min-w-0 truncate">
-                      <span className="font-mono text-xs font-bold text-white group-hover:text-cyan-300 transition-colors shrink-0">
-                        {m.pair}
-                      </span>
-                      <Badge
-                        variant={isLong ? 'green' : 'red'}
-                        size="xs"
-                        className="px-1 py-0 text-[11px] font-bold tracking-tight shrink-0"
-                      >
-                        {isLong ? '▲' : '▼'} {m.directionText}
-                      </Badge>
-                      <span className="rounded bg-surface-inset/80 border border-surface-border/60 px-1 py-0.2 text-[11px] font-mono text-slate-300 shrink-0">
-                        {m.strategyShort}
-                      </span>
-                      <span className="text-[11px] font-mono text-slate-400 shrink-0">
-                        {m.timeframe}
-                      </span>
-                    </div>
-
-                    <span className="text-[11px] font-mono text-slate-400 shrink-0" data-qa="signal-card-time">
-                      {formatSignalTime(m.signalCandleTs)}
+                  {/* Primary row: only the identity needed for rapid tape scanning. */}
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="shrink-0 font-mono text-xs font-bold text-white transition-colors group-hover:text-cyan-300">
+                      {m.pair}
                     </span>
+                    <Badge
+                      variant={isLong ? 'green' : 'red'}
+                      size="xs"
+                      className="shrink-0 px-1 py-0 text-[11px] font-bold tracking-tight"
+                    >
+                      {isLong ? '▲' : '▼'} {m.directionText}
+                    </Badge>
+                    <span className="shrink-0 rounded border border-surface-border/60 bg-surface-inset/80 px-1 text-[11px] font-mono text-slate-300">
+                      {m.strategyShort}
+                    </span>
+                    <span className="shrink-0 text-[11px] font-mono text-slate-400">{m.timeframe}</span>
                   </div>
 
-                  {/* Secondary Row: Status indicator + Compact Entry / Stop */}
-                  <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
-                    <span className="truncate text-slate-400 flex items-center gap-1">
+                  {/* Secondary row: lifecycle status and time; verbose entry prose stays in the inspector. */}
+                  <div className="flex min-w-0 items-center justify-between gap-2 text-[11px]">
+                    <span className="flex min-w-0 items-center gap-1 truncate text-slate-400">
                       <span
-                        className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
+                        className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
                           m.status === 'ACTIVE'
                             ? 'bg-cyan-400 animate-pulse'
-                            : m.status === 'FILLED' || m.status === 'TARGET_REACHED'
+                            : m.status === 'FILLED'
                             ? 'bg-emerald-400'
-                            : m.status === 'INVALIDATED' || m.status === 'CLOSED'
-                            ? 'bg-rose-400'
                             : 'bg-slate-400'
                         }`}
                         aria-hidden="true"
                       />
                       <span className="truncate">{m.statusLabel}</span>
                     </span>
-
-                    <span className="font-mono text-[11px] text-slate-400 shrink-0 truncate space-x-1.5">
-                      {m.entry.text && <span className="text-slate-300">вход {m.entry.text}</span>}
-                      {m.stop.price !== null && (
-                        <span className="text-rose-400/90">стоп {m.stop.text}</span>
-                      )}
+                    <span className="shrink-0 font-mono text-[11px] text-slate-400" data-qa="signal-card-time">
+                      {formatSignalTime(m.signalCandleTs)}
                     </span>
                   </div>
                 </button>
