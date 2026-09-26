@@ -27,6 +27,7 @@ import {
   removeScanSymbol,
   SCAN_UNIVERSE_MAX,
 } from '../services/scanUniverse.js';
+import { notifyScanUniverseChanged } from '../services/scanUniverseEvents.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -341,6 +342,7 @@ router.get('/scan-universe', async (_req, res, next) => {
 router.post('/scan-universe', async (req, res, next) => {
   try {
     const result = await addScanSymbol({ symbol: req.body?.symbol, actorUserId: req.user.id });
+    if (result.added) notifyScanUniverseChanged();
     const state = await getScanUniverseState();
     res.json({ ...result, ...state, max: SCAN_UNIVERSE_MAX });
   } catch (e) {
@@ -352,6 +354,7 @@ router.post('/scan-universe', async (req, res, next) => {
 router.delete('/scan-universe/:symbol', async (req, res, next) => {
   try {
     const result = await removeScanSymbol({ symbol: req.params.symbol, actorUserId: req.user.id });
+    if (result.removed) notifyScanUniverseChanged();
     const state = await getScanUniverseState();
     res.json({ ...result, ...state, max: SCAN_UNIVERSE_MAX });
   } catch (e) {

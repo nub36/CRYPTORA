@@ -48,6 +48,11 @@ export const config = {
   REGISTER_RATE_LIMIT: parseInt(process.env.REGISTER_RATE_LIMIT || '5', 10),
   API_RATE_LIMIT: parseInt(process.env.API_RATE_LIMIT || '100', 10),
 
+  // Radar event retention is operational storage policy, not anomaly math.
+  // A positive finite default prevents unbounded history growth; it is documented
+  // in docs/RADAR.md and can be raised by the owner without code changes.
+  RADAR_EVENT_RETENTION_DAYS: parseInt(process.env.RADAR_EVENT_RETENTION_DAYS || '30', 10),
+
   // Resend verification email: 3 requests / 15 minutes per IP
   RESEND_RATE_LIMIT: parseInt(process.env.RESEND_RATE_LIMIT || '3', 10),
   RESEND_RATE_WINDOW_MINUTES: parseInt(process.env.RESEND_RATE_WINDOW_MINUTES || '15', 10),

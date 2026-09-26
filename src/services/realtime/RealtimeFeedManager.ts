@@ -1,5 +1,4 @@
 import { EventBus } from './EventBus';
-import { AnomalyEngine, type AnomalyEngineStatus } from './AnomalyEngine';
 import { BinanceWebSocketClient, BinanceWebSocketOptions } from './BinanceWebSocketClient';
 import {
   BinanceFuturesLiquidationStream,
@@ -9,11 +8,9 @@ import { LiquidationPipeline, LiquidationSourceId, LiquidationStreamState } from
 import { BybitLiquidationStream } from './liquidations/BybitLiquidationStream';
 import { OkxLiquidationStream, OkxLiquidationStreamOptions } from './liquidations/OkxLiquidationStream';
 import { RealtimeConnectionState, TickerTick } from '@/types/realtime';
-import { RadarEvent } from '@/types/market';
 
 export interface RealtimeFeedManagerOptions {
   throttleIntervalMs?: number;
-  anomalyWindowSize?: number;
   wsOptions?: BinanceWebSocketOptions;
   liquidationStreamOptions?: LiquidationStreamOptions;
   bybitLiquidationStreamOptions?: LiquidationStreamOptions;
@@ -24,7 +21,6 @@ export class RealtimeFeedManager {
   private static instance: RealtimeFeedManager | null = null;
 
   public readonly eventBus: EventBus;
-  public readonly anomalyEngine: AnomalyEngine;
   public readonly binanceClient: BinanceWebSocketClient;
   /** Транспорт фактических ликвидаций (Binance USD-M `!forceOrder@arr`). */
   public readonly liquidationStream: BinanceFuturesLiquidationStream;
@@ -43,14 +39,12 @@ export class RealtimeFeedManager {
       throttleIntervalMs: options.throttleIntervalMs ?? 250,
     });
 
-    this.anomalyEngine = new AnomalyEngine(
-      { windowSize: options.anomalyWindowSize ?? 20 },
-      this.eventBus
-    );
-
+    // Radar anomaly calculation is server-owned. This browser feed continues
+    // to serve ticker/trade/depth consumers only and never emits authoritative
+    // Radar events from a page lifetime.
     this.binanceClient = new BinanceWebSocketClient(
       this.eventBus,
-      this.anomalyEngine,
+      undefined,
       options.wsOptions
     );
 
@@ -186,18 +180,9 @@ export class RealtimeFeedManager {
     return res;
   }
 
-  public getRadarEvents(symbol?: string): RadarEvent[] {
-    return this.anomalyEngine.getEvents(symbol);
-  }
-
-  public getRadarDetectorStatus(symbols?: readonly string[]): AnomalyEngineStatus {
-    return this.anomalyEngine.getStatus(symbols);
-  }
-
   public destroy(): void {
     this.disconnect();
     this.eventBus.destroy();
-    this.anomalyEngine.clear();
     this.latestPriceMap.clear();
     this.persistentSymbols.clear();
     this.scopedSymbolRefs.clear();

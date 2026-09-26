@@ -115,7 +115,6 @@ const liveSourceHealth = new SourceHealthTracker();
 const singletonLiveProvider = new LiveMarketDataProvider({
   binanceAdapter: new BinanceSpotAdapter({ health: liveSourceHealth }),
   kucoinAdapter: new KuCoinSpotAdapter({ health: liveSourceHealth }),
-  anomalyEngine: RealtimeFeedManager.getInstance().anomalyEngine,
 });
 
 export const MarketDataProviderComponent: React.FC<{

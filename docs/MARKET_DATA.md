@@ -125,51 +125,41 @@ export interface DataProvenance {
 
 ---
 
-## 6. LIVE Market Radar — браузерный детектор и честный прогрев (2026-09-26)
+## 6. LIVE Market Radar — server-owned detector (2026-09-26, branch only)
 
-`/radar` остаётся **browser/live** функцией: события создаёт `AnomalyEngine` в памяти браузера из
-Binance Spot ticker WS, а `LiveMarketDataProvider.getRadarEvents()` только читает текущий буфер
-этого движка. Серверной таблицы Radar и 24/7 фонового процесса пока нет.
+LIVE Radar market-data collection is **server-owned**. `server/services/radar/binanceRadarTickerStream.js`
+holds one dynamic Binance Spot `@ticker` WebSocket for the effective Admin Scan Universe; no browser
+exchange connection is required for Radar detection and additional tabs do not multiply that upstream
+subscription set.
 
-### Источник universe
+The source remains factual Binance Spot ticker fields. `shared/radar/anomalyCalculationCore.js` derives
+Radar observations deterministically from those fields. The shared core is imported by the backend monitor
+and by the retained browser test/debug adapter, so moving runtime ownership did not duplicate or change
+anomaly calculations.
 
-При монтировании LIVE-маршрута Radar читает общий серверный Scan Universe через уже существующий
-клиент `src/services/signals/scanUniverse.ts` (`GET /api/strategies/scan-universe`). Это тот же
-bounded список `saved ∩ active`, которым пользуется браузерный слой стратегий; Admin Scan Universe
-при этом **не изменяется**. Отдельный hardcoded coin-list для Radar запрещён.
+### Universe and feed safety
 
-### Подписки
+- effective universe = PostgreSQL `scan_universe` `saved ∩ active Binance Spot exchangeInfo`;
+- no canonical fallback and no hardcoded instrument count;
+- Admin mutation notification plus 30-second server reread safely converges subscriptions;
+- removed symbols are unsubscribed and cleared from rolling state; added symbols warm from zero;
+- incomplete exchange ticks are discarded rather than filled with local/demo values;
+- reconnect uses capped exponential backoff; 30 seconds without ticker data is reported as `stale` and
+  triggers recovery.
 
-Radar теперь владеет собственными маршрутными WS-lease для этой вселенной:
+### Consumer behavior
 
-```ts
-const release = RealtimeFeedManager.getInstance().subscribeSymbolScoped(symbol);
-```
+`GET /api/radar/events` returns persisted server history and `GET /api/radar/status` exposes monitor/feed
+state. `LiveMarketDataProvider.getRadarEvents()` uses the server history API in LIVE mode, so Overview
+and Radar use the same source. `/radar` polls server facts and labels its telemetry `SERVER`; it neither
+acquires Radar WebSocket leases nor resets warm-up on reload.
 
-Изменение universe применяется delta-логикой: удалённые символы освобождаются, общие символы
-сохраняют lease, новые символы приобретаются. На размонтировании `/radar`, смене режима LIVE → QA
-или потере universe освобождаются только Radar-owned leases. Refcount в `RealtimeFeedManager`
-сохраняет независимые подписки Coin page, watchlist и alerts; Radar unmount не должен отписывать
-чужой BTC/ETH stream. Новый WebSocket-клиент не создаётся — используется существующий Binance
-combined-stream transport.
+The browser's ordinary `RealtimeFeedManager` remains for unrelated ticker/trade/depth UI, but it no longer
+constructs an authoritative Radar detector. No demo record is substituted on server/feed error.
 
-### Warm-up и lifetime
+### Persistence and retention
 
-`AnomalyEngine` хранит `volumes[]`, `prices[]`, `ranges[]` по символам в памяти вкладки; размер окна
-по умолчанию — 20 наблюдений. После reload/закрытия вкладки истории и буфер событий сбрасываются,
-поэтому Radar снова проходит warm-up. UI различает четыре состояния:
-
-- `WARMING` — «Радар набирает окно наблюдений…»;
-- `READY`, событий нет — «В текущем LIVE-окне аномалий не обнаружено.»;
-- `FILTERED` — события есть, но фильтры их скрыли;
-- `SOURCE ERROR` — realtime/source или Scan Universe недоступны.
-
-Телеметрия UI показывает subscribed symbol count, warmed symbols / total, максимум наблюдений / window
-и состояние WS. Это read-only статус существующих историй; thresholds, Z-score/velocity/volatility
-расчёты, cooldown и severity math не менялись.
-
-### Roadmap
-
-Если нужен Radar, работающий 24/7 независимо от открытой вкладки и переживающий reload, требуется
-отдельный future track: server-side Radar process + persistence/read API. В этом минимальном исправлении
-persistence намеренно не добавлялась.
+Migration `012_radar_events.sql` stores server-derived event facts and a unique replay-dedup key.
+`RADAR_EVENT_RETENTION_DAYS=30` is an explicit, configurable branch proposal; the monitor performs
+bounded expiry cleanup. This storage decision awaits owner review before deployment and does not alter
+market-data or anomaly math. See `docs/RADAR.md` for lifecycle, API, warm-up, and acceptance details.

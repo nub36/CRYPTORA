@@ -4,6 +4,21 @@
 
 ---
 
+## [Unreleased] — 2026-09-26 — Radar 24/7 server monitor (unmerged)
+
+### Added
+- Server-authoritative Radar monitor started/stopped with `server/index.js`: effective Admin Scan Universe → one bounded Binance Spot ticker WebSocket → shared frozen calculation core → persisted PostgreSQL history.
+- Additive migration `012_radar_events`, replay-safe durable event deduplication, bounded configurable Radar retention, and read-only `/api/radar/events` / `/api/radar/status` APIs.
+- Server monitor, frozen-core parity, PostgreSQL history/API, restart-dedup, Scan Universe convergence, and browser-consumer regression coverage.
+
+### Changed
+- `/radar`, Overview, and `LiveMarketDataProvider` consume server Radar history/status; browser Radar no longer creates authoritative anomalies or resets warm-up when a page reloads.
+
+### Invariants
+- Anomaly math and strategy math are unchanged. No production migration, settings/data mutation, deployment, or merge occurred.
+
+---
+
 ## [Unreleased] — 2026-09-26 — owner signals correction
 
 ### Changed
