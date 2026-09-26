@@ -20,6 +20,27 @@ interface SymbolHistory {
   ranges: number[];
 }
 
+export interface AnomalySymbolStatus {
+  symbol: string;
+  volumeObservations: number;
+  priceObservations: number;
+  rangeObservations: number;
+  /** Smallest detector history for this symbol; honest warm-up floor across the live detectors. */
+  observationCount: number;
+  /** Largest detector history for this symbol; useful for aggregate “max N/window” UI. */
+  maxObservationCount: number;
+  warmed: boolean;
+}
+
+export interface AnomalyEngineStatus {
+  windowSize: number;
+  trackedSymbols: number;
+  bufferedEvents: number;
+  warmedSymbols: number;
+  maxObservations: number;
+  symbols: AnomalySymbolStatus[];
+}
+
 export class AnomalyEngine {
   private windowSize: number;
   private volumeZScoreHigh: number;
@@ -262,6 +283,44 @@ export class AnomalyEngine {
       return this.bufferedEvents.filter((e) => e.symbol.toUpperCase() === symbol.toUpperCase());
     }
     return [...this.bufferedEvents];
+  }
+
+  /**
+   * Read-only detector telemetry for UI honesty. This does not mutate histories,
+   * thresholds, cooldowns, or event math; it only reports the in-memory warm-up
+   * state that already exists inside the browser-owned engine.
+   */
+  public getStatus(symbols?: readonly string[]): AnomalyEngineStatus {
+    const requested = symbols
+      ? Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))).sort()
+      : Array.from(this.symbolHistories.keys()).sort();
+
+    const symbolStatuses = requested.map<AnomalySymbolStatus>((symbol) => {
+      const history = this.symbolHistories.get(symbol);
+      const volumeObservations = history?.volumes.length ?? 0;
+      const priceObservations = history?.prices.length ?? 0;
+      const rangeObservations = history?.ranges.length ?? 0;
+      const observationCount = Math.min(volumeObservations, priceObservations, rangeObservations);
+      const maxObservationCount = Math.max(volumeObservations, priceObservations, rangeObservations);
+      return {
+        symbol,
+        volumeObservations,
+        priceObservations,
+        rangeObservations,
+        observationCount,
+        maxObservationCount,
+        warmed: observationCount >= this.windowSize,
+      };
+    });
+
+    return {
+      windowSize: this.windowSize,
+      trackedSymbols: this.symbolHistories.size,
+      bufferedEvents: this.bufferedEvents.length,
+      warmedSymbols: symbolStatuses.filter((s) => s.warmed).length,
+      maxObservations: symbolStatuses.reduce((max, s) => Math.max(max, s.maxObservationCount), 0),
+      symbols: symbolStatuses,
+    };
   }
 
   public seedInitialEvents(events: RadarEvent[]): void {
