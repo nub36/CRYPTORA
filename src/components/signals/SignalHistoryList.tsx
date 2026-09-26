@@ -34,7 +34,7 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
   return (
     <section data-qa="signals-history" className="rounded-lg border border-surface-border bg-surface p-2 sm:p-2.5" aria-label={title}>
       <div className="flex items-center justify-between gap-2 px-1 pb-1.5 border-b border-surface-border/40">
-        <span className="ui-card-title text-xs font-semibold tracking-wide uppercase text-slate-300">{title}</span>
+        <span className="ui-card-title text-xs font-semibold tracking-wide text-slate-300">{title}</span>
         <span className="ui-helper font-mono text-[11px]">всего: {total}</span>
       </div>
 
@@ -71,14 +71,14 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
                       <Badge
                         variant={isLong ? 'green' : 'red'}
                         size="xs"
-                        className="px-1 py-0 text-[10px] font-bold tracking-tight shrink-0"
+                        className="px-1 py-0 text-[11px] font-bold tracking-tight shrink-0"
                       >
                         {isLong ? '▲' : '▼'} {m.directionText}
                       </Badge>
-                      <span className="rounded bg-surface-inset/80 border border-surface-border/60 px-1 py-0.2 text-[10px] font-mono text-slate-300 shrink-0">
+                      <span className="rounded bg-surface-inset/80 border border-surface-border/60 px-1 py-0.2 text-[11px] font-mono text-slate-300 shrink-0">
                         {m.strategyShort}
                       </span>
-                      <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                      <span className="text-[11px] font-mono text-slate-400 shrink-0">
                         {m.timeframe}
                       </span>
                     </div>
@@ -106,7 +106,7 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
                       <span className="truncate">{m.statusLabel}</span>
                     </span>
 
-                    <span className="font-mono text-[10px] text-slate-400 shrink-0 truncate space-x-1.5">
+                    <span className="font-mono text-[11px] text-slate-400 shrink-0 truncate space-x-1.5">
                       {m.entry.text && <span className="text-slate-300">вход {m.entry.text}</span>}
                       {m.stop.price !== null && (
                         <span className="text-rose-400/90">стоп {m.stop.text}</span>

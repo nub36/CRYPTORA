@@ -62,7 +62,7 @@ export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model }) =
       <div className="flex flex-wrap items-stretch gap-1.5 sm:gap-2">
         {/* Entry */}
         <div className="flex-1 min-w-[100px] rounded border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5">
-          <div className="text-[10px] font-sans font-medium uppercase tracking-wider text-cyan-300/80">
+          <div className="text-[11px] font-sans font-medium tracking-wide text-cyan-300/80">
             {model.entry.max !== null && model.entry.min !== null && model.entry.min !== model.entry.max ? 'Вход (зона)' : 'Вход'}
           </div>
           <div className="font-mono text-xs sm:text-sm font-bold text-cyan-300 truncate mt-0.5">
@@ -72,7 +72,7 @@ export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model }) =
 
         {/* Stop */}
         <div className="flex-1 min-w-[100px] rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5">
-          <div className="text-[10px] font-sans font-medium uppercase tracking-wider text-rose-300/80">
+          <div className="text-[11px] font-sans font-medium tracking-wide text-rose-300/80">
             Стоп
           </div>
           <div className="font-mono text-xs sm:text-sm font-bold text-rose-400 truncate mt-0.5">
@@ -83,7 +83,7 @@ export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model }) =
         {/* Targets */}
         {targets.slice(0, 3).map((t) => (
           <div key={t.index} className="flex-1 min-w-[100px] rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5">
-            <div className="text-[10px] font-sans font-medium uppercase tracking-wider text-emerald-300/80 truncate">
+            <div className="text-[11px] font-sans font-medium tracking-wide text-emerald-300/80 truncate">
               {t.label}
             </div>
             <div className="font-mono text-xs sm:text-sm font-bold text-emerald-400 truncate mt-0.5">
@@ -94,7 +94,7 @@ export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model }) =
 
         {targets.length > 3 && (
           <div className="flex-1 min-w-[90px] rounded border border-surface-border bg-surface-elevated px-2 py-1.5 flex flex-col justify-center">
-            <div className="text-[10px] text-slate-400">Ещё: +{targets.length - 3}</div>
+            <div className="text-[11px] text-slate-400">Ещё: +{targets.length - 3}</div>
             <div className="text-xs text-slate-300 font-semibold">в деталях</div>
           </div>
         )}
