@@ -1,12 +1,8 @@
 /**
- * SignalSummaryCard — главная карточка выбранного/последнего сигнала (§9, §11).
+ * SignalSummaryCard — главная сводка выбранного/последнего сигнала (§9, §11).
  *
- * Компактный «что я вижу» ответ человеческим языком: монета, направление,
- * стратегия·таймфрейм, вход, стоп, цели и статус. Все значения берутся из
- * серверного DTO как есть — ничего не досчитывается на клиенте.
- *
- * Таймфрейм здесь — таймфрейм СИГНАЛА (исполнения), а не графика: у всех трёх
- * стратегий это '1h' (V2.8 — тоже '1h', никакой «15m»).
+ * Компактный ответ человеческим языком: монета, направление, стратегия, таймфрейм,
+ * компактная полоса цен: ВХОД | СТОП | TP1 | TP2... и статус.
  */
 
 import React from 'react';
@@ -19,31 +15,7 @@ interface SignalSummaryCardProps {
   model: SignalUiModel | null;
 }
 
-const LevelValue: React.FC<{ label: string; value: string; tone?: 'red' | 'green' | 'cyan' }> = ({
-  label,
-  value,
-  tone,
-}) => (
-  <div className="min-w-0 rounded border border-surface-border bg-surface-elevated/60 px-2.5 py-2">
-    <div className="ui-label truncate">{label}</div>
-    <div
-      className={`ui-num mt-0.5 truncate text-sm font-semibold ${
-        tone === 'red' ? 'text-rose-400' : tone === 'green' ? 'text-emerald-400' : tone === 'cyan' ? 'text-cyan-300' : 'text-white'
-      }`}
-    >
-      {value}
-    </div>
-  </div>
-);
-
 export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model }) => {
-  // BUG B: пустое состояние здесь БОЛЬШЕ НЕ ДУБЛИРУЕТСЯ. Раньше карточка
-  // выводила свой текст «Сигналов по этому инструменту пока нет», а страница —
-  // ещё один такой же блок: два разных блока про одно и то же состояние, из-за
-  // которых непонятно, сколько причин и какая из них главная. Единственный
-  // блок с причинами (сканер выключен / лента пуста / запрос упал / рынок
-  // недоступен) живёт на странице — `signals-empty[data-state]`. Без сигнала
-  // карточка просто не рисуется.
   if (!model) return null;
 
   const targets = model.targets;
@@ -54,54 +26,82 @@ export const SignalSummaryCard: React.FC<SignalSummaryCardProps> = ({ model }) =
       data-signal-id={model.id}
       data-status={model.status}
       data-direction={model.direction}
-      className="rounded-lg border border-surface-border bg-surface p-3"
+      className="rounded-lg border border-surface-border bg-surface p-3 space-y-2.5"
       aria-label={`Текущий сигнал ${model.pair}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Top Identity Row */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border/40 pb-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="ui-h2">{model.pair}</span>
-          <Badge variant={model.direction === 'LONG' ? 'green' : 'red'} size="sm">
+          <span className="font-mono text-base font-bold text-white tracking-tight">{model.pair}</span>
+          <Badge variant={model.direction === 'LONG' ? 'green' : 'red'} size="sm" className="font-bold">
             {model.direction === 'LONG' ? '▲' : '▼'} {model.directionText}
           </Badge>
           <Badge variant="neutral" size="sm">{model.strategyText}</Badge>
           <span className="rounded border border-surface-border bg-surface-elevated px-2 py-0.5 text-xs font-mono text-slate-300">
             {model.timeframe}
           </span>
+          <span className="text-xs text-slate-400 font-mono">
+            {formatSignalTime(model.signalCandleTs)}
+          </span>
         </div>
         <SignalStatusChip status={model.status} size="sm" />
       </div>
 
-      <p className="ui-helper mt-1.5" title={model.statusHint}>
-        {model.directionHint}. Сигнал {formatSignalTime(model.signalCandleTs)}
-        {model.strategyShort ? ` · ${model.strategyShort}` : ''}
-      </p>
-
-      {/*
-        §10: результат — если он достоверно известен. Значение приходит из
-        сервера (`resultR` / `netResultR`), здесь только подпись: R на клиенте
-        НЕ пересчитывается. Статусы без сделки (истечение, отмена, не
-        отслежено) строку не получают — «результата нет» != «результат 0».
-      */}
+      {/* Outcome line if trade is closed */}
       {model.hasTrade && (
-        <p className="ui-helper mt-1.5" data-qa="signals-summary-result">
-          Результат: {model.outcome.gross} (gross) · {model.outcome.net} (net)
-        </p>
+        <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-2.5 py-1" data-qa="signals-summary-result">
+          <span className="font-sans text-slate-300">Результат:</span>
+          <span className="font-bold">{model.outcome.gross} (gross)</span>
+          <span className="text-slate-400">·</span>
+          <span className="font-bold">{model.outcome.net} (net)</span>
+          {model.outcome.pnlPct && <span className="text-slate-400">({model.outcome.pnlPct})</span>}
+        </div>
       )}
 
-      {/* Вход / стоп / цели. Целей может быть 0, 1, 3, 5 — рисуем фактический массив. */}
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <LevelValue label={model.entry.max !== null && model.entry.min !== null && model.entry.min !== model.entry.max ? 'Вход (зона)' : 'Вход'} value={model.entry.text} tone="cyan" />
-        <LevelValue label="Стоп" value={model.stop.text} tone="red" />
+      {/* Compact Price Strip: ENTRY | STOP | TP1 | TP2 | TP3... */}
+      <div className="flex flex-wrap items-stretch gap-1.5 sm:gap-2">
+        {/* Entry */}
+        <div className="flex-1 min-w-[100px] rounded border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5">
+          <div className="text-[11px] font-sans font-medium tracking-wide text-cyan-300/80">
+            {model.entry.max !== null && model.entry.min !== null && model.entry.min !== model.entry.max ? 'Вход (зона)' : 'Вход'}
+          </div>
+          <div className="font-mono text-xs sm:text-sm font-bold text-cyan-300 truncate mt-0.5">
+            {model.entry.text}
+          </div>
+        </div>
+
+        {/* Stop */}
+        <div className="flex-1 min-w-[100px] rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5">
+          <div className="text-[11px] font-sans font-medium tracking-wide text-rose-300/80">
+            Стоп
+          </div>
+          <div className="font-mono text-xs sm:text-sm font-bold text-rose-400 truncate mt-0.5">
+            {model.stop.text}
+          </div>
+        </div>
+
+        {/* Targets */}
         {targets.slice(0, 3).map((t) => (
-          <LevelValue key={t.index} label={t.label} value={t.text} tone="green" />
+          <div key={t.index} className="flex-1 min-w-[100px] rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5">
+            <div className="text-[11px] font-sans font-medium tracking-wide text-emerald-300/80 truncate">
+              {t.label}
+            </div>
+            <div className="font-mono text-xs sm:text-sm font-bold text-emerald-400 truncate mt-0.5">
+              {t.text}
+            </div>
+          </div>
         ))}
+
         {targets.length > 3 && (
-          <LevelValue label={`Ещё целей: ${targets.length - 3}`} value="в деталях" tone="green" />
+          <div className="flex-1 min-w-[90px] rounded border border-surface-border bg-surface-elevated px-2 py-1.5 flex flex-col justify-center">
+            <div className="text-[11px] text-slate-400">Ещё: +{targets.length - 3}</div>
+            <div className="text-xs text-slate-300 font-semibold">в деталях</div>
+          </div>
         )}
       </div>
 
       {targets.length === 0 && (
-        <p className="ui-helper mt-2 text-amber-300" data-qa="signals-summary-no-targets">
+        <p className="ui-helper mt-1 text-amber-300" data-qa="signals-summary-no-targets">
           Сервер не передал целей для этого сигнала — уровни не достраиваются.
         </p>
       )}

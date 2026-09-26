@@ -1,12 +1,8 @@
 /**
- * SignalHistoryList — лента последних серверных сигналов выбранной монеты (§15).
+ * SignalHistoryList — компактная лента серверных сигналов (§15).
  *
- * Источник — тот же `GET /api/signals?symbol=…`, ограниченный и постраничный
- * (`limit`/`offset`, `total` из ответа). «Бесконечной истории одним запросом»
- * нет: «Показать ещё» догружает следующую страницу через контракт API.
- *
- * Клик по строке выбирает сигнал: переключает детали и линии уровней на графике.
- * Порядок — как отдаёт сервер (новые сверху); на клиенте не пересортировывается.
+ * Источник — `GET /api/signals`, ограниченный и постраничный (`limit`/`offset`, `total`).
+ * Клик по строке выбирает сигнал: переключает детали, линии уровней и график.
  */
 
 import React from 'react';
@@ -22,6 +18,7 @@ interface SignalHistoryListProps {
   onLoadMore: () => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  title?: string;
 }
 
 export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
@@ -32,20 +29,22 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
   onLoadMore,
   selectedId,
   onSelect,
+  title = 'История сигналов',
 }) => {
   return (
-    <section data-qa="signals-history" className="rounded-lg border border-surface-border bg-surface p-3" aria-label="История сигналов">
-      <div className="flex items-center justify-between gap-2">
-        <span className="ui-card-title">История сигналов</span>
-        <span className="ui-helper">всего: {total}</span>
+    <section data-qa="signals-history" className="rounded-lg border border-surface-border bg-surface p-2 sm:p-2.5" aria-label={title}>
+      <div className="flex items-center justify-between gap-2 px-1 pb-1.5 border-b border-surface-border/40">
+        <span className="ui-card-title text-xs font-semibold tracking-wide text-slate-300">{title}</span>
+        <span className="ui-helper font-mono text-[11px]">всего: {total}</span>
       </div>
 
       {models.length === 0 ? (
-        <p className="ui-helper mt-2 text-center">Сигналов пока нет — лента пустая, это не ошибка.</p>
+        <p className="ui-helper py-4 text-center text-slate-400">Сигналов пока нет — лента пустая, это не ошибка.</p>
       ) : (
-        <ul className="mt-2 space-y-1.5" data-qa="signals-history-list">
+        <ul className="mt-1.5 space-y-1" data-qa="signals-history-list">
           {models.map((m) => {
             const selected = m.id === selectedId;
+            const isLong = m.direction === 'LONG';
             return (
               <li key={m.id}>
                 <button
@@ -57,28 +56,63 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
                   data-status={m.status}
                   data-direction={m.direction}
                   data-strategy={m.strategyId}
-                  className={`flex w-full flex-col gap-1 rounded border px-2.5 py-2 text-left transition-colors ${
+                  className={`group relative flex w-full flex-col justify-center gap-1 rounded border px-2.5 py-1.5 text-left transition-all ${
                     selected
-                      ? 'border-surface-border-active bg-brand-cyan/10'
-                      : 'border-surface-border/60 bg-surface-elevated/40 hover:border-surface-border'
+                      ? 'border-l-4 border-l-brand-cyan border-brand-cyan/50 bg-brand-cyan/10 shadow-sm'
+                      : 'border-l-2 border-l-transparent border-surface-border/40 bg-surface-elevated/30 hover:border-surface-border hover:bg-surface-hover'
                   }`}
                 >
-                  <span className="flex flex-wrap items-center gap-2">
-                    <Badge variant={m.direction === 'LONG' ? 'green' : 'red'} size="xs">
-                      {m.direction === 'LONG' ? '▲' : '▼'} {m.directionText}
-                    </Badge>
-                    <Badge variant="neutral" size="xs">{m.strategyShort}</Badge>
-                    <span className="text-[11px] font-mono text-slate-400">{m.timeframe}</span>
-                    <span className="ml-auto text-[11px] text-slate-400" data-qa="signal-card-time">
+                  {/* Primary Row: Symbol prominently + Direction + Strategy + Timeframe + Time */}
+                  <div className="flex items-center justify-between gap-1.5 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0 truncate">
+                      <span className="font-mono text-xs font-bold text-white group-hover:text-cyan-300 transition-colors shrink-0">
+                        {m.pair}
+                      </span>
+                      <Badge
+                        variant={isLong ? 'green' : 'red'}
+                        size="xs"
+                        className="px-1 py-0 text-[11px] font-bold tracking-tight shrink-0"
+                      >
+                        {isLong ? '▲' : '▼'} {m.directionText}
+                      </Badge>
+                      <span className="rounded bg-surface-inset/80 border border-surface-border/60 px-1 py-0.2 text-[11px] font-mono text-slate-300 shrink-0">
+                        {m.strategyShort}
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-400 shrink-0">
+                        {m.timeframe}
+                      </span>
+                    </div>
+
+                    <span className="text-[11px] font-mono text-slate-400 shrink-0" data-qa="signal-card-time">
                       {formatSignalTime(m.signalCandleTs)}
                     </span>
-                  </span>
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="ui-helper truncate">{m.statusLabel}</span>
-                    {m.stop.price !== null && (
-                      <span className="ui-num shrink-0 text-[11px] text-slate-300">стоп {m.stop.text}</span>
-                    )}
-                  </span>
+                  </div>
+
+                  {/* Secondary Row: Status indicator + Compact Entry / Stop */}
+                  <div className="flex items-center justify-between gap-2 text-[11px] min-w-0">
+                    <span className="truncate text-slate-400 flex items-center gap-1">
+                      <span
+                        className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
+                          m.status === 'ACTIVE'
+                            ? 'bg-cyan-400 animate-pulse'
+                            : m.status === 'FILLED' || m.status === 'TARGET_REACHED'
+                            ? 'bg-emerald-400'
+                            : m.status === 'INVALIDATED' || m.status === 'CLOSED'
+                            ? 'bg-rose-400'
+                            : 'bg-slate-400'
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{m.statusLabel}</span>
+                    </span>
+
+                    <span className="font-mono text-[11px] text-slate-400 shrink-0 truncate space-x-1.5">
+                      {m.entry.text && <span className="text-slate-300">вход {m.entry.text}</span>}
+                      {m.stop.price !== null && (
+                        <span className="text-rose-400/90">стоп {m.stop.text}</span>
+                      )}
+                    </span>
+                  </div>
                 </button>
               </li>
             );
@@ -92,7 +126,7 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
           onClick={onLoadMore}
           disabled={loadingMore}
           data-qa="signals-history-more"
-          className="mt-2 flex min-h-[40px] w-full items-center justify-center rounded border border-surface-border bg-surface-elevated px-3 text-xs text-slate-300 transition-colors hover:text-white disabled:opacity-50"
+          className="mt-2 flex min-h-[34px] w-full items-center justify-center rounded border border-surface-border bg-surface-elevated/70 px-3 text-xs font-medium text-slate-300 transition-colors hover:border-surface-border-active hover:bg-surface-elevated hover:text-white disabled:opacity-50"
         >
           {loadingMore ? 'Загрузка…' : 'Показать ещё'}
         </button>

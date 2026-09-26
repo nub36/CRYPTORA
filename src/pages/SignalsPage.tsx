@@ -4,25 +4,15 @@
  * PR #16). Уровни (вход/стоп/цели), статусы и R отображаются как их сохранил
  * сервер: на клиенте ничего не досчитывается и не «улучшается».
  *
- * Мобильная иерархия сверху вниз (§14):
- *   1. селектор монеты (+ чипы монет с сигналами);
- *   2. честный статус сканирования (сервер, не браузер);
- *   3. сводка последнего/выбранного сигнала;
- *   4. свечной график выбранного инструмента;
- *   5. уровни выбранного сигнала (вход/стоп/все цели);
- *   6. история сигналов монеты (ограниченная, постраничная);
- *   7. сворачиваемые «Статистика» (серверная) и «Кодекс прозрачности».
- *
- * Защита от гонок (§17): смена монеты/таймфрейма отменяет устаревшие запросы
- * (AbortController + монотонный номер запроса в хуках); маркеры и линии
- * предыдущего инструмента не остаются на экране. Свечи запрашиваются только для
- * выбранного символа и таймфрейма — веера N×candles нет (§18).
+ * Мастер-детейл архитектура рабочей станции:
+ *   • Desktop: слева компактная глобальная лента (340–380px) со всеми сигналами;
+ *     справа выбранный инструмент: компактная полоса цен + доминантный график
+ *     сразу в первом экране + детали, история инструмента, статистика и аудит.
+ *   • Mobile: компактная лента ограниченной высоты сверху, селектор, сводка
+ *     и график доступны сразу в первой области видимости без 30 громоздких плашек.
  *
  * ВРЕМЯ. БД и API — UTC/ISO. Экран показывает часовой пояс браузера/ОС
- * (`Intl`), DST учитывается автоматически. Единый форматтер —
- * `utils/timePresentation`; переключателя LOCAL/UTC на экране больше нет
- * (BUG D), поэтому ось графика, перекрестие, время сигнала и время исхода не
- * могут разойтись.
+ * (`Intl`), DST учитывается автоматически.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -59,7 +49,7 @@ import {
   SignalsLedgerAuditSection,
   type ServerSignalsStats,
 } from '@/components/signals/SignalsLedgerAuditSection';
-import { timeZoneLabelWithOffset } from '@/utils/timePresentation';
+import { shortOffset, timeZoneLabel, timeZoneLabelWithOffset } from '@/utils/timePresentation';
 
 const DEFAULT_SYMBOL = 'BTC';
 const DEFAULT_TIMEFRAME: Timeframe = '1h';
@@ -95,24 +85,9 @@ export const SignalsPage: React.FC = () => {
 
   /**
    * Deep-link уведомления колокольчика: `/signals?symbol=RUNE&signal=<server-id>`.
-   *
-   * Страница ИНИЦИАЛИЗИРУЕТСЯ из URL (символ + выбранный сигнал), а действия
-   * пользователя эту же ссылку поддерживают актуальной. Серверный сигнал,
-   * которого нет на загруженной странице ленты, догружается точечно
-   * (`useServerSignalById`) — уведомление обязано открывать именно свой сигнал.
    */
   const [searchParams, setSearchParams] = useSearchParams();
 
-  /**
-   * URL — ЕДИНСТВЕННЫЙ источник выбранного инструмента и сигнала.
-   *
-   * Раньше это были два `useState`, инициализированных из ссылки, а эффект
-   * «смена монеты сбрасывает сигнал» на монтировании обнулял выбранный по
-   * deep-link'у id: уведомление колокольчика открывало страницу, но сигнал не
-   * выбирался. Теперь состояние выводится из `searchParams` напрямую, поэтому
-   * переход по ссылке (`/signals?symbol=RUNE&signal=<id>`) выбирает ровно тот
-   * сигнал, а действия пользователя эту же ссылку и поддерживают актуальной.
-   */
   const baseSymbol = deepLinkSymbol(searchParams.get('symbol')) ?? DEFAULT_SYMBOL;
   const selectedSignalId = deepLinkSignalId(searchParams.get('signal'));
   const [chartTimeframe, setChartTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
@@ -140,15 +115,12 @@ export const SignalsPage: React.FC = () => {
   );
 
   // ── Серверные ленты: global feed is the primary surface; asset history is separate ──
-  // The default screen must not inherit the selected asset as a hidden filter.
   const signalsQuery = useServerSignals(
     { limit: SIGNALS_PAGE_LIMIT },
     { pollMs: SIGNALS_POLL_MS }
   );
   const assetHistoryQuery = useServerSignals(
     { symbol: pair, limit: SIGNALS_PAGE_LIMIT },
-    // Do not fan out on the untouched global landing view. Asset history starts
-    // when a user explicitly selects an asset or arrives through a deep link.
     { pollMs: SIGNALS_POLL_MS, enabled: assetHistoryRequested }
   );
   const [statisticsScope, setStatisticsScope] = useState<'global' | 'asset'>('global');
@@ -160,13 +132,10 @@ export const SignalsPage: React.FC = () => {
       }
       setAssetHistoryRequested(true);
       const signal = [...signalsQuery.signals, ...assetHistoryQuery.signals].find((item) => item.id === id);
-      // A global row owns its market. Selecting it is the only action needed to
-      // move the chart, summary and URL together.
       writeDeepLink(signal ? signalBaseSymbol(signal.symbol) : baseSymbol, id);
     },
     [assetHistoryQuery.signals, baseSymbol, signalsQuery.signals, writeDeepLink]
   );
-
 
   // ── Свечи ТОЛЬКО выбранного инструмента и таймфрейма ──────────────────
   const candlesState = useSignalChartCandles(provider, {
@@ -175,13 +144,9 @@ export const SignalsPage: React.FC = () => {
     limit: 500,
   });
 
-  // ── Статус сканирования — с сервера, не из браузера (BUG C) ───────────
+  // ── Статус сканирования — с сервера, не из браузера ───────────────────
   const scanner = useServerScanner({ pollMs: SCANNER_POLL_MS });
 
-  /**
-   * Сигнал по deep-link'у, которого нет на загруженной странице ленты.
-   * Запрос ровно один и только когда сигнал действительно не найден в странице.
-   */
   const signalInPage = useMemo(
     () => (selectedSignalId ? signalsQuery.signals.some((s) => s.id === selectedSignalId) : false),
     [signalsQuery.signals, selectedSignalId]
@@ -190,10 +155,6 @@ export const SignalsPage: React.FC = () => {
     enabled: Boolean(selectedSignalId) && signalsQuery.phase === 'ready' && !signalInPage,
   });
 
-  /**
-   * Список для отображения: страница ленты + (при необходимости) сигнал из
-   * deep-link'а. Дубликатов не бывает — добавляем только отсутствующий id.
-   */
   const focusedSymbolMatches = useMemo(
     () =>
       focusedSignal.signal
@@ -214,11 +175,6 @@ export const SignalsPage: React.FC = () => {
     [assetHistoryQuery.signals]
   );
 
-  /**
-   * Происхождение выбранного сигнала — как его отдал сервер. Показывается явно,
-   * потому что от этого зависит допуск в продакшн-колокольчик: MISMATCH/UNKNOWN
-   * продакшн-событием не считается, и это должно быть видно, а не скрыто.
-   */
   const selectedProvenance = useMemo(() => {
     const found = selectedSignalId ? pageSignals.find((s) => s.id === selectedSignalId) : undefined;
     return found ? found.provenanceStatus : null;
@@ -265,13 +221,7 @@ export const SignalsPage: React.FC = () => {
     };
   }, [signalsQuery]);
 
-  // ── Браузерный журнал аудита (второстепенный источник, не смешивается) ─
-  // Журнал остаётся функциональным, но больше не является драйвером частых
-  // ререндеров. Раньше экран опрашивал журнал каждые 5 с И статус браузерного
-  // движка каждые 5 с, а ленту — каждые 60 с: три независимых таймера
-  // перерисовывали родителя и сбрасывали строку поиска в модалке выбора монеты
-  // (BUG A). Теперь сводка журнала пересчитывается по его собственной подписке
-  // (событие записи), а не по таймеру.
+  // ── Браузерный журнал аудита ──────────────────────────────────────────
   const ledger = useMemo(() => {
     try {
       return SignalsAuditLedger.getInstance();
@@ -299,18 +249,19 @@ export const SignalsPage: React.FC = () => {
     }
   }, [ledger, ledgerTick]);
 
-  // ── Состояния экрана (§16: причины различаются явно) ──────────────────
-  // Стратегии выключены — это НЕ «нет сигналов»: сервер просто не публикует.
+  // ── Состояния экрана ──────────────────────────────────────────────────
   const scannerOff = scanner.phase === 'ready' && scanner.enabledCount === 0;
-  // Лента загрузилась и пуста.
   const showEmpty = signalsQuery.phase === 'ready' && signalsQuery.signals.length === 0;
-  // Запрос ленты упал — никогда не называем это «сигналов нет».
   const showApiError = signalsQuery.phase === 'error';
-  // Свечи выбранной монеты недоступны — рынок, а не сигналы.
   const showMarketError = candlesState.phase === 'error';
 
   return (
-    <div className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-3 sm:px-4" data-route="signals" data-layout="global-feed">
+    <div
+      className="route-shell mx-auto max-w-[1920px] space-y-3 px-3 py-3 sm:px-4"
+      data-route="signals"
+      data-layout="global-feed"
+      data-qa="signals-page"
+    >
       {/* Заголовок + источник + часовой пояс пользователя */}
       <div className="flex flex-col justify-between gap-2 border-b border-surface-border pb-3 sm:flex-row sm:items-center">
         <div>
@@ -324,194 +275,225 @@ export const SignalsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <ScannerStatusChip state={scanner} />
           <span
-            className="rounded border border-surface-border bg-surface-elevated px-2 py-1 text-[11px] text-slate-400"
+            className="rounded border border-surface-border bg-surface-elevated/80 px-2 py-0.5 text-xs text-slate-400 font-mono tracking-tight"
             data-qa="signals-timezone-label"
-            title="Время на экране — ваш часовой пояс. В базе и API время хранится в UTC."
+            title={`Ваш часовой пояс: ${timeZoneLabel('BROWSER')} (${shortOffset('BROWSER')}). В базе и API время хранится в UTC.`}
           >
             {timeZoneLabelWithOffset('BROWSER')}
           </span>
         </div>
       </div>
 
-      {/* Global feed is always visible, even after an asset is selected. */}
-      <section className="terminal-section signal-feed" data-qa="signals-global-feed">
-        <div className="terminal-section__header">
-          <div><span className="eyebrow">SERVER / PRODUCTION</span><h2 className="terminal-section__title">All signals</h2></div>
-          <span className="terminal-section__meta">{signalsQuery.total} total · {signalsQuery.source ?? 'server'}</span>
+      {/* Мастер/детейл рабочая станция: Слева лента всех сигналов, Справа выбранный инструмент и график */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[370px_minmax(0,1fr)] items-start">
+        {/* ЛЕВАЯ КОЛОНКА: Компактная глобальная лента сигналов */}
+        <div className="w-full min-w-0">
+          <section className="terminal-section signal-feed lg:sticky lg:top-16" data-qa="signals-global-feed">
+            <div className="terminal-section__header">
+              <div>
+                <span className="eyebrow">SERVER / PRODUCTION</span>
+                <h2 className="terminal-section__title">Все сигналы</h2>
+              </div>
+              <span className="terminal-section__meta font-mono text-xs">
+                {signalsQuery.total} всего · {signalsQuery.source ?? 'server'}
+              </span>
+            </div>
+            <div className="max-h-60 sm:max-h-72 lg:max-h-[calc(100vh-170px)] overflow-y-auto pr-0.5">
+              <SignalHistoryList
+                models={models}
+                total={signalsQuery.total}
+                hasMore={signalsQuery.hasMore}
+                loadingMore={signalsQuery.loadingMore}
+                onLoadMore={signalsQuery.loadMore}
+                selectedId={activeSignal?.id ?? null}
+                onSelect={selectSignal}
+                title="Все сигналы"
+              />
+            </div>
+          </section>
         </div>
-        <SignalHistoryList models={models} total={signalsQuery.total} hasMore={signalsQuery.hasMore} loadingMore={signalsQuery.loadingMore} onLoadMore={signalsQuery.loadMore} selectedId={activeSignal?.id ?? null} onSelect={selectSignal} />
-      </section>
 
-      {/* 1. Asset selector: selection changes the chart and secondary history only. */}
-      <SignalsCoinSelector
-        symbol={baseSymbol}
-        pair={pair}
-        signalPairs={signalPairs}
-        onSelect={selectSymbol}
-      />
+        {/* ПРАВАЯ КОЛОНКА: Рабочая область выбранного инструмента */}
+        <div className="w-full min-w-0 space-y-3">
+          {/* 1. Селектор монеты */}
+          <SignalsCoinSelector
+            symbol={baseSymbol}
+            pair={pair}
+            signalPairs={signalPairs}
+            onSelect={selectSymbol}
+          />
 
-      {/*
-        Deep-link: честное состояние точечной загрузки сигнала из уведомления.
-        Страница НЕ подставляет другой сигнал «похожего» вида и не молчит об
-        ошибке — либо выбран ровно тот сигнал, либо показана причина.
-      */}
-      {selectedSignalId && !signalInPage && focusedSignal.phase === 'loading' && (
-        <p className="ui-helper" data-qa="signals-deeplink-loading">
-          Загружаем сигнал из ссылки…
-        </p>
-      )}
-      {selectedSignalId && focusedSignal.phase === 'ready' && !focusedSymbolMatches && (
-        <div
-          className="space-y-1 rounded-lg border border-amber-500/30 bg-surface p-3"
-          data-qa="signals-deeplink-symbol-mismatch"
-        >
-          <div className="font-sans text-sm font-bold text-white">Ссылка не соответствует инструменту</div>
-          <p className="ui-helper leading-relaxed">
-            Сигнал из ссылки относится к другому инструменту, чем выбранный. Показываем ленту выбранного
-            инструмента: сигнал не подставляется в чужой график и не «переезжает» на другую монету.
-          </p>
-        </div>
-      )}
-      {selectedSignalId && !signalInPage && focusedSignal.phase === 'error' && (
-        <div
-          className="space-y-1 rounded-lg border border-rose-500/30 bg-surface p-3"
-          data-qa="signals-deeplink-error"
-        >
-          <div className="font-sans text-sm font-bold text-white">Сигнал из ссылки не загружен</div>
-          <p className="ui-helper leading-relaxed">
-            {focusedSignal.error?.message ?? 'Сервер не отдал сигнал по указанному id.'}
-            {focusedSignal.error?.status === 404
-              ? ' Такой строки нет в серверной БД: ссылка могла быть собрана по локальному событию браузера.'
-              : ''}
-          </p>
-        </div>
-      )}
-
-      {/*
-        ЕДИНСТВЕННОЕ пустое/ошибочное состояние ленты (BUG B).
-        Раньше на экране были два разных блока про «нет сигналов»: этот и ещё
-        один внутри сводки. Теперь текст один, а причина выбирается явно:
-        сканер выключен / лента пуста / запрос упал / рынок недоступен.
-      */}
-      {(scannerOff || showEmpty || showApiError || showMarketError) && (
-        <div
-          data-qa="signals-empty"
-          data-state={
-            showApiError ? 'error' : showMarketError ? 'market-error' : scannerOff ? 'scanner-off' : 'empty'
-          }
-          className="space-y-1 rounded-lg border border-amber-500/30 bg-surface p-4"
-        >
-          {showApiError ? (
-            <>
-              <div className="font-sans text-sm font-bold text-white">Источник сигналов недоступен</div>
-              <p className="ui-helper leading-relaxed">
-                {signalsQuery.error?.message ?? 'Не удалось загрузить серверную ленту сигналов.'}
-                {signalsQuery.error?.code ? ` (код: ${signalsQuery.error.code})` : ''} Сигналы не
-                подставляются и не выдумываются — график ниже показывает фактические свечи выбранной монеты.
-              </p>
-            </>
-          ) : showMarketError ? (
-            <>
-              <div className="font-sans text-sm font-bold text-white">Рыночные данные недоступны</div>
-              <p className="ui-helper leading-relaxed">
-                {candlesState.errorMessage ?? 'Не удалось загрузить свечи выбранной монеты.'} Это отказ
-                источника свечей, а не отсутствие сигналов: лента сигналов загружается отдельным запросом.
-              </p>
-            </>
-          ) : scannerOff ? (
-            <>
-              <div className="font-sans text-sm font-bold text-white">Сканирование сигналов выключено</div>
-              <p className="ui-helper leading-relaxed">
-                Ни одна стратегия не включена на сервере, поэтому новых сигналов не публикуется. Ранее
-                сохранённые сигналы остаются в истории ниже и сопровождаются сервером по закрытым свечам —
-                это автоматическое серверное сопровождение, а не отслеживание в реальном времени внутри
-                бара. График показывает рыночные свечи выбранной монеты.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="font-sans text-sm font-bold text-white">Сигналов по этому инструменту нет</div>
-              <p className="ui-helper leading-relaxed">
-                Стратегии публикуют сетап редко и только на фактических закрытых свечах. Пустая лента —
-                норма, а не ошибка. График показывает рыночные свечи выбранной монеты.
-              </p>
-            </>
+          {/* Deep-link состояния */}
+          {selectedSignalId && !signalInPage && focusedSignal.phase === 'loading' && (
+            <p className="ui-helper" data-qa="signals-deeplink-loading">
+              Загружаем сигнал из ссылки…
+            </p>
           )}
+          {selectedSignalId && focusedSignal.phase === 'ready' && !focusedSymbolMatches && (
+            <div
+              className="space-y-1 rounded-lg border border-amber-500/30 bg-surface p-3"
+              data-qa="signals-deeplink-symbol-mismatch"
+            >
+              <div className="font-sans text-sm font-bold text-white">Ссылка не соответствует инструменту</div>
+              <p className="ui-helper leading-relaxed">
+                Сигнал из ссылки относится к другому инструменту, чем выбранный. Показываем ленту выбранного
+                инструмента: сигнал не подставляется в чужой график и не «переезжает» на другую монету.
+              </p>
+            </div>
+          )}
+          {selectedSignalId && !signalInPage && focusedSignal.phase === 'error' && (
+            <div
+              className="space-y-1 rounded-lg border border-rose-500/30 bg-surface p-3"
+              data-qa="signals-deeplink-error"
+            >
+              <div className="font-sans text-sm font-bold text-white">Сигнал из ссылки не загружен</div>
+              <p className="ui-helper leading-relaxed">
+                {focusedSignal.error?.message ?? 'Сервер не отдал сигнал по указанному id.'}
+                {focusedSignal.error?.status === 404
+                  ? ' Такой строки нет в серверной БД: ссылка могла быть собрана по локальному событию браузера.'
+                  : ''}
+              </p>
+            </div>
+          )}
+
+          {/* Состояние ошибки / пустой ленты */}
+          {(scannerOff || showEmpty || showApiError || showMarketError) && (
+            <div
+              data-qa="signals-empty"
+              data-state={
+                showApiError ? 'error' : showMarketError ? 'market-error' : scannerOff ? 'scanner-off' : 'empty'
+              }
+              className="space-y-1 rounded-lg border border-amber-500/30 bg-surface p-4"
+            >
+              {showApiError ? (
+                <>
+                  <div className="font-sans text-sm font-bold text-white">Источник сигналов недоступен</div>
+                  <p className="ui-helper leading-relaxed">
+                    {signalsQuery.error?.message ?? 'Не удалось загрузить серверную ленту сигналов.'}
+                    {signalsQuery.error?.code ? ` (код: ${signalsQuery.error.code})` : ''} Сигналы не
+                    подставляются и не выдумываются — график ниже показывает фактические свечи выбранной монеты.
+                  </p>
+                </>
+              ) : showMarketError ? (
+                <>
+                  <div className="font-sans text-sm font-bold text-white">Рыночные данные недоступны</div>
+                  <p className="ui-helper leading-relaxed">
+                    {candlesState.errorMessage ?? 'Не удалось загрузить свечи выбранной монеты.'} Это отказ
+                    источника свечей, а не отсутствие сигналов: лента сигналов загружается отдельным запросом.
+                  </p>
+                </>
+              ) : scannerOff ? (
+                <>
+                  <div className="font-sans text-sm font-bold text-white">Сканирование сигналов выключено</div>
+                  <p className="ui-helper leading-relaxed">
+                    Ни одна стратегия не включена на сервере, поэтому новых сигналов не публикуется. Ранее
+                    сохранённые сигналы остаются в истории ниже и сопровождаются сервером по закрытым свечам —
+                    это автоматическое серверное сопровождение, а не отслеживание в реальном времени внутри
+                    бара. График показывает рыночные свечи выбранной монеты.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="font-sans text-sm font-bold text-white">Сигналов по этому инструменту нет</div>
+                  <p className="ui-helper leading-relaxed">
+                    Стратегии публикуют сетап редко и только на фактических закрытых свечах. Пустая лента —
+                    норма, а не ошибка. График показывает рыночные свечи выбранной монеты.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* 2. Сводка выбранного сигнала с компактной ценовой полосой */}
+          <SignalSummaryCard model={activeSignal} />
+          {activeSignal && selectedProvenance && selectedProvenance !== 'VERIFIED' && (
+            <p className="ui-helper text-amber-300" data-qa="signals-provenance-note">
+              Происхождение строки: <span className="font-mono">{selectedProvenance}</span> — карантин
+              происхождения (миграция 011). Такой сигнал показывается как факт серверной БД, но НЕ попадает в
+              продакшн-уведомления колокольчика.
+            </p>
+          )}
+
+          {/* 3. Доминантный свечной график выбранного инструмента */}
+          <SignalChartCard
+            symbol={baseSymbol}
+            pair={pair}
+            timeframe={chartTimeframe}
+            onTimeframeChange={setChartTimeframe}
+            candles={candlesState.candles}
+            realtimeKline={candlesState.realtimeKline}
+            candlePhase={candlesState.phase}
+            candleError={candlesState.errorMessage}
+            markers={markers}
+            levelLines={levelLines}
+            activeSignal={activeSignal}
+            onMarkerSelect={selectSignal}
+            selectedSignalTimeframe={activeSignal?.timeframe ?? null}
+            height={380}
+          />
+
+          {/* 4. Детали и уровни выбранного сигнала */}
+          <SignalDetailsPanel model={activeSignal} />
+
+          {/* 5. История выбранного инструмента (второстепенно) */}
+          <section className="terminal-section" data-qa="signals-asset-history">
+            <div className="terminal-section__header">
+              <div>
+                <span className="eyebrow">CURRENT ASSET</span>
+                <h2 className="terminal-section__title">История {pair}</h2>
+              </div>
+              <span className="terminal-section__meta font-mono text-xs">{assetHistoryQuery.total} записей</span>
+            </div>
+            <SignalHistoryList
+              models={assetHistoryModels}
+              total={assetHistoryQuery.total}
+              hasMore={assetHistoryQuery.hasMore}
+              loadingMore={assetHistoryQuery.loadingMore}
+              onLoadMore={assetHistoryQuery.loadMore}
+              selectedId={activeSignal?.id ?? null}
+              onSelect={selectSignal}
+              title={`История ${pair}`}
+            />
+          </section>
+
+          {/* 6. Статистика эффективности */}
+          <section className="terminal-section" data-qa="signals-statistics-scope">
+            <div className="terminal-section__header">
+              <div>
+                <span className="eyebrow">PERFORMANCE</span>
+                <h2 className="terminal-section__title">Статистика</h2>
+              </div>
+              <div className="scope-switch" role="group" aria-label="Statistics scope">
+                <button
+                  type="button"
+                  className={statisticsScope === 'global' ? 'is-active' : ''}
+                  onClick={() => setStatisticsScope('global')}
+                >
+                  ВСЕ СИГНАЛЫ
+                </button>
+                <button
+                  type="button"
+                  className={statisticsScope === 'asset' ? 'is-active' : ''}
+                  onClick={() => setStatisticsScope('asset')}
+                >
+                  ТЕКУЩАЯ МОНЕТА
+                </button>
+              </div>
+            </div>
+            <SignalStatisticsPanel symbol={statisticsScope === 'asset' ? baseSymbol : null} pollMs={STATISTICS_POLL_MS} />
+          </section>
+
+          {/* 7. Аудит и кодекс прозрачности */}
+          <SignalsLedgerAuditSection
+            serverStats={serverStats}
+            ledgerSummary={ledgerSummary}
+            integrityVerified={integrityVerified}
+          />
         </div>
-      )}
-
-      {/* 2. Сводка последнего/выбранного сигнала + происхождение (карантин 011) */}
-      <SignalSummaryCard model={activeSignal} />
-      {activeSignal && selectedProvenance && selectedProvenance !== 'VERIFIED' && (
-        <p className="ui-helper text-amber-300" data-qa="signals-provenance-note">
-          Происхождение строки: <span className="font-mono">{selectedProvenance}</span> — карантин
-          происхождения (миграция 011). Такой сигнал показывается как факт серверной БД, но НЕ попадает в
-          продакшн-уведомления колокольчика.
-        </p>
-      )}
-
-      {/* 3. Свечной график */}
-      <SignalChartCard
-        symbol={baseSymbol}
-        pair={pair}
-        timeframe={chartTimeframe}
-        onTimeframeChange={setChartTimeframe}
-        candles={candlesState.candles}
-        realtimeKline={candlesState.realtimeKline}
-        candlePhase={candlesState.phase}
-        candleError={candlesState.errorMessage}
-        markers={markers}
-        levelLines={levelLines}
-        activeSignal={activeSignal}
-        onMarkerSelect={selectSignal}
-        selectedSignalTimeframe={activeSignal?.timeframe ?? null}
-        height={320}
-      />
-
-      {/* 4. Уровни выбранного сигнала + детали */}
-      <SignalDetailsPanel model={activeSignal} />
-
-      {/* 5. Asset history is intentionally separate from the global feed. */}
-      <section className="terminal-section" data-qa="signals-asset-history">
-        <div className="terminal-section__header">
-          <div>
-            <span className="eyebrow">CURRENT ASSET</span>
-            <h2 className="terminal-section__title">{pair} history</h2>
-          </div>
-          <span className="terminal-section__meta">{assetHistoryQuery.total} records</span>
-        </div>
-        <SignalHistoryList
-          models={assetHistoryModels}
-          total={assetHistoryQuery.total}
-          hasMore={assetHistoryQuery.hasMore}
-          loadingMore={assetHistoryQuery.loadingMore}
-          onLoadMore={assetHistoryQuery.loadMore}
-          selectedId={activeSignal?.id ?? null}
-          onSelect={selectSignal}
-        />
-      </section>
-
-      {/* 6. Global statistics by default; asset scope requires an explicit action. */}
-      <section className="terminal-section" data-qa="signals-statistics-scope">
-        <div className="terminal-section__header">
-          <div><span className="eyebrow">PERFORMANCE</span><h2 className="terminal-section__title">Statistics</h2></div>
-          <div className="scope-switch" role="group" aria-label="Statistics scope">
-            <button type="button" className={statisticsScope === 'global' ? 'is-active' : ''} onClick={() => setStatisticsScope('global')}>ALL SIGNALS</button>
-            <button type="button" className={statisticsScope === 'asset' ? 'is-active' : ''} onClick={() => setStatisticsScope('asset')}>CURRENT ASSET</button>
-          </div>
-        </div>
-        <SignalStatisticsPanel symbol={statisticsScope === 'asset' ? baseSymbol : null} pollMs={STATISTICS_POLL_MS} />
-      </section>
-
-      {/* 7. Статистика и аудит — второстепенно, сворачиваемо */}
-      <SignalsLedgerAuditSection
-        serverStats={serverStats}
-        ledgerSummary={ledgerSummary}
-        integrityVerified={integrityVerified}
-      />
+      </div>
     </div>
   );
 };
