@@ -309,6 +309,8 @@ interface RequestLog {
    * это не веер по вселенной и не запрос страницы.
    */
   bellFeedCount: number;
+  /** Requests for the authorized unfiltered Signals Home feed. */
+  globalFeedCount: number;
   /** Запросы вселенной селектора (открытие/поиск не должны грузить свечи). */
   universeCount: number;
 }
@@ -319,6 +321,7 @@ function newLog(): RequestLog {
     klinesTotal: 0,
     signalsBySymbol: new Map(),
     bellFeedCount: 0,
+    globalFeedCount: 0,
     universeCount: 0,
   };
 }
@@ -382,7 +385,8 @@ async function installSignalsFixtures(page: Page, log: RequestLog, opts: Fixture
     // bell's application feed is the separate unfiltered limit=50 request.
     // Keep both boundaries explicit so the audit does not confuse them.
     if (!base && isBellFeed) log.bellFeedCount += 1;
-    else if (base) log.signalsBySymbol.set(base, (log.signalsBySymbol.get(base) ?? 0) + 1);
+    else if (!base) log.globalFeedCount += 1;
+    else log.signalsBySymbol.set(base, (log.signalsBySymbol.get(base) ?? 0) + 1);
     const signals = opts.feed ? opts.feed() : !base ? BTC_SIGNALS : base === 'BTC' ? BTC_SIGNALS : base === 'SOL' ? SOL_SIGNALS : [];
     return route.fulfill({
       status: 200,
@@ -560,7 +564,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     await expect(page.getByTestId('signals-empty')).toHaveAttribute('data-state', 'empty');
     await expect(page.getByTestId('signals-empty')).toContainText('Сигналов по этому инструменту нет');
     await expect(page.getByTestId('signals-empty')).toHaveCount(1);
-    await expect(page.getByTestId('signals-global-feed').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(0);
+    await expect(page.getByTestId('signals-asset-history').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(0);
 
     // График при этом рисуется (свечи выбранного инструмента).
     await expect(page.getByTestId('signals-chart-card')).toBeVisible();
@@ -574,7 +578,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     const info = test.info();
     const phases: Array<{ phase: string; feed: number; feedSymbols: number; klines: number; universe: number }> = [];
     const snap = (label: string) => {
-      const feedTotal = [...log.signalsBySymbol.values()].reduce((a, b) => a + b, 0);
+      const feedTotal = log.globalFeedCount + [...log.signalsBySymbol.values()].reduce((a, b) => a + b, 0);
       const rec = { phase: label, feed: feedTotal, feedSymbols: log.signalsBySymbol.size, klines: log.klinesTotal, universe: log.universeCount };
       phases.push(rec);
       info.annotations.push({
@@ -647,7 +651,7 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
       fs.mkdirSync('e2e', { recursive: true });
       fs.writeFileSync(
         'e2e/.request-audit.json',
-        JSON.stringify({ phases, signalsBySymbol: Object.fromEntries(log.signalsBySymbol), klinesBySymbol: Object.fromEntries(log.klinesBySymbol), klinesTotal: log.klinesTotal, bellFeedCount: log.bellFeedCount, universeCount: log.universeCount }, null, 2)
+        JSON.stringify({ phases, globalFeedCount: log.globalFeedCount, signalsBySymbol: Object.fromEntries(log.signalsBySymbol), klinesBySymbol: Object.fromEntries(log.klinesBySymbol), klinesTotal: log.klinesTotal, bellFeedCount: log.bellFeedCount, universeCount: log.universeCount }, null, 2)
       );
     } catch {
       /* нефатально */
