@@ -560,11 +560,11 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     // BUG B: пустое состояние ОДНО. Раньше на экране были два разных блока
     // про «нет сигналов» (страничный и внутри сводки) — тест обновлён под
     // единственный блок, дубль удалён из продукта.
-    await expect(page.getByTestId('signals-empty')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('signals-empty')).toHaveAttribute('data-state', 'empty');
-    await expect(page.getByTestId('signals-empty')).toContainText('Сигналов по этому инструменту нет');
-    await expect(page.getByTestId('signals-empty')).toHaveCount(1);
-    await expect(page.getByTestId('signals-asset-history').getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(0);
+    const assetHistory = page.getByTestId('signals-asset-history');
+    await expect(assetHistory.getByTestId('signals-history')).toContainText('Сигналов пока нет');
+    await expect(assetHistory.getByTestId('signals-history').locator('[data-qa="signal-card"]')).toHaveCount(0);
+    // The global feed remains populated; empty state is scoped to the selected asset.
+    await expect(page.getByTestId('signals-empty')).toHaveCount(0);
 
     // График при этом рисуется (свечи выбранного инструмента).
     await expect(page.getByTestId('signals-chart-card')).toBeVisible();
@@ -796,8 +796,8 @@ test.describe('Signals V2: server-driven /signals (network-boundary fixtures)', 
     // 8) Выбор из результатов не сбрасывает ввод обратно в пустую строку.
     await search.fill('SOL');
     await page.getByTestId('symbol-picker-option-SOL').click();
-    await expect(page.getByTestId('signals-empty')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('signals-empty')).toHaveAttribute('data-state', 'empty');
+    await expect(page.getByTestId('signals-asset-history').getByTestId('signals-history')).toContainText('Сигналов пока нет');
+    await expect(page.getByTestId('signals-empty')).toHaveCount(0);
 
     await shot(page, 'signals-selector-search');
   });
