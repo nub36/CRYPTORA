@@ -297,6 +297,8 @@ describe('LiveMarketDataProvider Unit Tests (Multi-Exchange & Fallback)', () => 
     const provider = new LiveMarketDataProvider({
       binanceAdapter: binanceMock,
       futuresAdapter: futuresAdapterMock,
+      // Radar is server-authoritative; this unit remains network-isolated.
+      radarEventsFetcher: async () => [],
     });
 
     // LIVE-FIRST: без фактического источника деривативов — честная ошибка, а не демо-датасет.

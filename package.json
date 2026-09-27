@@ -10,7 +10,7 @@
     "articles:index": "node scripts/build-articles-index.mjs",
     "prebuild": "node scripts/build-articles-index.mjs",
     "build": "tsc -b && vite build",
-    "start": "node server/productionServer.js",
+    "start": "node server/index.js",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -41,6 +41,7 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
     "tailwind-merge": "^2.6.0",
+    "ws": "^8.21.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {

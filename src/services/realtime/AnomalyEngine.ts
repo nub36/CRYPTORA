@@ -1,337 +1,97 @@
-import { RadarEvent, RadarSeverity } from '@/types/market';
+import { RadarEvent } from '@/types/market';
 import { TickerTick } from '@/types/realtime';
 import { EventBus } from './EventBus';
+import {
+  AnomalyCalculationCore,
+  type AnomalyCoreStatus,
+  type AnomalySymbolStatus as CoreAnomalySymbolStatus,
+  type FrozenAnomalyOptions,
+} from '../../../shared/radar/anomalyCalculationCore.js';
 
-export interface AnomalyEngineOptions {
-  windowSize?: number; // default 20
-  volumeZScoreHighThreshold?: number; // default 3.0
-  volumeZScoreMedThreshold?: number; // default 2.0
-  priceVelocityHighThreshold?: number; // default 4.0 (%)
-  priceVelocityMedThreshold?: number; // default 2.5 (%)
-  volatilityExpansionHighThreshold?: number; // default 2.5x
-  volatilityExpansionMedThreshold?: number; // default 1.8x
-  cooldownMs?: number; // default 30000 ms (30s)
-  maxBufferedEvents?: number; // default 100
+/**
+ * Browser adapter around the shared frozen calculation core.
+ *
+ * Production Radar no longer constructs this adapter: the backend imports the
+ * same core directly. This class remains for deterministic unit/debug uses and
+ * preserves the legacy browser EventBus/buffer API without becoming a second
+ * authoritative event source.
+ */
+export interface AnomalyEngineOptions extends FrozenAnomalyOptions {
+  maxBufferedEvents?: number;
 }
 
-interface SymbolHistory {
-  volumes: number[];
-  prices: { price: number; timestamp: number }[];
-  ranges: number[];
-}
+export type AnomalySymbolStatus = CoreAnomalySymbolStatus;
 
-export interface AnomalySymbolStatus {
-  symbol: string;
-  volumeObservations: number;
-  priceObservations: number;
-  rangeObservations: number;
-  /** Smallest detector history for this symbol; honest warm-up floor across the live detectors. */
-  observationCount: number;
-  /** Largest detector history for this symbol; useful for aggregate “max N/window” UI. */
-  maxObservationCount: number;
-  warmed: boolean;
-}
-
-export interface AnomalyEngineStatus {
-  windowSize: number;
-  trackedSymbols: number;
+export interface AnomalyEngineStatus extends AnomalyCoreStatus {
   bufferedEvents: number;
-  warmedSymbols: number;
-  maxObservations: number;
-  symbols: AnomalySymbolStatus[];
 }
 
 export class AnomalyEngine {
-  private windowSize: number;
-  private volumeZScoreHigh: number;
-  private volumeZScoreMed: number;
-  private priceVelocityHigh: number;
-  private priceVelocityMed: number;
-  private volatilityExpansionHigh: number;
-  private volatilityExpansionMed: number;
-  private cooldownMs: number;
-  private maxBufferedEvents: number;
-
-  private symbolHistories: Map<string, SymbolHistory> = new Map();
-  private lastAlertTimestamp: Map<string, number> = new Map(); // key: symbol:anomalyType
+  private readonly core: AnomalyCalculationCore;
+  private readonly maxBufferedEvents: number;
   private bufferedEvents: RadarEvent[] = [];
   private eventBus?: EventBus;
 
   constructor(options: AnomalyEngineOptions = {}, eventBus?: EventBus) {
-    this.windowSize = options.windowSize ?? 20;
-    this.volumeZScoreHigh = options.volumeZScoreHighThreshold ?? 3.0;
-    this.volumeZScoreMed = options.volumeZScoreMedThreshold ?? 2.0;
-    this.priceVelocityHigh = options.priceVelocityHighThreshold ?? 4.0;
-    this.priceVelocityMed = options.priceVelocityMedThreshold ?? 2.5;
-    this.volatilityExpansionHigh = options.volatilityExpansionHighThreshold ?? 2.5;
-    this.volatilityExpansionMed = options.volatilityExpansionMedThreshold ?? 1.8;
-    this.cooldownMs = options.cooldownMs ?? 30000;
+    this.core = new AnomalyCalculationCore(options);
     this.maxBufferedEvents = options.maxBufferedEvents ?? 100;
     this.eventBus = eventBus;
   }
 
-  /**
-   * Process a ticker tick through anomaly detection pipelines.
-   * Returns newly triggered RadarEvent if any anomaly was detected, or null.
-   */
   public processTick(tick: TickerTick): RadarEvent[] {
-    const detected: RadarEvent[] = [];
-    const symbol = tick.symbol;
-
-    let history = this.symbolHistories.get(symbol);
-    if (!history) {
-      history = { volumes: [], prices: [], ranges: [] };
-      this.symbolHistories.set(symbol, history);
-    }
-
-    // 1. Check Volume Spike (Z-Score)
-    if (tick.volume24h > 0) {
-      const volumeAnomaly = this.evaluateVolumeSpike(symbol, tick.volume24h, history.volumes);
-      if (volumeAnomaly) detected.push(volumeAnomaly);
-      history.volumes.push(tick.volume24h);
-      if (history.volumes.length > this.windowSize) {
-        history.volumes.shift();
-      }
-    }
-
-    // 2. Check Price Velocity
-    const priceAnomaly = this.evaluatePriceVelocity(symbol, tick.price, tick.timestamp, history.prices);
-    if (priceAnomaly) detected.push(priceAnomaly);
-    history.prices.push({ price: tick.price, timestamp: tick.timestamp });
-    if (history.prices.length > this.windowSize) {
-      history.prices.shift();
-    }
-
-    // 3. Check Volatility Expansion
-    const currentRange = tick.high24h - tick.low24h;
-    if (currentRange > 0 && tick.price > 0) {
-      const rangeRatio = (currentRange / tick.price) * 100;
-      const volatilityAnomaly = this.evaluateVolatilityExpansion(symbol, rangeRatio, history.ranges);
-      if (volatilityAnomaly) detected.push(volatilityAnomaly);
-      history.ranges.push(rangeRatio);
-      if (history.ranges.length > this.windowSize) {
-        history.ranges.shift();
-      }
-    }
-
-    // Buffer and dispatch detected events
+    const detected = this.core.processTick(tick);
     for (const event of detected) {
       this.addEvent(event);
-      if (this.eventBus) {
-        this.eventBus.publishRadarEvent(event);
-      }
+      this.eventBus?.publishRadarEvent(event);
     }
-
     return detected;
   }
 
-  /**
-   * Evaluate Volume Z-Score:
-   * Z = (V - mean) / stdDev
-   */
+  /** Legacy public test/debug seams delegate to the one shared calculation source. */
   public evaluateVolumeSpike(symbol: string, currentVolume: number, historicalVolumes: number[]): RadarEvent | null {
-    if (historicalVolumes.length < 5) return null;
-
-    const mean = historicalVolumes.reduce((acc, v) => acc + v, 0) / historicalVolumes.length;
-    const variance =
-      historicalVolumes.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / historicalVolumes.length;
-    const stdDev = Math.max(Math.sqrt(variance), mean * 0.02);
-
-    if (stdDev <= 0) return null;
-
-    const zScore = (currentVolume - mean) / stdDev;
-
-    if (zScore >= this.volumeZScoreMed) {
-      const severity: RadarSeverity = zScore >= this.volumeZScoreHigh ? 'HIGH' : 'MEDIUM';
-      const anomalyKey = `${symbol}:VOLUME_SPIKE`;
-
-      if (this.isCooldownActive(anomalyKey)) return null;
-
-      this.recordAlert(anomalyKey);
-
-      return {
-        id: `radar-vol-${symbol}-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        symbol,
-        type: 'VOLUME_SPIKE',
-        severity,
-        metricValue: `Z-Score: +${zScore.toFixed(2)}σ`,
-        observation: `Аномальный объем: Z-Score +${zScore.toFixed(1)}σ выше скользящего среднего (${currentVolume.toLocaleString('en-US', { maximumFractionDigits: 0 })}).`,
-        isDemo: false,
-        metadata: {
-          zScore,
-          currentVolume,
-          mean,
-          stdDev,
-        },
-      };
-    }
-
-    return null;
+    return this.core.evaluateVolumeSpike(symbol, currentVolume, historicalVolumes);
   }
 
-  /**
-   * Evaluate rapid price changes over short window.
-   */
   public evaluatePriceVelocity(
     symbol: string,
     currentPrice: number,
     currentTime: number,
-    historicalPrices: { price: number; timestamp: number }[]
+    historicalPrices: { price: number; timestamp: number }[],
   ): RadarEvent | null {
-    if (historicalPrices.length < 3) return null;
-
-    // Compare with price from ~1 to 5 min ago (or oldest in short window)
-    const baseline = historicalPrices[0];
-    if (!baseline || baseline.price <= 0) return null;
-
-    const priceChangePct = ((currentPrice - baseline.price) / baseline.price) * 100;
-    const absChange = Math.abs(priceChangePct);
-
-    if (absChange >= this.priceVelocityMed) {
-      const severity: RadarSeverity = absChange >= this.priceVelocityHigh ? 'HIGH' : 'MEDIUM';
-      const anomalyKey = `${symbol}:PRICE_MOVE`;
-
-      if (this.isCooldownActive(anomalyKey)) return null;
-
-      this.recordAlert(anomalyKey);
-
-      const direction = priceChangePct >= 0 ? '+' : '';
-      return {
-        id: `radar-price-${symbol}-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        symbol,
-        type: 'PRICE_MOVE',
-        severity,
-        metricValue: `${direction}${priceChangePct.toFixed(2)}%`,
-        observation: `Резкий ценовой импульс ${direction}${priceChangePct.toFixed(2)}% по ${symbol} относительно базового уровня.`,
-        isDemo: false,
-        metadata: {
-          priceChangePct,
-          currentPrice,
-          baselinePrice: baseline.price,
-          elapsedMs: currentTime - baseline.timestamp,
-        },
-      };
-    }
-
-    return null;
+    return this.core.evaluatePriceVelocity(symbol, currentPrice, currentTime, historicalPrices);
   }
 
-  /**
-   * Evaluate volatility expansion (True range percentage widening).
-   */
-  public evaluateVolatilityExpansion(
-    symbol: string,
-    currentRangePct: number,
-    historicalRanges: number[]
-  ): RadarEvent | null {
-    if (historicalRanges.length < 5) return null;
-
-    const avgRange = historicalRanges.reduce((acc, r) => acc + r, 0) / historicalRanges.length;
-    if (avgRange <= 0) return null;
-
-    const ratio = currentRangePct / avgRange;
-
-    if (ratio >= this.volatilityExpansionMed) {
-      const severity: RadarSeverity = ratio >= this.volatilityExpansionHigh ? 'HIGH' : 'MEDIUM';
-      const anomalyKey = `${symbol}:VOLATILITY_EXPANSION`;
-
-      if (this.isCooldownActive(anomalyKey)) return null;
-
-      this.recordAlert(anomalyKey);
-
-      return {
-        id: `radar-volat-${symbol}-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        symbol,
-        type: 'VOLATILITY_EXPANSION',
-        severity,
-        metricValue: `${ratio.toFixed(1)}x avg range`,
-        observation: `Расширение волатильности: суточный диапазон в ${ratio.toFixed(1)} раза превышает средний показатель.`,
-        isDemo: false,
-        metadata: {
-          ratio,
-          currentRangePct,
-          avgRange,
-        },
-      };
-    }
-
-    return null;
-  }
-
-  private isCooldownActive(key: string): boolean {
-    const lastTime = this.lastAlertTimestamp.get(key);
-    if (!lastTime) return false;
-    return Date.now() - lastTime < this.cooldownMs;
-  }
-
-  private recordAlert(key: string): void {
-    this.lastAlertTimestamp.set(key, Date.now());
+  public evaluateVolatilityExpansion(symbol: string, currentRangePct: number, historicalRanges: number[]): RadarEvent | null {
+    return this.core.evaluateVolatilityExpansion(symbol, currentRangePct, historicalRanges);
   }
 
   private addEvent(event: RadarEvent): void {
     this.bufferedEvents.unshift(event);
-    if (this.bufferedEvents.length > this.maxBufferedEvents) {
-      this.bufferedEvents.pop();
-    }
+    if (this.bufferedEvents.length > this.maxBufferedEvents) this.bufferedEvents.pop();
   }
 
   public getEvents(symbol?: string): RadarEvent[] {
-    if (symbol) {
-      return this.bufferedEvents.filter((e) => e.symbol.toUpperCase() === symbol.toUpperCase());
-    }
+    if (symbol) return this.bufferedEvents.filter((event) => event.symbol.toUpperCase() === symbol.toUpperCase());
     return [...this.bufferedEvents];
   }
 
-  /**
-   * Read-only detector telemetry for UI honesty. This does not mutate histories,
-   * thresholds, cooldowns, or event math; it only reports the in-memory warm-up
-   * state that already exists inside the browser-owned engine.
-   */
   public getStatus(symbols?: readonly string[]): AnomalyEngineStatus {
-    const requested = symbols
-      ? Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))).sort()
-      : Array.from(this.symbolHistories.keys()).sort();
-
-    const symbolStatuses = requested.map<AnomalySymbolStatus>((symbol) => {
-      const history = this.symbolHistories.get(symbol);
-      const volumeObservations = history?.volumes.length ?? 0;
-      const priceObservations = history?.prices.length ?? 0;
-      const rangeObservations = history?.ranges.length ?? 0;
-      const observationCount = Math.min(volumeObservations, priceObservations, rangeObservations);
-      const maxObservationCount = Math.max(volumeObservations, priceObservations, rangeObservations);
-      return {
-        symbol,
-        volumeObservations,
-        priceObservations,
-        rangeObservations,
-        observationCount,
-        maxObservationCount,
-        warmed: observationCount >= this.windowSize,
-      };
-    });
-
-    return {
-      windowSize: this.windowSize,
-      trackedSymbols: this.symbolHistories.size,
-      bufferedEvents: this.bufferedEvents.length,
-      warmedSymbols: symbolStatuses.filter((s) => s.warmed).length,
-      maxObservations: symbolStatuses.reduce((max, s) => Math.max(max, s.maxObservationCount), 0),
-      symbols: symbolStatuses,
-    };
+    return { ...this.core.getStatus(symbols), bufferedEvents: this.bufferedEvents.length };
   }
 
   public seedInitialEvents(events: RadarEvent[]): void {
-    for (const e of events) {
-      this.bufferedEvents.push(e);
-    }
+    for (const event of events) this.bufferedEvents.push(event);
+  }
+
+  /** Clears no calculations beyond the requested removed universe symbols. */
+  public clearSymbols(symbols: readonly string[]): void {
+    this.core.clearSymbols(symbols);
+    const removed = new Set(symbols.map((symbol) => symbol.trim().toUpperCase()));
+    this.bufferedEvents = this.bufferedEvents.filter((event) => !removed.has(event.symbol.toUpperCase()));
   }
 
   public clear(): void {
-    this.symbolHistories.clear();
-    this.lastAlertTimestamp.clear();
+    this.core.clear();
     this.bufferedEvents = [];
   }
 }

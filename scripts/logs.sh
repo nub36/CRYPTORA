@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # CRYPTORA Operations: logs.sh
-# Streams or displays production logs
+# Supported production logs: one systemd cryptora.service running server/index.
 # ==============================================================================
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LINES="${1:-50}"
+set -euo pipefail
 
-if command -v journalctl >/dev/null 2>&1 && systemctl is-active --quiet cryptora 2>/dev/null; then
-    journalctl -u cryptora -n "$LINES" --no-pager
-elif [ -f "$REPO_ROOT/server.log" ]; then
-    tail -n "$LINES" "$REPO_ROOT/server.log"
-else
-    echo "No log file found at $REPO_ROOT/server.log and systemd unit not active."
+LINES="${1:-50}"
+if ! command -v journalctl >/dev/null 2>&1 || ! systemctl cat cryptora >/dev/null 2>&1; then
+  echo "ERROR: cryptora.service/journald is required for supported production logs." >&2
+  exit 2
 fi
+
+journalctl -u cryptora -n "$LINES" --no-pager
