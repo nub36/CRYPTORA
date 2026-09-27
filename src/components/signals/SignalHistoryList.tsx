@@ -56,15 +56,15 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
                   data-status={m.status}
                   data-direction={m.direction}
                   data-strategy={m.strategyId}
-                  className={`group relative flex min-h-[42px] w-full flex-col justify-center gap-0.5 rounded border px-2 py-0.5 text-left transition-all ${
+                  className={`group relative flex min-h-[46px] w-full min-w-0 flex-col justify-center gap-0.5 rounded border px-2 py-1 text-left transition-all ${
                     selected
                       ? 'border-l-4 border-l-brand-cyan border-brand-cyan/60 bg-brand-cyan/10 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.12)]'
                       : 'border-l-2 border-l-transparent border-surface-border/40 bg-surface-elevated/30 hover:border-surface-border hover:bg-surface-hover'
                   }`}
                 >
                   {/* Primary row: only the identity needed for rapid tape scanning. */}
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="shrink-0 font-mono text-xs font-bold text-white transition-colors group-hover:text-cyan-300">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <span className="max-w-full shrink-0 break-words font-mono text-xs font-bold text-white transition-colors group-hover:text-cyan-300">
                       {m.pair}
                     </span>
                     <Badge
@@ -77,12 +77,12 @@ export const SignalHistoryList: React.FC<SignalHistoryListProps> = ({
                     <span className="shrink-0 rounded border border-surface-border/60 bg-surface-inset/80 px-1 text-[11px] font-mono text-slate-300">
                       {m.strategyShort}
                     </span>
-                    <span className="shrink-0 text-[11px] font-mono text-slate-400">{m.timeframe}</span>
+                    <span className="shrink-0 rounded border border-surface-border/40 px-1 font-mono text-[11px] text-slate-400">{m.timeframe}</span>
                   </div>
 
-                  {/* Secondary row: lifecycle status and time; verbose entry prose stays in the inspector. */}
-                  <div className="flex min-w-0 items-center justify-between gap-2 text-[11px]">
-                    <span className="flex min-w-0 items-center gap-1 truncate text-slate-400">
+                  {/* Secondary row: lifecycle status and time; both may reflow on narrow screens. */}
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px]">
+                    <span className="flex min-w-0 max-w-full items-center gap-1 text-slate-400">
                       <span
                         className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
                           m.status === 'ACTIVE'

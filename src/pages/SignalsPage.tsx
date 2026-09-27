@@ -354,7 +354,12 @@ export const SignalsPage: React.FC = () => {
             data-qa="signals-timezone-label"
             title={`Ваш часовой пояс: ${timeZoneLabel('BROWSER')} (${shortOffset('BROWSER')}). В базе и API время хранится в UTC.`}
           >
-            {timeZoneLabelWithOffset('BROWSER')}
+            <span className="hidden min-[481px]:inline" data-qa="signals-timezone-label-full">
+              {timeZoneLabelWithOffset('BROWSER')}
+            </span>
+            <span className="inline min-[481px]:hidden" data-qa="signals-timezone-label-compact">
+              {shortOffset('BROWSER')}
+            </span>
           </span>
         </div>
       </div>
@@ -373,7 +378,7 @@ export const SignalsPage: React.FC = () => {
                 {signalsQuery.total} открыто · {signalsQuery.source ?? 'server'}
               </span>
             </div>
-            <div className="max-h-60 sm:max-h-72 lg:max-h-[calc(100vh-170px)] overflow-y-auto pr-0.5">
+            <div className="max-h-none overflow-visible pr-0.5 sm:max-h-72 sm:overflow-y-auto lg:max-h-[calc(100vh-170px)]">
               <SignalHistoryList
                 models={models}
                 total={signalsQuery.total}

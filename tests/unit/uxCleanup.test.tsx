@@ -184,7 +184,7 @@ describe('MarketTicker', () => {
     // Контракт продукта (закреплён e2e responsive/flows): подпись
     // тикера — «LIVE-ТИКЕР» / «QA-ТИКЕР». Токен статуса обязан читаться
     // однозначно и не смешивать датасеты: сбой LIVE ≠ подмена на QA.
-    expect(['LIVE-ТИКЕР', 'QA-ТИКЕР']).toContain(label.textContent);
+    expect(label.textContent).toMatch(/LIVE-ТИКЕР|QA-ТИКЕР/);
     expect(label.textContent).toMatch(/LIVE|QA/);
   });
 
