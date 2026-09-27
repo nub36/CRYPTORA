@@ -7,6 +7,20 @@
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
+/**
+ * Radar retention is a storage-policy switch, not detector math. `0` means an
+ * owner explicitly disabled automatic expiry; otherwise only positive whole
+ * days are accepted so a typo cannot silently disable bounded cleanup.
+ */
+function parseRadarRetentionDays(raw = process.env.RADAR_EVENT_RETENTION_DAYS || '30') {
+  const value = String(raw).trim();
+  if (value === '0') return null;
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error('RADAR_EVENT_RETENTION_DAYS must be 0 (disabled) or a positive integer number of days');
+  }
+  return Number(value);
+}
+
 export const config = {
   NODE_ENV,
 
@@ -48,10 +62,10 @@ export const config = {
   REGISTER_RATE_LIMIT: parseInt(process.env.REGISTER_RATE_LIMIT || '5', 10),
   API_RATE_LIMIT: parseInt(process.env.API_RATE_LIMIT || '100', 10),
 
-  // Radar event retention is operational storage policy, not anomaly math.
-  // A positive finite default prevents unbounded history growth; it is documented
-  // in docs/RADAR.md and can be raised by the owner without code changes.
-  RADAR_EVENT_RETENTION_DAYS: parseInt(process.env.RADAR_EVENT_RETENTION_DAYS || '30', 10),
+  // Proposed default operational retention policy, not anomaly math. `0` is
+  // an explicit owner choice to disable automatic expiry; other values must be
+  // positive whole days and are validated at startup.
+  RADAR_EVENT_RETENTION_DAYS: parseRadarRetentionDays(),
 
   // Resend verification email: 3 requests / 15 minutes per IP
   RESEND_RATE_LIMIT: parseInt(process.env.RESEND_RATE_LIMIT || '3', 10),

@@ -2,6 +2,16 @@ import { RadarEvent, RadarEventSchema } from '@/types/market';
 
 export type ServerRadarLifecycle = 'stopped' | 'unavailable' | 'idle' | 'warming' | 'live' | 'feed-stale' | 'feed-disconnected';
 
+/** Bounded public categories; raw provider/database exception text never crosses /api/radar/status. */
+export type ServerRadarErrorCode =
+  | 'STARTUP_ERROR'
+  | 'UNIVERSE_UNAVAILABLE'
+  | 'UNIVERSE_REFRESH_ERROR'
+  | 'MARKET_FEED_ERROR'
+  | 'PERSISTENCE_ERROR'
+  | 'RETENTION_CLEANUP_ERROR'
+  | 'INTERNAL_ERROR';
+
 export interface ServerRadarStatus {
   source: 'server';
   running: boolean;
@@ -33,7 +43,6 @@ export interface ServerRadarStatus {
     stale: boolean;
     reconnectAttempt: number;
     source: 'binance-spot-ticker';
-    error?: string | null;
   };
   startedAt: string | null;
   lastUniverseRefreshAt: string | null;
@@ -41,8 +50,9 @@ export interface ServerRadarStatus {
   persistedEvents: number;
   deduplicatedEvents: number;
   retainedDeletes: number;
-  retentionDays: number;
-  lastError: string | null;
+  /** null means automatic retention was explicitly disabled with env value 0. */
+  retentionDays: number | null;
+  errorCode: ServerRadarErrorCode | null;
 }
 
 function assertResponse(response: Response): Response {

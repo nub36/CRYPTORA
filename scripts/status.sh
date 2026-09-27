@@ -19,12 +19,13 @@ else
     echo "• Systemd Service: Inactive or not installed"
 fi
 
-# Check Node process
-NODE_PIDS=$(pgrep -f "productionServer.js" || true)
+# Check the only supported backend process. productionServer.js is not a
+# production backend and must never be used as a restart fallback.
+NODE_PIDS=$(pgrep -f "server/index.js" || true)
 if [ -n "$NODE_PIDS" ]; then
-    echo "• Production Node Process: RUNNING (PID: $NODE_PIDS)"
+    echo "• Production Node Backend (server/index.js): RUNNING (PID: $NODE_PIDS)"
 else
-    echo "• Production Node Process: NOT FOUND"
+    echo "• Production Node Backend (server/index.js): NOT FOUND"
 fi
 
 # Test Health Endpoint

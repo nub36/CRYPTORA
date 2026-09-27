@@ -30,7 +30,7 @@ const liveStatus = {
   deduplicatedEvents: 0,
   retainedDeletes: 0,
   retentionDays: 30,
-  lastError: null,
+  errorCode: null,
 };
 
 async function installServerRadarFixtures(page: Page): Promise<void> {

@@ -53,10 +53,12 @@ function universe(symbols: string[]) {
   return { saved: symbols, effective: symbols, inactive: [], activeKnown: true, activeCount: 999 };
 }
 
-function makeMonitor({ current = universe(['BTC']), persisted = new Set<string>(), cooldownMs = 30_000 }: {
+function makeMonitor({ current = universe(['BTC']), persisted = new Set<string>(), cooldownMs = 30_000, retentionDays = 30, purgeExpired = async () => 0 }: {
   current?: ReturnType<typeof universe>;
   persisted?: Set<string>;
   cooldownMs?: number;
+  retentionDays?: number | null;
+  purgeExpired?: () => Promise<number>;
 } = {}) {
   let currentUniverse = current;
   let notify: (() => void) | null = null;
@@ -77,8 +79,8 @@ function makeMonitor({ current = universe(['BTC']), persisted = new Set<string>(
       writes.push({ event, sourceTickTimestamp, key });
       return { inserted: true, event, key };
     },
-    purgeExpired: async () => 0,
-    retentionDays: 30,
+    purgeExpired,
+    retentionDays,
     logger: { error: () => undefined },
   });
   return {
@@ -102,6 +104,22 @@ describe('server RadarMonitor lifecycle', () => {
       lifecycle: 'warming',
       marketFeed: { state: 'connected', subscribedSymbols: 2 },
     });
+    await fixture.monitor.stop();
+  });
+
+  it('treats explicit retention value 0 as disabled cleanup without changing detector behavior', async () => {
+    let purgeCalls = 0;
+    const fixture = makeMonitor({
+      retentionDays: null,
+      purgeExpired: async () => {
+        purgeCalls += 1;
+        return 99;
+      },
+    });
+    await fixture.monitor.start();
+    expect(await fixture.monitor.runRetention()).toBe(0);
+    expect(purgeCalls).toBe(0);
+    expect(fixture.monitor.getStatus().retentionDays).toBeNull();
     await fixture.monitor.stop();
   });
 

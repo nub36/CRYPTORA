@@ -35,3 +35,8 @@ CREATE INDEX IF NOT EXISTS idx_radar_events_event_timestamp_desc
   ON radar_events (event_timestamp DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_radar_events_symbol_event_timestamp_desc
   ON radar_events (symbol, event_timestamp DESC, id DESC);
+
+-- Retention selects the oldest rows by created_at before deleting a bounded
+-- batch. Keep that selection index-backed as the append-only history grows.
+CREATE INDEX IF NOT EXISTS idx_radar_events_created_at_asc
+  ON radar_events (created_at ASC, id ASC);

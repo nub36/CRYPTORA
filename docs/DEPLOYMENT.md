@@ -34,17 +34,18 @@
                 │   - Fixed Binance/KuCoin upstreams     │
                 │   - Server Radar monitor (one Binance  │
                 │     ticker WS + PostgreSQL history)    │
-                │   - Managed via Systemd / PM2           │
+                │   - One systemd process only           │
                 └─────────────────────────────────────────┘
-
-`server/productionServer.js` is the legacy standalone static-server alternative; it also implements
-the same allowlisted `/api/market` routes. It is **not** the application backend: it has no
-PostgreSQL, no auth/sessions, no `/api/signals`, `/api/strategies`, `/api/admin/*` and no strategy
-engine, so running it instead of `server/index.js` (which is what `npm start` still does) leaves the
-terminal looking alive while every database-backed feature is gone. The deployed Nginx config serves
-static assets directly and forwards `/api/` to the Express backend on port 3000; the repository
-systemd template (`systemd/cryptora.service`) starts `server/index.js`.
 ```
+
+`server/productionServer.js` is a legacy static-server utility and is **not** a supported
+production backend: it has no PostgreSQL, auth/sessions, `/api/signals`, `/api/strategies`,
+`/api/admin/*`, or Radar monitor. `npm start` now maps to `server/index.js`, but the only supported
+production process manager is the repository `systemd/cryptora.service` unit. It is `Type=simple`
+with exactly one `ExecStart=/usr/local/bin/node /home/user/CRYPTORA/server/index.js`; PM2 cluster
+mode, Node cluster workers, and multiple service replicas are unsupported because `RadarMonitor` is
+a process-local singleton, not a distributed leader. Nginx serves static assets directly and proxies
+`/api/` to that one backend on port 3000.
 
 ### Политика режима данных: PRODUCTION = ТОЛЬКО LIVE
 
@@ -81,73 +82,117 @@ systemd template (`systemd/cryptora.service`) starts `server/index.js`.
 
 ---
 
-## 3. Путь Deployment (Пошаговая установка)
+## 3. Supported production release path
 
-### Шаг 1. Клонирование репозитория
+> This is the only supported production path. It is written for a **merged,
+> owner-approved immutable commit SHA**, never an unreviewed branch tip. Do not
+> run it from this documentation without a change window and explicit approval.
 
-```bash
-cd /home/user # или /var/www
-git clone https://github.com/nub36/CRYPTORA.git
-cd CRYPTORA
-git checkout arena/01a0a67d-cryptora # или рабочая ветка
-```
-
-### Шаг 2. Конфигурация переменных окружения
-
-```bash
-cp .env.example .env
-# Отредактируйте .env при необходимости:
-# HOST=0.0.0.0
-# PORT=3000
-# NODE_ENV=production
-```
-
-> **Безопасность:** В файле `.env` категорически запрещено хранить приватные ключи, сид-фразы или учетные данные бирж. Никаких secrets не требуется для работы с публичными данными.
-
-### Шаг 3. Сборка и валидация Quality Gates
-
-```bash
-# Установка зависимостей с автоматическим патчем Playwright JSX
-npm ci
-
-# Прохождение всех тестов и линтеров
-npm run typecheck
-npm test
-
-# Сборка production-бандла
-npm run build
-
-# Сквозное тестирование браузерных маршрутов
-npm run test:e2e
-```
-
-### Шаг 4. Настройка сервиса Systemd
-
-Скопируйте конфигурацию юнита в системную директорию:
+### 3.1 One-time service and Nginx setup
 
 ```bash
 sudo cp systemd/cryptora.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable cryptora
-sudo systemctl start cryptora
-sudo systemctl status cryptora
+
+sudo cp nginx/cryptora.conf /etc/nginx/sites-available/cryptora.conf
+sudo ln -sf /etc/nginx/sites-available/cryptora.conf /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
-### Шаг 5. Настройка веб-сервера Nginx
+`cryptora.service` is the sole supported backend process. Do not run PM2
+cluster mode, Node cluster workers, `server/productionServer.js`, or another
+replica of `server/index.js`: RadarMonitor is intentionally a process-local
+singleton and this deployment topology supplies exactly one process.
 
-1. Скопируйте конфигурационный файл:
-   ```bash
-   sudo cp nginx/cryptora.conf /etc/nginx/sites-available/cryptora.conf
-   sudo ln -sf /etc/nginx/sites-available/cryptora.conf /etc/nginx/sites-enabled/
-   ```
-2. Проверьте синтаксис:
-   ```bash
-   sudo nginx -t
-   ```
-3. Перезапустите Nginx:
-   ```bash
-   sudo systemctl reload nginx
-   ```
+### 3.2 Future approved release runbook
+
+The order is mandatory:
+
+**backup → fetch approved SHA → locked dependencies → migrations → build →
+frontend publication → systemd restart → health/Radar verification.**
+
+```bash
+# 0. Choose the owner-approved, already-merged immutable SHA.
+export RELEASE_SHA='<approved merged commit SHA>'
+cd /home/user/CRYPTORA
+
+# 1. Backup PostgreSQL before changing code or schema. Store outside the repo
+# and verify the backup according to the database restore policy.
+pg_dump --format=custom \
+  --file="/secure/backups/cryptora-before-${RELEASE_SHA}-$(date -u +%Y%m%dT%H%M%SZ).dump" \
+  "$DATABASE_URL"
+
+# 2. Fetch and verify the exact approved object, then use that immutable SHA.
+git fetch origin --tags
+git rev-parse --verify "${RELEASE_SHA}^{commit}"
+git checkout --detach "$RELEASE_SHA"
+
+# 3. Locked production dependencies, including the server `ws` dependency.
+npm ci
+
+# 4. Mandatory before restart: migration runner is transactional per file and
+# records successful files in schema_migrations, so reruns are idempotent.
+npm run migrate:status
+npm run migrate
+npm run migrate:status
+
+# 5. Validate and build the release.
+npm run typecheck
+npm test
+npm run build
+```
+
+The checked-in Nginx configuration serves `/home/user/CRYPTORA/dist` directly,
+so a build in that supported checkout publishes the frontend there. If a
+separate approved staging build is used, the only allowed publication command
+is an explicit static artifact sync to that same Nginx root — never source-code
+rsync:
+
+```bash
+sudo rsync -a --delete --delay-updates \
+  /path/to/approved-staging/dist/ /home/user/CRYPTORA/dist/
+```
+
+Only after migration and frontend publication succeed, restart the one supported
+backend process:
+
+```bash
+sudo systemctl restart cryptora
+sudo systemctl is-active --quiet cryptora
+curl --fail http://127.0.0.1:3000/api/health
+curl --fail http://127.0.0.1:3000/api/radar/status
+curl --fail 'http://127.0.0.1:3000/api/radar/events?limit=1'
+```
+
+Immediately after a normal backend restart, Radar status should be server-owned
+and normally `warming`, not `live`; after valid ticker observations for every
+effective Scan Universe symbol, verify `marketFeed.state = connected` and
+`lifecycle = live`.
+
+`RADAR_EVENT_RETENTION_DAYS=30` is a configurable **proposed default** pending
+owner/compliance approval. Set a positive integer number of days to change it;
+set `0` only when the owner explicitly chooses to disable automatic expiry. The
+setting affects `radar_events` retention only and never changes anomaly math.
+
+### 3.3 Automation contract
+
+For the supported shell path, first complete the backup and then run:
+
+```bash
+CRYPTORA_DB_BACKUP_CONFIRMED=YES ./scripts/update.sh "$RELEASE_SHA"
+```
+
+`scripts/update.sh` refuses a dirty checkout, requires an explicit approved SHA,
+runs `scripts/deploy.sh`, and only then restarts systemd. `scripts/deploy.sh`
+runs `npm ci → npm run migrate → quality gates → build`; its migration runner
+uses `schema_migrations` and is safe to rerun. `scripts/restart.sh` requires the
+same backup confirmation, reruns the idempotent migration check before restart,
+and refuses any non-systemd fallback.
+
+**Never start the new server before migration 012.** The process can boot, but
+Radar writes and history reads will fail while `radar_events` is absent.
 
 ---
 
@@ -182,30 +227,31 @@ sudo systemctl status cryptora
 
 | Команда | Описание |
 | :--- | :--- |
-| `./scripts/deploy.sh` | Полный цикл: `npm ci` -> `typecheck` -> `test` -> `build` -> валидация `dist/` |
-| `./scripts/restart.sh` | Бесшовный перезапуск службы Systemd или фонового процесса |
-| `./scripts/status.sh` | Проверка статуса сервиса, процесса Node и эндпоинта `/api/health` |
-| `./scripts/logs.sh 100` | Вывод последних 100 строк логов (`journalctl` или `server.log`) |
-| `./scripts/update.sh` | Автоматический `git pull` с последующим вызовом `deploy.sh` и `restart.sh` |
+| `CRYPTORA_DB_BACKUP_CONFIRMED=YES ./scripts/deploy.sh` | Locked dependencies → idempotent migrations → quality gates → build. Refuses to run without the backup confirmation. |
+| `CRYPTORA_DB_BACKUP_CONFIRMED=YES ./scripts/restart.sh` | Rechecks idempotent migrations, then restarts only `cryptora.service`; refuses the legacy standalone fallback. |
+| `./scripts/status.sh` | Verifies systemd, `server/index.js`, and `/api/health`. |
+| `./scripts/logs.sh 100` | Shows the systemd/journald service log. |
+| `CRYPTORA_DB_BACKUP_CONFIRMED=YES ./scripts/update.sh <approved-SHA>` | Supported release orchestration: exact SHA → deploy/migrate/build → systemd restart. |
 
 ---
 
 ## 6. Процедура отката (Rollback Procedure)
 
-В случае обнаружения деградации или ошибок после обновления:
+В случае деградации приложения откатите код на предыдущий approved SHA, снова
+соберите frontend и перезапустите только systemd service:
 
 ```bash
-# 1. Откат на предыдущий стабильный коммит
-git log -5 --oneline
-git checkout <PREVIOUS_COMMIT_HASH>
-
-# 2. Повторная сборка стабильного бандла
+git checkout --detach <PREVIOUS_APPROVED_COMMIT_SHA>
 npm ci
 npm run build
-
-# 3. Перезапуск сервиса
-./scripts/restart.sh
+sudo systemctl restart cryptora
 ```
+
+Migration 012 is additive. Old application code ignores `radar_events`, so a
+code rollback does **not** require dropping that table. Do not run destructive
+SQL as a rollback shortcut: restore the verified backup only under the separate
+owner-approved database-incident procedure. The retention setting remains an
+owner policy decision.
 
 ---
 

@@ -10,7 +10,7 @@
     "articles:index": "node scripts/build-articles-index.mjs",
     "prebuild": "node scripts/build-articles-index.mjs",
     "build": "tsc -b && vite build",
-    "start": "node server/productionServer.js",
+    "start": "node server/index.js",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

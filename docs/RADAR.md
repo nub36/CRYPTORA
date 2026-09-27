@@ -18,7 +18,7 @@ Admin Scan Universe (PostgreSQL scan_universe)
   → /radar and Overview presentation
 ```
 
-`server/index.js` owns the monitor lifecycle. It starts the singleton only after the database health check succeeds and shuts it down before PostgreSQL closes. The existing `systemd/cryptora.service` starts `server/index.js`, so normal service/process/VPS restart starts a fresh monitor automatically; no second daemon is installed.
+`server/index.js` owns the monitor lifecycle. It starts the singleton only after the database health check succeeds and shuts it down before PostgreSQL closes. The supported production topology is exactly one `Type=simple` `systemd/cryptora.service` process running `server/index.js`; PM2 cluster mode, Node cluster workers, and replica processes are unsupported because this singleton is process-local. A normal service/process/VPS restart starts a fresh monitor automatically; no second daemon is installed.
 
 A browser tab, page refresh, or number of users does **not** create a server exchange subscription or restart detector state. Browser `RealtimeFeedManager` continues to serve non-Radar UI ticker/trade/depth needs but no longer creates authoritative Radar events.
 
@@ -59,18 +59,19 @@ Migration `012_radar_events.sql` adds the additive `radar_events` table:
 - symbol/type/severity/event timestamp and UI facts;
 - JSON metrics metadata;
 - Binance Spot provenance plus source ticker timestamp;
-- unique deterministic `dedupe_key`.
+- unique deterministic `dedupe_key`;
+- oldest-first `(created_at ASC, id ASC)` retention index for bounded expiry selection.
 
 The monitor writes an emitted event through `ON CONFLICT (dedupe_key) DO NOTHING`. This protects durable history from identical ticker replays/reconnects and remains effective across monitor/process restart without changing the frozen detector cooldown semantics.
 
-**Retention decision (requires owner review before production deployment):** no prior retention policy existed. This branch explicitly proposes a configurable, bounded default of `RADAR_EVENT_RETENTION_DAYS=30` (shown in `.env.example`). The monitor deletes only expired rows in batches of at most 5,000 every six hours. This is storage policy, not anomaly math; setting must be reviewed for production retention/compliance requirements before deployment. It prevents unbounded table growth without a hidden destructive policy.
+**Retention decision (requires owner review before production deployment):** no prior retention policy existed. This branch explicitly proposes a configurable default of `RADAR_EVENT_RETENTION_DAYS=30` (shown in `.env.example`), but **owner approval remains UNKNOWN**. A positive whole-day value enables expiry; explicit `0` disables automatic expiry, rather than silently accepting an invalid value. The monitor deletes only expired `radar_events` rows in batches of at most 5,000 every six hours. Migration 012 indexes `(created_at ASC, id ASC)`, which matches the bounded oldest-first retention selection. This is storage policy, not anomaly math; the setting must be reviewed for production retention/compliance requirements before deployment.
 
 ## 6. API
 
 All endpoints are same-origin read-only APIs and expose no secrets or Admin credentials:
 
 - `GET /api/radar/events?limit=1..100&symbol=<optional>&before=<optional ISO>` — newest persisted server events, `{ events, count, source: "server" }`;
-- `GET /api/radar/status` — server monitor lifecycle, configured/effective counts, frozen-core warm-up telemetry, feed freshness/state, retention configuration, and non-secret error state.
+- `GET /api/radar/status` — server monitor lifecycle, configured/effective counts, frozen-core warm-up telemetry, feed freshness/state, and retention configuration. Failures are a bounded `errorCode` category (for example `MARKET_FEED_ERROR`), never raw PostgreSQL/provider/socket/URL exception text; detailed diagnostics remain server logs.
 
 There is no server-to-browser WebSocket/SSE service in the current project. `/radar` polls these APIs, preserving the project's existing transport conventions while the server remains 24/7 authoritative.
 

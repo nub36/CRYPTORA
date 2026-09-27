@@ -14,8 +14,11 @@
 ### Changed
 - `/radar`, Overview, and `LiveMarketDataProvider` consume server Radar history/status; browser Radar no longer creates authoritative anomalies or resets warm-up when a page reloads.
 
+### Fixed
++- Pre-merge production-safety remediation: retention selection now has a `(created_at, id)` index; public Radar status exposes bounded error codes rather than raw upstream/database exceptions; the supported release scripts enforce backup confirmation, migration before restart, immutable approved SHA, and systemd-only backend operation.
++
 ### Invariants
-- Anomaly math and strategy math are unchanged. No production migration, settings/data mutation, deployment, or merge occurred.
++- Anomaly math and strategy math are unchanged. No production migration, settings/data mutation, deployment, or merge occurred.
 
 ---
 

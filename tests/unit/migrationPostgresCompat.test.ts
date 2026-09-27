@@ -129,7 +129,7 @@ describe('migration inventory', () => {
   it('found every index definition in the migrations', () => {
     // Guards the parser itself: this is the exact index inventory of
     // 001–012 (12 from 001–005 + 1 from 006 + 4 from 007 + 1 from 009 + 1 from
-    // 010 + 1 from 011 + 2 from 012). If the count drops, a regex silently stopped matching
+    // 010 + 1 from 011 + 3 from 012). If the count drops, a regex silently stopped matching
     // and the checks below are void.
     expect(indexes.map((i) => i.name).sort()).toEqual([
       'idx_audit_log_action',
@@ -139,6 +139,7 @@ describe('migration inventory', () => {
       'idx_evt_expires_at',
       'idx_evt_token_hash',
       'idx_evt_user_id',
+      'idx_radar_events_created_at_asc',
       'idx_radar_events_event_timestamp_desc',
       'idx_radar_events_symbol_event_timestamp_desc',
       'idx_sessions_expire',

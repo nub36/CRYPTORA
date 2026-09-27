@@ -1115,12 +1115,14 @@ CHECK-доменом `('VERIFIED','MISMATCH','UNKNOWN')` и индексом п�
   как только доступна БД (`getSignalMonitor().start()`), отдельно от
   планировщика стратегий и НЕЗАВИСИМО от того, включены ли стратегии. Выключенные
   стратегии не создают новых сигналов, но старые открытые строки монитор ведёт.
-* `scripts/deploy.sh` делает `npm ci` → `typecheck` → `test` → `build`.
-  Он **НЕ** применяет миграции и **НЕ** перезапускает сервис.
-* `scripts/restart.sh` перезапускает `cryptora` через systemd; его fallback для
-  не-systemd стартует `server/productionServer.js` — legacy static-сервер БЕЗ БД,
-  auth и сигналов (см. комментарий в юните). На production путь один: systemd.
-* Миграции применяются отдельно: `npm run migrate` (`scripts/migrate.mjs`).
+* Current `scripts/deploy.sh` makes backup confirmation mandatory and executes
+  `npm ci` → `npm run migrate` → quality gates → `build`; migration occurs
+  before any supported restart and is idempotent through `schema_migrations`.
+* `scripts/restart.sh` only restarts `cryptora` through systemd and refuses a
+  non-systemd/legacy fallback. Production path is one systemd service.
+* Migrations are still provided by `npm run migrate` (`scripts/migrate.mjs`);
+  `scripts/update.sh <approved-SHA>` invokes them before restart. See
+  `docs/DEPLOYMENT.md` for the current generic release runbook.
 
 > **ПРАВИЛО, ИЗ КОТОРОГО ВЫТЕКАЕТ ВСЯ ПОСЛЕДОВАТЕЛЬНОСТЬ**
 >

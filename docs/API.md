@@ -18,7 +18,7 @@
 
 ### 1.3. Радар и скринер
 - `GET /api/radar/events?limit=1..100&symbol=<optional>&before=<optional ISO>` — persisted, newest-first server Radar history (`source: "server"`).
-- `GET /api/radar/status` — server monitor lifecycle, effective Scan Universe counts, warm-up and upstream-feed status. This endpoint does not expose exchange credentials or Admin settings.
+- `GET /api/radar/status` — server monitor lifecycle, effective Scan Universe counts, warm-up and upstream-feed status. It exposes bounded `errorCode` categories only; raw exchange/provider/PostgreSQL/socket exception details, credentials, and Admin settings never leave server logs.
 - `POST /api/v1/screener/query` — фильтрация активов по комплексному телу параметров.
 
 ---

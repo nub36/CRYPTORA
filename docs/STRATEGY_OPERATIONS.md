@@ -317,18 +317,18 @@ SHORT: stop > entry && tp1 < entry && tp2 < tp1
 ```bash
 npm ci                 # ПОЛНАЯ установка: esbuild (транзитивно через vite) нужен
                        # серверу для сборки ядра стратегий из src/
-npm run migrate        # применяет 001–009
+npm run migrate        # идемпотентно применяет pending migrations, включая 012
 npm run build          # фронтенд в dist/ — его раздаёт nginx, не Node
-npm run server         # server/index.js: Express + PostgreSQL + движок стратегий
+sudo systemctl restart cryptora  # единственный supported production backend
 ```
 
-### 10.1. Чего запускать НЕЛЬЗНО (подтверждённая ошибка эксплуатации)
+### 10.1. Supported backend process
 
-| Команда | Что на самом деле запускается | Последствие |
+| Команда | Что запускается | Политика |
 |---|---|---|
-| `npm start` | `server/productionServer.js` — legacy static-сервер для `dist/` | Нет PostgreSQL, нет auth/сессий, нет `/api/signals`, `/api/strategies`, `/api/admin/*`, **нет движка стратегий**. Внешне «сайт работает», поэтому подмену легко не заметить |
-| `npm run server` | `server/index.js` — настоящий бэкенд | Единственный корректный способ запустить бэкенд вручную |
-| `systemctl restart cryptora` | юнит из `systemd/cryptora.service` | Шаблон в репозитории теперь указывает на `server/index.js`; до этого он запускал `productionServer.js` и расходился с фактической схемой VPS |
+| `npm start` / `npm run server` | `server/index.js` | Локальная/manual диагностика; не заменяет service manager. |
+| `systemctl restart cryptora` | единственный `Type=simple` юнит из `systemd/cryptora.service` | Единственный supported production путь. Один Node process, поэтому server-side Radar singleton не дублируется. |
+| `server/productionServer.js` | legacy static utility | **Запрещён для production backend:** без PostgreSQL, auth/сессий, `/api/signals`, `/api/strategies`, `/api/admin/*`, strategy engine и Radar monitor. |
 
 Требования к окружению бэкенда (`server/config.js` читает `process.env`, `.env`
 не подхватывается автоматически — экспортируйте переменные или используйте
@@ -348,9 +348,10 @@ npm run server         # server/index.js: Express + PostgreSQL + движок с
 `npm run create-admin`; `ADMIN_PASSWORD` в `.env` не используется.
 
 Порядок остановки (`SIGTERM`/`SIGINT`) в `server/index.js` существенен:
-планировщик стратегий → HTTP-сервер → пул PostgreSQL. Пул закрывается
-последним, иначе запрос, долетевший во время остановки, открывает соединение к
-закрывающейся БД и получает `FATAL 57P01` на простаивающем клиенте (раздел 10.3).
+планировщик стратегий → Radar monitor (drain persistence queue) → Signal monitor
+→ HTTP-сервер → пул PostgreSQL. Пул закрывается последним, иначе запрос,
+долетевший во время остановки, открывает соединение к закрывающейся БД и
+получает `FATAL 57P01` на простаивающем клиенте (раздел 10.3).
 
 ### 10.2. Проверка, что конвейер сигналов живой
 

@@ -171,7 +171,7 @@ export const RadarPage: React.FC = () => {
     ? {
         state: 'source-error',
         title: 'Источник LIVE-радара недоступен.',
-        detail: 'Проверьте server Radar monitor, его market-data feed и Admin Scan Universe. Демо-события в LIVE не подставляются.',
+        detail: `Проверьте server Radar monitor, его market-data feed и Admin Scan Universe.${serverStatus?.errorCode ? ` Код: ${serverStatus.errorCode}.` : ''} Демо-события в LIVE не подставляются.`,
       }
     : isFilterEmpty
       ? {

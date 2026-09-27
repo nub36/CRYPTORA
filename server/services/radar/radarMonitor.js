@@ -17,6 +17,17 @@ import { persistRadarEvent, purgeExpiredRadarEvents } from './radarEventReposito
 const UNIVERSE_REFRESH_MS = 30_000;
 const RETENTION_SWEEP_MS = 6 * 60 * 60_000;
 
+/** Public, bounded categories only. Raw upstream/database exception text stays in server logs. */
+export const RADAR_PUBLIC_ERROR_CODES = Object.freeze([
+  'STARTUP_ERROR',
+  'UNIVERSE_UNAVAILABLE',
+  'UNIVERSE_REFRESH_ERROR',
+  'MARKET_FEED_ERROR',
+  'PERSISTENCE_ERROR',
+  'RETENTION_CLEANUP_ERROR',
+  'INTERNAL_ERROR',
+]);
+
 function normalizeSymbols(symbols) {
   return [...new Set((symbols ?? []).map((raw) => String(raw).trim().toUpperCase()).filter(Boolean))].sort();
 }
@@ -62,14 +73,18 @@ export class RadarMonitor {
     this.persistedEvents = 0;
     this.deduplicatedEvents = 0;
     this.retainedDeletes = 0;
-    this.lastError = null;
+    // Keep raw exception text server-side only; the public status exposes a
+    // controlled category so a socket/PG URL or credential diagnostic cannot leak.
+    this.lastErrorDetail = null;
+    this.errorCode = null;
 
     const factory = createStream ?? ((handlers) => new BinanceRadarTickerStream(handlers));
     this.stream = factory({
       onTick: (tick) => this.processTicker(tick),
       onStateChange: (feed) => {
         this.feed = { ...this.feed, ...feed };
-        if (feed.error) this.lastError = feed.error;
+        if (feed.error) this.recordError(feed.error, 'MARKET_FEED_ERROR');
+        if (feed.state === 'connected' && this.errorCode === 'MARKET_FEED_ERROR') this.errorCode = null;
       },
     });
   }
@@ -94,7 +109,12 @@ export class RadarMonitor {
       }, this.retentionSweepMs);
       this.retentionTimer.unref?.();
     } catch (error) {
-      this.recordError(error);
+      this.recordError(error, 'STARTUP_ERROR');
+      // A subscription/timer startup failure must not leave a half-running
+      // monitor or a reconnect handle behind. Propagate so server/index logs
+      // the failed monitor start instead of reporting it as started.
+      await this.stop();
+      throw error;
     } finally {
       this.starting = false;
     }
@@ -128,7 +148,7 @@ export class RadarMonitor {
           this.core.clearSymbols(removed);
           this.stream.setSymbols([]);
           this.feed = { ...this.feed, state: 'unavailable', subscribedSymbols: 0 };
-          this.lastError = 'Active Spot universe (exchangeInfo) unavailable';
+          this.recordError(new Error('Active Spot universe (exchangeInfo) unavailable'), 'UNIVERSE_UNAVAILABLE');
           return;
         }
 
@@ -138,10 +158,10 @@ export class RadarMonitor {
         // Removed symbols cannot keep windows/cooldowns or emit mislabeled events.
         if (removed.length > 0) this.core.clearSymbols(removed);
         this.activeSymbols = next;
-        this.lastError = null;
+        this.clearErrorCodes('UNIVERSE_UNAVAILABLE', 'UNIVERSE_REFRESH_ERROR');
         this.stream.setSymbols(next);
       } catch (error) {
-        this.recordError(error);
+        this.recordError(error, 'UNIVERSE_REFRESH_ERROR');
       }
     })().finally(() => {
       this.refreshPromise = null;
@@ -168,8 +188,8 @@ export class RadarMonitor {
         }
         return result;
       } catch (error) {
-        this.recordError(error);
-        return { inserted: false, event: null, error: this.lastError };
+        this.recordError(error, 'PERSISTENCE_ERROR');
+        return { inserted: false, event: null, errorCode: this.errorCode };
       }
     };
     // Keep future persistence alive after one rejected database request.
@@ -182,20 +202,32 @@ export class RadarMonitor {
   }
 
   async runRetention() {
-    if (!this.running) return 0;
+    // `0` in environment config is represented as null: an explicit owner
+    // decision to retain indefinitely, never a malformed silent fallback.
+    if (!this.running || this.retentionDays === null) return 0;
     try {
       const deleted = await this.purgeExpired({ retentionDays: this.retentionDays });
       this.retainedDeletes += deleted;
       return deleted;
     } catch (error) {
-      this.recordError(error);
+      this.recordError(error, 'RETENTION_CLEANUP_ERROR');
       return 0;
     }
   }
 
   getStatus() {
     const detector = this.core.getStatus(this.activeSymbols);
-    const feed = typeof this.stream.getStatus === 'function' ? this.stream.getStatus() : this.feed;
+    const rawFeed = typeof this.stream.getStatus === 'function' ? this.stream.getStatus() : this.feed;
+    // Do not spread raw transport fields into a public API response. In
+    // particular, `ws`/provider errors may contain URLs or infrastructure text.
+    const feed = {
+      state: typeof rawFeed?.state === 'string' ? rawFeed.state : 'unknown',
+      subscribedSymbols: Number.isFinite(rawFeed?.subscribedSymbols) ? rawFeed.subscribedSymbols : 0,
+      lastMessageAt: typeof rawFeed?.lastMessageAt === 'string' ? rawFeed.lastMessageAt : null,
+      stale: Boolean(rawFeed?.stale),
+      reconnectAttempt: Number.isFinite(rawFeed?.reconnectAttempt) ? rawFeed.reconnectAttempt : 0,
+      source: 'binance-spot-ticker',
+    };
     const warm = this.activeSymbols.length > 0 && detector.warmedSymbols === this.activeSymbols.length;
     let lifecycle = 'stopped';
     if (this.running && !this.universe.activeKnown) lifecycle = 'unavailable';
@@ -228,13 +260,20 @@ export class RadarMonitor {
       deduplicatedEvents: this.deduplicatedEvents,
       retainedDeletes: this.retainedDeletes,
       retentionDays: this.retentionDays,
-      lastError: this.lastError,
+      errorCode: this.errorCode,
     };
   }
 
-  recordError(error) {
-    this.lastError = error instanceof Error ? error.message : String(error);
-    this.logger.error?.('[radarMonitor]', this.lastError);
+  clearErrorCodes(...codes) {
+    if (codes.includes(this.errorCode)) this.errorCode = null;
+  }
+
+  recordError(error, code = 'INTERNAL_ERROR') {
+    this.lastErrorDetail = error instanceof Error ? error.message : String(error);
+    this.errorCode = RADAR_PUBLIC_ERROR_CODES.includes(code) ? code : 'INTERNAL_ERROR';
+    // Detailed diagnostics remain server-side. getStatus intentionally never
+    // returns lastErrorDetail or a raw transport error.
+    this.logger.error?.('[radarMonitor]', this.lastErrorDetail);
   }
 }
 
@@ -269,6 +308,6 @@ export function radarMonitorStatus() {
     deduplicatedEvents: 0,
     retainedDeletes: 0,
     retentionDays: config.RADAR_EVENT_RETENTION_DAYS,
-    lastError: null,
+    errorCode: null,
   };
 }

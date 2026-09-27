@@ -159,7 +159,8 @@ constructs an authoritative Radar detector. No demo record is substituted on ser
 
 ### Persistence and retention
 
-Migration `012_radar_events.sql` stores server-derived event facts and a unique replay-dedup key.
-`RADAR_EVENT_RETENTION_DAYS=30` is an explicit, configurable branch proposal; the monitor performs
-bounded expiry cleanup. This storage decision awaits owner review before deployment and does not alter
-market-data or anomaly math. See `docs/RADAR.md` for lifecycle, API, warm-up, and acceptance details.
+Migration `012_radar_events.sql` stores server-derived event facts, a unique replay-dedup key, and an
+oldest-first `(created_at, id)` retention index. `RADAR_EVENT_RETENTION_DAYS=30` is an explicit,
+configurable proposed default; a positive integer changes the period and explicit `0` disables automatic
+expiry. Owner approval remains UNKNOWN before deployment. This storage policy does not alter market-data
+or anomaly math. See `docs/RADAR.md` for lifecycle, API, warm-up, and acceptance details.

@@ -62,7 +62,7 @@ function status(overrides: Partial<ServerRadarStatus> = {}): ServerRadarStatus {
     deduplicatedEvents: 0,
     retainedDeletes: 0,
     retentionDays: 30,
-    lastError: null,
+    errorCode: null,
     ...overrides,
   };
 }
@@ -157,6 +157,13 @@ describe('RadarPage server-authoritative event flow', () => {
     renderRadar(provider());
     expect(await screen.findByText('Detected while Radar page was closed.')).toBeInTheDocument();
     expect(document.querySelector('[data-qa="radar-source-telemetry"]')?.textContent).toContain('warmed: 1/1');
+  });
+
+  it('renders only the bounded server error code when a disconnected detector reports a failure', async () => {
+    installServerRadar({ detectorStatus: status({ lifecycle: 'feed-disconnected', errorCode: 'MARKET_FEED_ERROR' }) });
+    renderRadar(provider());
+    expect(await screen.findByText('Источник LIVE-радара недоступен.')).toBeInTheDocument();
+    expect(document.querySelector('[data-qa="radar-empty-state"]')).toHaveTextContent('Код: MARKET_FEED_ERROR.');
   });
 
   it('shows source error when server history/status is unavailable', async () => {
