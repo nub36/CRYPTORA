@@ -725,7 +725,10 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-white/[0.08] bg-surface shadow-panel-elevated group">
       {/* Subtle Ambient Radial Glow */}
-      <div className="absolute top-0 left-1/4 w-96 h-36 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div
+        className="pointer-events-none absolute inset-y-0 left-1/4 right-0 h-36 max-w-none rounded-full bg-cyan-500/5 blur-3xl"
+        aria-hidden="true"
+      />
 
       {/* Floating Header: Symbol + Badge + OHLCV + Reset */}
       <div className="absolute top-3 left-3.5 z-10 flex items-start justify-between w-[calc(100%-28px)] pointer-events-none">

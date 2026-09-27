@@ -201,7 +201,7 @@ export const AdminPage: React.FC = () => {
   };
 
   return (
-    <div className="route-shell mx-auto max-w-7xl px-4 py-8" data-route="admin" data-layout="operations">
+    <div className="route-shell mx-auto w-full min-w-0 max-w-7xl px-3 py-4 sm:px-4 sm:py-8" data-route="admin" data-layout="operations" data-qa="admin-page-shell">
       <TerminalSection label="OPERATIONS CONSOLE" title="Administration" meta="privileged workspace" className="admin-command-bar">
       <div className="admin-heading">
         <div>
@@ -222,26 +222,32 @@ export const AdminPage: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-2 border-b border-white/[0.08] pb-2">
-        {[
-          { id: 'dashboard' as Tab, label: 'Обзор', icon: LayoutDashboard },
-          { id: 'users' as Tab, label: 'Пользователи', icon: Users },
-          { id: 'coins' as Tab, label: 'Монеты', icon: Coins },
-          { id: 'system' as Tab, label: 'Система', icon: Server },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? 'bg-cyan-500/15 text-cyan-300'
-                : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
-            }`}
-          >
-            <t.icon className="h-4 w-4" />
-            {t.label}
-          </button>
-        ))}
+      <div
+        className="admin-tabs mb-6 max-w-full overflow-x-auto overscroll-x-contain border-b border-white/[0.08] pb-2"
+        data-qa="admin-tabs"
+        aria-label="Вкладки админ-панели"
+      >
+        <div className="flex min-w-max gap-2">
+          {[
+            { id: 'dashboard' as Tab, label: 'Обзор', icon: LayoutDashboard },
+            { id: 'users' as Tab, label: 'Пользователи', icon: Users },
+            { id: 'coins' as Tab, label: 'Монеты', icon: Coins },
+            { id: 'system' as Tab, label: 'Система', icon: Server },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex shrink-0 items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? 'bg-cyan-500/15 text-cyan-300'
+                  : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
+              }`}
+            >
+              <t.icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
       </TerminalSection>
 
@@ -261,7 +267,7 @@ export const AdminPage: React.FC = () => {
       {tab === 'dashboard' && dashboard && (
         <div className="space-y-6">
           {/* Health Cards */}
-          <div className="admin-health-strip grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="admin-health-strip grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-4 backdrop-blur-xl">
               <div className="text-xs text-slate-400">Статус</div>
               <div className={`mt-1 text-lg font-bold ${dashboard.health.status === 'ok' ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -317,15 +323,15 @@ export const AdminPage: React.FC = () => {
               <h3 className="mb-4 text-sm font-semibold text-white">Последние действия</h3>
               <div className="space-y-2">
                 {dashboard.recentAudit.map((audit, i) => (
-                  <div key={i} className="flex items-center justify-between rounded bg-surface-2/50 px-3 py-2 text-sm">
-                    <div>
+                  <div key={i} className="admin-audit-row flex min-w-0 items-start justify-between gap-3 rounded bg-surface-2/50 px-3 py-2 text-sm">
+                    <div className="min-w-0 break-words">
                       <span className="font-medium text-white">{audit.actor_name}</span>
                       <span className="text-slate-400"> — {audit.action}</span>
                       {audit.target_type && (
                         <span className="text-slate-500"> ({audit.target_type})</span>
                       )}
                     </div>
-                    <span className="text-xs text-slate-500">{formatDate(audit.created_at)}</span>
+                    <span className="shrink-0 text-right text-xs text-slate-500">{formatDate(audit.created_at)}</span>
                   </div>
                 ))}
               </div>
@@ -471,44 +477,44 @@ export const AdminPage: React.FC = () => {
         <div className="rounded-lg border border-white/[0.08] bg-surface/60 p-6 backdrop-blur-xl">
           <h3 className="mb-4 text-sm font-semibold text-white">Системная информация</h3>
           <div className="space-y-3 text-sm">
-            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+            <div className="admin-system-row flex flex-col gap-1 border-b border-white/[0.05] pb-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">Версия приложения</span>
-              <span className="font-medium text-white">{system.version}</span>
+              <span className="break-words font-medium text-white sm:text-right">{system.version}</span>
             </div>
-            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+            <div className="admin-system-row flex flex-col gap-1 border-b border-white/[0.05] pb-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">Node.js</span>
-              <span className="font-medium text-white">{system.nodeVersion}</span>
+              <span className="break-words font-medium text-white sm:text-right">{system.nodeVersion}</span>
             </div>
-            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+            <div className="admin-system-row flex flex-col gap-1 border-b border-white/[0.05] pb-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">Окружение</span>
-              <span className="font-medium text-white">{system.environment}</span>
+              <span className="break-words font-medium text-white sm:text-right">{system.environment}</span>
             </div>
-            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+            <div className="admin-system-row flex flex-col gap-1 border-b border-white/[0.05] pb-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">Аптайм</span>
-              <span className="font-medium text-white">{formatUptime(system.uptimeSeconds)}</span>
+              <span className="break-words font-medium text-white sm:text-right">{formatUptime(system.uptimeSeconds)}</span>
             </div>
-            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+            <div className="admin-system-row flex flex-col gap-1 border-b border-white/[0.05] pb-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">База данных</span>
-              <span className={`font-medium ${system.database === 'connected' ? 'text-emerald-400' : 'text-rose-400'}`}>
+              <span className={`break-words font-medium sm:text-right ${system.database === 'connected' ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {system.database === 'connected' ? 'Подключена' : 'Отключена'}
               </span>
             </div>
-            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+            <div className="admin-system-row flex flex-col gap-1 border-b border-white/[0.05] pb-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">Регистрация</span>
               <span
-                className={`font-medium ${system.registrationEnabled ? 'text-emerald-400' : 'text-amber-400'}`}
+                className={`break-words font-medium sm:text-right ${system.registrationEnabled ? 'text-emerald-400' : 'text-amber-400'}`}
                 title="REGISTRATION_ENABLED — управляется переменной окружения сервера, не админ-панелью"
               >
                 {system.registrationEnabled ? 'Включена' : 'Выключена'}
               </span>
             </div>
-            <div className="flex justify-between border-b border-white/[0.05] pb-2">
+            <div className="admin-system-row flex flex-col gap-1 border-b border-white/[0.05] pb-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">Память (RSS)</span>
-              <span className="font-medium text-white">{system.memoryUsage.rss}</span>
+              <span className="break-words font-medium text-white sm:text-right">{system.memoryUsage.rss}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="admin-system-row flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-400">Память (Heap)</span>
-              <span className="font-medium text-white">{system.memoryUsage.heapUsed}</span>
+              <span className="break-words font-medium text-white sm:text-right">{system.memoryUsage.heapUsed}</span>
             </div>
           </div>
         </div>

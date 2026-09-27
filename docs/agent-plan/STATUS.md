@@ -1,3 +1,13 @@
+## 2026-09-27 — production mobile responsiveness (current branch, unmerged)
+
+- **Base / branch:** `8db83b355b5db229aa0435b1b98668a9fac90e2e` (`origin/main`), branch `arena/01a0e2df-cryptora`. Frontend presentation and regression coverage only; no merge, deploy, production mutation, or branch switch.
+- **Root causes fixed:** removed the document-level `body { overflow-x: hidden }` mask; contained the CandleChart ambient glow; preserved the ticker's intentional animation overflow inside its own host; added `min-w-0`/wrapping constraints to compact signal rows; and made Admin shell/health/audit/table presentation responsive.
+- **Signals:** mobile history is a readable reflowing feed rather than a harmful fixed-height desktop viewport; symbol, direction, strategy, timeframe, status, and time remain visible; Entry/Stop/TP/chart details remain accessible; timezone uses the browser/OS offset and shows compact `GMT±…` at ≤480px without restoring `LOCAL` or changing server semantics.
+- **Admin:** Dashboard, Users, Coins, and System tabs were checked at 360×800, 390×844, 768×1024, and 1440×900. Cards stack, tab navigation has local horizontal scrolling, and the Users table keeps scrolling local to its table host.
+- **Coverage / verification:** added `e2e/mobileOverflow.spec.ts` for `/`, `/signals`, `/radar`, `/coin/BTC`, `/market`, `/admin`, all Admin tabs, and 360/390/768/1440 viewport geometry. `npm run typecheck` passed; `npm test` passed (**151 files / 1659 tests**); `npm run build` passed; Chromium E2E passed (**109/109**) with the sandbox's extracted Chromium plus its required library path; `git diff --check` passed. Screenshots are generated as ignored artifacts under `screenshots/mobile-{signals,admin}-{360,390}.png`.
+- **Measured document width:** before the fix authenticated Admin at 360px was `521 / 360` (`scrollWidth / clientWidth`); after the fix Admin and Signals are `360 / 360`, `390 / 390`, `768 / 768`, and `1440 / 1440`. Intentional ticker track width is excluded from page overflow because its local host clips it.
+- **Not changed:** strategy/anomaly/signal math, lifecycle, server Signals semantics, production settings/data/signals/database, or deployment.
+
 ## 2026-09-26 — Radar authoritative server monitor (current branch, unmerged)
 
 - **Base / branch:** `4edbe168ce9ded9c236b81190072ab078ab64a49` (`origin/main`, PR #25 merge), branch `arena/01a0dd53-cryptora`, existing PR #26. This branch contains the pre-merge safety remediation pending commit/push; no work occurred on `main`, PR #25, production, or another branch.

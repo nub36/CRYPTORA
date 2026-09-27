@@ -123,11 +123,13 @@ export const MarketTicker: React.FC = () => {
           </span>
           <span
             data-testid="ticker-mode-label"
+            aria-label={isLiveMode ? 'LIVE-ТИКЕР' : 'QA-ТИКЕР'}
             className={`font-sans text-[11px] font-semibold uppercase tracking-[0.14em] ${
               isLiveMode ? 'text-emerald-400/90' : 'text-amber-300/90'
             }`}
           >
-            {isLiveMode ? 'LIVE-ТИКЕР' : 'QA-ТИКЕР'}
+            <span className="hidden min-[481px]:inline">{isLiveMode ? 'LIVE-ТИКЕР' : 'QA-ТИКЕР'}</span>
+            <span className="inline min-[481px]:hidden">{isLiveMode ? 'LIVE' : 'QA'}</span>
           </span>
         </div>
 
@@ -150,6 +152,7 @@ export const MarketTicker: React.FC = () => {
           <div
             className="ticker-marquee-host group relative min-w-0 flex-1 overflow-hidden select-none"
             data-testid="ticker-marquee"
+            data-local-overflow="ticker"
           >
             <div className="ticker-marquee flex w-max items-center">
               {renderTrack(false)}

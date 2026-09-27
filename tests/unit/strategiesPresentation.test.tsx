@@ -242,9 +242,11 @@ describe('Mobile-safe', () => {
     expect(css).toMatch(/\.ui-hash\s*\{[^}]*word-break:\s*break-all/s);
   });
 
-  it('в global CSS есть защита от горизонтального переполнения', () => {
+  it('global CSS не маскирует горизонтальное переполнение на уровне body', () => {
     const css = SRC('src/index.css');
-    expect(css).toMatch(/body\s*\{[^}]*overflow-x:\s*hidden/s);
+    expect(css).not.toMatch(/body\s*\{[^}]*overflow-x:\s*(hidden|clip)/s);
+    // Components that intentionally own scrolling/animation must contain it locally.
+    expect(SRC('src/components/layout/MarketTicker.tsx')).toContain('data-local-overflow="ticker"');
   });
 
   it('карточка стратегии — одна колонка на узких экранах', () => {
