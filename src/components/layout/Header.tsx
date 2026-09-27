@@ -388,7 +388,19 @@ export const Header: React.FC = () => {
 
   return (
     <header className="terminal-header sticky top-0 z-40">
-      <div className="mx-auto flex min-w-0 max-w-[1920px] flex-wrap items-center gap-x-2 px-3 sm:px-4">
+      {/*
+        Header top row.
+        Mobile / tablet (< lg): the primary nav is `hidden`, so only the brand and
+        the service-control cluster share this row. It MUST stay a single nowrap
+        row — otherwise the `shrink-0` control cluster overflows the viewport by a
+        few px and `flex-wrap` drops the whole cluster onto a second line, leaving
+        the logo stranded above a large empty gap (mobile header regression).
+        Compact mobile gap/padding keep the controls on one line at 360–390px.
+        `lg:` restores `flex-wrap` so the full-width primary <nav> (order-3, w-full)
+        can intentionally wrap onto its own row below the brand/controls at lg,
+        exactly as before — desktop layout is unchanged.
+      */}
+      <div className="mx-auto flex min-w-0 max-w-[1920px] flex-nowrap items-center gap-x-1 px-2 sm:gap-x-2 sm:px-4 lg:flex-wrap">
         {/* ----------------------------- Brand ----------------------------- */}
         <div className="order-1 flex h-14 shrink-0 items-center gap-x-2 pr-1 sm:gap-x-3 sm:pr-2">
           <Link
@@ -477,7 +489,7 @@ export const Header: React.FC = () => {
         </nav>
 
         {/* ----------------------- Secondary service controls ----------------------- */}
-        <div className="order-2 ml-auto flex h-14 shrink-0 items-center gap-x-1.5 sm:gap-x-2">
+        <div className="order-2 ml-auto flex h-14 shrink-0 items-center gap-x-1 sm:gap-x-2">
           {/* Статус источника и соединения: только индикация, переключателя режима в интерфейсе нет */}
           <span
             role="status"

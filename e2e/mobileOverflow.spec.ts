@@ -317,6 +317,54 @@ for (const viewport of VIEWPORTS) {
       }
     });
 
+    test('shared header stays a single compact row (no stranded logo / stacked controls)', async ({ page }) => {
+      // Regression guard for the mobile header layout: with an authenticated
+      // session the service-control cluster is at its widest. Previously the
+      // shared top row was `flex-wrap`, so at ~360–390px the `shrink-0` cluster
+      // overflowed by a few px and wrapped onto a second line — the logo was
+      // stranded above a large empty gap and the header height roughly doubled
+      // (~56px -> ~112px). installFixtures() logs in as an admin, reproducing
+      // exactly that condition. The controls must share the brand's row and the
+      // header must stay compact on every route and viewport.
+      await installFixtures(page);
+
+      for (const route of ['/', '/coin/XRP', '/signals', '/radar', '/market']) {
+        await page.goto(route);
+        await page.locator('header.terminal-header').waitFor();
+        await page.waitForTimeout(200);
+
+        const geo = await page.evaluate(() => {
+          const header = document.querySelector('header.terminal-header') as HTMLElement;
+          const topRow = header.querySelector(':scope > div') as HTMLElement;
+          const brand = header.querySelector('a[aria-label*="Главная"]') as HTMLElement;
+          const actions = topRow.querySelector(':scope > div.ml-auto') as HTMLElement;
+          const b = brand.getBoundingClientRect();
+          const a = actions.getBoundingClientRect();
+          const h = header.getBoundingClientRect();
+          const verticalOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+          return {
+            headerHeight: Math.round(h.height),
+            brandTop: Math.round(b.top),
+            actionsTop: Math.round(a.top),
+            verticalOverlap: Math.round(verticalOverlap),
+          };
+        });
+
+        const ctx = `${route} @ ${viewport.width}x${viewport.height}: ${JSON.stringify(geo)}`;
+        // Brand and controls must occupy the same visual row (positive overlap);
+        // a wrapped/stacked layout has zero or negative overlap.
+        expect(geo.verticalOverlap, `controls must share the brand row — ${ctx}`).toBeGreaterThan(8);
+        // Compact single-row shell: the top row is ~56px. A wrapped header was
+        // ~112px+. 72px keeps a safe margin while still catching a second row.
+        expect(geo.headerHeight, `compact header height — ${ctx}`).toBeLessThanOrEqual(72);
+
+        // The hamburger must stay visible/tappable at sub-desktop widths.
+        if (viewport.width < 1024) {
+          await expect(page.getByRole('button', { name: 'Меню', exact: true })).toBeVisible();
+        }
+      }
+    });
+
     test('Signals compact timezone and readable selected row remain mobile-safe', async ({ page }) => {
       await installFixtures(page);
       await page.goto('/signals');
