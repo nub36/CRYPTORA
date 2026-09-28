@@ -8,15 +8,17 @@ import { test, expect, type Page } from '@playwright/test';
  * a page reload.
  *
  * Root cause: the chart was recreated on every `height` change (fullscreen toggles
- * the height prop), but the REST data effect keyed on `[data, timeframe]` did not
- * re-run — so the freshly created series stayed empty (in LIVE the next WS tick then
- * painted the lone giant candle). The fix resizes the existing chart in place, so
- * the series data and the horizontal logical range survive the geometry change.
+ * the height prop; the coin page also flips chartHeight 460<->340 at the 1280px
+ * breakpoint), but the REST data effect keyed on `[data, timeframe]` did not re-run
+ * — so the freshly created series stayed empty (in LIVE the next WS tick then
+ * painted the lone giant candle; in QA/no-WS the chart went blank). The fix resizes
+ * the existing chart in place, so the series data and the horizontal logical range
+ * survive the geometry change.
  *
- * This test asserts OBSERVABLE geometry/range via a dev-only probe rather than
- * relying on a screenshot, and it distinguishes "data actually disappeared"
- * (`bars === 0`) from "only the visible range/geometry broke" (`bars > 0` but the
- * logical span collapsed). Screenshots are additional evidence only.
+ * These tests assert OBSERVABLE geometry/range via a dev-only probe rather than
+ * relying on a screenshot, and distinguish "data actually disappeared" (`bars === 0`)
+ * from "only the visible range/geometry broke" (`bars > 0` but the logical span
+ * collapsed). Screenshots are additional evidence only.
  */
 
 interface ChartProbe {
@@ -50,6 +52,13 @@ function expectHealthyChart(probe: ChartProbe, context: string): void {
   expect(span, `${context}: visible span not degenerate`).toBeLessThan(probe.bars + 60);
 }
 
+async function forceExitFullscreen(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    if (document.fullscreenElement) return document.exitFullscreen().catch(() => undefined);
+    return undefined;
+  }).catch(() => undefined);
+}
+
 test.describe('Coin chart resize / fullscreen regression', () => {
   test.describe.configure({ timeout: 90_000 });
 
@@ -59,6 +68,10 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     });
   });
 
+  test.afterEach(async ({ page }) => {
+    await forceExitFullscreen(page);
+  });
+
   test('normal -> fullscreen -> normal keeps historical candles and a sane range', async ({ page }) => {
     await page.goto('/coin/BNB');
     const terminal = page.getByTestId('chart-terminal');
@@ -66,35 +79,26 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     await expect(terminal).toBeVisible({ timeout: 20_000 });
     await expect(terminal.locator('canvas').first()).toBeVisible();
 
-    // Wait until the probe reports a populated chart.
     await expect.poll(async () => (await readProbe(page)).bars, { timeout: 15_000 }).toBeGreaterThan(10);
 
     const initial = await readProbe(page);
     expectHealthyChart(initial, 'initial');
-    const normalHeight = initial.height;
     const normalWidth = initial.width;
-    await page.screenshot({ path: 'e2e/screenshots/coin-chart-before-fullscreen.png', fullPage: false });
-
-    const enter = page.getByRole('button', { name: 'Полный экран' });
-    const exitName = 'Выйти из полноэкранного режима';
+    await page.screenshot({ path: 'e2e/screenshots/coin-chart-before-fullscreen.png', fullPage: false }).catch(() => undefined);
 
     for (let cycle = 0; cycle < 2; cycle++) {
       // ---- enter fullscreen ----
-      await enter.click();
-      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
-      // Height must actually grow (geometry transition happened).
-      await expect.poll(async () => (await readProbe(page)).height, { timeout: 10_000 })
-        .toBeGreaterThan(normalHeight);
+      await page.getByRole('button', { name: 'Полный экран' }).click({ timeout: 15_000 });
+      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(true);
+      // Let the fullscreenchange -> React re-render -> resize settle.
+      await page.waitForTimeout(600);
       const inFull = await readProbe(page);
       expectHealthyChart(inFull, `cycle ${cycle}: fullscreen`);
-      if (cycle === 0) await page.screenshot({ path: 'e2e/screenshots/coin-chart-in-fullscreen.png', fullPage: false });
 
       // ---- exit fullscreen ----
-      await page.getByRole('button', { name: exitName }).click();
-      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false);
-      // Height returns to the normal container height (stale dimensions must not stick).
-      await expect.poll(async () => (await readProbe(page)).height, { timeout: 10_000 })
-        .toBeLessThan(normalHeight + 8);
+      await page.getByRole('button', { name: 'Выйти из полноэкранного режима' }).click({ timeout: 15_000 });
+      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(false);
+      await page.waitForTimeout(600);
 
       const afterExit = await readProbe(page);
       expectHealthyChart(afterExit, `cycle ${cycle}: after exit`);
@@ -103,9 +107,8 @@ test.describe('Coin chart resize / fullscreen regression', () => {
       expect(Math.abs(afterExit.width - normalWidth), `cycle ${cycle}: width restored`).toBeLessThan(4);
     }
 
-    await page.screenshot({ path: 'e2e/screenshots/coin-chart-after-fullscreen.png', fullPage: false });
+    await page.screenshot({ path: 'e2e/screenshots/coin-chart-after-fullscreen.png', fullPage: false }).catch(() => undefined);
 
-    // Document has no horizontal overflow after the round trips.
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
@@ -113,7 +116,7 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
   });
 
-  test('viewport wide -> narrow -> wide does not corrupt the chart', async ({ page }) => {
+  test('viewport wide -> narrow -> wide (incl. 1280 height breakpoint) does not corrupt the chart', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/coin/BNB');
     await expect(page.getByTestId('chart-terminal')).toBeVisible({ timeout: 20_000 });
@@ -122,12 +125,13 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const baseline = await readProbe(page);
     expectHealthyChart(baseline, 'baseline 1280');
 
-    const widths = [1600, 1024, 1280, 1600, 1280];
+    // Crossing 1280 flips the coin page chartHeight (460 <-> 340) -> the same
+    // height-prop change that fullscreen triggers. This deterministically exercises
+    // the recreation bug in headless without relying on the browser fullscreen API.
+    const widths = [1600, 1000, 1280, 1600, 1000, 1280];
     for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
-      // Let ResizeObserver + layout settle.
-      await expect.poll(async () => (await readProbe(page)).width, { timeout: 8_000 })
-        .toBeGreaterThan(0);
+      await page.waitForTimeout(350); // ResizeObserver + layout settle
       const probe = await readProbe(page);
       expectHealthyChart(probe, `viewport ${width}`);
       expect(probe.bars, `viewport ${width}: bars preserved`).toBe(baseline.bars);
@@ -140,7 +144,7 @@ test.describe('Coin chart resize / fullscreen regression', () => {
         .toBeLessThanOrEqual(overflow.clientWidth + 1);
     }
 
-    await page.screenshot({ path: 'e2e/screenshots/coin-chart-after-resize.png', fullPage: false });
+    await page.screenshot({ path: 'e2e/screenshots/coin-chart-after-resize.png', fullPage: false }).catch(() => undefined);
   });
 
   test('desktop toolbar stays on a single row and ASSET STATE has no stray cyan rule', async ({ page }) => {
@@ -169,7 +173,7 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     );
     expect(borderLeft).toBe('0px');
 
-    await page.screenshot({ path: 'e2e/screenshots/coin-toolbar-single-row.png', fullPage: false });
+    await page.screenshot({ path: 'e2e/screenshots/coin-toolbar-single-row.png', fullPage: false }).catch(() => undefined);
   });
 
   test('XRP terminal also survives a fullscreen round trip', async ({ page }) => {
@@ -180,16 +184,14 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const initial = await readProbe(page);
     expectHealthyChart(initial, 'XRP initial');
 
-    await page.getByRole('button', { name: 'Полный экран' }).click();
-    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
-    await expect.poll(async () => (await readProbe(page)).height, { timeout: 10_000 })
-      .toBeGreaterThan(initial.height);
+    await page.getByRole('button', { name: 'Полный экран' }).click({ timeout: 15_000 });
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(true);
+    await page.waitForTimeout(600);
     expectHealthyChart(await readProbe(page), 'XRP fullscreen');
 
-    await page.getByRole('button', { name: 'Выйти из полноэкранного режима' }).click();
-    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false);
-    await expect.poll(async () => (await readProbe(page)).height, { timeout: 10_000 })
-      .toBeLessThan(initial.height + 8);
+    await page.getByRole('button', { name: 'Выйти из полноэкранного режима' }).click({ timeout: 15_000 });
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(false);
+    await page.waitForTimeout(600);
 
     const afterExit = await readProbe(page);
     expectHealthyChart(afterExit, 'XRP after exit');

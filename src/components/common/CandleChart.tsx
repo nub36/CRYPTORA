@@ -78,6 +78,21 @@ interface CandleChartProps {
   onMarkerClick?: (marker: ChartMarker, markersAtTime: ChartMarker[]) => void;
 }
 
+/**
+ * Безопасная проверка dev/e2e-раннера. `import.meta.env` может отсутствовать в
+ * не-Vite окружениях (JSDOM/Node-раннер Playwright для `.tsx` e2e), поэтому доступ
+ * завёрнут в try/catch — так же, как в `src/config/dataModePolicy.ts`.
+ * В production-сборке Vite подставляет `import.meta.env.DEV === false`, и весь
+ * зависимый код (диагностический пробник) вырезается минификатором.
+ */
+function isDevRuntime(): boolean {
+  try {
+    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  } catch {
+    return false;
+  }
+}
+
 /** Стили линий уровней — соответствие имен и значений lightweight-charts. */
 const LEVEL_LINE_STYLE: Record<NonNullable<ChartLevelLine['style']>, LineStyle> = {
   solid: LineStyle.Solid,
@@ -771,15 +786,19 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   }, [handleResetView, resetViewToken]);
 
   /**
-   * Диагностический пробник ТОЛЬКО для dev/e2e (`import.meta.env.DEV`): в
+   * Диагностический пробник ТОЛЬКО для dev/e2e (`isDevRuntime()`): в
    * production-сборке ветка выпадает из бандла. Он читает ФАКТИЧЕСКОЕ состояние
    * графика (кол-во точек серии, видимый логический диапазон, размеры контейнера)
    * и ничего не подменяет. Regression-тест resize/fullscreen через него отличает
    * «данные реально исчезли» (`bars === 0`) от «сломался только диапазон/геометрия»
    * (`bars > 0`, но `rangeSpan` схлопнулся), не полагаясь только на скриншот.
+   *
+   * Доступ к `import.meta.env` завёрнут (см. `isDevRuntime`): в JSDOM/Node-раннере
+   * `.tsx` e2e (`e2e/setup-dom.ts`) `import.meta.env` может быть `undefined`, и
+   * прямое `import.meta.env.DEV` кидало бы TypeError прямо в этом эффекте.
    */
   useEffect(() => {
-    if (!import.meta.env.DEV || typeof window === 'undefined') return;
+    if (!isDevRuntime() || typeof window === 'undefined') return;
     const probe = () => {
       const chart = chartRef.current;
       const range = chart?.timeScale().getVisibleLogicalRange() ?? null;
