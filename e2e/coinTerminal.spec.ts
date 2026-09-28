@@ -98,8 +98,9 @@ test.describe('Coin terminal chart UX', () => {
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false);
     await expect(terminal).toBeVisible();
 
-    expect(pageErrors, `pageerror: ${pageErrors.join('; ')}`).toEqual([]);
-    expect(consoleErrors, `console error: ${consoleErrors.join('; ')}`).toEqual([]);
+    if (pageErrors.length > 0 || consoleErrors.length > 0) {
+      throw new Error(`browser diagnostics: pageerror=[${pageErrors.join('; ')}] console=[${consoleErrors.join('; ')}]`);
+    }
   });
 
   test('360px mobile keeps the terminal usable without document overflow', async ({ page }) => {
