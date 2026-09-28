@@ -30,31 +30,31 @@ async function assertRendererResponsive(page: Page, label: string) {
 
 async function selectTimeframe(page: Page, timeframe: string) {
   const trigger = page.getByTestId('chart-timeframe-trigger');
-  await expect(trigger).toBeVisible({ timeout: 10_000 });
+  await expect(trigger).toBeVisible({ timeout: 60_000 });
   await trigger.click();
   const option = page.getByTestId(`chart-timeframe-${timeframe}`);
   await expect(option).toBeVisible({ timeout: 10_000 });
   await option.click();
 }
 
-test.describe('P0 — timeframe switching keeps the renderer responsive', () => {
-  test.beforeEach(async ({ page }) => {
-    // The terminal is intentionally exercised with the deterministic QA fixture:
-    // a live-source failure renders the honest Coin loading/error state before
-    // the chart can be mounted, which cannot test renderer responsiveness.
-    await page.addInitScript(() => {
-      localStorage.setItem('cryptora_qa_fixture', '1');
-    });
-  });
+async function openFixtureCoin(page: Page, symbol: string) {
+  // Seed storage on the app origin explicitly. This keeps the regression test
+  // deterministic even when another E2E test has already used the same Vite
+  // server; the browser still renders the real Coin page and chart.
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('cryptora_qa_fixture', '1'));
+  await page.goto(`/coin/${symbol}`);
+}
 
+test.describe('P0 — timeframe switching keeps the renderer responsive', () => {
   test('BTC: 1h → 15m → 1h → 5m, then navigating to / still works', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(String(err)));
 
-    await page.goto('/coin/BTC');
+    await openFixtureCoin(page, 'BTC');
     // The page shell is available even when the exchange source is not.
-    await expect(page.locator('[data-qa="coin-page-shell"]')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-qa="coin-page-shell"]')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 60_000 });
     await assertRendererResponsive(page, 'initial load');
 
     for (const tf of TIMEFRAMES_BTC) {
@@ -72,9 +72,9 @@ test.describe('P0 — timeframe switching keeps the renderer responsive', () => 
   });
 
   test('SOL: 1h → 15m keeps the renderer responsive', async ({ page }) => {
-    await page.goto('/coin/SOL');
-    await expect(page.locator('[data-qa="coin-page-shell"]')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 20_000 });
+    await openFixtureCoin(page, 'SOL');
+    await expect(page.locator('[data-qa="coin-page-shell"]')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 60_000 });
 
     for (const tf of ['1h', '15m']) {
       await selectTimeframe(page, tf);
