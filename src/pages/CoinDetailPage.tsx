@@ -7,7 +7,7 @@ import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable
 import { AssetDetail, OHLCV, Timeframe, FuturesAsset, RadarEvent } from '@/types/market';
 import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters';
 import { radarEventTypeLabel, radarSeverityLabel } from '@/utils/labels';
-import { CandleChart } from '@/components/common/CandleChart';
+import { ChartTerminal } from '@/components/common/ChartTerminal';
 import type { ChartIndicatorData, CandleChartType } from '@/components/common/CandleChart';
 import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
 import { CoinIcon } from '@/components/common/CoinIcon';
@@ -97,6 +97,8 @@ export const CoinDetailPage: React.FC = () => {
   const [showMACD, setShowMACD] = useState(false);
   const [chartType, setChartType] = useState<CandleChartType>('candles');
   const [showMA, setShowMA] = useState(true);
+  const [showVolume, setShowVolume] = useState(true);
+  const [showTimezone, setShowTimezone] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
   // The picker lazily loads the full active Spot universe itself (exchangeInfo,
   // cached app-wide). No provider.getAssets() here: that would pull bulk tickers
@@ -639,120 +641,52 @@ export const CoinDetailPage: React.FC = () => {
         className="grid grid-cols-1 xl:grid-cols-[72fr_28fr] gap-3.5 items-stretch"
       >
       <div data-qa="coin-chart-card" className="space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-surface-border gap-2">
-          <div className="flex items-center space-x-3">
+        {/* Сохранённый контекст Coin page: пара, название графика и 24ч high/low. */}
+        <div className="flex flex-col gap-2 border-b border-surface-border pb-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={openPicker}
               data-qa="coin-picker-chart-open"
-              className="font-sans font-bold text-sm text-white hover:text-brand-cyan transition-colors"
+              className="truncate font-sans text-sm font-bold text-white transition-colors hover:text-brand-cyan"
               title="Выбрать другую монету"
             >
               {asset.symbol}/USDT {chartType === 'candles' ? 'Свечной' : 'Линейный'} график ▾
             </button>
-            <div className="hidden sm:flex items-center space-x-2 text-xs font-sans text-slate-400">
-              <span>Макс. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{asset.high24h != null ? formatCurrency(asset.high24h) : '—'}</strong></span>
-              <span>Мин. 24ч: <strong className="text-slate-200 font-mono tabular-nums">{asset.low24h != null ? formatCurrency(asset.low24h) : '—'}</strong></span>
+            <div className="hidden shrink-0 items-center gap-2 text-xs font-sans text-slate-400 sm:flex">
+              <span>Макс. 24ч: <strong className="font-mono tabular-nums text-slate-200">{asset.high24h != null ? formatCurrency(asset.high24h) : '—'}</strong></span>
+              <span>Мин. 24ч: <strong className="font-mono tabular-nums text-slate-200">{asset.low24h != null ? formatCurrency(asset.low24h) : '—'}</strong></span>
             </div>
           </div>
-
-          {/* Timeframe buttons */}
-          <div className="flex items-center space-x-1 font-sans text-xs bg-surface-elevated p-1 rounded border border-surface-border self-start sm:self-auto">
-            {(['5m', '15m', '30m', '1h', '4h', '1D', '1W'] as Timeframe[]).map((tf) => (
-              <button
-                key={tf}
-                onClick={() => setTimeframe(tf)}
-                className={`px-2.5 py-1 rounded transition-colors ${
-                  timeframe === tf
-                    ? 'bg-brand-cyan text-slate-950 font-bold'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {tf}
-              </button>
-            ))}
-          </div>
-          {/* Indicator sub-panel toggles */}
-          <div className="flex items-center space-x-1 font-sans text-xs self-start sm:self-auto">
-            <button
-              onClick={() => setShowRSI((v) => !v)}
-              className={`px-2.5 py-1 rounded transition-colors border ${
-                showRSI
-                  ? 'bg-violet-500/20 border-violet-500/40 text-violet-300 font-bold'
-                  : 'border-surface-border text-slate-400 hover:text-white'
-              }`}
-              title="RSI (14) — индекс относительной силы"
-            >
-              RSI
-            </button>
-            <button
-              onClick={() => setShowMACD((v) => !v)}
-              className={`px-2.5 py-1 rounded transition-colors border ${
-                showMACD
-                  ? 'bg-blue-500/20 border-blue-500/40 text-blue-300 font-bold'
-                  : 'border-surface-border text-slate-400 hover:text-white'
-              }`}
-              title="MACD (12/26/9) — схождение/расхождение скользящих средних"
-            >
-              MACD
-            </button>
-          </div>
-        </div>
-
-        {/* Тип графика + MA-линии с легендой */}
-        <div className="flex flex-wrap items-center gap-2 font-sans text-xs">
-          <div
-            className="flex items-center space-x-1 bg-surface-elevated p-1 rounded border border-surface-border"
-            data-qa="chart-type-switch"
-          >
-            {([['candles', 'Свечи'], ['line', 'Линия']] as const).map(([t, label]) => (
-              <button
-                key={t}
-                onClick={() => setChartType(t)}
-                className={`px-2.5 py-1 rounded transition-colors ${
-                  chartType === t ? 'bg-brand-cyan text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => setShowMA((v) => !v)}
-            data-qa="chart-ma-toggle"
-            title="SMA 20/50/200 и полосы Боллинджера поверх цены"
-            className={`px-2.5 py-1 rounded transition-colors border ${
-              showMA
-                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold'
-                : 'border-surface-border text-slate-400 hover:text-white'
-            }`}
-          >
-            MA {showMA ? 'вкл' : 'выкл'}
-          </button>
-          {showMA && chartIndicators && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400" data-qa="chart-ma-legend">
-              <span className="flex items-center gap-1" title="Скользящее среднее за 20 свечей">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#f59e0b' }} /> SMA 20
-              </span>
-              <span className="flex items-center gap-1" title="Скользящее среднее за 50 свечей">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#3b82f6' }} /> SMA 50
-              </span>
-              <span className="flex items-center gap-1" title="Скользящее среднее за 200 свечей">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#a855f7' }} /> SMA 200
-              </span>
-              <span className="flex items-center gap-1" title="Полосы Боллинджера (20, 2σ)">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: 'rgba(99, 102, 241, 0.8)' }} /> BB 20
-              </span>
-            </div>
-          )}
+          <span className="shrink-0 font-sans text-[11px] tracking-[0.16em] text-slate-500">Аналитический terminal · без исполнения сделок</span>
         </div>
 
         {candlesLoading && <div role="status" className="font-sans text-xs text-slate-400">Загрузка свечей… остальные блоки доступны.</div>}
         {candlesUnavailable && <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">Spot-источник свечей недоступен; график и индикаторы не подменяются demo-данными.</div>}
         {candleRecoveryUnavailable && <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">Не удалось восстановить историю после разрыва kline-потока; показаны только фактически полученные свечи.</div>}
         {!candlesLoading && !candlesUnavailable && candles.length === 0 && <div role="status" className="font-sans text-xs text-slate-400">Источник пока не вернул историю свечей.</div>}
-        {/* Interactive TradingView Lightweight Chart */}
-        <CandleChart data={candles} symbol={`${asset.symbol}/USDT`} timeframe={timeframe} height={chartHeight} indicators={chartIndicators} realtimeKline={realtimeKline} showRSI={showRSI} showMACD={showMACD} chartType={chartType} showMA={showMA} />
+
+        <ChartTerminal
+          data={candles}
+          symbol={`${asset.symbol}/USDT`}
+          timeframe={timeframe}
+          onTimeframeChange={setTimeframe}
+          height={chartHeight}
+          indicators={chartIndicators}
+          realtimeKline={realtimeKline}
+          chartType={chartType}
+          onChartTypeChange={setChartType}
+          showRSI={showRSI}
+          onShowRSIChange={setShowRSI}
+          showMACD={showMACD}
+          onShowMACDChange={setShowMACD}
+          showMA={showMA}
+          onShowMAChange={setShowMA}
+          showVolume={showVolume}
+          onShowVolumeChange={setShowVolume}
+          showTimezone={showTimezone}
+          onShowTimezoneChange={setShowTimezone}
+        />
       </div>
 
         <div className="xl:sticky xl:top-[70px] self-start">
