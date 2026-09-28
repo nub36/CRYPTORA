@@ -72,7 +72,14 @@ function TerminalDropdown({
     const trigger = triggerRef.current;
     if (!trigger || typeof window === 'undefined') return;
     const rect = trigger.getBoundingClientRect();
-    const width = Math.min(230, Math.max(170, window.innerWidth - 24));
+    /*
+     * «Индикаторы» содержит самую длинную строку («MA и Bollinger Bands») плюс
+     * фиксированную колонку чекбокса, поэтому меню чуть шире остальных: так текст
+     * не обрезается и не ломает выравнивание правой оси контролов. Верхняя граница
+     * по-прежнему ограничена вьюпортом (360px остаётся без overflow).
+     */
+    const maxWidth = menuKey === 'indicators' ? 248 : 230;
+    const width = Math.min(maxWidth, Math.max(170, window.innerWidth - 24));
     const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
     const estimatedHeight = menuKey === 'timeframe' ? 292 : 250;
     const top = rect.bottom + 6 + estimatedHeight <= window.innerHeight
@@ -179,6 +186,37 @@ function TerminalDropdown({
 function menuButtonClass(active = false): string {
   return `flex min-h-9 w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left font-sans text-xs transition-colors ${
     active ? 'bg-brand-cyan/10 text-brand-cyan' : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
+  }`;
+}
+
+/**
+ * Одна строка меню «Индикаторы».
+ *
+ * Геометрия строки задаётся ОДИН раз через grid `[label | control]`, а не
+ * подгоняется отступами под каждый пункт:
+ *  - `h-9` — одинаковая высота у всех строк (активной и неактивной);
+ *  - `px-3` — одинаковые left/right paddings, поэтому текст всех индикаторов
+ *    начинается по одной вертикальной линии;
+ *  - вторая колонка фиксирована (`1rem`), поэтому чекбоксы стоят на одной правой
+ *    оси независимо от длины подписи, а `gap-3` держит одинаковое расстояние
+ *    между текстом и контролом;
+ *  - активное состояние меняет только цвет/фон (и рамку чекбокса), поэтому
+ *    hover/active/focus не двигают геометрию;
+ *  - focus-ring рисуется `ring-inset`, чтобы не увеличивать бокс строки.
+ */
+const INDICATOR_ROW_CLASS =
+  'grid h-9 w-full grid-cols-[minmax(0,1fr)_1rem] items-center gap-3 rounded-md px-3 text-left font-sans text-xs ' +
+  'transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand-cyan';
+
+function indicatorRowClass(active: boolean): string {
+  return `${INDICATOR_ROW_CLASS} ${
+    active ? 'bg-brand-cyan/10 text-brand-cyan' : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
+  }`;
+}
+
+function indicatorCheckboxClass(active: boolean): string {
+  return `flex h-4 w-4 shrink-0 items-center justify-center justify-self-end rounded border text-[11px] leading-none ${
+    active ? 'border-brand-cyan bg-brand-cyan text-slate-950' : 'border-slate-600 bg-transparent text-transparent'
   }`;
 }
 
@@ -300,8 +338,13 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
       <div
         data-qa="chart-terminal-toolbar"
         /*
+         * Состав строки: [таймфрейм] [Тип графика] [Индикаторы] [Шаблоны]
+         * [Настройки] … [Вписать]. Fullscreen-контрол переехал на правую кромку
+         * chart workspace, спейсер под него НЕ оставлен: правая группа — обычный
+         * `ml-auto`-кластер, он просто стал у́же на ширину бывшей иконки.
+         *
          * Desktop (lg+, ≥1024px): единая профессиональная строка — `flex-nowrap`,
-         * поэтому [Вписать]/[Fullscreen] с `ml-auto` держатся справа и НЕ переносятся
+         * поэтому [Вписать] с `ml-auto` держится справа и НЕ переносится
          * на вторую строку (owner-репорт был на desktop). Ранее `flex-wrap` при чуть
          * более узкой рабочей области сбрасывал правую группу на новый ряд.
          * Tablet/mobile (<lg): перенос сохранён — на планшете (768px) все контролы в
@@ -379,7 +422,13 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
           onClose={closeMenu}
           testId="chart-indicators-trigger"
         >
-          <div className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Панели и оверлеи</div>
+          {/* Заголовок отделён тонкой линией, но без лишнего вертикального воздуха. */}
+          <div
+            data-qa="chart-indicators-heading"
+            className="mb-1 border-b border-white/[0.08] px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500"
+          >
+            Панели и оверлеи
+          </div>
           {[
             { key: 'ma', label: 'MA и Bollinger Bands', value: showMA, setValue: onShowMAChange },
             { key: 'rsi', label: 'RSI (14)', value: showRSI, setValue: onShowRSIChange },
@@ -390,11 +439,13 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
               type="button"
               role="menuitemcheckbox"
               aria-checked={item.value}
-              className={menuButtonClass(item.value)}
+              data-qa={`chart-indicator-row-${item.key}`}
+              data-testid={`chart-indicator-row-${item.key}`}
+              className={indicatorRowClass(item.value)}
               onClick={() => item.setValue(!item.value)}
             >
-              <span>{item.label}</span>
-              <span className={`h-4 w-4 rounded border text-center text-[11px] leading-3.5 ${item.value ? 'border-brand-cyan bg-brand-cyan text-slate-950' : 'border-slate-600 text-transparent'}`}>✓</span>
+              <span data-qa={`chart-indicator-label-${item.key}`} className="min-w-0 truncate">{item.label}</span>
+              <span aria-hidden="true" data-qa={`chart-indicator-box-${item.key}`} className={indicatorCheckboxClass(item.value)}>✓</span>
             </button>
           ))}
           <div className="mt-1 border-t border-white/[0.08] px-3 py-2 font-sans text-[11px] leading-4 text-slate-500">Визуальные инструменты графика. Сигналы и стратегии не изменяются.</div>
@@ -455,37 +506,61 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">Вписать</span>
           </button>
+        </div>
+      </div>
+
+      {/*
+       * Chart workspace = [график | правая кромка терминала].
+       *
+       * Кнопка «Развернуть график» перенесена из верхнего toolbar на правую
+       * боковую кромку терминала. Это НЕ absolute-наложение поверх графика:
+       * рельс — обычная flex-колонка фиксированной ширины внутри того же
+       * контейнера, поэтому он физически не может перекрыть price scale или
+       * свечи, не требует отрицательных offsets и не выходит за пределы
+       * terminal-колонки (никакого horizontal overflow и никакого конфликта с
+       * правыми карточками страницы — они живут в соседней grid-колонке).
+       * График занимает оставшуюся ширину (`min-w-0 flex-1`) и сжимается
+       * штатным ResizeObserver'ом CandleChart — размер меняется in-place, серия
+       * и история свечей не пересоздаются (регрессия PR #31 не затрагивается).
+       */}
+      <div className={`flex w-full items-stretch ${isFullscreen ? 'mt-3 flex-1' : ''}`}>
+        <div className="min-w-0 flex-1">
+          <CandleChart
+            data={data}
+            symbol={symbol}
+            timeframe={timeframe}
+            height={isFullscreen ? fullscreenHeight : height}
+            indicators={indicators}
+            realtimeKline={realtimeKline}
+            showRSI={showRSI}
+            showMACD={showMACD}
+            chartType={chartType}
+            showMA={showMA}
+            showVolume={showVolume}
+            showBadges
+            showTimezone={showTimezone}
+            showResetControl={false}
+            resetViewToken={resetViewToken}
+          />
+        </div>
+        <div
+          data-qa="chart-side-rail"
+          data-testid="chart-side-rail"
+          className="flex w-8 shrink-0 flex-col items-center gap-1.5 self-stretch pl-1.5 pt-1.5 sm:w-9 sm:pl-2"
+        >
           <button
             type="button"
             data-qa="chart-fullscreen"
-            title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Полный экран'}
-            aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Полный экран'}
+            data-testid="chart-fullscreen"
+            title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Развернуть график'}
+            aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Развернуть график'}
+            aria-pressed={isFullscreen}
             onClick={() => void toggleFullscreen()}
-            className="inline-flex min-h-8 items-center justify-center rounded-md border border-surface-border bg-surface-elevated p-1.5 text-slate-300 transition-colors hover:border-brand-cyan/50 hover:text-white"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-surface-border bg-surface-elevated text-slate-300 shadow-sm shadow-black/20 transition-colors hover:border-brand-cyan/50 hover:bg-brand-cyan/10 hover:text-brand-cyan focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-cyan"
           >
             {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
         </div>
-      </div>
-
-      <div className={isFullscreen ? 'mt-3 flex-1' : ''}>
-        <CandleChart
-          data={data}
-          symbol={symbol}
-          timeframe={timeframe}
-          height={isFullscreen ? fullscreenHeight : height}
-          indicators={indicators}
-          realtimeKline={realtimeKline}
-          showRSI={showRSI}
-          showMACD={showMACD}
-          chartType={chartType}
-          showMA={showMA}
-          showVolume={showVolume}
-          showBadges
-          showTimezone={showTimezone}
-          showResetControl={false}
-          resetViewToken={resetViewToken}
-        />
       </div>
     </div>
   );

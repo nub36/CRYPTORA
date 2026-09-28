@@ -107,7 +107,18 @@ async function warmUpTerminal(page: Page): Promise<void> {
  * transient gesture-activation timing, not to tolerate a non-functional API.
  */
 async function enterFullscreen(page: Page): Promise<void> {
-  const button = page.getByRole('button', { name: 'Полный экран' });
+  // PR#32: the control now lives on the RIGHT SIDE RAIL of the terminal, not in
+  // the top toolbar. The regression contract itself is unchanged — the same
+  // single fullscreen implementation must still engage the real Fullscreen API.
+  const button = page.getByRole('button', { name: 'Развернуть график' });
+  await expect(button).toBeVisible();
+  const railHasButton = await page.evaluate(() => {
+    const rail = document.querySelector('[data-qa="chart-side-rail"]');
+    const control = document.querySelector('[data-qa="chart-fullscreen"]');
+    const toolbar = document.querySelector('[data-qa="chart-terminal-toolbar"]');
+    return Boolean(rail && control && rail.contains(control) && toolbar && !toolbar.contains(control));
+  });
+  expect(railHasButton, 'fullscreen control is on the chart side rail, not in the toolbar').toBe(true);
   let engaged = false;
   for (let attempt = 0; attempt < 3 && !engaged; attempt++) {
     await button.click({ timeout: 10_000 });
@@ -235,16 +246,24 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const toolbar = page.getByTestId('chart-terminal-toolbar');
     await expect(toolbar).toBeVisible({ timeout: 20_000 });
 
-    // Single row: first control and the fullscreen control share the same row.
+    // Single row: first control and the rightmost toolbar control («Вписать»)
+    // share the same row. PR#32 moved fullscreen out of this toolbar, so the
+    // right-hand anchor of the row is now the reset-view button.
     const firstTrigger = page.getByTestId('chart-timeframe-trigger');
-    const fullscreen = page.getByRole('button', { name: 'Полный экран' });
+    const resetView = page.locator('[data-qa="chart-reset-view"]');
     const a = await firstTrigger.boundingBox();
-    const b = await fullscreen.boundingBox();
+    const b = await resetView.boundingBox();
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
     expect(Math.abs(a!.y - b!.y), 'toolbar controls on same row').toBeLessThan(6);
-    // Fullscreen sits to the right of the dropdowns (flex spacer pushes it right).
+    // «Вписать» sits to the right of the dropdowns (flex spacer pushes it right).
     expect(b!.x).toBeGreaterThan(a!.x);
+
+    // The fullscreen control left the toolbar and no spacer/hole was left behind:
+    // «Вписать» is flush with the toolbar's right padding edge.
+    await expect(toolbar.locator('[data-qa="chart-fullscreen"]')).toHaveCount(0);
+    const toolbarRight = (await toolbar.boundingBox())!.x + (await toolbar.boundingBox())!.width;
+    expect(toolbarRight - (b!.x + b!.width), 'no leftover spacer where fullscreen used to be').toBeLessThan(20);
 
     const toolbarBox = await toolbar.boundingBox();
     expect(toolbarBox!.height, 'toolbar is a single compact row').toBeLessThan(60);
