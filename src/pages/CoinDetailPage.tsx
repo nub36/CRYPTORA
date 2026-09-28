@@ -109,7 +109,15 @@ export const CoinDetailPage: React.FC = () => {
 
   // Price chart keeps its own independent height; RSI/MACD render in separate panes below.
   const isDesktopWorkspace = useMediaQuery('(min-width: 1280px)');
-  const chartHeight = isDesktopWorkspace ? 460 : 340;
+  /*
+   * На телефоне (< 640px) высота графика чуть меньше планшетной: после того как
+   * toolbar перестал занимать три ряда (117px → ~41px), терминал не должен
+   * «съедать» освободившееся место — цель раздела 9 задачи — разумное
+   * соотношение ширины к высоте и видимость следующего блока страницы без
+   * чрезмерного скролла. Пороги 1280 (460 ↔ 340) не изменились.
+   */
+  const isPhoneViewport = useMediaQuery('(max-width: 639.98px)');
+  const chartHeight = isDesktopWorkspace ? 460 : isPhoneViewport ? 300 : 340;
 
   useEffect(() => {
     if (routeSymbol) {

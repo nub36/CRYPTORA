@@ -6,12 +6,26 @@ import {
   LineChart,
   Maximize2,
   Minimize2,
+  MoreHorizontal,
   RotateCcw,
   Settings2,
 } from 'lucide-react';
 import type { OHLCV, Timeframe } from '@/types/market';
 import { CandleChart, type CandleChartType, type ChartIndicatorData } from './CandleChart';
 import type { KlineTick } from '@/types/realtime';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+
+/**
+ * Брейкпоинт компактной (мобильной) композиции терминала.
+ *
+ * Совпадает с границей Tailwind `lg`: ровно с 1024px верхний toolbar PR #32
+ * гарантированно раскладывается в ОДНУ строку (`lg:flex-nowrap`). Ниже 1024px
+ * та же строка физически не помещается и раньше переносилась на 2–3 ряда —
+ * именно это и было видно на production-скриншоте владельца (360px).
+ * Поэтому < 1024px рисуется отдельная компактная композиция, а >= 1024px —
+ * неизменный desktop-toolbar PR #32.
+ */
+export const CHART_TERMINAL_COMPACT_QUERY = '(max-width: 1023.98px)';
 
 export const CHART_TERMINAL_TIMEFRAMES: readonly Timeframe[] = ['5m', '15m', '30m', '1h', '4h', '1D', '1W'];
 
@@ -34,18 +48,24 @@ const CHART_TYPE_LABELS: Record<CandleChartType, string> = {
   bars: 'Бары',
 };
 
-type TerminalMenuKey = 'timeframe' | 'chart-type' | 'indicators' | 'templates' | 'settings' | null;
+type TerminalMenuKey = 'timeframe' | 'chart-type' | 'indicators' | 'templates' | 'settings' | 'more' | null;
 
 interface TerminalDropdownProps {
   menuKey: Exclude<TerminalMenuKey, null>;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon?: React.ComponentType<{ className?: string }>;
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
   children: React.ReactNode;
   testId: string;
   activeLabel?: string;
+  /** Компактный мобильный триггер: плотнее паддинги, тап-цель >= 36px. */
+  compact?: boolean;
+  /** Только иконка (мобильное «Ещё»): подпись живёт в tooltip/aria-label. */
+  iconOnly?: boolean;
+  /** Полное значение контрола для tooltip/скринридера, если подпись сокращена. */
+  fullLabel?: string;
 }
 
 /**
@@ -63,6 +83,9 @@ function TerminalDropdown({
   children,
   testId,
   activeLabel,
+  compact = false,
+  iconOnly = false,
+  fullLabel,
 }: TerminalDropdownProps): React.ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -78,10 +101,10 @@ function TerminalDropdown({
      * не обрезается и не ломает выравнивание правой оси контролов. Верхняя граница
      * по-прежнему ограничена вьюпортом (360px остаётся без overflow).
      */
-    const maxWidth = menuKey === 'indicators' ? 248 : 230;
+    const maxWidth = menuKey === 'indicators' ? 248 : menuKey === 'more' ? 252 : 230;
     const width = Math.min(maxWidth, Math.max(170, window.innerWidth - 24));
     const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
-    const estimatedHeight = menuKey === 'timeframe' ? 292 : 250;
+    const estimatedHeight = menuKey === 'more' ? 340 : menuKey === 'timeframe' ? 292 : 250;
     const top = rect.bottom + 6 + estimatedHeight <= window.innerHeight
       ? rect.bottom + 6
       : Math.max(12, rect.top - estimatedHeight - 6);
@@ -144,6 +167,18 @@ function TerminalDropdown({
     }
   };
 
+  const accessibleLabel = fullLabel ?? label;
+  /*
+   * `h-9` (36px), а НЕ `min-h-9`: глобальное базовое правило проекта
+   * (`src/index.css`, «мобильные тач-таргеты ≥ 28px») задаёт
+   * `button:not(:disabled) { min-height: 28px }` со специфичностью выше
+   * одноклассовой утилиты, поэтому `min-h-*` на ≤640px не поднимает тап-цель.
+   * Явная высота выигрывает у `min-height` и даёт честные 36px.
+   */
+  const geometry = compact
+    ? `h-9 gap-1 px-2 text-xs${iconOnly ? ' w-9 justify-center px-0' : ''}`
+    : 'min-h-8 gap-1.5 px-2.5 py-1.5 text-[11px] sm:text-xs';
+
   return (
     <div className="shrink-0">
       <button
@@ -151,30 +186,40 @@ function TerminalDropdown({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={accessibleLabel !== label || iconOnly ? accessibleLabel : undefined}
+        title={accessibleLabel}
         data-qa={testId}
         data-testid={testId}
         onClick={onToggle}
         onKeyDown={onTriggerKeyDown}
-        className={`inline-flex min-h-8 items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-sans text-[11px] font-semibold transition-colors sm:text-xs ${
+        className={`inline-flex items-center rounded-md border font-sans font-semibold transition-colors ${geometry} ${
           open
             ? 'border-brand-cyan/60 bg-brand-cyan/10 text-brand-cyan'
             : 'border-surface-border bg-surface-elevated text-slate-300 hover:border-brand-cyan/50 hover:text-white'
         }`}
       >
-        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span>{label}</span>
+        {Icon && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+        {!iconOnly && <span className="truncate">{label}</span>}
         {activeLabel && <span className="hidden font-mono text-slate-400 lg:inline">· {activeLabel}</span>}
-        <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+        {!iconOnly && (
+          <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+        )}
       </button>
       {open && (
         <div
           ref={menuRef}
           role="menu"
-          aria-label={label}
+          aria-label={accessibleLabel}
           data-qa={`${testId}-menu`}
           data-testid={`${testId}-menu`}
-          style={{ position: 'fixed', top: position.top, left: position.left, width: position.width }}
-          className="z-[80] max-h-[min(320px,calc(100vh-24px))] overflow-y-auto rounded-lg border border-surface-border bg-surface-elevated p-1.5 shadow-2xl shadow-black/40"
+          style={{
+            position: 'fixed',
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            maxHeight: `min(${menuKey === 'more' ? 400 : 320}px, calc(100vh - 24px))`,
+          }}
+          className="z-[80] overflow-y-auto rounded-lg border border-surface-border bg-surface-elevated p-1.5 shadow-2xl shadow-black/40"
         >
           {children}
         </div>
@@ -269,6 +314,12 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
   onShowTimezoneChange,
 }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
+  /**
+   * Компактная (мобильная) композиция контролов. В средах без `matchMedia`
+   * (JSDOM) хук честно возвращает `false`, поэтому unit-окружение продолжает
+   * рендерить desktop-раскладку PR #32.
+   */
+  const compact = useMediaQuery(CHART_TERMINAL_COMPACT_QUERY);
   const [openMenu, setOpenMenu] = useState<TerminalMenuKey>(null);
   const [resetViewToken, setResetViewToken] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -278,6 +329,12 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
   const toggleMenu = useCallback((menu: Exclude<TerminalMenuKey, null>) => {
     setOpenMenu((current) => current === menu ? null : menu);
   }, []);
+
+  /* Смена композиции (поворот экрана / resize через брейкпоинт) закрывает меню:
+     его триггер в новой раскладке может отсутствовать. */
+  useEffect(() => {
+    setOpenMenu(null);
+  }, [compact]);
 
   useEffect(() => {
     const syncFullscreenState = () => {
@@ -329,199 +386,376 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
     closeMenu();
   };
 
+  /*
+   * ================= ОБЩЕЕ СОДЕРЖИМОЕ МЕНЮ =================
+   *
+   * Наполнение каждого меню описано ОДИН раз и переиспользуется обеими
+   * композициями (desktop toolbar PR #32 и мобильная компактная строка).
+   * Мобильные контролы не дублируют бизнес-логику: они открывают те же самые
+   * пункты и вызывают те же самые handlers/состояние.
+   */
+
+  const timeframeItems = (
+    <>
+      <div className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Таймфрейм</div>
+      {CHART_TERMINAL_TIMEFRAMES.map((tf) => (
+        <button
+          key={tf}
+          type="button"
+          role="menuitem"
+          data-qa={`chart-timeframe-${tf}`}
+          data-testid={`chart-timeframe-${tf}`}
+          aria-current={timeframe === tf ? 'true' : undefined}
+          className={menuButtonClass(timeframe === tf)}
+          onClick={() => {
+            onTimeframeChange(tf);
+            closeMenu();
+          }}
+        >
+          <span>{formatTerminalTimeframe(tf)}</span>
+          <span className="font-mono text-[11px] text-slate-500">{tf}</span>
+        </button>
+      ))}
+    </>
+  );
+
+  const chartTypeItems = (
+    <>
+      {(['candles', 'line'] as CandleChartType[]).map((type) => (
+        <button
+          key={type}
+          type="button"
+          role="menuitem"
+          data-qa={`chart-type-${type}`}
+          className={menuButtonClass(chartType === type)}
+          onClick={() => {
+            onChartTypeChange(type);
+            closeMenu();
+          }}
+        >
+          <span className="flex items-center gap-2"><LineChart className="h-3.5 w-3.5" />{CHART_TYPE_LABELS[type]}</span>
+          {chartType === type && <span aria-hidden="true" className="text-brand-cyan">✓</span>}
+        </button>
+      ))}
+    </>
+  );
+
+  const indicatorItems = (
+    <>
+      {/* Заголовок отделён тонкой линией, но без лишнего вертикального воздуха. */}
+      <div
+        data-qa="chart-indicators-heading"
+        className="mb-1 border-b border-white/[0.08] px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500"
+      >
+        Панели и оверлеи
+      </div>
+      {[
+        { key: 'ma', label: 'MA и Bollinger Bands', value: showMA, setValue: onShowMAChange },
+        { key: 'rsi', label: 'RSI (14)', value: showRSI, setValue: onShowRSIChange },
+        { key: 'macd', label: 'MACD (12/26/9)', value: showMACD, setValue: onShowMACDChange },
+      ].map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={item.value}
+          data-qa={`chart-indicator-row-${item.key}`}
+          data-testid={`chart-indicator-row-${item.key}`}
+          className={indicatorRowClass(item.value)}
+          onClick={() => item.setValue(!item.value)}
+        >
+          <span data-qa={`chart-indicator-label-${item.key}`} className="min-w-0 truncate">{item.label}</span>
+          <span aria-hidden="true" data-qa={`chart-indicator-box-${item.key}`} className={indicatorCheckboxClass(item.value)}>✓</span>
+        </button>
+      ))}
+      <div className="mt-1 border-t border-white/[0.08] px-3 py-2 font-sans text-[11px] leading-4 text-slate-500">Визуальные инструменты графика. Сигналы и стратегии не изменяются.</div>
+    </>
+  );
+
+  const templateItems = (
+    <>
+      <button type="button" role="menuitem" data-qa="chart-template-default" className={menuButtonClass()} onClick={() => applyTemplate('default')}>
+        <span><strong className="font-semibold text-white">По умолчанию</strong><span className="block text-[11px] text-slate-500">Свечи · MA · объём</span></span>
+      </button>
+      <button type="button" role="menuitem" data-qa="chart-template-clean" className={menuButtonClass()} onClick={() => applyTemplate('clean')}>
+        <span><strong className="font-semibold text-white">Чистый график</strong><span className="block text-[11px] text-slate-500">Цена и время</span></span>
+      </button>
+      <button type="button" role="menuitem" data-qa="chart-template-momentum" className={menuButtonClass()} onClick={() => applyTemplate('momentum')}>
+        <span><strong className="font-semibold text-white">Momentum</strong><span className="block text-[11px] text-slate-500">RSI · MACD · объём</span></span>
+      </button>
+    </>
+  );
+
+  const settingsItems = (
+    <>
+      <button type="button" role="menuitemcheckbox" aria-checked={showVolume} data-qa="chart-setting-volume" className={menuButtonClass(showVolume)} onClick={() => onShowVolumeChange(!showVolume)}>
+        <span>Объём</span>
+        <span className="font-mono text-[11px] text-slate-500">{showVolume ? 'Вкл' : 'Выкл'}</span>
+      </button>
+      <button type="button" role="menuitemcheckbox" aria-checked={showTimezone} data-qa="chart-setting-timezone" className={menuButtonClass(showTimezone)} onClick={() => onShowTimezoneChange(!showTimezone)}>
+        <span>Часовой пояс</span>
+        <span className="font-mono text-[11px] text-slate-500">{showTimezone ? 'Вкл' : 'Выкл'}</span>
+      </button>
+    </>
+  );
+
+  /**
+   * «Вписать данные». Один и тот же обработчик используется desktop-кнопкой в
+   * toolbar, пунктом внутри «Настройки» и мобильным пунктом внутри «Ещё» —
+   * второй реализации сброса масштаба не создаётся.
+   */
+  const renderFitDataItem = (qa?: string) => (
+    <button
+      type="button"
+      role="menuitem"
+      {...(qa ? { 'data-qa': qa, 'data-testid': qa } : {})}
+      className={menuButtonClass()}
+      onClick={() => { setResetViewToken((value) => value + 1); closeMenu(); }}
+    >
+      <span>Вписать данные</span>
+      <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+    </button>
+  );
+
+  const fullscreenLabel = isFullscreen ? 'Выйти из полноэкранного режима' : 'Развернуть график';
+  const fullscreenIcon = isFullscreen
+    ? <Minimize2 className="h-4 w-4" aria-hidden="true" />
+    : <Maximize2 className="h-4 w-4" aria-hidden="true" />;
+
+  /*
+   * ================= MOBILE COMPOSITION =================
+   *
+   * Одна компактная строка: [15м ▾] [Тип ▾] [Индикаторы ▾] [⋯].
+   * «Шаблоны», «Настройки» и «Вписать» переезжают внутрь «Ещё» и больше не
+   * занимают постоянных кнопок/отдельной строки.
+   */
+  const mobileToolbar = (
+    <div
+      data-qa="chart-terminal-toolbar"
+      data-testid="chart-terminal-toolbar"
+      data-layout="compact"
+      className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2 py-1.5"
+    >
+      <TerminalDropdown
+        menuKey="timeframe"
+        label={formatTerminalTimeframe(timeframe)}
+        fullLabel={`Таймфрейм: ${formatTerminalTimeframe(timeframe)}`}
+        compact
+        open={openMenu === 'timeframe'}
+        onToggle={() => toggleMenu('timeframe')}
+        onClose={closeMenu}
+        testId="chart-timeframe-trigger"
+      >
+        {timeframeItems}
+      </TerminalDropdown>
+
+      <TerminalDropdown
+        menuKey="chart-type"
+        label="Тип"
+        fullLabel="Тип графика"
+        icon={BarChart3}
+        compact
+        open={openMenu === 'chart-type'}
+        onToggle={() => toggleMenu('chart-type')}
+        onClose={closeMenu}
+        testId="chart-type-trigger"
+      >
+        {chartTypeItems}
+      </TerminalDropdown>
+
+      <TerminalDropdown
+        menuKey="indicators"
+        label="Индикаторы"
+        compact
+        open={openMenu === 'indicators'}
+        onToggle={() => toggleMenu('indicators')}
+        onClose={closeMenu}
+        testId="chart-indicators-trigger"
+      >
+        {indicatorItems}
+      </TerminalDropdown>
+
+      <div className="ml-auto flex shrink-0 items-center">
+        <TerminalDropdown
+          menuKey="more"
+          label="Ещё"
+          fullLabel="Ещё: шаблоны, настройки, вписать данные"
+          icon={MoreHorizontal}
+          compact
+          iconOnly
+          open={openMenu === 'more'}
+          onToggle={() => toggleMenu('more')}
+          onClose={closeMenu}
+          testId="chart-more-trigger"
+        >
+          <div className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Шаблоны</div>
+          {templateItems}
+          <div className="mt-1 border-t border-white/[0.08] px-3 pb-1.5 pt-2 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Настройки</div>
+          {settingsItems}
+          <div className="mt-1 border-t border-white/[0.08] pt-1">
+            {renderFitDataItem('chart-reset-view')}
+          </div>
+        </TerminalDropdown>
+      </div>
+    </div>
+  );
+
+  /*
+   * ================= DESKTOP COMPOSITION (PR #32, без изменений) =================
+   */
+  const desktopToolbar = (
+    <div
+      data-qa="chart-terminal-toolbar"
+      data-testid="chart-terminal-toolbar"
+      data-layout="desktop"
+      /*
+       * Состав строки: [таймфрейм] [Тип графика] [Индикаторы] [Шаблоны]
+       * [Настройки] … [Вписать]. Fullscreen-контрол живёт на правой кромке
+       * chart workspace (PR #32), спейсер под него НЕ оставлен: правая группа —
+       * обычный `ml-auto`-кластер.
+       *
+       * Эта композиция рендерится только на >= 1024px, где она гарантированно
+       * помещается в ОДНУ строку (`flex-nowrap`). Раньше тот же toolbar
+       * рендерился и на мобильном, где `flex-wrap` раскладывал его на три ряда
+       * высотой 117px — это и был дефект production-скриншота.
+       */
+      className="flex min-w-0 flex-nowrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-1.5 sm:px-3"
+    >
+      <TerminalDropdown
+        menuKey="timeframe"
+        label={formatTerminalTimeframe(timeframe)}
+        activeLabel="таймфрейм"
+        icon={Layers3}
+        open={openMenu === 'timeframe'}
+        onToggle={() => toggleMenu('timeframe')}
+        onClose={closeMenu}
+        testId="chart-timeframe-trigger"
+      >
+        {timeframeItems}
+      </TerminalDropdown>
+
+      <TerminalDropdown
+        menuKey="chart-type"
+        label="Тип графика"
+        activeLabel={CHART_TYPE_LABELS[chartType]}
+        icon={BarChart3}
+        open={openMenu === 'chart-type'}
+        onToggle={() => toggleMenu('chart-type')}
+        onClose={closeMenu}
+        testId="chart-type-trigger"
+      >
+        {chartTypeItems}
+      </TerminalDropdown>
+
+      <TerminalDropdown
+        menuKey="indicators"
+        label="Индикаторы"
+        icon={LineChart}
+        open={openMenu === 'indicators'}
+        onToggle={() => toggleMenu('indicators')}
+        onClose={closeMenu}
+        testId="chart-indicators-trigger"
+      >
+        {indicatorItems}
+      </TerminalDropdown>
+
+      <TerminalDropdown
+        menuKey="templates"
+        label="Шаблоны"
+        icon={Layers3}
+        open={openMenu === 'templates'}
+        onToggle={() => toggleMenu('templates')}
+        onClose={closeMenu}
+        testId="chart-templates-trigger"
+      >
+        {templateItems}
+      </TerminalDropdown>
+
+      <TerminalDropdown
+        menuKey="settings"
+        label="Настройки"
+        icon={Settings2}
+        open={openMenu === 'settings'}
+        onToggle={() => toggleMenu('settings')}
+        onClose={closeMenu}
+        testId="chart-settings-trigger"
+      >
+        {settingsItems}
+        {renderFitDataItem()}
+      </TerminalDropdown>
+
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          data-qa="chart-reset-view"
+          data-testid="chart-reset-view"
+          title="Вписать данные в область графика"
+          aria-label="Вписать данные"
+          onClick={() => setResetViewToken((value) => value + 1)}
+          className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-surface-border bg-surface-elevated px-2.5 py-1.5 font-sans text-[11px] font-semibold text-slate-300 transition-colors hover:border-brand-cyan/50 hover:text-white sm:text-xs"
+        >
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="hidden sm:inline">Вписать</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  /**
+   * Fullscreen-контрол существует ровно в ОДНОМ экземпляре: либо на desktop
+   * side rail (PR #32), либо как мобильный оверлей внутри рамки графика.
+   * Оба варианта вызывают тот же самый `toggleFullscreen()` и тот же
+   * `terminalRef` fullscreen-элемент — второй реализации fullscreen нет
+   * (инвариант PR #31 / #32).
+   */
+  const fullscreenButton = (variant: 'rail' | 'overlay') => (
+    <button
+      type="button"
+      data-qa="chart-fullscreen"
+      data-testid="chart-fullscreen"
+      data-variant={variant}
+      title={fullscreenLabel}
+      aria-label={fullscreenLabel}
+      aria-pressed={isFullscreen}
+      onClick={() => void toggleFullscreen()}
+      className={
+        variant === 'rail'
+          ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-surface-border bg-surface-elevated text-slate-300 shadow-sm shadow-black/20 transition-colors hover:border-brand-cyan/50 hover:bg-brand-cyan/10 hover:text-brand-cyan focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-cyan'
+          : 'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-surface-border bg-surface/90 text-slate-200 shadow-sm shadow-black/30 backdrop-blur-sm transition-colors hover:border-brand-cyan/50 hover:bg-brand-cyan/10 hover:text-brand-cyan focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-cyan'
+      }
+    >
+      {variant === 'rail'
+        ? (isFullscreen ? <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />)
+        : fullscreenIcon}
+    </button>
+  );
+
   return (
     <div
       ref={terminalRef}
       data-qa="chart-terminal"
+      data-composition={compact ? 'compact' : 'desktop'}
       className={`w-full rounded-xl border border-white/[0.08] bg-surface shadow-panel-elevated ${isFullscreen ? 'min-h-screen p-3 sm:p-4' : ''}`}
     >
-      <div
-        data-qa="chart-terminal-toolbar"
-        /*
-         * Состав строки: [таймфрейм] [Тип графика] [Индикаторы] [Шаблоны]
-         * [Настройки] … [Вписать]. Fullscreen-контрол переехал на правую кромку
-         * chart workspace, спейсер под него НЕ оставлен: правая группа — обычный
-         * `ml-auto`-кластер, он просто стал у́же на ширину бывшей иконки.
-         *
-         * Desktop (lg+, ≥1024px): единая профессиональная строка — `flex-nowrap`,
-         * поэтому [Вписать] с `ml-auto` держится справа и НЕ переносится
-         * на вторую строку (owner-репорт был на desktop). Ранее `flex-wrap` при чуть
-         * более узкой рабочей области сбрасывал правую группу на новый ряд.
-         * Tablet/mobile (<lg): перенос сохранён — на планшете (768px) все контролы в
-         * одну строку не влезают, а `nowrap` дал бы page horizontal overflow (см.
-         * e2e/mobileOverflow). `min-w-0` дополнительно страхует от распирания
-         * grid-колонки. Вертикальные паддинги уменьшены — chrome компактнее,
-         * график начинается выше (§11).
-         */
-        className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-1.5 sm:px-3 lg:flex-nowrap"
-      >
-        <TerminalDropdown
-          menuKey="timeframe"
-          label={formatTerminalTimeframe(timeframe)}
-          activeLabel="таймфрейм"
-          icon={Layers3}
-          open={openMenu === 'timeframe'}
-          onToggle={() => toggleMenu('timeframe')}
-          onClose={closeMenu}
-          testId="chart-timeframe-trigger"
-        >
-          <div className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Таймфрейм</div>
-          {CHART_TERMINAL_TIMEFRAMES.map((tf) => (
-            <button
-              key={tf}
-              type="button"
-              role="menuitem"
-              data-qa={`chart-timeframe-${tf}`}
-              data-testid={`chart-timeframe-${tf}`}
-              aria-current={timeframe === tf ? 'true' : undefined}
-              className={menuButtonClass(timeframe === tf)}
-              onClick={() => {
-                onTimeframeChange(tf);
-                closeMenu();
-              }}
-            >
-              <span>{formatTerminalTimeframe(tf)}</span>
-              <span className="font-mono text-[11px] text-slate-500">{tf}</span>
-            </button>
-          ))}
-        </TerminalDropdown>
-
-        <TerminalDropdown
-          menuKey="chart-type"
-          label="Тип графика"
-          activeLabel={CHART_TYPE_LABELS[chartType]}
-          icon={BarChart3}
-          open={openMenu === 'chart-type'}
-          onToggle={() => toggleMenu('chart-type')}
-          onClose={closeMenu}
-          testId="chart-type-trigger"
-        >
-          {(['candles', 'line'] as CandleChartType[]).map((type) => (
-            <button
-              key={type}
-              type="button"
-              role="menuitem"
-              className={menuButtonClass(chartType === type)}
-              onClick={() => {
-                onChartTypeChange(type);
-                closeMenu();
-              }}
-            >
-              <span className="flex items-center gap-2"><LineChart className="h-3.5 w-3.5" />{CHART_TYPE_LABELS[type]}</span>
-              {chartType === type && <span aria-hidden="true" className="text-brand-cyan">✓</span>}
-            </button>
-          ))}
-        </TerminalDropdown>
-
-        <TerminalDropdown
-          menuKey="indicators"
-          label="Индикаторы"
-          icon={LineChart}
-          open={openMenu === 'indicators'}
-          onToggle={() => toggleMenu('indicators')}
-          onClose={closeMenu}
-          testId="chart-indicators-trigger"
-        >
-          {/* Заголовок отделён тонкой линией, но без лишнего вертикального воздуха. */}
-          <div
-            data-qa="chart-indicators-heading"
-            className="mb-1 border-b border-white/[0.08] px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500"
-          >
-            Панели и оверлеи
-          </div>
-          {[
-            { key: 'ma', label: 'MA и Bollinger Bands', value: showMA, setValue: onShowMAChange },
-            { key: 'rsi', label: 'RSI (14)', value: showRSI, setValue: onShowRSIChange },
-            { key: 'macd', label: 'MACD (12/26/9)', value: showMACD, setValue: onShowMACDChange },
-          ].map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="menuitemcheckbox"
-              aria-checked={item.value}
-              data-qa={`chart-indicator-row-${item.key}`}
-              data-testid={`chart-indicator-row-${item.key}`}
-              className={indicatorRowClass(item.value)}
-              onClick={() => item.setValue(!item.value)}
-            >
-              <span data-qa={`chart-indicator-label-${item.key}`} className="min-w-0 truncate">{item.label}</span>
-              <span aria-hidden="true" data-qa={`chart-indicator-box-${item.key}`} className={indicatorCheckboxClass(item.value)}>✓</span>
-            </button>
-          ))}
-          <div className="mt-1 border-t border-white/[0.08] px-3 py-2 font-sans text-[11px] leading-4 text-slate-500">Визуальные инструменты графика. Сигналы и стратегии не изменяются.</div>
-        </TerminalDropdown>
-
-        <TerminalDropdown
-          menuKey="templates"
-          label="Шаблоны"
-          icon={Layers3}
-          open={openMenu === 'templates'}
-          onToggle={() => toggleMenu('templates')}
-          onClose={closeMenu}
-          testId="chart-templates-trigger"
-        >
-          <button type="button" role="menuitem" className={menuButtonClass()} onClick={() => applyTemplate('default')}>
-            <span><strong className="font-semibold text-white">По умолчанию</strong><span className="block text-[11px] text-slate-500">Свечи · MA · объём</span></span>
-          </button>
-          <button type="button" role="menuitem" className={menuButtonClass()} onClick={() => applyTemplate('clean')}>
-            <span><strong className="font-semibold text-white">Чистый график</strong><span className="block text-[11px] text-slate-500">Цена и время</span></span>
-          </button>
-          <button type="button" role="menuitem" className={menuButtonClass()} onClick={() => applyTemplate('momentum')}>
-            <span><strong className="font-semibold text-white">Momentum</strong><span className="block text-[11px] text-slate-500">RSI · MACD · объём</span></span>
-          </button>
-        </TerminalDropdown>
-
-        <TerminalDropdown
-          menuKey="settings"
-          label="Настройки"
-          icon={Settings2}
-          open={openMenu === 'settings'}
-          onToggle={() => toggleMenu('settings')}
-          onClose={closeMenu}
-          testId="chart-settings-trigger"
-        >
-          <button type="button" role="menuitemcheckbox" aria-checked={showVolume} className={menuButtonClass(showVolume)} onClick={() => onShowVolumeChange(!showVolume)}>
-            <span>Объём</span>
-            <span className="font-mono text-[11px] text-slate-500">{showVolume ? 'Вкл' : 'Выкл'}</span>
-          </button>
-          <button type="button" role="menuitemcheckbox" aria-checked={showTimezone} className={menuButtonClass(showTimezone)} onClick={() => onShowTimezoneChange(!showTimezone)}>
-            <span>Часовой пояс</span>
-            <span className="font-mono text-[11px] text-slate-500">{showTimezone ? 'Вкл' : 'Выкл'}</span>
-          </button>
-          <button type="button" role="menuitem" className={menuButtonClass()} onClick={() => { setResetViewToken((value) => value + 1); closeMenu(); }}>
-            <span>Вписать данные</span>
-            <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
-          </button>
-        </TerminalDropdown>
-
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            data-qa="chart-reset-view"
-            title="Вписать данные в область графика"
-            aria-label="Вписать данные"
-            onClick={() => setResetViewToken((value) => value + 1)}
-            className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-surface-border bg-surface-elevated px-2.5 py-1.5 font-sans text-[11px] font-semibold text-slate-300 transition-colors hover:border-brand-cyan/50 hover:text-white sm:text-xs"
-          >
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">Вписать</span>
-          </button>
-        </div>
-      </div>
+      {compact ? mobileToolbar : desktopToolbar}
 
       {/*
-       * Chart workspace = [график | правая кромка терминала].
+       * Chart workspace = [график | (только desktop) правая кромка терминала].
        *
-       * Кнопка «Развернуть график» перенесена из верхнего toolbar на правую
-       * боковую кромку терминала. Это НЕ absolute-наложение поверх графика:
-       * рельс — обычная flex-колонка фиксированной ширины внутри того же
-       * контейнера, поэтому он физически не может перекрыть price scale или
-       * свечи, не требует отрицательных offsets и не выходит за пределы
-       * terminal-колонки (никакого horizontal overflow и никакого конфликта с
-       * правыми карточками страницы — они живут в соседней grid-колонке).
-       * График занимает оставшуюся ширину (`min-w-0 flex-1`) и сжимается
-       * штатным ResizeObserver'ом CandleChart — размер меняется in-place, серия
-       * и история свечей не пересоздаются (регрессия PR #31 не затрагивается).
+       * Desktop (PR #32): рельс — обычная flex-колонка фиксированной ширины,
+       * он не накладывается на график и не может перекрыть price scale.
+       *
+       * Mobile: отдельная вертикальная колонка справа НЕ выделяется — она
+       * съедала ~32px и без того узкого канваса. Вместо неё контрол живёт
+       * плавающим оверлеем внутри рамки графика (`topRightSlot`), который
+       * позиционируется левее ФАКТИЧЕСКОЙ правой шкалы и стоит в одном flex-ряду
+       * с бейджами, поэтому не перекрывает ни подписи цены, ни бейджи и не
+       * уменьшает ширину канваса.
+       *
+       * Порядок дочерних узлов стабилен в обоих режимах: CandleChart всегда
+       * первый ребёнок первой колонки, поэтому переход desktop <-> mobile
+       * (смена ширины окна) НЕ размонтирует график — серия и история свечей
+       * сохраняются (инвариант PR #31).
        */}
       <div className={`flex w-full items-stretch ${isFullscreen ? 'mt-3 flex-1' : ''}`}>
         <div className="min-w-0 flex-1">
@@ -541,26 +775,19 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
             showTimezone={showTimezone}
             showResetControl={false}
             resetViewToken={resetViewToken}
+            compactPriceLabels={compact}
+            topRightSlot={compact ? fullscreenButton('overlay') : undefined}
           />
         </div>
-        <div
-          data-qa="chart-side-rail"
-          data-testid="chart-side-rail"
-          className="flex w-8 shrink-0 flex-col items-center gap-1.5 self-stretch pl-1.5 pt-1.5 sm:w-9 sm:pl-2"
-        >
-          <button
-            type="button"
-            data-qa="chart-fullscreen"
-            data-testid="chart-fullscreen"
-            title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Развернуть график'}
-            aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Развернуть график'}
-            aria-pressed={isFullscreen}
-            onClick={() => void toggleFullscreen()}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-surface-border bg-surface-elevated text-slate-300 shadow-sm shadow-black/20 transition-colors hover:border-brand-cyan/50 hover:bg-brand-cyan/10 hover:text-brand-cyan focus:outline-none focus-visible:ring-1 focus-visible:ring-brand-cyan"
+        {!compact && (
+          <div
+            data-qa="chart-side-rail"
+            data-testid="chart-side-rail"
+            className="flex w-8 shrink-0 flex-col items-center gap-1.5 self-stretch pl-1.5 pt-1.5 sm:w-9 sm:pl-2"
           >
-            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />}
-          </button>
-        </div>
+            {fullscreenButton('rail')}
+          </div>
+        )}
       </div>
     </div>
   );

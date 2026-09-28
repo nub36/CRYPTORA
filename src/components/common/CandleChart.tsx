@@ -54,6 +54,25 @@ interface CandleChartProps {
   showTimezone?: boolean;
   /** Показать встроенную кнопку вписывания масштаба. Терминал выносит её в toolbar. */
   showResetControl?: boolean;
+  /**
+   * Компактные ПОДПИСИ осей цены (только отображение) для узких экранов.
+   *
+   * Default: `false` — на desktop формат подписей не меняется. Влияет
+   * исключительно на текст меток правой шкалы/крестика: рыночные значения,
+   * свечи, расчёты и precision источника данных не затрагиваются
+   * (см. `formatChartPriceLabel`).
+   */
+  compactPriceLabels?: boolean;
+  /**
+   * Плавающий контрол в правом верхнем углу рамки графика (аддитивный слот).
+   *
+   * Слот живёт в том же flex-ряду, что и бейджи символа/статуса, поэтому
+   * физически не может их перекрыть, а правый отступ ряда динамически равен
+   * РЕАЛЬНОЙ ширине правой шкалы (`priceScale('right').width()`), поэтому
+   * контрол не накрывает подписи цены. Ширину канваса слот не уменьшает —
+   * это оверлей, а не колонка layout.
+   */
+  topRightSlot?: React.ReactNode;
   /** Увеличение счётчика сбрасывает viewport из внешнего terminal toolbar. */
   resetViewToken?: number;
   /**
@@ -150,6 +169,50 @@ export function chartTimeToSeconds(time: Time | undefined): number | null {
 }
 
 /**
+ * Базовый (desktop) формат подписи цены. Сохранён без изменений с PR #32:
+ * >= 1000 — группы тысяч и 2 знака, >= 1 — 4 знака, иначе 6 знаков.
+ */
+function baseChartPriceLabel(price: number): string {
+  if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (price >= 1) return price.toFixed(4);
+  return price.toFixed(6);
+}
+
+/** Убирает ЗАВЕДОМО лишние нули в хвосте дробной части: `0.120000` → `0.12`. */
+function trimTrailingZeros(text: string): string {
+  if (!text.includes('.')) return text;
+  return text.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
+/**
+ * Подпись оси цены графика.
+ *
+ * `compact` — ТОЛЬКО формат отображения меток на узком экране; значение не
+ * округляется в данных, не участвует в расчётах и никак не меняет свечи,
+ * рыночную цену и precision источника:
+ *  - хвостовые нули убираются (`0.120000` → `0.12`, `3,450.60` → `3,450.6`);
+ *  - значения >= 1 000 000 (на практике это метка последнего ОБЪЁМА, а не цена
+ *    инструмента) показываются как `11.32M` вместо `11,320,428.00`, иначе одна
+ *    эта метка занимала бы 108px из 274px ширины графика на 360px.
+ *
+ * Экспортируется для юнит-тестов: формат обязан быть проверяемым без canvas.
+ */
+export function formatChartPriceLabel(price: number, compact = false): string {
+  if (!Number.isFinite(price)) return '';
+  if (!compact) return baseChartPriceLabel(price);
+  if (price >= 1_000_000) {
+    const units: ReadonlyArray<readonly [number, string]> = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M']];
+    for (const [factor, suffix] of units) {
+      if (price >= factor) {
+        const scaled = price / factor;
+        return `${trimTrailingZeros(scaled.toFixed(scaled >= 100 ? 0 : 2))}${suffix}`;
+      }
+    }
+  }
+  return trimTrailingZeros(baseChartPriceLabel(price));
+}
+
+/**
  * Crosshair OHLCV snapshot — shown when user hovers over chart.
  */
 interface CrosshairInfo {
@@ -177,6 +240,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   showBadges = true,
   showTimezone = true,
   showResetControl = true,
+  compactPriceLabels = false,
+  topRightSlot,
   resetViewToken,
   markers,
   levelLines,
@@ -230,6 +295,33 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
   const [crosshair, setCrosshair] = useState<CrosshairInfo | null>(null);
   const [clockMs, setClockMs] = useState(() => Date.now());
+  /**
+   * Флаг компактных подписей читается форматтером через ref: форматтер задаётся
+   * ОДИН раз при создании графика, а график намеренно не пересоздаётся
+   * (инвариант PR #31 — история свечей переживает смену геометрии).
+   */
+  const compactLabelsRef = useRef(compactPriceLabels);
+  compactLabelsRef.current = compactPriceLabels;
+  /**
+   * Фактическая ширина правой шкалы цены. Нужна ТОЛЬКО для позиционирования
+   * плавающего слота (`topRightSlot`): он обязан оставаться левее подписей
+   * шкалы, а не угадывать их ширину константой.
+   */
+  const [priceScaleWidth, setPriceScaleWidth] = useState(0);
+  const measurePriceScale = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    let next = 0;
+    try {
+      next = chart.priceScale('right').width();
+    } catch {
+      return; // шкала ещё не создана
+    }
+    if (!Number.isFinite(next)) return;
+    setPriceScaleWidth((prev) => (Math.abs(prev - next) < 1 ? prev : next));
+  }, []);
+  const measurePriceScaleRef = useRef(measurePriceScale);
+  measurePriceScaleRef.current = measurePriceScale;
   const klineAgeMs = realtimeKline ? clockMs - realtimeKline.timestamp : Number.POSITIVE_INFINITY;
   const klineFresh = klineAgeMs >= -5_000 && klineAgeMs <= 15_000;
 
@@ -273,11 +365,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       localization: {
         locale: 'en-US',
         timeFormatter: (time: Time) => formatChartAxisTime(time, TickMarkType.Time, ),
-        priceFormatter: (price: number) => {
-          if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-          if (price >= 1) return price.toFixed(4);
-          return price.toFixed(6);
-        },
+        /*
+         * ВАЖНО: `localization.priceFormatter` в lightweight-charts имеет
+         * приоритет над `priceFormat` серий (`PriceScale._formatPrice`),
+         * поэтому подпись последнего ОБЪЁМА тоже проходит через этот форматтер.
+         * Компактный режим включается только для узких экранов и меняет
+         * исключительно текст метки (см. `formatChartPriceLabel`).
+         */
+        priceFormatter: (price: number) => formatChartPriceLabel(price, compactLabelsRef.current),
       },
       grid: {
         vertLines: { color: readThemeToken('--chart-grid', 'rgba(255, 255, 255, 0.04)') },
@@ -445,6 +540,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
           ...(nextHeight > 0 ? { height: nextHeight } : {}),
         });
         timeSyncRef.current.syncFrom(chart);
+        measurePriceScaleRef.current();
       }
     };
     handleResize();
@@ -785,6 +881,27 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     handleResetView();
   }, [handleResetView, resetViewToken]);
 
+  /*
+   * Смена ширины экрана (desktop <-> mobile composition) переключает формат
+   * подписей БЕЗ пересоздания графика: обновляется только опция localization,
+   * серии и история свечей остаются теми же (инвариант PR #31).
+   */
+  useEffect(() => {
+    chartRef.current?.applyOptions({
+      localization: { priceFormatter: (price: number) => formatChartPriceLabel(price, compactLabelsRef.current) },
+    });
+    measurePriceScale();
+  }, [compactPriceLabels, measurePriceScale]);
+
+  /*
+   * Ширина правой шкалы зависит от самой длинной подписи, поэтому измеряется
+   * после смены данных/геометрии и подтверждается общим 5-секундным тиком.
+   * Это чтение фактического состояния графика, а не подмена значений.
+   */
+  useEffect(() => {
+    measurePriceScale();
+  }, [measurePriceScale, clockMs, data, height, chartType, showVolume, showRSI, showMACD, symbol]);
+
   /**
    * Диагностический пробник ТОЛЬКО для dev/e2e (`isDevRuntime()`): в
    * production-сборке ветка выпадает из бандла. Он читает ФАКТИЧЕСКОЕ состояние
@@ -829,9 +946,20 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         aria-hidden="true"
       />
 
-      {/* Floating Header: Symbol + Badge + OHLCV + Reset */}
-      <div className="absolute top-3 left-3.5 z-10 flex items-start justify-between w-[calc(100%-28px)] pointer-events-none">
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs font-sans text-slate-300 pointer-events-auto">
+      {/*
+        Floating Header: Symbol + Badge + OHLCV + (optional) floating control.
+
+        Правый отступ ряда по умолчанию 14px (как прежний `w-[calc(100%-28px)]`).
+        Когда передан `topRightSlot`, отступ равен ФАКТИЧЕСКОЙ ширине правой
+        шкалы + 6px: плавающий контрол оказывается левее подписей цены и не
+        может их перекрыть. Сам контрол — последний flex-элемент этого же ряда,
+        поэтому он структурно не может наехать на бейджи символа/статуса.
+      */}
+      <div
+        className="absolute top-3 left-3.5 z-10 flex items-start justify-between gap-2 pointer-events-none"
+        style={{ right: topRightSlot ? Math.max(14, Math.round(priceScaleWidth) + 6) : 14 }}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2 text-xs font-sans text-slate-300 pointer-events-auto">
           <span className="font-bold text-white tracking-tight text-sm drop-shadow-sm">{symbol}</span>
           {showBadges && (
             <>
@@ -881,6 +1009,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
             data-qa="chart-timezone-label"
             title={`Время на графике — ваш часовой пояс (${browserTimeZone()})`}
           >{timeZoneLabelText}</span>
+        )}
+        {topRightSlot && (
+          <div
+            data-qa="chart-top-right-slot"
+            className="pointer-events-auto ml-auto shrink-0"
+          >
+            {topRightSlot}
+          </div>
         )}
       </div>
 
