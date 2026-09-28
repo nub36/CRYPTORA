@@ -135,6 +135,64 @@ export const CACHE_TTL_MS = {
   '1d': 120_000,
 };
 
+/**
+ * ГРАНИЦА ФИНАЛЬНОСТИ СВЕЧИ (инцидент PEPE 561186ba, 2026-09-27).
+ *
+ * Binance /api/v3/klines всегда отдаёт последней СЕЙЧАС ФОРМИРУЮЩУЮСЯ свечу —
+ * это снапшот неполного бара. До этого фикса такой ответ целиком ложился в
+ * кэш, а `isClosed` потребитель считал ПО МОМЕНТУ ЧТЕНИЯ (`ohlcvAdapter`:
+ * `closeTime < nowMs`). Сочетание давало дефект класса look-ahead из кэша:
+ *
+ *   T0 — ответ получен, бар X ещё формируется (close = цена в T0);
+ *   T1 — ответ закэширован (TTL 60 c);
+ *   T2 — часы пересекли X.closeTime;
+ *   T3 — кэш отдан БЕЗ обновления данных (TTL ещё не истёк);
+ *   T4 — потребитель вычисляет `isClosed = now > closeTime` → true;
+ *   T5 — ДОзакрытый снапшот T0 используется как финальный бар X.
+ *
+ * Именно так V3.3 опубликовал сетап PEPE по close формирующегося бара
+ * (0.00000446 вместо остановленного 0.00000445), а повторный скан на
+ * осевших данных получил уже ДРУГУЮ геометрию → REJECTED_GEOMETRY →
+ * «отмена» исполненной строки (см. second guard в signalRepository).
+ *
+ * ИНВАРИАНТ: снапшот, полученный пока интервал свечи был ещё открыт, НИКОГДА
+ * не становится финальной закрытой свечой из-за того, что время шло, пока
+ * снапшот лежал в кэше. Финальность — свойство МОМЕНТА ПОЛУЧЕНИЯ ДАННЫХ,
+ * а не wall-clock в точке потребления.
+ *
+ * Реализация: формирующиеся (незавершённые на момент получения) свечи
+ * ОТБРАСЫВАЮТСЯ ДО кэша и ДО выдачи потребителю — серия из кэша и живого
+ * ответа состоит только из свечей, закрытых на момент acquisition. Индикаторы
+ * и стратегии не меняются: они и так видели только `isClosed`-бары, состав
+ * закрытых баров не изменяется — меняется лишь то, что незакрытый снапшот
+ * больше не может «дозреть» в кэше.
+ *
+ * @param {Array<{closeTime:number}>} candles — свечи, как их отдал transport
+ * @param {number} acquiredAtMs — момент получения снапшота (мс, epoch)
+ * @returns {{candles: Array, nextBoundaryMs: number|null}}
+ *   `nextBoundaryMs` — ближайший момент, когда отброшенная формирующаяся свеча
+ *   станет закрытой (её closeTime + 1). Кэш, у которого эта граница уже
+ *   пройдена, обязан обновиться: потребитель, ждущий «последний закрытый бар»,
+ *   не должен ждать истечения TTL.
+ */
+export function dropFormingCandles(candles, acquiredAtMs) {
+  const list = Array.isArray(candles) ? candles : [];
+  const kept = [];
+  let nextBoundaryMs = null;
+  for (const c of list) {
+    const closeTime = Number(c && c.closeTime);
+    // Незавершённая на момент получения: интервал ещё открыт (или closeTime
+    // не читается — такое НЕ выдаётся за закрытый бар, fail-closed).
+    if (!Number.isFinite(closeTime) || closeTime >= acquiredAtMs) {
+      const boundary = (Number.isFinite(closeTime) ? closeTime : acquiredAtMs) + 1;
+      if (nextBoundaryMs === null || boundary < nextBoundaryMs) nextBoundaryMs = boundary;
+      continue;
+    }
+    kept.push(c);
+  }
+  return { candles: kept, nextBoundaryMs };
+}
+
 export const DEFAULT_CACHE_TTL_MS = 60_000;
 
 /**
@@ -193,7 +251,7 @@ export class MarketDataFetcher {
   constructor({ fetchFn, nowMs } = {}) {
     this.fetchFn = fetchFn ?? ((...a) => globalThis.fetch(...a));
     this.nowFn = nowMs ?? (() => Date.now());
-    /** @type {Map<string, {at: number, candles: Array}>} */
+    /** @type {Map<string, {at: number, candles: Array, nextBoundaryMs: number|null}>} */
     this.cache = new Map();
     /** @type {Map<string, Promise<Array>>} */
     this.inFlight = new Map();
@@ -222,9 +280,13 @@ export class MarketDataFetcher {
   }
 
   /**
-   * Закрытые свечи. Формирующаяся свеча возвращается эндпоинтом, но
-   * помечается `isClosed = false` уже на стороне адаптера (ohlcvToArchive),
-   * поэтому здесь ничего не отбрасывается и не «дорисовывается».
+   * Закрытые свечи. Формирующаяся свеча возвращается эндпоинтом, но НЕ может
+   * пережить границу кэша: `dropFormingCandles` отбрасывает её по моменту
+   * ПОЛУЧЕНИЯ ответа (см. комментарий к функции — инвариант финальности),
+   * поэтому в кэш и потребителю уходят только свечи, закрытые на момент
+   * acquisition. Потребитель по-прежнему может фильтровать `isClosed`
+   * (`ohlcvToArchive`) — после границы фетчера этот фильтр уже не может
+   * «дозакрыть» чужой незавершённый снапшот.
    *
    * @param {string} symbol — 'BTCUSDT'
    * @param {string} timeframe — '1h' | '4h' | '1D' | … (нормализуется здесь)
@@ -244,17 +306,31 @@ export class MarketDataFetcher {
     const ttl = CACHE_TTL_MS[interval] ?? DEFAULT_CACHE_TTL_MS;
 
     const hit = this.cache.get(key);
-    if (hit && now - hit.at < ttl) return hit.candles;
+    if (
+      hit &&
+      now - hit.at < ttl &&
+      // Граница финальности: если с момента acquisition закрылась свеча,
+      // которой в кэше нет, серия НЕ выдаётся — потребитель, ждущий последний
+      // закрытый бар, получает свежие данные, а не ожидание конца TTL.
+      (hit.nextBoundaryMs === null || now < hit.nextBoundaryMs)
+    ) {
+      return hit.candles;
+    }
 
     // Дедупликация одновременных запросов одного набора.
     const pending = this.inFlight.get(key);
     if (pending) return pending;
 
     const promise = this.fetchCandles(market, interval, limit)
-      .then((candles) => {
-        this.cache.set(key, { at: this.nowFn(), candles });
+      .then((raw) => {
+        // Момент ПОЛУЧЕНИЯ снапшота — единственная точка, где можно честно
+        // судить, какие свечи уже финальны. Всё, что не финально, отбрасывается
+        // ДО кэша: «дозреть» в кэше незавершённый бар больше не может.
+        const acquiredAt = this.nowFn();
+        const snap = dropFormingCandles(raw, acquiredAt);
+        this.cache.set(key, { at: acquiredAt, candles: snap.candles, nextBoundaryMs: snap.nextBoundaryMs });
         this.inFlight.delete(key);
-        return candles;
+        return snap.candles;
       })
       .catch((e) => {
         this.inFlight.delete(key);

@@ -21,7 +21,11 @@
  * 3. ЖИЗНЕННЫЙ ЦИКЛ. Домен статуса совпадает с ядром (`SetupStatus`):
  *    ACTIVE → FILLED → TARGET_REACHED | INVALIDATED | CLOSED, либо
  *    ACTIVE → EXPIRED | CANCELLED | UNRESOLVED. Переходы монотонны: закрытую
- *    строку изменить нельзя. Никакой новой торговой механики здесь нет —
+ *    строку изменить нельзя, и ИСПОЛНЕННУЮ строку (FILLED / с сохранённым
+ *    входом) нельзя перевести в безсделковый терминальный статус — «сделки
+ *    не было» после состоявшегося входа это ложь об истории (инцидент PEPE
+ *    561186ba; guard в `writeLifecycle` + `syncSignalLifecycle`).
+ *    Никакой новой торговой механики здесь нет —
  *    хранится то, что frozen-ядро уже определило по закрытым свечам.
  *
  * 4. APPEND-ONLY ЦЕПОЧКА SHA-256. Формат — как в клиентском SignalsAuditLedger:
@@ -90,6 +94,28 @@ export const TRADE_CLOSED_STATUSES = Object.freeze(['TARGET_REACHED', 'INVALIDAT
 
 /** Состояния, при которых сделки НЕ было (R отсутствует по смыслу, а не «0»). */
 export const NO_TRADE_STATUSES = Object.freeze(['EXPIRED', 'CANCELLED', 'UNRESOLVED']);
+
+/** Причина отказа `syncSignalLifecycle`/`writeLifecycle`: безсделковый вердикт для исполненной строки. */
+export const ENTERED_SIGNAL_NO_TRADE_REASON = 'ENTERED_SIGNAL_NO_TRADE';
+
+/** Терминальный статус со смыслом «сделки не было» (EXPIRED / CANCELLED / UNRESOLVED)? */
+function isNoTradeStatus(status) {
+  return status !== undefined && NO_TRADE_STATUSES.includes(status);
+}
+
+/**
+ * Строка «в сделке»: статус FILLED ЛИБО сохранённые данные исполнения
+ * (`fill_price`/`filled_at`). Основной писатель ставит их атомарно вместе со
+ * статусом FILLED, поэтому в норме условия совпадают; проверка обоих —
+ * защита от любой другой истории записи. Такая строка не имеет права
+ * получать безсделковый терминальный статус (см. `writeLifecycle`).
+ */
+function rowIsEntered(row) {
+  if (!row) return false;
+  if (row.status === 'FILLED') return true;
+  return (row.fill_price !== null && row.fill_price !== undefined)
+    || (row.filled_at !== null && row.filled_at !== undefined);
+}
 
 const num = (v) => (v === null || v === undefined ? null : Number(v));
 
@@ -580,6 +606,19 @@ export async function countActiveSignals(strategyId = null, opts = {}) {
  *
  * Закрытую строку изменить нельзя (append-only журнал): если статус уже
  * терминальный, обновление не выполняется и это честно возвращается.
+ *
+ * МОНОТОННОСТЬ ВХОДА (инцидент PEPE 561186ba, 2026-09-27): строка, УЖЕ
+ * исполненная (статус FILLED либо сохранённые поля исполнения), не может
+ * быть переведена в БЕЗСДЕЛКОВЫЙ терминальный статус (EXPIRED / CANCELLED /
+ * UNRESOLVED — «сделки не было»). Такой вердикт от скан-синхронизации
+ * означает, что повторный реплей пересчитал сетап на других данных и не нашёл
+ * входа — но вход УЖЕ записан монитором по опубликованным уровням; «отмена»
+ * стёрла бы сделку из статистики, оставив осиротевшие fill-поля и NULL в
+ * результате. Легитимные исходы исполненной сделки (TARGET_REACHED /
+ * INVALIDATED / CLOSED) разрешены — блокируется только семантика «входа не
+ * было». Проверка выполняется ПОД блокировкой строки и повторена в WHERE
+ * самого UPDATE: устаревший писатель (скан, прочитавший ACTIVE до записи
+ * FILLED монитором) проигрывает конкурентную запись, а не побеждает её.
  */
 async function writeLifecycle(id, patch) {
   const sets = [];
@@ -621,6 +660,10 @@ async function writeLifecycle(id, patch) {
       await client.query('COMMIT');
       return { changed: false, signal: mapRow(row), reason: 'ALREADY_CLOSED' };
     }
+    if (isNoTradeStatus(patch.status) && rowIsEntered(row)) {
+      await client.query('COMMIT');
+      return { changed: false, signal: mapRow(row), reason: 'ENTERED_SIGNAL_NO_TRADE' };
+    }
 
     const next = {
       ...row,
@@ -644,9 +687,23 @@ async function writeLifecycle(id, patch) {
     params.push(OPEN_SIGNAL_STATUSES);
     const openIdx = params.length;
 
+    /**
+     * CAS-страховка в самом UPDATE (инцидент PEPE): безсделковый статус
+     * пишется ТОЛЬКО в строку без входа. Под блокировкой строки это уже
+     * гарантировано проверкой выше; условие в WHERE повторяет инвариант на
+     * уровне SQL, чтобы граница персистентности несла его сама, а не только
+     * вызывающий код.
+     */
+    let noTradeGuard = '';
+    if (isNoTradeStatus(patch.status)) {
+      params.push('ACTIVE');
+      const activeIdx = params.length;
+      noTradeGuard = ` AND status = $${activeIdx} AND fill_price IS NULL AND filled_at IS NULL`;
+    }
+
     const { rows } = await client.query(
       `UPDATE signals SET ${sets.join(', ')}
-        WHERE id = $${idIdx} AND status = ANY($${openIdx})
+        WHERE id = $${idIdx} AND status = ANY($${openIdx})${noTradeGuard}
         RETURNING *`,
       params
     );
@@ -664,6 +721,11 @@ async function writeLifecycle(id, patch) {
 
 /**
  * Переводит сигнал в терминальное состояние.
+ *
+ * Отказы (возвращается null): строка уже терминальная (append-only) ЛИБО
+ * строка исполнена (FILLED / есть вход), а статус — безсделковый
+ * (EXPIRED / CANCELLED / UNRESOLVED): «отменить» уже состоявшийся вход
+ * нельзя (инцидент PEPE 561186ba, см. `writeLifecycle`).
  *
  * @param {string} id
  * @param {typeof CLOSED_SIGNAL_STATUSES[number]} status
@@ -723,6 +785,15 @@ function fillPatch(fill) {
  * логики: если ядро исход не определило (`outcome === null`), статус остаётся
  * прежним — «неизвестно» не превращается в «закрыто».
  *
+ * МОНОТОННОСТЬ ВХОДА (инцидент PEPE 561186ba): если строка уже исполнена
+ * (FILLED / есть сохранённый вход), а синхронизация приносит БЕЗСДЕЛКОВЫЙ
+ * вердикт (EXPIRED / CANCELLED / UNRESOLVED — как REJECTED_GEOMETRY от
+ * повторного реплея на осевших данных), запись ОТКАЗЫВАЕТСЯ с причиной
+ * `ENTERED_SIGNAL_NO_TRADE`. Строка остаётся исполненной и продолжает
+ * вестись монитором до легитимного исхода сделки. Тот же инвариант
+ * продублирован в `writeLifecycle` — на случай прямого вызова `closeSignal`
+ * и конкурентной записи.
+ *
  * @param {object} p
  * @param {string} p.strategyId
  * @param {string} p.symbol — пара в форме БД ('BTC/USDT')
@@ -738,13 +809,26 @@ export async function syncSignalLifecycle({
   strategyId, symbol, timeframe, signalCandleTs, fill = null, outcome = null,
 }) {
   const { rows } = await query(
-    `SELECT id, status FROM signals
+    `SELECT id, status, fill_price, filled_at FROM signals
       WHERE strategy_id = $1 AND symbol = $2 AND timeframe = $3 AND signal_candle_ts = $4`,
     [strategyId, symbol, timeframe, new Date(signalCandleTs)]
   );
   if (rows.length === 0) return { found: false, changed: false, reason: 'NO_SUCH_SIGNAL', signal: null };
   if (CLOSED_SIGNAL_STATUSES.includes(rows[0].status)) {
     return { found: true, changed: false, reason: 'ALREADY_CLOSED', signal: null };
+  }
+  if (isNoTradeStatus(outcome?.status) && rowIsEntered(rows[0])) {
+    // Событие целостности, а не шум: после фикса границы кэша расхождение
+    // «опубликованные уровни vs пересчитанный сетап» у исполненной строки
+    // невозможно в норме. Одна строка на попытку — как у recordError монитора.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[signalRepository] refused no-trade outcome (${outcome.status}` +
+        ` / ${outcome.exitReason ?? '—'}) for entered signal` +
+        ` ${strategyId} ${symbol} ${timeframe} @${new Date(signalCandleTs).toISOString()}` +
+        ` (status=${rows[0].status}); signal stays entered and monitored`
+    );
+    return { found: true, changed: false, reason: ENTERED_SIGNAL_NO_TRADE_REASON, signal: null };
   }
 
   if (outcome) {
@@ -761,7 +845,20 @@ export async function syncSignalLifecycle({
       barsHeld: outcome.barsHeld === undefined ? null : outcome.barsHeld,
       fill: fill ?? undefined,
     });
-    return { found: true, changed: res !== null, reason: res ? null : 'ALREADY_CLOSED', signal: res };
+    if (res !== null) return { found: true, changed: true, reason: null, signal: res };
+    // writeLifecycle отказал. Строка либо уже терминальная, либо (гонка:
+    // монитор записал FILLED между нашим SELECT и записью) исполненная строка
+    // получила безсделковый вердикт — различаем честно, а не одним «ALREADY_CLOSED».
+    const after = await query('SELECT status, fill_price, filled_at FROM signals WHERE id = $1', [rows[0].id]);
+    const refusedAsEntered = after.rows.length > 0
+      && !CLOSED_SIGNAL_STATUSES.includes(after.rows[0].status)
+      && rowIsEntered(after.rows[0]);
+    return {
+      found: true,
+      changed: false,
+      reason: refusedAsEntered ? ENTERED_SIGNAL_NO_TRADE_REASON : 'ALREADY_CLOSED',
+      signal: null,
+    };
   }
 
   if (fill && rows[0].status === 'ACTIVE') {

@@ -34,6 +34,18 @@ export declare const DEFAULT_CACHE_TTL_MS: number;
  */
 export declare function normalizeCandleLimit(limit: unknown, interval: string): number;
 
+/**
+ * Граница финальности свечи (инцидент PEPE 561186ba): снапшот, полученный
+ * пока интервал был открыт, не имеет права стать финальной закрытой свечой
+ * из-за времени, проведённого в кэше. Отбрасывает свечи, незавершённые на
+ * момент получения (`closeTime >= acquiredAtMs`), и возвращает ближайшую
+ * границу закрытия (closeTime + 1 первой отброшенной) для инвалидации кэша.
+ */
+export declare function dropFormingCandles(
+  candles: ServerCandle[],
+  acquiredAtMs: number
+): { candles: ServerCandle[]; nextBoundaryMs: number | null };
+
 /** Свеча в форме OHLCV фронтенда: `time` в секундах, `closeTime` в мс. */
 export interface ServerCandle {
   time: number;
@@ -69,7 +81,7 @@ export declare class MarketDataFetcher {
     nowMs?: () => number;
   });
 
-  cache: Map<string, { at: number; candles: ServerCandle[] }>;
+  cache: Map<string, { at: number; candles: ServerCandle[]; nextBoundaryMs: number | null }>;
   inFlight: Map<string, Promise<ServerCandle[]>>;
   requestCount: number;
 

@@ -23,6 +23,7 @@ import {
   toBinanceInterval,
   toExchangeSymbol,
   normalizeCandleLimit,
+  dropFormingCandles,
   BINANCE_INTERVAL_BY_TIMEFRAME,
   BINANCE_MAX_KLINES,
   CANDLE_LIMIT,
@@ -361,5 +362,138 @@ describe('Кэш и честность ошибок', () => {
     expect(a).toBe(b);
     resetMarketDataFetcher();
     expect(getMarketDataFetcher()).not.toBe(a);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Граница финальности свечи в кэше (инцидент PEPE 561186ba, 2026-09-27)      */
+/*                                                                            */
+/* Класс дефекта: ответ биржи получен ДО закрытия свечи X (снапшот A) →       */
+/* закэширован (TTL 60 c) → часы пересекли X.closeTime → кэш отдан без       */
+/* обновления → потребитель вычислил isClosed по МОМЕНТУ ЧТЕНИЯ → незавер-    */
+/* шённый снапшот A использован как ФИНАЛЬНЫЙ бар X. Так V3.3 опубликовал     */
+/* сетап PEPE по close формирующегося бара, а повторный скан на осевших       */
+/* данных получил другую геометрию → REJECTED_GEOMETRY → «отмена»             */
+/* исполненной строки (вторая половина инцидента — guard в signalRepository).*/
+/*                                                                            */
+/* Инвариант: снапшот, полученный пока интервал был открыт, НИКОГДА не        */
+/* становится финальной свечой из-за времени в кэше. Все тесты детерминированы*/
+/* (инъекция nowMs), никаких реальных границ часа не выжидают.                */
+/* -------------------------------------------------------------------------- */
+
+describe('Финальность свечи на границе кэша (инцидент PEPE 561186ba)', () => {
+  const HOUR = 3_600_000;
+  /** Бар сетапа «15:00» (граница часа, как в инциденте). */
+  const barOpen = 1_758_000_000_000;
+  const barCloseTime = barOpen + HOUR - 1; // 15:59:59.999
+  const prevBar = barOpen - HOUR;
+
+  /** Транспорт с мутирующим ответом биржи и управляемым временем. */
+  function makeScene() {
+    let now = 0;
+    let payload: unknown = [];
+    const requests: Request[] = [];
+    const fetcher = new MarketDataFetcher({
+      nowMs: () => now,
+      fetchFn: (async (url: string) => {
+        const q = new URL(url).searchParams;
+        requests.push({ url, symbol: q.get('symbol')!, interval: q.get('interval')!, limit: Number(q.get('limit')) });
+        return { ok: true, status: 200, json: async () => payload } as any;
+      }) as any,
+    });
+    return {
+      fetcher,
+      requests,
+      setNow: (ms: number) => { now = ms; },
+      setPayload: (p: unknown) => { payload = p; },
+    };
+  }
+
+  it('T0→T5: снапшот формирующегося бара, закэшированный до закрытия, не выдаётся как финальный после пересечения границы', async () => {
+    const scene = makeScene();
+    const SNAPSHOT_A = 111.111; // close формирующегося бара в момент T0 (НЕ финал)
+    const SETTLED_B = 100.5;    // close осевшего бара X, который биржа отдаёт после закрытия
+
+    // T0 = 15:59:45 — бар X ещё формируется. Биржа отдаёт закрытый 14:00 и
+    // формирующийся 15:00 со снапшотом A.
+    scene.setNow(barOpen + 59 * 60_000 + 45_000);
+    scene.setPayload([kline(prevBar, 100), kline(barOpen, SNAPSHOT_A)]);
+    const first = await scene.fetcher.getCandles('PEPEUSDT', '1h', { limit: 10 });
+    // Снапшот A не возвращается ВООБЩЕ — ни сейчас (он не финален)…
+    expect(first.map((c: any) => c.time * 1000)).toEqual([prevBar]);
+
+    // T4 = 16:00:20 — граница закрытия пройдена, но TTL (60 c) ещё жив.
+    // Биржа уже отдала бы осевший бар X (снапшот B) и новый формирующийся 16:00.
+    scene.setNow(barCloseTime + 1 + 20_000);
+    scene.setPayload([
+      kline(prevBar, 100),
+      kline(barOpen, SETTLED_B),
+      kline(barOpen + HOUR, 999),
+    ]);
+    const second = await scene.fetcher.getCandles('PEPEUSDT', '1h', { limit: 10 });
+
+    // …и не выдаётся из кэша ПОСЛЕ пересечения границы как «закрывшийся».
+    expect(second.map((c: any) => c.time * 1000)).toEqual([prevBar, barOpen]);
+    expect(second[second.length - 1]!.close).toBe(SETTLED_B);
+    expect(second.every((c: any) => c.close !== SNAPSHOT_A), 'дозакрытый снапшот A не выдаётся как финал').toBe(true);
+    // Кэш, у которого граница закрытия уже пройдена, обновляется, а не ждёт TTL.
+    expect(scene.requests).toHaveLength(2);
+  });
+
+  it('кэш внутри границы работает: до пересечения closeTime серия не перезабирается', async () => {
+    const scene = makeScene();
+    // 15:59:45: ответ с формирующимся баром → в кэше только закрытые.
+    scene.setNow(barOpen + 59 * 60_000 + 45_000);
+    scene.setPayload([kline(prevBar, 100), kline(barOpen, 111.111)]);
+    await scene.fetcher.getCandles('BTCUSDT', '1h', { limit: 10 });
+
+    // 15:59:55 — TTL жив, граница НЕ пройдена: обращение к кэшу, без сети.
+    scene.setNow(barOpen + 59 * 60_000 + 55_000);
+    const cached = await scene.fetcher.getCandles('BTCUSDT', '1h', { limit: 10 });
+    expect(scene.requests).toHaveLength(1);
+    expect(cached.map((c: any) => c.time * 1000)).toEqual([prevBar]);
+
+    // 16:00:05 — граница пройдена: серия обязательна к обновлению.
+    scene.setNow(barCloseTime + 1 + 5_000);
+    await scene.fetcher.getCandles('BTCUSDT', '1h', { limit: 10 });
+    expect(scene.requests).toHaveLength(2);
+  });
+
+  it('полностью закрытый ответ кэшируется обычным образом: TTL по-прежнему главный', async () => {
+    const scene = makeScene();
+    // Ответ без формирующегося хвоста (все closeTime в прошлом): nextBoundary
+    // неизвестен — работает чистый TTL, как раньше.
+    scene.setNow(barOpen + HOUR);
+    scene.setPayload([kline(prevBar, 100), kline(barOpen, 100.5)]);
+    await scene.fetcher.getCandles('BTCUSDT', '1h', { limit: 10 });
+    scene.setNow(barOpen + HOUR + 30_000); // +30 c внутри TTL 60 c
+    const second = await scene.fetcher.getCandles('BTCUSDT', '1h', { limit: 10 });
+    expect(scene.requests).toHaveLength(1);
+    expect(second).toHaveLength(2);
+  });
+
+  it('dropFormingCandles: чистая функция границы финальности', () => {
+    const acquiredAt = barOpen + 30 * 60_000; // 15:30
+    const closed = { time: prevBar / 1000, open: 1, high: 1, low: 1, close: 1, volume: 1, closeTime: prevBar + HOUR - 1 };
+    const forming = { time: barOpen / 1000, open: 2, high: 2, low: 2, close: 2, volume: 2, closeTime: barCloseTime };
+    const malformed = { time: barOpen / 1000, open: 3, high: 3, low: 3, close: 3, volume: 3, closeTime: Number.NaN };
+
+    // Формирующаяся свеча отброшена; граница обновления = её closeTime + 1.
+    expect(dropFormingCandles([closed, forming] as any, acquiredAt)).toEqual({
+      candles: [closed],
+      nextBoundaryMs: barCloseTime + 1,
+    });
+    // Нечитаемый closeTime — НЕ выдаётся за закрытую свечу (fail-closed).
+    expect(dropFormingCandles([closed, malformed] as any, acquiredAt)).toEqual({
+      candles: [closed],
+      nextBoundaryMs: acquiredAt + 1,
+    });
+    // Ничего не отброшено — границы нет, кэш живёт по TTL.
+    expect(dropFormingCandles([closed] as any, acquiredAt)).toEqual({
+      candles: [closed],
+      nextBoundaryMs: null,
+    });
+    // closeTime РОВНО в момент acquisition — интервал ещё не закрыт (мс-граница).
+    expect(dropFormingCandles([{ ...closed, closeTime: acquiredAt }] as any, acquiredAt).candles).toHaveLength(0);
   });
 });

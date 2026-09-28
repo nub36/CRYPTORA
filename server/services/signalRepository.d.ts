@@ -140,6 +140,13 @@ export const OPEN_SIGNAL_STATUSES: readonly SignalStatus[];
 export const CLOSED_SIGNAL_STATUSES: readonly TerminalSignalStatus[];
 export const TRADE_CLOSED_STATUSES: readonly TerminalSignalStatus[];
 export const NO_TRADE_STATUSES: readonly TerminalSignalStatus[];
+/**
+ * Причина отказа синхронизации: исполненная строка (FILLED / с сохранённым
+ * входом) получила безсделковый вердикт (EXPIRED / CANCELLED / UNRESOLVED).
+ * Инцидент PEPE 561186ba: такая запись обязана отказываться — вход уже
+ * состоялся, «отмены» не существует, строка продолжает вестись до исхода.
+ */
+export const ENTERED_SIGNAL_NO_TRADE_REASON: 'ENTERED_SIGNAL_NO_TRADE';
 export const MAX_SIGNALS_LIMIT: number;
 export const DEFAULT_SIGNALS_LIMIT: number;
 export const MAX_SIGNALS_OFFSET: number;
@@ -198,7 +205,8 @@ export function closeSignal(
   }
 ): Promise<SignalRow | null>;
 export function markSignalFilled(id: string, fill: SignalFill): Promise<SignalRow | null>;
-/** Переносит fill/outcome, которые frozen-ядро уже посчитало, в строку сигнала. */
+/** Переносит fill/outcome, которые frozen-ядро уже посчитало, в строку сигнала.
+ * Отказы: NO_SUCH_SIGNAL | ALREADY_CLOSED | NO_TRANSITION | ENTERED_SIGNAL_NO_TRADE. */
 export function syncSignalLifecycle(p: {
   strategyId: string;
   symbol: string;

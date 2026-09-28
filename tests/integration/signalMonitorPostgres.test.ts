@@ -1422,3 +1422,281 @@ describe('Монитор при выключенных стратегиях', ()
     expect(signalsAfter[0].n).toBe(signalsBefore[0].n);
   }, 120_000);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// J) МОНОТОННОСТЬ LIFECYCLE ИСПОЛНЕННОЙ СТРОКИ (инцидент PEPE 561186ba).
+//
+// Производственный инцидент 2026-09-27: скан опубликовал сетап V3.3 по
+// формирующемуся бару (кэш рыночных данных «дозакрыл» его — первая половина
+// дефекта, фикс в marketDataFetcher), монитор по опубликованным уровням
+// записал FILLED, а повторный скан на осевших данных пересчитал ДРУГУЮ
+// геометрию → REJECTED_GEOMETRY → безсделковый вердикт «отменил» уже
+// исполненную строку: fill-поля остались, result_r = NULL, сделка исчезла
+// из статистики.
+//
+// Инвариант: исполненная строка (FILLED / с сохранённым входом) НЕ переходит
+// в безсделковый терминальный статус (EXPIRED / CANCELLED / UNRESOLVED) ни
+// через синхронизацию, ни прямым closeSignal, ни в гонке с конкурентной
+// записью. Легитимные исходы исполненной сделки (TP/SL/таймаут/трейлинг)
+// по-прежнему работают.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Монотонность lifecycle исполненной строки (инцидент PEPE 561186ba)', () => {
+  /** Инцидент: V3.3, PEPE/USDT, бар сетапа 2026-09-27 15:00 UTC. */
+  const PEPE_SETUP = Date.UTC(2026, 8, 27, 15, 0, 0);
+
+  function pepeSeed() {
+    return seedSignal({
+      strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+      strategyVersion: '3.3',
+      symbol: 'PEPE/USDT',
+      signalCandleTs: new Date(PEPE_SETUP),
+      // Уровни — масштаб производственного инцидента; направленность сделки
+      // (в инциденте SHORT) для lifecycle-дефекта не существенна: тестируется
+      // противоречие «вход записан + безсделковый вердикт», а не геометрия.
+      entryMin: 64500,
+      entryMax: 64700,
+      stopLoss: 63800,
+      targets: [65500, 66200],
+    });
+  }
+
+  /**
+   * Безсделковый вердикт скан-синхронизации — ровно та форма, которую
+   * строит strategyEngine.syncLifecycleFromCore из записи реплея с
+   * outcome = noTrade('CANCELLED', …, 'REJECTED_GEOMETRY').
+   */
+  function rejectedGeometryOutcome() {
+    return {
+      status: 'CANCELLED',
+      closedAt: new Date(PEPE_SETUP + 2 * H),
+      exitReason: 'REJECTED_GEOMETRY',
+      exitPrice: null,
+      resultR: null,
+      netResultR: null,
+      pnlResultPct: null,
+      barsHeld: null,
+    };
+  }
+
+  it('PEPE-класс: монитор записал FILLED → безсделковый вердикт скана ОТКЛОНЁН, сделка доводится до исхода', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await pepeSeed();
+
+    // 1. Монитор: вход в коридор на баре +1h, исхода ещё нет.
+    const fillBars = [
+      { time: PEPE_SETUP / 1000, open: 64400, high: 64500, low: 64300, close: 64450, volume: 1 },
+      { time: (PEPE_SETUP + H) / 1000, open: 64600, high: 64700, low: 64550, close: 64650, volume: 1 },
+    ];
+    const tick1 = makePgMonitor(() => PEPE_SETUP + 2 * H, () => fillBars);
+    await tick1.tick();
+    const filled = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(filled.status).toBe('FILLED');
+    expect(filled.fill_price).not.toBeNull();
+    expect(filled.filled_at).not.toBeNull();
+    const fillPrice = filled.fill_price;
+    const fillStop = filled.fill_stop;
+
+    // 2. «Скан» приносит безсделковый вердикт (REJECTED_GEOMETRY от
+    //    пересчитанной геометрии) — как в инциденте, через 3.9 с после FILLED.
+    const refused = await repo.syncSignalLifecycle({
+      strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+      symbol: 'PEPE/USDT',
+      timeframe: '1h',
+      signalCandleTs: new Date(PEPE_SETUP),
+      fill: null,
+      outcome: rejectedGeometryOutcome(),
+    });
+    expect(refused.found).toBe(true);
+    expect(refused.changed).toBe(false);
+    expect(refused.reason).toBe('ENTERED_SIGNAL_NO_TRADE');
+
+    // 3. Строка осталась ИСПОЛНЕННОЙ: вход не тронут, исход не выдуман,
+    //    хэши не пересчитаны, наблюдение возможно (строка в рабочем наборе).
+    const after = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(after.status).toBe('FILLED');
+    expect(after.fill_price).toBe(fillPrice);
+    expect(after.fill_stop).toBe(fillStop);
+    expect(new Date(after.filled_at).getTime()).toBe(new Date(filled.filled_at).getTime());
+    expect(after.result_r).toBeNull();
+    expect(after.close_reason).toBeNull();
+    expect(after.outcome_hash).toBe(filled.outcome_hash);
+    expect(after.hash).toBe(filled.hash);
+    expect((await repo.listOpenSignals(null, 100)).map((r: any) => r.id)).toContain(signal.id);
+
+    // 4. Монитор продолжает ведение и доводит сделку до легитимного исхода:
+    //    бар +3h пробивает стоп → SL, gross R = −1 (как в истинном исходе
+    //    исчезнувшей сделки PEPE).
+    const fullBars = [
+      ...fillBars,
+      { time: (PEPE_SETUP + 2 * H) / 1000, open: 64600, high: 64650, low: 64550, close: 64600, volume: 1 },
+      { time: (PEPE_SETUP + 3 * H) / 1000, open: 64600, high: 64650, low: 63700, close: 63800, volume: 1 },
+    ];
+    const tick2 = makePgMonitor(() => PEPE_SETUP + 4 * H, () => fullBars);
+    await tick2.tick();
+    const closed = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(closed.status).toBe('INVALIDATED');
+    expect(closed.close_reason).toBe('SL');
+    expect(Number(closed.result_r)).toBeCloseTo(-1, 6);
+    // Вход не перезаписан исходом: цена исполнения сохранена.
+    expect(closed.fill_price).toBe(fillPrice);
+    expect(closed.monitor_last_result).toBe('RESOLVED');
+  }, 120_000);
+
+  it('гонка: скан прочитал ACTIVE, монитор записал FILLED — устаревший безсделковый писатель проигрывает на границе персистентности', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await pepeSeed();
+
+    // «Скан» уже прочитал состояние (ACTIVE) — его решение принято. Монитор
+    // записывает исполнение ПОСЛЕ этого чтения, но ДО записи скана.
+    await repo.markSignalFilled(signal.id, { price: 64600, at: new Date(PEPE_SETUP + H) });
+
+    // Устаревший скан идёт напрямую в авторитетную границу (closeSignal),
+    // минуя ранний guard syncSignalLifecycle: защита обязана жить в самой
+    // персистентности, а не только в вызывающем коде.
+    const res = await repo.closeSignal(signal.id, 'CANCELLED', { closeReason: 'REJECTED_GEOMETRY' });
+    expect(res).toBeNull();
+    const row = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED');
+    expect(row.fill_price).not.toBeNull();
+    expect(row.result_r).toBeNull();
+  }, 120_000);
+
+  it('CAS: конкурентные FILLED и CANCELLED не оставляют противоречивой строки', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await pepeSeed();
+    await Promise.all([
+      repo.markSignalFilled(signal.id, { price: 64600, at: new Date(PEPE_SETUP + H) }),
+      repo.closeSignal(signal.id, 'CANCELLED', { closeReason: 'REJECTED_GEOMETRY' }),
+    ]);
+    const row = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    // Запрещённое состояние: безсделковый статус С сохранённым входом.
+    if (row.status === 'CANCELLED') {
+      expect(row.fill_price).toBeNull();
+      expect(row.filled_at).toBeNull();
+    } else {
+      expect(row.status).toBe('FILLED');
+      expect(row.fill_price).not.toBeNull();
+    }
+  }, 120_000);
+
+  it('безсделковые терминалы НЕ-исполненной строки по-прежнему разрешены (нет сверхблокировки)', async (ctx) => {
+    if (guard(ctx)) return;
+    // Три seed-а: ACTIVE без входа → EXPIRED / CANCELLED / UNRESOLVED пишутся
+    // как раньше (например, карантинный INSUFFICIENT_VOLUME или истечение
+    // коридора без касания).
+    const cases = [
+      { symbol: 'PEPE/USDT', ts: new Date(PEPE_SETUP), status: 'EXPIRED', reason: 'EXPIRED' },
+      { symbol: 'PEPE/USDT', ts: new Date(PEPE_SETUP + H), status: 'CANCELLED', reason: 'REJECTED_GEOMETRY' },
+      { symbol: 'PEPE/USDT', ts: new Date(PEPE_SETUP + 2 * H), status: 'UNRESOLVED', reason: 'OUT_OF_DATA_WINDOW' },
+    ];
+    for (const c of cases) {
+      await seedSignal({
+        strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+        symbol: c.symbol,
+        signalCandleTs: c.ts,
+      });
+    }
+    for (const c of cases) {
+      const res = await repo.syncSignalLifecycle({
+        strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+        symbol: c.symbol,
+        timeframe: '1h',
+        signalCandleTs: c.ts,
+        fill: null,
+        outcome: {
+          status: c.status,
+          closedAt: new Date(PEPE_SETUP + 3 * H),
+          exitReason: c.reason,
+          exitPrice: null,
+          resultR: null,
+          netResultR: null,
+          pnlResultPct: null,
+          barsHeld: null,
+        },
+      });
+      expect(res.changed, `${c.status} из ACTIVE обязан записываться`).toBe(true);
+    }
+    const statuses = await q(`SELECT status FROM signals ORDER BY signal_candle_ts`);
+    expect(statuses.map((r: any) => r.status)).toEqual(['EXPIRED', 'CANCELLED', 'UNRESOLVED']);
+  }, 120_000);
+
+  it('UNRESOLVED (OUT_OF_DATA_WINDOW) исполненной строки отклоняется: «исход не отслежен» ≠ «сделки не было»', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await pepeSeed();
+    await repo.markSignalFilled(signal.id, { price: 64600, at: new Date(PEPE_SETUP + H) });
+    const res = await repo.syncSignalLifecycle({
+      strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+      symbol: 'PEPE/USDT',
+      timeframe: '1h',
+      signalCandleTs: new Date(PEPE_SETUP),
+      fill: null,
+      outcome: {
+        status: 'UNRESOLVED',
+        closedAt: new Date(PEPE_SETUP + 2000 * H),
+        exitReason: 'OUT_OF_DATA_WINDOW',
+        exitPrice: null,
+        resultR: null,
+        netResultR: null,
+        pnlResultPct: null,
+        barsHeld: null,
+      },
+    });
+    expect(res.changed).toBe(false);
+    expect(res.reason).toBe('ENTERED_SIGNAL_NO_TRADE');
+    const row = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED');
+    expect(row.fill_price).not.toBeNull();
+  }, 120_000);
+
+  it('легитимные исходы исполненной сделки работают: FILLED → TARGET_REACHED / CLOSED через синхронизацию', async (ctx) => {
+    if (guard(ctx)) return;
+    const a = await pepeSeed();
+    await repo.markSignalFilled(a.signal.id, { price: 64600, at: new Date(PEPE_SETUP + H) });
+    const target = await repo.syncSignalLifecycle({
+      strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+      symbol: 'PEPE/USDT',
+      timeframe: '1h',
+      signalCandleTs: new Date(PEPE_SETUP),
+      fill: { price: 64600, at: new Date(PEPE_SETUP + H) },
+      outcome: {
+        status: 'TARGET_REACHED',
+        closedAt: new Date(PEPE_SETUP + 3 * H),
+        exitReason: 'TP2',
+        exitPrice: 66200,
+        resultR: 2.1,
+        netResultR: 2.03,
+        barsHeld: 3,
+      },
+    });
+    expect(target.changed).toBe(true);
+    expect(target.signal!.status).toBe('TARGET_REACHED');
+    expect(Number(target.signal!.resultR)).toBe(2.1);
+
+    const b = await seedSignal({
+      strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+      symbol: 'PEPE/USDT',
+      signalCandleTs: new Date(PEPE_SETUP + 10 * H),
+    });
+    await repo.markSignalFilled(b.signal.id, { price: 64600, at: new Date(PEPE_SETUP + 11 * H) });
+    const timeout = await repo.syncSignalLifecycle({
+      strategyId: 'V3_3_HTF_ZONE_MITIGATION',
+      symbol: 'PEPE/USDT',
+      timeframe: '1h',
+      signalCandleTs: new Date(PEPE_SETUP + 10 * H),
+      fill: { price: 64600, at: new Date(PEPE_SETUP + 11 * H) },
+      outcome: {
+        status: 'CLOSED',
+        closedAt: new Date(PEPE_SETUP + 27 * H),
+        exitReason: 'TP1_THEN_TIMEOUT',
+        exitPrice: 64900,
+        resultR: 0.35,
+        netResultR: 0.29,
+        barsHeld: 16,
+      },
+    });
+    expect(timeout.changed).toBe(true);
+    expect(timeout.signal!.status).toBe('CLOSED');
+    expect(timeout.signal!.closeReason).toBe('TP1_THEN_TIMEOUT');
+  }, 120_000);
+});
