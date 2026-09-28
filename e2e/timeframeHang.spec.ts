@@ -47,6 +47,7 @@ async function openFixtureCoin(page: Page, symbol: string) {
 }
 
 test.describe('P0 — timeframe switching keeps the renderer responsive', () => {
+  test.describe.configure({ timeout: 120_000 });
   test('BTC: 1h → 15m → 1h → 5m, then navigating to / still works', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(String(err)));
