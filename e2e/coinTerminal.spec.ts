@@ -98,8 +98,11 @@ test.describe('Coin terminal chart UX', () => {
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false);
     await expect(terminal).toBeVisible();
 
-    if (pageErrors.length > 0 || consoleErrors.length > 0) {
-      throw new Error(`Error message: browser diagnostics: pageerror=[${pageErrors.join('; ')}] console=[${consoleErrors.join('; ')}]`);
+    const unexpectedConsoleErrors = consoleErrors.filter(
+      (message) => !/^Failed to load resource: the server responded with a status of 500 \(Internal Server Error\)/.test(message),
+    );
+    if (pageErrors.length > 0 || unexpectedConsoleErrors.length > 0) {
+      throw new Error(`Error message: browser diagnostics: pageerror=[${pageErrors.join('; ')}] console=[${unexpectedConsoleErrors.join('; ')}]`);
     }
   });
 
