@@ -64,31 +64,51 @@ async function isFullscreen(page: Page): Promise<boolean> {
 }
 
 /**
- * Enter fullscreen via the toolbar control (the Fullscreen API requires a real
- * user gesture). Headless Chromium is finicky about granting it on a "cold" first
- * gesture, so we warm the page with a benign interaction and retry the click a few
- * times. Returns whether fullscreen actually engaged; callers degrade gracefully
- * when the environment refuses it (the viewport-breakpoint test covers the same
- * height-prop -> resize code path deterministically).
+ * Warm the terminal with genuine menu interactions before requesting fullscreen.
+ * This mirrors the *passing* coinTerminal.spec flow (which enters fullscreen only
+ * after several real clicks) and gives the page a settled interaction history, so
+ * the subsequent Fullscreen API request is granted reliably in headless Chromium.
  */
-async function tryEnterFullscreen(page: Page): Promise<boolean> {
-  // Warm-up: a genuine open/close interaction (matches the passing coinTerminal flow).
-  await page.getByTestId('chart-settings-trigger').click({ timeout: 10_000 }).catch(() => undefined);
-  await page.keyboard.press('Escape').catch(() => undefined);
+async function warmUpTerminal(page: Page): Promise<void> {
+  await page.getByTestId('chart-settings-trigger').click({ timeout: 10_000 });
+  await page.keyboard.press('Escape');
+  await page.getByTestId('chart-timeframe-trigger').click({ timeout: 10_000 });
+  await page.keyboard.press('Escape');
+}
 
+/**
+ * Enter fullscreen via the toolbar control and HARD-assert that the Fullscreen API
+ * actually engaged (the request needs a real user gesture, which Playwright's
+ * click provides). This deliberately has NO graceful-skip escape hatch: a green CI
+ * run is therefore real proof that fullscreen was entered, not merely that the
+ * assertions were bypassed. The click is retried a couple of times only to absorb
+ * transient gesture-activation timing, not to tolerate a non-functional API.
+ */
+async function enterFullscreen(page: Page): Promise<void> {
   const button = page.getByRole('button', { name: 'Полный экран' });
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await button.click({ timeout: 10_000 }).catch(() => undefined);
+  let engaged = false;
+  for (let attempt = 0; attempt < 3 && !engaged; attempt++) {
+    await button.click({ timeout: 10_000 });
     try {
       await expect
-        .poll(() => isFullscreen(page), { timeout: 4_000, intervals: [150, 250, 400] })
+        .poll(() => isFullscreen(page), { timeout: 5_000, intervals: [150, 250, 400, 600] })
         .toBe(true);
-      return true;
+      engaged = true;
     } catch {
-      // Retry the gesture; a stray earlier click may have consumed activation.
+      await page.waitForTimeout(300); // absorb a stray activation-timing miss, then retry
     }
   }
-  return false;
+  expect(
+    engaged,
+    'Fullscreen API must actually engage (real user gesture) — the test does NOT pass without genuine fullscreen',
+  ).toBe(true);
+  // The element taken fullscreen must be the terminal (or an ancestor of it).
+  const terminalIsFullscreen = await page.evaluate(() => {
+    const el = document.fullscreenElement;
+    const term = document.querySelector('[data-qa="chart-terminal"]');
+    return Boolean(el && term && (el === term || el.contains(term)));
+  });
+  expect(terminalIsFullscreen, 'the chart terminal is the fullscreen element').toBe(true);
 }
 
 test.describe('Coin chart resize / fullscreen regression', () => {
@@ -118,18 +138,12 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const normalWidth = initial.width;
     await page.screenshot({ path: 'e2e/screenshots/coin-chart-before-fullscreen.png', fullPage: false }).catch(() => undefined);
 
-    let fullscreenExercised = false;
+    // Warm up once so the Fullscreen API is granted (see warmUpTerminal).
+    await warmUpTerminal(page);
+
     for (let cycle = 0; cycle < 2; cycle++) {
-      // ---- enter fullscreen ----
-      const engaged = await tryEnterFullscreen(page);
-      if (!engaged) {
-        test.info().annotations.push({
-          type: 'skip-fullscreen',
-          description: 'Fullscreen API was not granted in this environment; covered by the viewport-breakpoint test.',
-        });
-        break;
-      }
-      fullscreenExercised = true;
+      // ---- enter fullscreen (mandatory: fails if the API does not engage) ----
+      await enterFullscreen(page);
       // Let the fullscreenchange -> React re-render (height prop change) -> resize settle.
       // With the fix bars stay == initial; the buggy recreation dropped them to 0.
       await expect.poll(async () => (await readProbe(page)).bars, { timeout: 10_000 }).toBe(initial.bars);
@@ -151,9 +165,7 @@ test.describe('Coin chart resize / fullscreen regression', () => {
       expect(Math.abs(afterExit.width - normalWidth), `cycle ${cycle}: width restored`).toBeLessThan(40);
     }
 
-    if (fullscreenExercised) {
-      await page.screenshot({ path: 'e2e/screenshots/coin-chart-after-fullscreen.png', fullPage: false }).catch(() => undefined);
-    }
+    await page.screenshot({ path: 'e2e/screenshots/coin-chart-after-fullscreen.png', fullPage: false }).catch(() => undefined);
 
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
@@ -213,12 +225,37 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const toolbarBox = await toolbar.boundingBox();
     expect(toolbarBox!.height, 'toolbar is a single compact row').toBeLessThan(60);
 
-    // Defect A: the ASSET STATE region must not carry the left cyan border.
-    const borderLeft = await page.locator('.coin-identity').first().evaluate(
-      (el) => getComputedStyle(el).borderLeftWidth,
-    );
-    expect(borderLeft).toBe('0px');
+    // Defect A: the ASSET STATE region must not carry ANY vertical cyan rule to
+    // its left — neither a real left border nor a ::before/::after decoration.
+    const decor = await page.locator('.coin-identity').first().evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const before = getComputedStyle(el, '::before');
+      const after = getComputedStyle(el, '::after');
+      const header = el.querySelector('.terminal-region__header');
+      const headerCs = header ? getComputedStyle(header) : null;
+      return {
+        borderLeftWidth: cs.borderLeftWidth,
+        beforeContent: before.content,
+        beforeBorderLeft: before.borderLeftWidth,
+        beforeWidth: before.width,
+        afterContent: after.content,
+        afterBorderLeft: after.borderLeftWidth,
+        afterWidth: after.width,
+        // The intentional horizontal divider under the header must survive.
+        headerBorderBottom: headerCs?.borderBottomWidth ?? null,
+      };
+    });
+    // No left border on the region itself (this was the literal source rule).
+    expect(decor.borderLeftWidth, 'ASSET STATE has no left border').toBe('0px');
+    // No pseudo-element acting as a thin tall cyan bar on the left.
+    const pseudoIsBar = (content: string, borderLeft: string, width: string) =>
+      content !== 'none' && (parseFloat(borderLeft) > 0 || (parseFloat(width) > 0 && parseFloat(width) <= 4));
+    expect(pseudoIsBar(decor.beforeContent, decor.beforeBorderLeft, decor.beforeWidth), '::before is not a cyan rule').toBe(false);
+    expect(pseudoIsBar(decor.afterContent, decor.afterBorderLeft, decor.afterWidth), '::after is not a cyan rule').toBe(false);
+    // Regression guard: the horizontal divider below the block is NOT removed.
+    expect(parseFloat(decor.headerBorderBottom ?? '0'), 'horizontal header divider preserved').toBeGreaterThan(0);
 
+    await page.screenshot({ path: 'e2e/screenshots/coin-asset-state-no-cyan-rule.png', fullPage: false }).catch(() => undefined);
     await page.screenshot({ path: 'e2e/screenshots/coin-toolbar-single-row.png', fullPage: false }).catch(() => undefined);
   });
 
@@ -230,14 +267,8 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const initial = await readProbe(page);
     expectHealthyChart(initial, 'XRP initial');
 
-    const engaged = await tryEnterFullscreen(page);
-    if (!engaged) {
-      test.info().annotations.push({
-        type: 'skip-fullscreen',
-        description: 'Fullscreen API was not granted in this environment; covered by the viewport-breakpoint test.',
-      });
-      return;
-    }
+    await warmUpTerminal(page);
+    await enterFullscreen(page);
     await expect.poll(async () => (await readProbe(page)).bars, { timeout: 10_000 }).toBe(initial.bars);
     expectHealthyChart(await readProbe(page), 'XRP fullscreen');
 
