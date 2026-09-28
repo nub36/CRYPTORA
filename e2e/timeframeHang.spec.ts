@@ -53,8 +53,9 @@ test.describe('P0 — timeframe switching keeps the renderer responsive', () => 
     page.on('pageerror', (err) => pageErrors.push(String(err)));
 
     await openFixtureCoin(page, 'BTC');
-    // The page shell is available even when the exchange source is not.
-    await expect(page.locator('[data-qa="coin-page-shell"]')).toBeVisible({ timeout: 60_000 });
+    // The same terminal surface covered by coinTerminal.spec.ts is the
+    // responsiveness subject; avoid gating on the wider page shell.
+    await expect(page.getByTestId('chart-terminal')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 60_000 });
     await assertRendererResponsive(page, 'initial load');
 
@@ -74,7 +75,7 @@ test.describe('P0 — timeframe switching keeps the renderer responsive', () => 
 
   test('SOL: 1h → 15m keeps the renderer responsive', async ({ page }) => {
     await openFixtureCoin(page, 'SOL');
-    await expect(page.locator('[data-qa="coin-page-shell"]')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('chart-terminal')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 60_000 });
 
     for (const tf of ['1h', '15m']) {
