@@ -640,7 +640,7 @@ export const CoinDetailPage: React.FC = () => {
         data-qa="coin-workspace"
         className="grid grid-cols-1 xl:grid-cols-[72fr_28fr] gap-3.5 items-stretch"
       >
-      <div data-qa="coin-chart-card" className="space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
+      <div data-qa="coin-chart-card" className="min-w-0 space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
         {/* Сохранённый контекст Coin page: пара, название графика и 24ч high/low. */}
         <div className="flex flex-col gap-2 border-b border-surface-border pb-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">

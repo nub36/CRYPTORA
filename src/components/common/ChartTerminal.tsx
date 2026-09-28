@@ -156,7 +156,7 @@ function TerminalDropdown({
       >
         <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>{label}</span>
-        {activeLabel && <span className="font-mono text-slate-400">· {activeLabel}</span>}
+        {activeLabel && <span className="hidden font-mono text-slate-400 lg:inline">· {activeLabel}</span>}
         <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       {open && (
@@ -299,7 +299,18 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
     >
       <div
         data-qa="chart-terminal-toolbar"
-        className="flex flex-wrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-2 sm:px-3"
+        /*
+         * Desktop (lg+, ≥1024px): единая профессиональная строка — `flex-nowrap`,
+         * поэтому [Вписать]/[Fullscreen] с `ml-auto` держатся справа и НЕ переносятся
+         * на вторую строку (owner-репорт был на desktop). Ранее `flex-wrap` при чуть
+         * более узкой рабочей области сбрасывал правую группу на новый ряд.
+         * Tablet/mobile (<lg): перенос сохранён — на планшете (768px) все контролы в
+         * одну строку не влезают, а `nowrap` дал бы page horizontal overflow (см.
+         * e2e/mobileOverflow). `min-w-0` дополнительно страхует от распирания
+         * grid-колонки. Вертикальные паддинги уменьшены — chrome компактнее,
+         * график начинается выше (§11).
+         */
+        className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-1.5 sm:px-3 lg:flex-nowrap"
       >
         <TerminalDropdown
           menuKey="timeframe"

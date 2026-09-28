@@ -78,6 +78,21 @@ interface CandleChartProps {
   onMarkerClick?: (marker: ChartMarker, markersAtTime: ChartMarker[]) => void;
 }
 
+/**
+ * Безопасная проверка dev/e2e-раннера. `import.meta.env` может отсутствовать в
+ * не-Vite окружениях (JSDOM/Node-раннер Playwright для `.tsx` e2e), поэтому доступ
+ * завёрнут в try/catch — так же, как в `src/config/dataModePolicy.ts`.
+ * В production-сборке Vite подставляет `import.meta.env.DEV === false`, и весь
+ * зависимый код (диагностический пробник) вырезается минификатором.
+ */
+function isDevRuntime(): boolean {
+  try {
+    return Boolean((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV);
+  } catch {
+    return false;
+  }
+}
+
 /** Стили линий уровней — соответствие имен и значений lightweight-charts. */
 const LEVEL_LINE_STYLE: Record<NonNullable<ChartLevelLine['style']>, LineStyle> = {
   solid: LineStyle.Solid,
@@ -418,7 +433,17 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current === chart) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+        // Width follows the real container (ResizeObserver + window resize), and
+        // the container height is authoritative — reading it keeps the canvas in
+        // sync after a fullscreen/workspace geometry change even if the `height`
+        // prop and the DOM settle in different frames. The horizontal logical
+        // range is preserved by the library across a resize, so historical
+        // candles stay visible instead of collapsing to the last bar.
+        const nextHeight = chartContainerRef.current.clientHeight;
+        chart.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          ...(nextHeight > 0 ? { height: nextHeight } : {}),
+        });
         timeSyncRef.current.syncFrom(chart);
       }
     };
@@ -446,6 +471,32 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       currentPriceRef.current = null;
       lastAppliedTimeRef.current = null;
     };
+    // ВАЖНО: график создаётся ОДИН раз за монтирование и НЕ пересоздаётся при
+    // смене `height`. Раньше `height` был в зависимостях, поэтому вход/выход из
+    // fullscreen (и любое изменение высоты рабочей области) уничтожал график
+    // (`chart.remove()`), а эффект наполнения данными (`[data, timeframe]`) при
+    // этом не перезапускался — новые пустые серии оставались без свечей. В LIVE
+    // следующий WS-тик рисовал ОДНУ свечу на всю ширину (симптом «одна огромная
+    // последняя свеча»), в QA/без WS график становился пустым. Высота теперь
+    // применяется через отдельный эффект ниже (`applyOptions({ height })`), что
+    // сохраняет и данные, и видимый диапазон. `showRSI`/`showMACD` намеренно вне
+    // зависимостей по той же причине — их обрабатывает отдельный эффект.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Изменение высоты (fullscreen / раскладка рабочей области) НЕ пересоздаёт
+   * график: высота применяется на существующий инстанс. Серии, их данные и
+   * горизонтальный логический диапазон сохраняются, поэтому историческая
+   * история свечей остаётся видимой после перехода normal → fullscreen → normal
+   * без ручного «Вписать» и без перезагрузки страницы.
+   */
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const width = chartContainerRef.current?.clientWidth;
+    chart.applyOptions(width && width > 0 ? { height, width } : { height });
+    timeSyncRef.current.syncFrom(chart);
   }, [height]);
 
   /**
@@ -596,8 +647,9 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
   /**
    * Маркеры событий (аддитивно). Применяются ко всем сериям цены, чтобы смена
-   * `chartType` не теряла историю; `height` в зависимостях — потому что при его
-   * смене график пересоздаётся и маркеры нужно нанести заново.
+   * `chartType` не теряла историю. `height` больше НЕ в зависимостях: график не
+   * пересоздаётся при изменении высоты, поэтому маркеры остаются на существующих
+   * сериях и повторно наносить их не нужно.
    */
   useEffect(() => {
     const list = markers ?? [];
@@ -606,7 +658,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     candleSeriesRef.current?.setMarkers(seriesMarkers);
     barSeriesRef.current?.setMarkers(seriesMarkers);
     lineSeriesRef.current?.setMarkers(seriesMarkers);
-  }, [markers, data, height]);
+  }, [markers, data]);
 
   /**
    * Горизонтальные уровни выбранного сигнала (аддитивно).
@@ -649,7 +701,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       try { series.removePriceLine(stale.line); } catch { /* линия уже снята */ }
     }
     levelLineRefs.current = next;
-  }, [levelLines, data, height]);
+  }, [levelLines, data]);
 
   // Binance kline update: same T replaces, T+interval appends, older/mismatched ticks are ignored.
   useEffect(() => {
@@ -732,6 +784,42 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     if (resetViewToken === undefined) return;
     handleResetView();
   }, [handleResetView, resetViewToken]);
+
+  /**
+   * Диагностический пробник ТОЛЬКО для dev/e2e (`isDevRuntime()`): в
+   * production-сборке ветка выпадает из бандла. Он читает ФАКТИЧЕСКОЕ состояние
+   * графика (кол-во точек серии, видимый логический диапазон, размеры контейнера)
+   * и ничего не подменяет. Regression-тест resize/fullscreen через него отличает
+   * «данные реально исчезли» (`bars === 0`) от «сломался только диапазон/геометрия»
+   * (`bars > 0`, но `rangeSpan` схлопнулся), не полагаясь только на скриншот.
+   *
+   * Доступ к `import.meta.env` завёрнут (см. `isDevRuntime`): в JSDOM/Node-раннере
+   * `.tsx` e2e (`e2e/setup-dom.ts`) `import.meta.env` может быть `undefined`, и
+   * прямое `import.meta.env.DEV` кидало бы TypeError прямо в этом эффекте.
+   */
+  useEffect(() => {
+    if (!isDevRuntime() || typeof window === 'undefined') return;
+    const probe = () => {
+      const chart = chartRef.current;
+      const range = chart?.timeScale().getVisibleLogicalRange() ?? null;
+      const container = chartContainerRef.current;
+      return {
+        bars: candleSeriesRef.current?.data().length ?? 0,
+        volumeBars: volumeSeriesRef.current?.data().length ?? 0,
+        lineBars: lineSeriesRef.current?.data().length ?? 0,
+        range,
+        rangeSpan: range ? range.to - range.from : null,
+        width: container?.clientWidth ?? 0,
+        height: container?.clientHeight ?? 0,
+        symbol,
+      };
+    };
+    (window as unknown as { __cryptoraChartProbe?: typeof probe }).__cryptoraChartProbe = probe;
+    return () => {
+      const w = window as unknown as { __cryptoraChartProbe?: typeof probe };
+      if (w.__cryptoraChartProbe === probe) delete w.__cryptoraChartProbe;
+    };
+  }, [symbol]);
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-white/[0.08] bg-surface shadow-panel-elevated group">
