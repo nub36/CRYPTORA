@@ -198,8 +198,10 @@ describe('timeframe switching stays bounded (P0 renderer hang)', () => {
       const rendersBefore = renders;
       const startedAt = Date.now();
 
+      fireEvent.click(screen.getByTestId('chart-timeframe-trigger'));
+      await screen.findByTestId(`chart-timeframe-${timeframe}`);
       await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: timeframe }));
+        fireEvent.click(screen.getByTestId(`chart-timeframe-${timeframe}`));
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
@@ -245,8 +247,10 @@ describe('timeframe switching stays bounded (P0 renderer hang)', () => {
     await screen.findByRole('heading', { name: 'Bitcoin' });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
+    fireEvent.click(screen.getByTestId('chart-timeframe-trigger'));
+    await screen.findByTestId('chart-timeframe-15m');
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '15m' }));
+      fireEvent.click(screen.getByTestId('chart-timeframe-15m'));
       await Promise.resolve();
     });
 

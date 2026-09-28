@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * P0 browser regression: switching the timeframe on /coin/:symbol used to freeze
@@ -17,10 +17,10 @@ import { test, expect } from '@playwright/test';
  * shell and its controls render regardless of upstream availability.
  */
 
-const TIMEFRAMES_BTC = ['15m', '1h', '5m'];
+const TIMEFRAMES_BTC = ['15m', '1h', '5m'] as const;
 
 /** Resolves only if the renderer's JS thread is still processing tasks. */
-async function assertRendererResponsive(page: import('@playwright/test').Page, label: string) {
+async function assertRendererResponsive(page: Page, label: string) {
   const alive = await page.evaluate(
     () => new Promise<boolean>((resolve) => requestAnimationFrame(() => resolve(true))),
     { timeout: 10_000 } as never,
@@ -28,21 +28,39 @@ async function assertRendererResponsive(page: import('@playwright/test').Page, l
   expect(alive, `renderer thread wedged at: ${label}`).toBe(true);
 }
 
+async function selectTimeframe(page: Page, timeframe: string) {
+  const trigger = page.getByTestId('chart-timeframe-trigger');
+  await expect(trigger).toBeVisible({ timeout: 60_000 });
+  await trigger.click();
+  const option = page.getByTestId(`chart-timeframe-${timeframe}`);
+  await expect(option).toBeVisible({ timeout: 10_000 });
+  await option.click();
+}
+
+async function openFixtureCoin(page: Page, symbol: string) {
+  // Seed storage on the app origin explicitly. This keeps the regression test
+  // deterministic even when another E2E test has already used the same Vite
+  // server; the browser still renders the real Coin page and chart.
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('cryptora_qa_fixture', '1'));
+  await page.goto(`/coin/${symbol}`);
+}
+
 test.describe('P0 — timeframe switching keeps the renderer responsive', () => {
+  test.describe.configure({ timeout: 120_000 });
   test('BTC: 1h → 15m → 1h → 5m, then navigating to / still works', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(String(err)));
 
-    await page.goto('/coin/BTC');
-    // The page shell is available even when the exchange source is not.
-    await expect(page.locator('[data-qa="coin-page-shell"]').or(page.getByRole('button', { name: '15m' }).first()))
-      .toBeVisible({ timeout: 20_000 });
+    await openFixtureCoin(page, 'BTC');
+    // The same terminal surface covered by coinTerminal.spec.ts is the
+    // responsiveness subject; avoid gating on the wider page shell.
+    await expect(page.getByTestId('chart-terminal')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 60_000 });
     await assertRendererResponsive(page, 'initial load');
 
     for (const tf of TIMEFRAMES_BTC) {
-      const button = page.getByRole('button', { name: tf, exact: true }).first();
-      if (!(await button.isVisible().catch(() => false))) continue;
-      await button.click({ timeout: 10_000 });
+      await selectTimeframe(page, tf);
       // A frozen renderer never returns from this call.
       await assertRendererResponsive(page, `after switching to ${tf}`);
     }
@@ -56,14 +74,12 @@ test.describe('P0 — timeframe switching keeps the renderer responsive', () => 
   });
 
   test('SOL: 1h → 15m keeps the renderer responsive', async ({ page }) => {
-    await page.goto('/coin/SOL');
-    await expect(page.locator('[data-qa="coin-page-shell"]').or(page.getByRole('button', { name: '15m' }).first()))
-      .toBeVisible({ timeout: 20_000 });
+    await openFixtureCoin(page, 'SOL');
+    await expect(page.getByTestId('chart-terminal')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('chart-timeframe-trigger')).toBeVisible({ timeout: 60_000 });
 
     for (const tf of ['1h', '15m']) {
-      const button = page.getByRole('button', { name: tf, exact: true }).first();
-      if (!(await button.isVisible().catch(() => false))) continue;
-      await button.click({ timeout: 10_000 });
+      await selectTimeframe(page, tf);
       await assertRendererResponsive(page, `SOL after switching to ${tf}`);
     }
 

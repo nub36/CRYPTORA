@@ -52,6 +52,10 @@ interface CandleChartProps {
   showBadges?: boolean;
   /** Показывать ли оверлей с часовым поясом на графике. Default: true. */
   showTimezone?: boolean;
+  /** Показать встроенную кнопку вписывания масштаба. Терминал выносит её в toolbar. */
+  showResetControl?: boolean;
+  /** Увеличение счётчика сбрасывает viewport из внешнего terminal toolbar. */
+  resetViewToken?: number;
   /**
    * Маркеры событий поверх свечей (аддитивный props; существующие потребители
    * его не передают и ведут себя как раньше). Время — unix-секунды openTime бара,
@@ -157,6 +161,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   showVolume = true,
   showBadges = true,
   showTimezone = true,
+  showResetControl = true,
+  resetViewToken,
   markers,
   levelLines,
   onMarkerClick,
@@ -722,6 +728,11 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     if (chart) timeSyncRef.current.syncFrom(chart);
   }, []);
 
+  useEffect(() => {
+    if (resetViewToken === undefined) return;
+    handleResetView();
+  }, [handleResetView, resetViewToken]);
+
   return (
     <div className="relative w-full overflow-hidden rounded-xl border border-white/[0.08] bg-surface shadow-panel-elevated group">
       {/* Subtle Ambient Radial Glow */}
@@ -787,13 +798,16 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
       <div className="relative w-full" style={{ height }}>
         <div ref={chartContainerRef} className="w-full" style={{ height }} />
-        <button
-          onClick={handleResetView}
-          className="absolute bottom-3 right-3 z-10 px-2 py-1 text-[11px] font-sans rounded bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors border border-slate-700/50 opacity-0 group-hover:opacity-100"
-          title="Вернуть масштаб"
-        >
-          ⟲ fit
-        </button>
+        {showResetControl && (
+          <button
+            type="button"
+            onClick={handleResetView}
+            className="absolute bottom-3 right-3 z-10 rounded border border-slate-700/50 bg-slate-800/80 px-2 py-1 font-sans text-[11px] text-slate-400 opacity-0 transition-colors hover:bg-slate-700 hover:text-white group-hover:opacity-100"
+            title="Вписать данные в область графика"
+          >
+            ⟲ Вписать
+          </button>
+        )}
       </div>
       {showRSI && <IndicatorPaneChart kind="RSI" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={126} showTimeAxis={!showMACD} timeSync={timeSyncRef.current} />}
       {showMACD && <IndicatorPaneChart kind="MACD" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={146} showTimeAxis timeSync={timeSyncRef.current} />}

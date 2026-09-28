@@ -16,7 +16,17 @@
 - **Контекст:** Для финансового терминала требуются быстрые, профессиональные свечные графики с поддержкой темной темы, масштабирования и перекрестия, не перегружающие DOM.
 - **Решение:** Выбрана зрелая индустриальная библиотека TradingView Lightweight Charts в сочетании с оптимизированными векторными SVG-спарклайнами для таблиц.
 
-## ADR-004: Статус расчетных тепловых карт ликвидаций
+## ADR-003A: Coin terminal — официальный Lightweight Charts вместо закрытой Charting Library
+
+**Дата:** 2026-09-28 · **Статус:** принято для `/coin/:symbol`
+
+**Проверка.** В репозитории уже используется npm-пакет `lightweight-charts` (TradingView, Apache 2.0), а `CandleChart` получает свечи через существующий `MarketDataProvider` и kline WebSocket. Официальная TradingView Charting Library / Advanced Charts в checkout не присутствует. Официальная документация TradingView указывает, что Advanced Charts и Trading Platform распространяются через private GitHub repository после выдачи доступа и не подлежат redistributing; копировать их из неофициальных источников запрещено.
+
+**Решение.** Не добавлять закрытую библиотеку, внешний iframe/widget или новый market-data source. Оставить существующий официальный `lightweight-charts` и заменить только Coin page presentation layer: единый русскоязычный terminal toolbar, dropdown таймфрейма, рабочие chart-type/indicator/template/settings controls, fullscreen и responsive layout. Candle data ownership, REST cache semantics, kline updates и provider fallback не меняются.
+
+**Границы.** RSI, MACD, MA/Bollinger и volume — визуальные chart-only настройки. Они не импортируют strategy engine и не меняют Signals, strategy conditions, Entry/Stop/Targets/R, Radar или lifecycle math. Торговое исполнение не добавляется.
+
+## ADR-005: Статус расчетных тепловых карт ликвидаций
 - **Контекст:** Пользователи часто путают фактические ликвидации с прогнозными уровнями.
 - **Решение:** Ввести строгое архитектурное разделение: биржевые принудительные ордера (`Actual liquidations`) и математические тепловые карты уровней (`Estimated / Model`), сопровождаемые обязательным визуальным предупреждением.
 
