@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 /**
  * Browser coverage for the Coin terminal shell. The explicit QA fixture keeps
