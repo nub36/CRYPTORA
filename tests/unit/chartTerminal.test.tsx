@@ -1,6 +1,7 @@
+import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { ChartTerminal, formatTerminalTimeframe } from '@/components/common/ChartTerminal';
+import { CHART_TERMINAL_COMPACT_QUERY, ChartTerminal, formatTerminalTimeframe } from '@/components/common/ChartTerminal';
 import type { ChartTerminalProps } from '@/components/common/ChartTerminal';
 
 vi.mock('@/components/common/CandleChart', () => ({
@@ -10,6 +11,9 @@ vi.mock('@/components/common/CandleChart', () => ({
       <span data-testid="chart-engine-timeframe">{String(props.timeframe)}</span>
       <span data-testid="chart-engine-type">{String(props.chartType)}</span>
       <span data-testid="chart-engine-volume">{String(props.showVolume)}</span>
+      <span data-testid="chart-engine-compact-labels">{String(props.compactPriceLabels)}</span>
+      <span data-testid="chart-engine-has-slot">{String(Boolean(props.topRightSlot))}</span>
+      {props.topRightSlot as React.ReactNode}
     </div>
   ),
 }));
@@ -221,5 +225,172 @@ describe('ChartTerminal indicators menu alignment', () => {
     expect(heading!.textContent).toBe('Панели и оверлеи');
     expect(heading!.className).toMatch(/border-b/);
     expect(screen.getByText(/Визуальные инструменты графика/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Мобильная композиция терминала (production follow-up после PR #32).
+ *
+ * `useMediaQuery` читает `window.matchMedia`, поэтому компактная раскладка
+ * включается детерминированным моком, а не подгонкой под JSDOM.
+ */
+function mockViewport(compact: boolean): () => void {
+  const original = window.matchMedia;
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: query === CHART_TERMINAL_COMPACT_QUERY ? compact : false,
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+  });
+  return () => {
+    if (original) Object.defineProperty(window, 'matchMedia', { writable: true, configurable: true, value: original });
+    else delete (window as { matchMedia?: unknown }).matchMedia;
+  };
+}
+
+describe('ChartTerminal mobile composition', () => {
+  let restore: (() => void) | null = null;
+  afterEach(() => {
+    restore?.();
+    restore = null;
+  });
+
+  const renderMobile = (props = baseProps()) => {
+    restore = mockViewport(true);
+    render(<ChartTerminal {...props} />);
+    return props;
+  };
+
+  it('collapses the three desktop rows into one compact control row', () => {
+    renderMobile();
+
+    const toolbar = document.querySelector('[data-qa="chart-terminal-toolbar"]')!;
+    expect(toolbar.getAttribute('data-layout')).toBe('compact');
+    // Ровно четыре постоянных контрола: таймфрейм, тип, индикаторы, «Ещё».
+    const triggers = Array.from(toolbar.querySelectorAll('button')).map((b) => b.getAttribute('data-qa'));
+    expect(triggers).toEqual([
+      'chart-timeframe-trigger',
+      'chart-type-trigger',
+      'chart-indicators-trigger',
+      'chart-more-trigger',
+    ]);
+    // Строка не должна переноситься.
+    expect(toolbar.className).toMatch(/flex-nowrap/);
+  });
+
+  it('removes the permanent Шаблоны / Настройки / Вписать controls from the mobile row', () => {
+    renderMobile();
+    const toolbar = document.querySelector('[data-qa="chart-terminal-toolbar"]')!;
+
+    expect(toolbar.querySelector('[data-qa="chart-templates-trigger"]')).toBeNull();
+    expect(toolbar.querySelector('[data-qa="chart-settings-trigger"]')).toBeNull();
+    expect(toolbar.querySelector('[data-qa="chart-reset-view"]')).toBeNull();
+  });
+
+  it('puts templates, settings and «Вписать» inside «Ещё» and reuses the same handlers', () => {
+    const props = renderMobile();
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
+
+    const menu = screen.getByTestId('chart-more-trigger-menu');
+    expect(menu.querySelector('[data-qa="chart-template-momentum"]')).not.toBeNull();
+    expect(menu.querySelector('[data-qa="chart-setting-volume"]')).not.toBeNull();
+    expect(menu.querySelector('[data-qa="chart-setting-timezone"]')).not.toBeNull();
+    // «Вписать» живёт пунктом меню, а не отдельной строкой toolbar.
+    expect(menu.querySelector('[data-qa="chart-reset-view"]')).not.toBeNull();
+
+    // Те же handlers, что и на desktop — дубликата бизнес-логики нет.
+    fireEvent.click(screen.getByRole('menuitem', { name: /Momentum/ }));
+    expect(props.onShowMACDChange).toHaveBeenCalledWith(true);
+    expect(props.onShowVolumeChange).toHaveBeenCalledWith(true);
+
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /^Объём/ }));
+    expect(props.onShowVolumeChange).toHaveBeenCalledWith(false);
+  });
+
+  it('keeps timeframe / type / indicators driving the very same state', () => {
+    const props = renderMobile();
+
+    fireEvent.click(screen.getByTestId('chart-timeframe-trigger'));
+    fireEvent.click(screen.getByTestId('chart-timeframe-1h'));
+    expect(props.onTimeframeChange).toHaveBeenCalledWith('1h');
+
+    fireEvent.click(screen.getByTestId('chart-type-trigger'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Линия/ }));
+    expect(props.onChartTypeChange).toHaveBeenCalledWith('line');
+
+    fireEvent.click(screen.getByTestId('chart-indicators-trigger'));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /RSI/ }));
+    expect(props.onShowRSIChange).toHaveBeenCalledWith(true);
+  });
+
+  it('shortens labels but keeps the full meaning in tooltip/aria-label', () => {
+    renderMobile();
+
+    const type = screen.getByTestId('chart-type-trigger');
+    expect(type).toHaveTextContent('Тип');
+    expect(type).toHaveAttribute('title', 'Тип графика');
+    expect(type).toHaveAttribute('aria-label', 'Тип графика');
+
+    const timeframe = screen.getByTestId('chart-timeframe-trigger');
+    expect(timeframe).toHaveTextContent('15м');
+    expect(timeframe).toHaveAttribute('aria-label', 'Таймфрейм: 15м');
+
+    const more = screen.getByTestId('chart-more-trigger');
+    expect(more).toHaveAttribute('aria-label', 'Ещё: шаблоны, настройки, вписать данные');
+    // Иконочный контрол — без микроскопического текста.
+    expect((more.textContent ?? '').trim()).toBe('');
+
+    // Индикаторы подпись не сокращается.
+    expect(screen.getByTestId('chart-indicators-trigger')).toHaveTextContent('Индикаторы');
+  });
+
+  it('gives mobile triggers an explicit 36px tap height (min-h-* is capped by the global base rule)', () => {
+    renderMobile();
+    for (const qa of ['chart-timeframe-trigger', 'chart-type-trigger', 'chart-indicators-trigger', 'chart-more-trigger']) {
+      expect(screen.getByTestId(qa).className).toMatch(/\bh-9\b/);
+    }
+    expect(screen.getByTestId('chart-more-trigger').className).toMatch(/\bw-9\b/);
+  });
+
+  it('drops the side rail and mounts ONE fullscreen control as an in-frame overlay', () => {
+    renderMobile();
+
+    expect(screen.queryByTestId('chart-side-rail')).toBeNull();
+    // Перенос, а не вторая реализация: контрол существует ровно один.
+    const controls = document.querySelectorAll('[data-qa="chart-fullscreen"]');
+    expect(controls).toHaveLength(1);
+    const control = controls[0] as HTMLElement;
+    expect(control.getAttribute('data-variant')).toBe('overlay');
+    expect(control).toHaveAttribute('title', 'Развернуть график');
+    expect(control).toHaveAttribute('aria-label', 'Развернуть график');
+    expect(control).toHaveAttribute('aria-pressed', 'false');
+    expect(control.className).toMatch(/\bh-9\b/);
+    expect(control.className).toMatch(/\bw-9\b/);
+    // Он передан графику как слот, а не выделен отдельной колонкой layout.
+    expect(document.querySelector('[data-qa="chart-terminal-toolbar"]')!.contains(control)).toBe(false);
+  });
+
+  it('asks the chart for compact labels on mobile and for the desktop format otherwise', () => {
+    restore = mockViewport(true);
+    const { unmount } = render(<ChartTerminal {...baseProps()} />);
+    expect(screen.getByTestId('chart-engine-compact-labels')).toHaveTextContent('true');
+    expect(screen.getByTestId('chart-engine-has-slot')).toHaveTextContent('true');
+    unmount();
+    restore();
+
+    restore = mockViewport(false);
+    render(<ChartTerminal {...baseProps()} />);
+    expect(screen.getByTestId('chart-engine-compact-labels')).toHaveTextContent('false');
+    expect(screen.getByTestId('chart-engine-has-slot')).toHaveTextContent('false');
+    expect(screen.getByTestId('chart-side-rail')).toBeInTheDocument();
   });
 });
