@@ -38,6 +38,15 @@ async function selectTimeframe(page: Page, timeframe: string) {
 }
 
 test.describe('P0 — timeframe switching keeps the renderer responsive', () => {
+  test.beforeEach(async ({ page }) => {
+    // The terminal is intentionally exercised with the deterministic QA fixture:
+    // a live-source failure renders the honest Coin loading/error state before
+    // the chart can be mounted, which cannot test renderer responsiveness.
+    await page.addInitScript(() => {
+      localStorage.setItem('cryptora_qa_fixture', '1');
+    });
+  });
+
   test('BTC: 1h → 15m → 1h → 5m, then navigating to / still works', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(String(err)));
