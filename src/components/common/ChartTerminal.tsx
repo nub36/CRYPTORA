@@ -156,7 +156,7 @@ function TerminalDropdown({
       >
         <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>{label}</span>
-        {activeLabel && <span className="font-mono text-slate-400">· {activeLabel}</span>}
+        {activeLabel && <span className="hidden font-mono text-slate-400 lg:inline">· {activeLabel}</span>}
         <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       {open && (
@@ -299,7 +299,16 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
     >
       <div
         data-qa="chart-terminal-toolbar"
-        className="flex flex-wrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-2 sm:px-3"
+        /*
+         * Desktop (sm+): единая профессиональная строка — `flex-nowrap`, поэтому
+         * [Вписать]/[Fullscreen] с `ml-auto` держатся справа и НЕ переносятся на
+         * вторую строку. Ранее `flex-wrap` при чуть более узкой рабочей области
+         * сбрасывал правую группу на новый ряд. Mobile (<sm): перенос сохранён.
+         * `min-w-0` не даёт nowrap-строке распирать grid-колонку и давать page
+         * horizontal overflow. Вертикальные паддинги уменьшены — chrome компактнее,
+         * график начинается выше (§11).
+         */
+        className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-1.5 sm:flex-nowrap sm:px-3"
       >
         <TerminalDropdown
           menuKey="timeframe"

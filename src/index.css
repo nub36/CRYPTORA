@@ -704,7 +704,12 @@ html.light {
 .screener-filter { padding:10px 0 2px; }
 .screener-results { border-top:2px solid var(--terminal-accent); }
 .screener-result-table { overflow:hidden; }
-.coin-identity { border-left:2px solid var(--terminal-accent); }
+/* ASSET STATE region: the left cyan rule was a stray vertical accent to the left
+   of the coin icon / «BNB market state» block (owner-reported). Removed at the
+   real source instead of masking it. The header's horizontal divider
+   (.terminal-region__header) and the workspace top accent (.coin-workspace-region)
+   are intentional and stay. The class remains as a semantic layout hook. */
+.coin-identity { min-width: 0; }
 .coin-state-strip { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; }
 .coin-workspace-region { border-top:2px solid var(--terminal-accent); }
 .liquidation-workspace { border-top:2px solid var(--terminal-accent); }

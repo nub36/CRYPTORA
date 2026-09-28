@@ -4,6 +4,23 @@
 
 ---
 
+## [Unreleased] — 2026-09-28 — ChartTerminal production follow-up (resize/fullscreen) (unmerged)
+
+### Fixed
+- **Критический resize/fullscreen regression:** `CandleChart` больше НЕ пересоздаётся при изменении `height`. Раньше вход/выход из fullscreen (и любое изменение высоты рабочей области) вызывал `chart.remove()` + пересоздание, тогда как эффект наполнения данными (`[data, timeframe]`) не перезапускался — новые серии оставались пустыми. В LIVE следующий WS-тик рисовал одну огромную свечу на всю ширину, в QA график становился пустым, и это состояние сохранялось до перезагрузки. Высота теперь применяется на существующий инстанс (`applyOptions({ height })`), а ширина/высота дополнительно синхронизируются с реальным контейнером через ResizeObserver; данные серий и горизонтальный логический диапазон переживают геометрический переход. `«Вписать»` остаётся ручным intentional fit и больше не требуется после fullscreen.
+- **Лишняя бирюзовая вертикальная полоса** слева от блока ASSET STATE убрана в источнике: снят `border-left` у `.coin-identity`. Горизонтальный разделитель заголовка и верхний accent рабочей области сохранены; `overflow-x:hidden`/overlay-маскировка не использованы.
+
+### Changed
+- **Toolbar графика** на desktop (`sm+`) — единая строка (`flex-nowrap`): `[Вписать]`/`[Fullscreen]` больше не переносятся на второй ряд. Вертикальные паддинги уменьшены (chrome компактнее, график начинается выше), описательные active-labels скрыты ниже `lg`, `min-w-0` у карточки графика исключает page horizontal overflow. Перенос на mobile (`<sm`) сохранён.
+
+### Tests
+- Новый Chromium e2e `e2e/coinChartResize.spec.ts`: normal → fullscreen → normal (×2), viewport wide→narrow→wide, desktop toolbar в одну строку и отсутствие cyan border у ASSET STATE, повтор на `/coin/XRP`. Проверяется ФАКТИЧЕСКАЯ геометрия/диапазон через dev-only пробник (`import.meta.env.DEV`, вырезается из production-бандла), отличая «данные исчезли» от «сломался только диапазон».
+
+### Invariants
+- Математика стратегий/аномалий/сигналов, их пороги/окна, `strategy_settings`, `scan_universe`, серверная candle-finality/cache logic и backend не изменялись. Нет миграций БД. Deploy/merge не выполнялись.
+
+---
+
 ## [Unreleased] — 2026-09-26 — Radar 24/7 server monitor (unmerged)
 
 ### Added
