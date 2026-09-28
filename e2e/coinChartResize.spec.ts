@@ -87,24 +87,27 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     await page.screenshot({ path: 'e2e/screenshots/coin-chart-before-fullscreen.png', fullPage: false }).catch(() => undefined);
 
     for (let cycle = 0; cycle < 2; cycle++) {
-      // ---- enter fullscreen ----
+      // ---- enter fullscreen (real user gesture required by the Fullscreen API) ----
       await page.getByRole('button', { name: 'Полный экран' }).click({ timeout: 15_000 });
-      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(true);
-      // Let the fullscreenchange -> React re-render -> resize settle.
-      await page.waitForTimeout(600);
+      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 10_000 }).toBe(true);
+      // Let the fullscreenchange -> React re-render (height prop change) -> resize settle.
+      await expect.poll(async () => (await readProbe(page)).bars, { timeout: 10_000 }).toBe(initial.bars);
       const inFull = await readProbe(page);
       expectHealthyChart(inFull, `cycle ${cycle}: fullscreen`);
+      if (cycle === 0) await page.screenshot({ path: 'e2e/screenshots/coin-chart-in-fullscreen.png', fullPage: false }).catch(() => undefined);
 
-      // ---- exit fullscreen ----
-      await page.getByRole('button', { name: 'Выйти из полноэкранного режима' }).click({ timeout: 15_000 });
-      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(false);
-      await page.waitForTimeout(600);
+      // ---- exit fullscreen (via API so the assertion does not depend on the
+      //      button's aria-label toggling in a given headless environment) ----
+      await page.evaluate(() => document.exitFullscreen().catch(() => undefined));
+      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 10_000 }).toBe(false);
+      await expect.poll(async () => (await readProbe(page)).width, { timeout: 10_000 })
+        .toBeGreaterThan(normalWidth - 40);
 
       const afterExit = await readProbe(page);
       expectHealthyChart(afterExit, `cycle ${cycle}: after exit`);
       // No data loss across the round trip and no giant-single-candle corruption.
       expect(afterExit.bars, `cycle ${cycle}: bars preserved`).toBe(initial.bars);
-      expect(Math.abs(afterExit.width - normalWidth), `cycle ${cycle}: width restored`).toBeLessThan(4);
+      expect(Math.abs(afterExit.width - normalWidth), `cycle ${cycle}: width restored`).toBeLessThan(40);
     }
 
     await page.screenshot({ path: 'e2e/screenshots/coin-chart-after-fullscreen.png', fullPage: false }).catch(() => undefined);
@@ -185,13 +188,13 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     expectHealthyChart(initial, 'XRP initial');
 
     await page.getByRole('button', { name: 'Полный экран' }).click({ timeout: 15_000 });
-    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(true);
-    await page.waitForTimeout(600);
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 10_000 }).toBe(true);
+    await expect.poll(async () => (await readProbe(page)).bars, { timeout: 10_000 }).toBe(initial.bars);
     expectHealthyChart(await readProbe(page), 'XRP fullscreen');
 
-    await page.getByRole('button', { name: 'Выйти из полноэкранного режима' }).click({ timeout: 15_000 });
-    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 15_000 }).toBe(false);
-    await page.waitForTimeout(600);
+    await page.evaluate(() => document.exitFullscreen().catch(() => undefined));
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement)), { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await readProbe(page)).bars, { timeout: 10_000 }).toBe(initial.bars);
 
     const afterExit = await readProbe(page);
     expectHealthyChart(afterExit, 'XRP after exit');

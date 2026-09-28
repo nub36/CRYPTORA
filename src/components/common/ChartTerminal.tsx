@@ -300,15 +300,17 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
       <div
         data-qa="chart-terminal-toolbar"
         /*
-         * Desktop (sm+): единая профессиональная строка — `flex-nowrap`, поэтому
-         * [Вписать]/[Fullscreen] с `ml-auto` держатся справа и НЕ переносятся на
-         * вторую строку. Ранее `flex-wrap` при чуть более узкой рабочей области
-         * сбрасывал правую группу на новый ряд. Mobile (<sm): перенос сохранён.
-         * `min-w-0` не даёт nowrap-строке распирать grid-колонку и давать page
-         * horizontal overflow. Вертикальные паддинги уменьшены — chrome компактнее,
+         * Desktop (lg+, ≥1024px): единая профессиональная строка — `flex-nowrap`,
+         * поэтому [Вписать]/[Fullscreen] с `ml-auto` держатся справа и НЕ переносятся
+         * на вторую строку (owner-репорт был на desktop). Ранее `flex-wrap` при чуть
+         * более узкой рабочей области сбрасывал правую группу на новый ряд.
+         * Tablet/mobile (<lg): перенос сохранён — на планшете (768px) все контролы в
+         * одну строку не влезают, а `nowrap` дал бы page horizontal overflow (см.
+         * e2e/mobileOverflow). `min-w-0` дополнительно страхует от распирания
+         * grid-колонки. Вертикальные паддинги уменьшены — chrome компактнее,
          * график начинается выше (§11).
          */
-        className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-1.5 sm:flex-nowrap sm:px-3"
+        className="flex min-w-0 flex-wrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-1.5 sm:px-3 lg:flex-nowrap"
       >
         <TerminalDropdown
           menuKey="timeframe"
