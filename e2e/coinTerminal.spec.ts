@@ -90,8 +90,9 @@ test.describe('Coin terminal chart UX', () => {
     await expect(page.locator('[aria-label="MACD indicator pane"]')).toBeVisible();
     await page.screenshot({ path: 'e2e/screenshots/coin-terminal-rsi-macd.png', fullPage: false });
 
-    // Fullscreen must enter and leave without losing the terminal.
-    await page.getByRole('button', { name: 'Полный экран' }).click();
+    // Fullscreen must enter and leave without losing the terminal. The control
+    // now lives on the terminal's right side rail (PR#32), same implementation.
+    await page.getByRole('button', { name: 'Развернуть график' }).click();
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
     await expect(terminal).toBeVisible();
     await page.getByRole('button', { name: 'Выйти из полноэкранного режима' }).click();
