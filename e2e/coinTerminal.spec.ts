@@ -99,7 +99,7 @@ test.describe('Coin terminal chart UX', () => {
     await expect(terminal).toBeVisible();
 
     if (pageErrors.length > 0 || consoleErrors.length > 0) {
-      throw new Error(`browser diagnostics: pageerror=[${pageErrors.join('; ')}] console=[${consoleErrors.join('; ')}]`);
+      throw new Error(`Error message: browser diagnostics: pageerror=[${pageErrors.join('; ')}] console=[${consoleErrors.join('; ')}]`);
     }
   });
 
