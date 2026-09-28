@@ -64,16 +64,38 @@ async function isFullscreen(page: Page): Promise<boolean> {
 }
 
 /**
- * Warm the terminal with genuine menu interactions before requesting fullscreen.
- * This mirrors the *passing* coinTerminal.spec flow (which enters fullscreen only
- * after several real clicks) and gives the page a settled interaction history, so
- * the subsequent Fullscreen API request is granted reliably in headless Chromium.
+ * Warm the terminal with a dense series of GENUINE control interactions before
+ * requesting fullscreen. This mirrors the *passing* coinTerminal.spec flow: that
+ * test (same route, same component, same config) enters fullscreen successfully
+ * only after many real clicks, while a sparse warm-up leaves headless Chromium
+ * refusing the request. The sole difference between the two is this interaction
+ * history, so we reproduce it here. All controls used are core PR#30 features
+ * already covered by coinTerminal.spec, so this stays stable.
  */
 async function warmUpTerminal(page: Page): Promise<void> {
-  await page.getByTestId('chart-settings-trigger').click({ timeout: 10_000 });
-  await page.keyboard.press('Escape');
-  await page.getByTestId('chart-timeframe-trigger').click({ timeout: 10_000 });
-  await page.keyboard.press('Escape');
+  const settings = page.getByTestId('chart-settings-trigger');
+  await settings.click({ timeout: 10_000 });
+  const volume = page.getByRole('menuitemcheckbox', { name: /^Объём/ });
+  await volume.click();
+  await volume.click();
+  await page.mouse.click(8, 8); // dismiss the menu with a real outside click
+
+  const timeframe = page.getByTestId('chart-timeframe-trigger');
+  await timeframe.click();
+  await page.getByTestId('chart-timeframe-1h').click();
+
+  const chartType = page.getByTestId('chart-type-trigger');
+  await chartType.click();
+  await page.getByRole('menuitem', { name: /Линия/ }).click();
+  await chartType.click();
+  await page.getByRole('menuitem', { name: /Свеч/ }).click();
+
+  const indicators = page.getByTestId('chart-indicators-trigger');
+  await indicators.click();
+  const rsi = page.getByRole('menuitemcheckbox', { name: /RSI/ });
+  await rsi.click();
+  await rsi.click();
+  await page.mouse.click(8, 8);
 }
 
 /**
@@ -133,13 +155,15 @@ test.describe('Coin chart resize / fullscreen regression', () => {
 
     await expect.poll(async () => (await readProbe(page)).bars, { timeout: 15_000 }).toBeGreaterThan(10);
 
+    // Warm up first so the Fullscreen API is granted (see warmUpTerminal), then read
+    // the baseline from the settled post-warm-up state so bar counts compare cleanly.
+    await warmUpTerminal(page);
+    await expect.poll(async () => (await readProbe(page)).bars, { timeout: 15_000 }).toBeGreaterThan(10);
+
     const initial = await readProbe(page);
     expectHealthyChart(initial, 'initial');
     const normalWidth = initial.width;
     await page.screenshot({ path: 'e2e/screenshots/coin-chart-before-fullscreen.png', fullPage: false }).catch(() => undefined);
-
-    // Warm up once so the Fullscreen API is granted (see warmUpTerminal).
-    await warmUpTerminal(page);
 
     for (let cycle = 0; cycle < 2; cycle++) {
       // ---- enter fullscreen (mandatory: fails if the API does not engage) ----
@@ -264,10 +288,12 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     await expect(page.getByTestId('chart-terminal')).toBeVisible({ timeout: 20_000 });
     await expect.poll(async () => (await readProbe(page)).bars, { timeout: 15_000 }).toBeGreaterThan(10);
 
+    await warmUpTerminal(page);
+    await expect.poll(async () => (await readProbe(page)).bars, { timeout: 15_000 }).toBeGreaterThan(10);
+
     const initial = await readProbe(page);
     expectHealthyChart(initial, 'XRP initial');
 
-    await warmUpTerminal(page);
     await enterFullscreen(page);
     await expect.poll(async () => (await readProbe(page)).bars, { timeout: 10_000 }).toBe(initial.bars);
     expectHealthyChart(await readProbe(page), 'XRP fullscreen');
