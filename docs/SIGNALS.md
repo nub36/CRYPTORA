@@ -110,6 +110,31 @@ frozen-функциями архива:
 Статусы: `ACTIVE → FILLED → TARGET_REACHED | INVALIDATED | CLOSED` (сделка была) или `ACTIVE → EXPIRED | CANCELLED`
 (сделки не было). `UNRESOLVED` — бар сетапа вышел за окно данных до исхода (честно помечается, не считается сделкой).
 
+### 3.0. Инварианты целостности lifecycle (инцидент PEPE 561186ba, 2026-09-27)
+
+Два инфраструктурных инварианта, сломанных в производственном инциденте и восстановленных фиксом
+(математика стратегий не тронута — см. `docs/incidents/2026-09-28-signal-lifecycle-integrity.md`):
+
+1. **Финальность свечи — свойство снапшота, а не wall-clock потребителя.** Серверный
+   `MarketDataFetcher` (`server/services/strategyEngine/marketDataFetcher.js`, `dropFormingCandles`)
+   отбрасывает свечи, незавершённые на момент ПОЛУЧЕНИЯ ответа биржи, ДО кэша и до выдачи, и
+   инвалидирует кэш, когда с момента acquisition закрылась отсутствующая в нём свеча. Снапшот
+   формирующегося бара больше не может «дозреть» до финального в 60-секундном кэше и уйти в
+   публикацию сетапа (как это произошло с PEPE: close формирующегося бара 0.00000446 против
+   осевшего 0.00000445 дал чужую геометрию коридора).
+2. **Монотонность входа.** Строка, УЖЕ исполненная (статус `FILLED` либо сохранённые
+   `fill_price`/`filled_at`), не может перейти в безсделковый терминальный статус
+   (`EXPIRED` / `CANCELLED` / `UNRESOLVED`) — ни через `syncSignalLifecycle` (scan-sync вердикт
+   вида `REJECTED_GEOMETRY` отказывается с причиной `ENTERED_SIGNAL_NO_TRADE`), ни прямым
+   `closeSignal`, ни в гонке с конкурентной записью: guard живёт в `writeLifecycle` под
+   `SELECT … FOR UPDATE` и повторён в `WHERE` самого UPDATE. Легитимные исходы исполненной
+   сделки (`TARGET_REACHED` / `INVALIDATED` / `CLOSED`) разрешены как прежде; безсделковые
+   терминалы неисполненной строки (`ACTIVE` без входа) — тоже.
+
+Регрессионные тесты: `tests/unit/serverMarketData.test.ts` (блок «Финальность свечи на границе
+кэша») и `tests/integration/signalMonitorPostgres.test.ts` (блок «Монотонность lifecycle
+исполненной строки»: PEPE-класс, гонка устаревшего писателя, CAS, отсутствие сверхблокировки).
+
 ### 3.1. Один бар, где коснулись и стопа, и цели — правило РАЗНОЕ у разных стратегий
 
 Никакого общего «всегда стоп»: у каждой стратегии своя реализация, и у одной из них пары TP/SL не существует вовсе.
@@ -378,12 +403,12 @@ GET /api/signals/monitor
 | `tests/integration/strategyEngineCore.test.ts` | Ядро загружается, `scanNow` — функция, `scanOnce` не существует; окружение node, пропуск виден как skipped (F-03) |
 | `tests/integration/strategyOperations.test.ts` | Хранение и дедупликация, лестница целей и TP3 в API, жизненный цикл и монотонность, хэш-цепочка v2, контракт `GET /api/signals` (фильтры, пагинация, порядок, 400 с кодами) |
 | `tests/unit/strategyEngineOrchestration.test.ts` | Стыки движка детерминированно: `buildSignalRecord`, ключ дедупликации, `MARKET_DATA_UNAVAILABLE` до скана, перенос lifecycle без пересчёта R |
-| `tests/unit/serverMarketData.test.ts` | Нормализация таймфреймов/символов, clamp лимита `[1, 1000]`, кэш и дедупликация in-flight |
+| `tests/unit/serverMarketData.test.ts` | Нормализация таймфреймов/символов, clamp лимита `[1, 1000]`, кэш и дедупликация in-flight, граница финальности свечи в кэше (инцидент PEPE 561186ba: закэшированный снапшот формирующегося бара не выдаётся как финальный после пересечения closeTime) |
 | `tests/unit/serverDbPool.test.ts` | Обработчик `'error'` пула на настоящем `pg.Pool`: `FATAL 57P01` логируется и не убивает процесс; guard против запрещённых масок |
 | `tests/unit/signalMonitor.test.ts` | Серверный монитор открытых сигналов: бюджет цикла (<= `MAX_LIFECYCLE_SYNC_PER_SCAN` = 500 сигналов, <= `MAX_MONITOR_GROUPS` = 64 группы), отказ рыночных данных не роняет тик, `stale` после `MONITOR_STALE_AFTER_FAILURES` подряд, `closedAt` не подменяется текущим временем |
 | `tests/unit/signalMonitorParity.test.ts` | Паритет адаптера монитора с замороженным `trackPublishedSetup()`: одинаковые fill/исход/R на одних и тех же закрытых свечах, включая same-bar TP/SL (сначала стоп) |
 | `tests/unit/signalStatistics.test.ts` | Агрегаты статистики: раздельные счетчики опубликовано / ожидают входа / дождались входа, знаменатель доли успешных только по сделкам, `null` не равен 0 |
-| `tests/integration/signalMonitorPostgres.test.ts` | Настоящий PostgreSQL: `010_signal_monitor_bookkeeping.sql` применяется, bookkeeping переживает рестарт процесса, монитор восстанавливает состояние после падения, строки сигналов не теряются |
+| `tests/integration/signalMonitorPostgres.test.ts` | Настоящий PostgreSQL: `010_signal_monitor_bookkeeping.sql` применяется, bookkeeping переживает рестарт процесса, монитор восстанавливает состояние после падения, строки сигналов не теряются; монотонность lifecycle исполненной строки (инцидент PEPE 561186ba: безсделковый вердикт скана отклоняется, FILLED не регрессирует, CAS в гонке, легитимные исходы не задеты) |
 | `tests/unit/migrationPostgresCompat.test.ts` | 010 аддитивна и совместима с PostgreSQL: нет destructive DDL, нет `CONCURRENTLY` (раннер оборачивает миграцию в одну транзакцию), 009 не изменена |
 | `tests/unit/chartTimePresentation.test.ts` | Единый форматтер времени: один Unix-момент под UTC / Europe/Berlin (DST: лето +2, зима +1) / Asia/Tokyo; запрет захардкоженных зон проверяется сканом исходников |
 | `tests/unit/signalCoinSelectorSearch.test.tsx` | BUG A: запрос селектора переживает ререндеры родителя (`B` находит BTC, `BT`, backspace, регистр, пара `BTC/USDT`) |
