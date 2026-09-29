@@ -110,6 +110,11 @@ export class DerivativesEngine {
     };
     const volume24hQuote = ticker ? parseFinite(ticker.quoteVolume) : null;
     const lastPrice = ticker ? parseFinite(ticker.lastPrice) : null;
+    // 24h high/low и объём в базовой валюте — ФЬЮЧЕРСНЫЕ (тот же ticker-ответ,
+    // что и цена/оборот). Нет поля у источника → null → «Нет данных» (§5).
+    const high24h = ticker ? parseFinite(ticker.highPrice ?? undefined) : null;
+    const low24h = ticker ? parseFinite(ticker.lowPrice ?? undefined) : null;
+    const baseVolume24h = ticker ? parseFinite(ticker.volume) : null;
     // RC-2: priceChangePercent приходил с биржи и выбрасывался при нормализации.
     const priceChangePercent24h = ticker ? parseFinite(ticker.priceChangePercent) : null;
     const volume24hUsd = volume24hQuote ?? 0;
@@ -141,6 +146,9 @@ export class DerivativesEngine {
       indexPrice,
       lastPrice,
       priceChange24h: priceChangePercent24h,
+      high24h,
+      low24h,
+      baseVolume24h,
       fundingRate: Number(fundingRate8h.toFixed(4)),
       predictedFundingRate: Number(fundingRate8h.toFixed(4)), // источник не отдаёт отдельный прогноз — см. FuturesAssetSchema
       nextFundingTime: premium.nextFundingTime || undefined,

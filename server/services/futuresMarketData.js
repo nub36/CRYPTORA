@@ -291,6 +291,10 @@ export function createFuturesMarketSnapshotStore(options = {}) {
       const lastPrice = ticker ? finite(ticker.lastPrice) : null;
       const priceChangePercent = ticker ? finite(ticker.priceChangePercent) : null;
       const quoteVolume = ticker ? finite(ticker.quoteVolume) : null;
+      // 24h high/low ПЕРПЕТУАЛА (`/fapi/v1/ticker/24hr`), не спота: блок
+      // «Рыночная статистика» на /futures/:symbol показывает именно их.
+      const highPrice = ticker ? finite(ticker.highPrice) : null;
+      const lowPrice = ticker ? finite(ticker.lowPrice) : null;
       const openInterest = oiValues.has(key) ? oiValues.get(key) : null;
       const openInterestHist = oiHistValues.get(key) ?? null;
 
@@ -313,6 +317,8 @@ export function createFuturesMarketSnapshotStore(options = {}) {
         lastPrice: lastPrice === null ? null : String(ticker.lastPrice),
         priceChangePercent: priceChangePercent === null ? null : String(ticker.priceChangePercent),
         quoteVolume: quoteVolume === null ? null : String(ticker.quoteVolume),
+        highPrice: highPrice === null ? null : String(ticker.highPrice),
+        lowPrice: lowPrice === null ? null : String(ticker.lowPrice),
         baseVolume: ticker && finite(ticker.volume) !== null ? String(ticker.volume) : null,
         openInterest,
         openInterestHist,

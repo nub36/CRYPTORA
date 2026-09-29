@@ -27,6 +27,13 @@ export const BinanceFuturesTicker24hrSchema = z.object({
   lastPrice: z.string(),
   volume: z.string(),
   quoteVolume: z.string(),
+  /**
+   * 24h high/low ПЕРПЕТУАЛА. Поля опциональные: агрегированный серверный
+   * снапшот старой версии их не присылает, и это должно давать «Нет данных»,
+   * а не падение валидации всего тикера (задача §5, §15).
+   */
+  highPrice: z.string().optional().nullable(),
+  lowPrice: z.string().optional().nullable(),
   openTime: z.number().optional().nullable(),
   closeTime: z.number().optional().nullable(),
 });
@@ -80,3 +87,20 @@ export const BinanceFuturesExchangeInfoSchema = z.object({
   ),
 });
 export type BinanceFuturesExchangeInfo = z.infer<typeof BinanceFuturesExchangeInfoSchema>;
+
+/**
+ * `GET /fapi/v1/depth` — стакан USD-M (задача §4).
+ *
+ * Уровни приходят как пары строк `[price, qty]`; `lastUpdateId` — версия книги
+ * (по нему видно, что снапшот обновился), `E`/`T` — время события и матчинга
+ * на бирже, они есть только у фьючерсного стакана (у спота их нет).
+ */
+export const BinanceFuturesDepthLevelSchema = z.tuple([z.string(), z.string()]);
+export const BinanceFuturesDepthSchema = z.object({
+  lastUpdateId: z.number(),
+  E: z.number().optional().nullable(),
+  T: z.number().optional().nullable(),
+  bids: z.array(BinanceFuturesDepthLevelSchema),
+  asks: z.array(BinanceFuturesDepthLevelSchema),
+});
+export type BinanceFuturesDepth = z.infer<typeof BinanceFuturesDepthSchema>;

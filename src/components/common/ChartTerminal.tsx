@@ -8,7 +8,6 @@ import {
   Minimize2,
   MoreHorizontal,
   RotateCcw,
-  Settings2,
 } from 'lucide-react';
 import type { OHLCV, Timeframe } from '@/types/market';
 import { CandleChart, type CandleChartType, type ChartIndicatorData } from './CandleChart';
@@ -16,14 +15,12 @@ import type { KlineTick } from '@/types/realtime';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 /**
- * Брейкпоинт компактной (мобильной) композиции терминала.
+ * Брейкпоинт КОМПАКТНОЙ ПЛОТНОСТИ терминала.
  *
- * Совпадает с границей Tailwind `lg`: ровно с 1024px верхний toolbar PR #32
- * гарантированно раскладывается в ОДНУ строку (`lg:flex-nowrap`). Ниже 1024px
- * та же строка физически не помещается и раньше переносилась на 2–3 ряда —
- * именно это и было видно на production-скриншоте владельца (360px).
- * Поэтому < 1024px рисуется отдельная компактная композиция, а >= 1024px —
- * неизменный desktop-toolbar PR #32.
+ * Состав контролов один и тот же на всех ширинах (см. `renderToolbar`):
+ * `[1ч ▾] [Свечи ▾] [Индикаторы ▾] [⋯]` + fullscreen. Ниже 1024px меняется
+ * только плотность (подписи короче, тап-цели 36px, fullscreen — оверлей
+ * внутри рамки графика вместо правого рельса).
  */
 export const CHART_TERMINAL_COMPACT_QUERY = '(max-width: 1023.98px)';
 
@@ -500,17 +497,27 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
   );
 
   /**
-   * «Вписать данные». Один и тот же обработчик используется desktop-кнопкой в
-   * toolbar, пунктом внутри «Настройки» и мобильным пунктом внутри «Ещё» —
-   * второй реализации сброса масштаба не создаётся.
+   * «Вписать данные». Один и тот же обработчик на всех ширинах: пункт живёт
+   * внутри «Ещё», второй реализации сброса масштаба не создаётся.
+   *
+   * Кнопка ОТКЛЮЧЕНА, когда вписывать нечего (`data.length === 0`): вписать
+   * пустую серию нельзя, и нажатие давало бы «мёртвый» контрол (UX-аудит §6).
    */
+  const canFitData = data.length > 0;
   const renderFitDataItem = (qa?: string) => (
     <button
       type="button"
       role="menuitem"
       {...(qa ? { 'data-qa': qa, 'data-testid': qa } : {})}
-      className={menuButtonClass()}
-      onClick={() => { setResetViewToken((value) => value + 1); closeMenu(); }}
+      disabled={!canFitData}
+      aria-disabled={!canFitData}
+      title={canFitData ? 'Вписать данные в область графика' : 'Нет данных для масштабирования'}
+      className={`${menuButtonClass()} ${canFitData ? '' : 'cursor-not-allowed opacity-40'}`}
+      onClick={() => {
+        if (!canFitData) return;
+        setResetViewToken((value) => value + 1);
+        closeMenu();
+      }}
     >
       <span>Вписать данные</span>
       <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
@@ -523,183 +530,101 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
     : <Maximize2 className="h-4 w-4" aria-hidden="true" />;
 
   /*
-   * ================= MOBILE COMPOSITION =================
+   * ================= ЕДИНЫЙ TOOLBAR (desktop + mobile) =================
    *
-   * Одна компактная строка: [15м ▾] [Тип ▾] [Индикаторы ▾] [⋯].
-   * «Шаблоны», «Настройки» и «Вписать» переезжают внутрь «Ещё» и больше не
-   * занимают постоянных кнопок/отдельной строки.
+   * Состав контролов ОДИН для всех ширин:
+   *     [1ч ▾] [Свечи ▾] [Индикаторы ▾] … [⋯]
+   * «Шаблоны», «Настройки» и «Вписать данные» живут внутри «Ещё» на любой
+   * ширине — раньше это было верно только для мобильной композиции, а на
+   * desktop дублировалось пятью постоянными кнопками с длинными подписями
+   * («1ч · таймфрейм», «Тип графика · Свечи»). Одна композиция = одно место
+   * правки: изменение toolbar автоматически применяется к Spot и Futures,
+   * к мобильной и десктопной ширине (задача §10, §17).
+   *
+   * Отличается ТОЛЬКО плотность (`compact`): подписи, тап-цели 36px и место
+   * fullscreen-контрола (рельс справа на desktop, оверлей внутри рамки на
+   * мобильном).
    */
-  const mobileToolbar = (
-    <div
-      data-qa="chart-terminal-toolbar"
-      data-testid="chart-terminal-toolbar"
-      data-layout="compact"
-      className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2 py-1.5"
-    >
-      <TerminalDropdown
-        menuKey="timeframe"
-        label={formatTerminalTimeframe(timeframe)}
-        fullLabel={`Таймфрейм: ${formatTerminalTimeframe(timeframe)}`}
-        compact
-        open={openMenu === 'timeframe'}
-        onToggle={() => toggleMenu('timeframe')}
-        onClose={closeMenu}
-        testId="chart-timeframe-trigger"
+  const renderToolbar = (density: 'compact' | 'desktop') => {
+    const dense = density === 'compact';
+    return (
+      <div
+        data-qa="chart-terminal-toolbar"
+        data-testid="chart-terminal-toolbar"
+        data-layout={density}
+        /* Единый состав контролов; `data-controls` фиксирует инвариант в DOM. */
+        data-controls="unified"
+        className={`flex w-full min-w-0 flex-nowrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 py-1.5 ${
+          dense ? 'px-2' : 'px-2.5 sm:px-3'
+        }`}
       >
-        {timeframeItems}
-      </TerminalDropdown>
-
-      <TerminalDropdown
-        menuKey="chart-type"
-        label="Тип"
-        fullLabel="Тип графика"
-        icon={BarChart3}
-        compact
-        open={openMenu === 'chart-type'}
-        onToggle={() => toggleMenu('chart-type')}
-        onClose={closeMenu}
-        testId="chart-type-trigger"
-      >
-        {chartTypeItems}
-      </TerminalDropdown>
-
-      <TerminalDropdown
-        menuKey="indicators"
-        label="Индикаторы"
-        compact
-        open={openMenu === 'indicators'}
-        onToggle={() => toggleMenu('indicators')}
-        onClose={closeMenu}
-        testId="chart-indicators-trigger"
-      >
-        {indicatorItems}
-      </TerminalDropdown>
-
-      <div className="ml-auto flex shrink-0 items-center">
         <TerminalDropdown
-          menuKey="more"
-          label="Ещё"
-          fullLabel="Ещё: шаблоны, настройки, вписать данные"
-          icon={MoreHorizontal}
-          compact
-          iconOnly
-          open={openMenu === 'more'}
-          onToggle={() => toggleMenu('more')}
+          menuKey="timeframe"
+          label={formatTerminalTimeframe(timeframe)}
+          fullLabel={`Таймфрейм: ${formatTerminalTimeframe(timeframe)}`}
+          icon={dense ? undefined : Layers3}
+          compact={dense}
+          open={openMenu === 'timeframe'}
+          onToggle={() => toggleMenu('timeframe')}
           onClose={closeMenu}
-          testId="chart-more-trigger"
+          testId="chart-timeframe-trigger"
         >
-          <div className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Шаблоны</div>
-          {templateItems}
-          <div className="mt-1 border-t border-white/[0.08] px-3 pb-1.5 pt-2 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Настройки</div>
-          {settingsItems}
-          <div className="mt-1 border-t border-white/[0.08] pt-1">
-            {renderFitDataItem('chart-reset-view')}
-          </div>
+          {timeframeItems}
         </TerminalDropdown>
-      </div>
-    </div>
-  );
 
-  /*
-   * ================= DESKTOP COMPOSITION (PR #32, без изменений) =================
-   */
-  const desktopToolbar = (
-    <div
-      data-qa="chart-terminal-toolbar"
-      data-testid="chart-terminal-toolbar"
-      data-layout="desktop"
-      /*
-       * Состав строки: [таймфрейм] [Тип графика] [Индикаторы] [Шаблоны]
-       * [Настройки] … [Вписать]. Fullscreen-контрол живёт на правой кромке
-       * chart workspace (PR #32), спейсер под него НЕ оставлен: правая группа —
-       * обычный `ml-auto`-кластер.
-       *
-       * Эта композиция рендерится только на >= 1024px, где она гарантированно
-       * помещается в ОДНУ строку (`flex-nowrap`). Раньше тот же toolbar
-       * рендерился и на мобильном, где `flex-wrap` раскладывал его на три ряда
-       * высотой 117px — это и был дефект production-скриншота.
-       */
-      className="flex min-w-0 flex-nowrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 px-2.5 py-1.5 sm:px-3"
-    >
-      <TerminalDropdown
-        menuKey="timeframe"
-        label={formatTerminalTimeframe(timeframe)}
-        activeLabel="таймфрейм"
-        icon={Layers3}
-        open={openMenu === 'timeframe'}
-        onToggle={() => toggleMenu('timeframe')}
-        onClose={closeMenu}
-        testId="chart-timeframe-trigger"
-      >
-        {timeframeItems}
-      </TerminalDropdown>
-
-      <TerminalDropdown
-        menuKey="chart-type"
-        label="Тип графика"
-        activeLabel={CHART_TYPE_LABELS[chartType]}
-        icon={BarChart3}
-        open={openMenu === 'chart-type'}
-        onToggle={() => toggleMenu('chart-type')}
-        onClose={closeMenu}
-        testId="chart-type-trigger"
-      >
-        {chartTypeItems}
-      </TerminalDropdown>
-
-      <TerminalDropdown
-        menuKey="indicators"
-        label="Индикаторы"
-        icon={LineChart}
-        open={openMenu === 'indicators'}
-        onToggle={() => toggleMenu('indicators')}
-        onClose={closeMenu}
-        testId="chart-indicators-trigger"
-      >
-        {indicatorItems}
-      </TerminalDropdown>
-
-      <TerminalDropdown
-        menuKey="templates"
-        label="Шаблоны"
-        icon={Layers3}
-        open={openMenu === 'templates'}
-        onToggle={() => toggleMenu('templates')}
-        onClose={closeMenu}
-        testId="chart-templates-trigger"
-      >
-        {templateItems}
-      </TerminalDropdown>
-
-      <TerminalDropdown
-        menuKey="settings"
-        label="Настройки"
-        icon={Settings2}
-        open={openMenu === 'settings'}
-        onToggle={() => toggleMenu('settings')}
-        onClose={closeMenu}
-        testId="chart-settings-trigger"
-      >
-        {settingsItems}
-        {renderFitDataItem()}
-      </TerminalDropdown>
-
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">
-        <button
-          type="button"
-          data-qa="chart-reset-view"
-          data-testid="chart-reset-view"
-          title="Вписать данные в область графика"
-          aria-label="Вписать данные"
-          onClick={() => setResetViewToken((value) => value + 1)}
-          className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-surface-border bg-surface-elevated px-2.5 py-1.5 font-sans text-[11px] font-semibold text-slate-300 transition-colors hover:border-brand-cyan/50 hover:text-white sm:text-xs"
+        <TerminalDropdown
+          menuKey="chart-type"
+          label={dense ? 'Тип' : CHART_TYPE_LABELS[chartType]}
+          fullLabel={`Тип графика: ${CHART_TYPE_LABELS[chartType]}`}
+          icon={BarChart3}
+          compact={dense}
+          open={openMenu === 'chart-type'}
+          onToggle={() => toggleMenu('chart-type')}
+          onClose={closeMenu}
+          testId="chart-type-trigger"
         >
-          <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="hidden sm:inline">Вписать</span>
-        </button>
+          {chartTypeItems}
+        </TerminalDropdown>
+
+        <TerminalDropdown
+          menuKey="indicators"
+          label="Индикаторы"
+          fullLabel="Индикаторы: панели и оверлеи"
+          icon={dense ? undefined : LineChart}
+          compact={dense}
+          open={openMenu === 'indicators'}
+          onToggle={() => toggleMenu('indicators')}
+          onClose={closeMenu}
+          testId="chart-indicators-trigger"
+        >
+          {indicatorItems}
+        </TerminalDropdown>
+
+        <div className="ml-auto flex shrink-0 items-center">
+          <TerminalDropdown
+            menuKey="more"
+            label="Ещё"
+            fullLabel="Ещё: шаблоны, настройки, вписать данные"
+            icon={MoreHorizontal}
+            compact={dense}
+            iconOnly
+            open={openMenu === 'more'}
+            onToggle={() => toggleMenu('more')}
+            onClose={closeMenu}
+            testId="chart-more-trigger"
+          >
+            <div data-qa="chart-more-templates" className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Шаблоны</div>
+            {templateItems}
+            <div data-qa="chart-more-settings" className="mt-1 border-t border-white/[0.08] px-3 pb-1.5 pt-2 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Настройки</div>
+            {settingsItems}
+            <div className="mt-1 border-t border-white/[0.08] pt-1">
+              {renderFitDataItem('chart-reset-view')}
+            </div>
+          </TerminalDropdown>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   /**
    * Fullscreen-контрол существует ровно в ОДНОМ экземпляре: либо на desktop
@@ -737,7 +662,7 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
       data-composition={compact ? 'compact' : 'desktop'}
       className={`w-full rounded-xl border border-white/[0.08] bg-surface shadow-panel-elevated ${isFullscreen ? 'min-h-screen p-3 sm:p-4' : ''}`}
     >
-      {compact ? mobileToolbar : desktopToolbar}
+      {renderToolbar(compact ? 'compact' : 'desktop')}
 
       {/*
        * Chart workspace = [график | (только desktop) правая кромка терминала].

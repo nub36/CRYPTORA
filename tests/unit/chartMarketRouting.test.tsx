@@ -183,9 +183,12 @@ describe('futures contract terminal (UI → data service)', () => {
     renderFuturesContract(stubProvider(getCandles));
     await waitFor(() => expect(getCandles).toHaveBeenCalledTimes(1));
 
-    // Switch the timeframe before the first response lands.
-    const button = await screen.findByRole('button', { name: '4ч' });
-    await act(async () => { button.click(); });
+    // Switch the timeframe before the first response lands. Таймфрейм живёт
+    // в ЕДИНОМ тулбаре терминала (общий с Spot), а не в аварийном ряду кнопок.
+    const trigger = await screen.findByTestId('chart-timeframe-trigger');
+    await act(async () => { trigger.click(); });
+    const option = await screen.findByTestId('chart-timeframe-4h');
+    await act(async () => { option.click(); });
     await waitFor(() => expect(getCandles).toHaveBeenCalledTimes(2));
 
     // The FIRST (now stale) request resolves last — it must be ignored.

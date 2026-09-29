@@ -1,15 +1,22 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { TerminalSection } from '@/components/layout/TerminalSection';
-import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetDetail, OHLCV, Timeframe, FuturesAsset, RadarEvent } from '@/types/market';
-import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters';
-import { radarEventTypeLabel, radarSeverityLabel } from '@/utils/labels';
-import { ChartTerminal } from '@/components/common/ChartTerminal';
-import { ChartDataState } from '@/components/common/ChartDataState';
-import type { ChartIndicatorData, CandleChartType } from '@/components/common/CandleChart';
+import { formatCurrency, formatPercent } from '@/utils/formatters';
+import type { CandleChartType } from '@/components/common/CandleChart';
+import {
+  InstrumentChartCard,
+  InstrumentMetricsCard,
+  InstrumentRadarCard,
+  buildCorrelationRows,
+  buildDerivativesRows,
+  buildSpotStatisticsRows,
+  buildTechnicalRows,
+  sectionSourceNote,
+} from '@/components/instrument';
+import { buildChartIndicatorOverlays, buildCorrelationContext } from '@/services/indicators/chartOverlays';
 import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
 import { CoinIcon } from '@/components/common/CoinIcon';
 import { Badge } from '@/components/common/Badge';
@@ -30,12 +37,12 @@ import { DataSourcesBadge } from '@/components/common/DataSourcesBadge';
 import { mapTimeframeToBinanceInterval, useRealtimeKline } from '@/hooks/useRealtimeKline';
 import { detectCandleGap, klineTimeSeconds, mergeCandleHistory, mergeKlineIntoCandles, timeframeIntervalSeconds } from '@/services/realtime/candleHandoff';
 import { useLivePrice } from '@/hooks/useLivePrices';
+import { useInstrumentCandles } from '@/hooks/useInstrumentCandles';
 import { getAssetBySymbol, getCanonicalByBinanceSymbol, getCanonicalByKuCoinSymbol } from '@/services/data/registry/assetRegistry';
 import {
   Star,
   Layers,
   Activity,
-  Radio,
   ChevronLeft,
   SlidersHorizontal,
   ArrowUpRight,
@@ -55,15 +62,6 @@ export function normalizeCoinRouteSymbol(param?: string): string {
     ?? base;
 }
 
-/** «через 3ч 12м» до момента ts; при прошедшем моменте — «скоро». */
-const formatUntil = (ts: number): string => {
-  const diff = ts - Date.now();
-  if (diff <= 0) return 'скоро';
-  const h = Math.floor(diff / 3_600_000);
-  const m = Math.floor((diff % 3_600_000) / 60_000);
-  return h > 0 ? `через ${h}ч ${m}м` : `через ${m}м`;
-};
-
 export const CoinDetailPage: React.FC = () => {
   const { symbol } = useParams<{ symbol: string }>();
   const routeSymbol = normalizeCoinRouteSymbol(symbol);
@@ -73,7 +71,6 @@ export const CoinDetailPage: React.FC = () => {
   const workspace = useCoinWorkspaceLayout();
 
   const [asset, setAsset] = useState<AssetDetail | null>(null);
-  const [candles, setCandles] = useState<OHLCV[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
   const [futuresData, setFuturesData] = useState<FuturesAsset | null>(null);
   const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
@@ -82,13 +79,10 @@ export const CoinDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [resolvedRouteSymbol, setResolvedRouteSymbol] = useState<string | null>(null);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
-  const [candlesLoading, setCandlesLoading] = useState(true);
-  const [candlesUnavailable, setCandlesUnavailable] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [realtimeKline, setRealtimeKline] = useState<KlineTick | null>(null);
   const [candleRecoveryUnavailable, setCandleRecoveryUnavailable] = useState(false);
-  const candlesRef = useRef(candles);
-  candlesRef.current = candles;
+  const candlesRef = useRef<OHLCV[]>([]);
   const latestCandleOpenTimeRef = useRef<number | null>(null);
   const recoveryTargetOpenTimeRef = useRef<number | null>(null);
   const latestWsKlineRef = useRef<KlineTick | null>(null);
@@ -120,6 +114,58 @@ export const CoinDetailPage: React.FC = () => {
    */
   const isPhoneViewport = useMediaQuery('(max-width: 639.98px)');
   const chartHeight = isDesktopWorkspace ? 460 : isPhoneViewport ? 300 : 340;
+
+  /**
+   * История свечей — независимый блок частичных данных: он никогда не входит
+   * в гейт загрузки актива/шапки и падает в собственное состояние.
+   *
+   * Загрузка выполняется ОБЩИМ хуком `useInstrumentCandles`, тем же, что
+   * использует страница фьючерса (задача §2, §18): рынок передаётся явно,
+   * ответ с устаревшим ключом отбрасывается, дедлайн 17с защищает от
+   * зависшего провайдера. Spot-специфика остаётся здесь и только здесь:
+   * подмешивание последней WS-свечи и запись истории в репозиторий.
+   */
+  const {
+    candles,
+    setCandles,
+    status: candleStatus,
+    retry: retryCandles,
+  } = useInstrumentCandles({
+    provider,
+    symbol: routeSymbol,
+    market: 'spot',
+    timeframe,
+    limit: 500,
+    // 8с Binance + 8с резерв KuCoin: финальный UI-предел чуть больше суммы.
+    deadlineMs: 17_000,
+    onRequestStart: () => {
+      candlesRef.current = [];
+      latestCandleOpenTimeRef.current = null;
+      recoveryTargetOpenTimeRef.current = null;
+      latestWsKlineRef.current = null;
+      setRealtimeKline(null);
+    },
+    transform: (rows) => {
+      const latestRest = rows[rows.length - 1];
+      const latestWs = latestWsKlineRef.current;
+      if (!latestWs) return rows;
+      if (latestRest && detectCandleGap(latestRest.time, latestWs.openTime, timeframeIntervalSeconds(timeframe))) {
+        void recoverCandleHistory();
+      }
+      return mergeKlineIntoCandles(rows, latestWs, routeSymbol, mapTimeframeToBinanceInterval(timeframe));
+    },
+    onApplied: (rows) => {
+      candlesRef.current = rows;
+      if (rows.length === 0) return;
+      latestCandleOpenTimeRef.current = Math.max(
+        latestCandleOpenTimeRef.current ?? 0,
+        rows[rows.length - 1].time,
+      );
+      MemoryTimeSeriesRepository.getInstance().saveCandles(routeSymbol, timeframe, rows);
+    },
+  });
+  const candlesLoading = candleStatus === 'loading';
+  candlesRef.current = candles;
 
   useEffect(() => {
     if (routeSymbol) {
@@ -165,14 +211,11 @@ export const CoinDetailPage: React.FC = () => {
   }, [routeSymbol, timeframe, provider]);
 
   // Correlation context is bounded by the already-loaded candle arrays (max 500 each).
+  // Расчёт — общий с фьючерсной страницей (`buildCorrelationContext`), формулы неизменны.
   const correlationContext = useMemo(() => {
-    if (!routeSymbol || routeSymbol === 'BTC' || candles.length < 20 || btcCandles.length < 20) return null;
-    const coinReturns = IndicatorEngine.calculateReturns(candles.map((c) => c.close));
-    const btcReturns = IndicatorEngine.calculateReturns(btcCandles.map((c) => c.close));
-    const correlation = IndicatorEngine.calculateCorrelation(coinReturns, btcReturns);
-    const beta = IndicatorEngine.calculateBeta(coinReturns, btcReturns);
-    const lookback = Math.min(coinReturns.length, btcReturns.length);
-    return { correlation, beta, lookback, timeframe };
+    if (!routeSymbol || routeSymbol === 'BTC') return null;
+    const context = buildCorrelationContext(candles, btcCandles);
+    return context ? { ...context, timeframe } : null;
   }, [candles, btcCandles, routeSymbol, timeframe]);
 
   const recoverCandleHistory = useCallback(async () => {
@@ -307,62 +350,6 @@ export const CoinDetailPage: React.FC = () => {
     };
   }, [routeSymbol, provider, retryKey]);
 
-  // Candle history is an independent partial-data block. It is never part of
-  // the asset/header loading gate and rejects into a local empty/error state.
-  useEffect(() => {
-    if (!routeSymbol) return;
-    let active = true;
-    candlesRef.current = [];
-    latestCandleOpenTimeRef.current = null;
-    recoveryTargetOpenTimeRef.current = null;
-    latestWsKlineRef.current = null;
-    setCandles([]);
-    setRealtimeKline(null);
-    setCandlesUnavailable(false);
-    setCandlesLoading(true);
-    let candleDeadlineTimer: number | undefined;
-    const candleDeadline = new Promise<never>((_, reject) => {
-      // The live provider may use an 8s Binance request followed by an 8s
-      // KuCoin fallback. This final UI guard prevents a hung custom provider
-      // from leaving only the chart's loading state open indefinitely.
-      candleDeadlineTimer = window.setTimeout(() => reject(new Error('Spot candle request exceeded 17s')), 17_000);
-    });
-
-    void Promise.race([provider.getCandles(routeSymbol, timeframe, 500, { market: 'spot' }), candleDeadline])
-      .then((rows) => {
-        if (!active) return;
-        const latestRest = rows[rows.length - 1];
-        let initialCandles = rows;
-        const latestWs = latestWsKlineRef.current;
-        if (latestWs) {
-          if (latestRest && detectCandleGap(latestRest.time, latestWs.openTime, timeframeIntervalSeconds(timeframe))) {
-            void recoverCandleHistory();
-          }
-          initialCandles = mergeKlineIntoCandles(rows, latestWs, routeSymbol, mapTimeframeToBinanceInterval(timeframe));
-        }
-        candlesRef.current = initialCandles;
-        if (initialCandles.length > 0) {
-          const finalTime = initialCandles[initialCandles.length - 1].time;
-          latestCandleOpenTimeRef.current = Math.max(latestCandleOpenTimeRef.current ?? 0, finalTime);
-          MemoryTimeSeriesRepository.getInstance().saveCandles(routeSymbol, timeframe, initialCandles);
-        }
-        setCandles(initialCandles);
-      })
-      .catch(() => {
-        if (!active) return;
-        setCandles([]);
-        setCandlesUnavailable(true);
-      })
-      .finally(() => {
-        if (candleDeadlineTimer !== undefined) window.clearTimeout(candleDeadlineTimer);
-        if (active) setCandlesLoading(false);
-      });
-
-    return () => {
-      active = false;
-      if (candleDeadlineTimer !== undefined) window.clearTimeout(candleDeadlineTimer);
-    };
-  }, [routeSymbol, timeframe, provider, recoverCandleHistory]);
 
   // Derivatives, Radar and liquidation data are supplemental, independent requests.
   useEffect(() => {
@@ -396,27 +383,11 @@ export const CoinDetailPage: React.FC = () => {
     return asset?.indicators;
   }, [candles, asset]);
 
-  // Chart indicator series for overlays (SMA, Bollinger) aligned with candle timestamps
-  const chartIndicators = useMemo<ChartIndicatorData | undefined>(() => {
-    if (candles.length < 20) return undefined;
-    const closes = candles.map((c) => c.close);
-    const pad = (series: number[], offset: number): number[] => {
-      const padded = new Array<number>(offset).fill(NaN);
-      return padded.concat(series);
-    };
-    const sma20 = IndicatorEngine.calculateSMA(closes, 20);
-    const sma50 = IndicatorEngine.calculateSMA(closes, 50);
-    const sma200 = IndicatorEngine.calculateSMA(closes, 200);
-    const bb = IndicatorEngine.calculateBollingerBands(closes, 20, 2);
-    return {
-      sma20: candles.length >= 20 ? pad(sma20, closes.length - sma20.length) : undefined,
-      sma50: candles.length >= 50 ? pad(sma50, closes.length - sma50.length) : undefined,
-      sma200: candles.length >= 200 ? pad(sma200, closes.length - sma200.length) : undefined,
-      bollingerUpper: bb.length > 0 ? pad(bb.map((b) => b.upper), closes.length - bb.length) : undefined,
-      bollingerMiddle: bb.length > 0 ? pad(bb.map((b) => b.middle), closes.length - bb.length) : undefined,
-      bollingerLower: bb.length > 0 ? pad(bb.map((b) => b.lower), closes.length - bb.length) : undefined,
-    };
-  }, [candles]);
+  /**
+   * Оверлеи графика (SMA 20/50/200 + Bollinger) — ОБЩАЯ с фьючерсной
+   * страницей реализация. Формулы не изменены: тот же IndicatorEngine.
+   */
+  const chartIndicators = useMemo(() => buildChartIndicatorOverlays(candles), [candles]);
 
   if (!asset || asset.symbol !== routeSymbol) {
     const requestPending = loading || resolvedRouteSymbol !== routeSymbol;
@@ -650,64 +621,59 @@ export const CoinDetailPage: React.FC = () => {
         data-qa="coin-workspace"
         className="grid grid-cols-1 xl:grid-cols-[72fr_28fr] gap-3.5 items-stretch"
       >
-      <div data-qa="coin-chart-card" className="min-w-0 space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4">
-        {/* Сохранённый контекст Coin page: пара, название графика и 24ч high/low. */}
-        <div className="flex flex-col gap-2 border-b border-surface-border pb-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={openPicker}
-              data-qa="coin-picker-chart-open"
-              className="truncate font-sans text-sm font-bold text-white transition-colors hover:text-brand-cyan"
-              title="Выбрать другую монету"
-            >
-              {asset.symbol}/USDT {chartType === 'candles' ? 'Свечной' : 'Линейный'} график ▾
-            </button>
-            <div className="hidden shrink-0 items-center gap-2 text-xs font-sans text-slate-400 sm:flex">
-              <span>Макс. 24ч: <strong className="font-mono tabular-nums text-slate-200">{asset.high24h != null ? formatCurrency(asset.high24h) : '—'}</strong></span>
-              <span>Мин. 24ч: <strong className="font-mono tabular-nums text-slate-200">{asset.low24h != null ? formatCurrency(asset.low24h) : '—'}</strong></span>
-            </div>
+      {/*
+        Карточка графика — ОБЩИЙ компонент с /futures/:symbol (задача §2, §10).
+        Здесь остаются только Spot-данные: серия свечей, WS-kline и 24ч
+        high/low из спотового ticker.
+      */}
+      <InstrumentChartCard
+        market="spot"
+        displayPair={`${asset.symbol}/USDT`}
+        status={candleStatus}
+        onRetry={retryCandles}
+        stateQa="spot-chart-state"
+        qa="coin-chart-card"
+        high24h={asset.high24h ?? null}
+        low24h={asset.low24h ?? null}
+        note="Аналитический terminal · без исполнения сделок"
+        titleSlot={
+          <button
+            type="button"
+            onClick={openPicker}
+            data-qa="coin-picker-chart-open"
+            className="truncate font-sans text-sm font-bold text-white transition-colors hover:text-brand-cyan"
+            title="Выбрать другую монету"
+          >
+            {asset.symbol}/USDT {chartType === 'candles' ? 'Свечной' : 'Линейный'} график ▾
+          </button>
+        }
+        notice={candleRecoveryUnavailable ? (
+          <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">
+            Не удалось восстановить историю после разрыва kline-потока; показаны только фактически полученные свечи.
           </div>
-          <span className="shrink-0 font-sans text-[11px] tracking-[0.16em] text-slate-500">Аналитический terminal · без исполнения сделок</span>
-        </div>
-
-        {/* §6: явные состояния графика — загрузка / нет данных / источник недоступен / повтор. */}
-        <ChartDataState
-          status={
-            candlesLoading ? 'loading'
-              : candlesUnavailable ? 'unavailable'
-                : candles.length === 0 ? 'no-data'
-                  : 'ready'
-          }
-          symbol={`${asset.symbol}/USDT`}
-          market="spot"
-          onRetry={() => setRetryKey((key) => key + 1)}
-          qa="spot-chart-state"
-        />
-        {candleRecoveryUnavailable && <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">Не удалось восстановить историю после разрыва kline-потока; показаны только фактически полученные свечи.</div>}
-
-        <ChartTerminal
-          data={candles}
-          symbol={`${asset.symbol}/USDT`}
-          timeframe={timeframe}
-          onTimeframeChange={setTimeframe}
-          height={chartHeight}
-          indicators={chartIndicators}
-          realtimeKline={realtimeKline}
-          chartType={chartType}
-          onChartTypeChange={setChartType}
-          showRSI={showRSI}
-          onShowRSIChange={setShowRSI}
-          showMACD={showMACD}
-          onShowMACDChange={setShowMACD}
-          showMA={showMA}
-          onShowMAChange={setShowMA}
-          showVolume={showVolume}
-          onShowVolumeChange={setShowVolume}
-          showTimezone={showTimezone}
-          onShowTimezoneChange={setShowTimezone}
-        />
-      </div>
+        ) : undefined}
+        terminal={{
+          data: candles,
+          symbol: `${asset.symbol}/USDT`,
+          timeframe,
+          onTimeframeChange: setTimeframe,
+          height: chartHeight,
+          indicators: chartIndicators,
+          realtimeKline,
+          chartType,
+          onChartTypeChange: setChartType,
+          showRSI,
+          onShowRSIChange: setShowRSI,
+          showMACD,
+          onShowMACDChange: setShowMACD,
+          showMA,
+          onShowMAChange: setShowMA,
+          showVolume,
+          onShowVolumeChange: setShowVolume,
+          showTimezone,
+          onShowTimezoneChange: setShowTimezone,
+        }}
+      />
 
         <div className="xl:sticky xl:top-[70px] self-start">
           <AssetPulsePanel pulse={pulse} />
@@ -717,300 +683,70 @@ export const CoinDetailPage: React.FC = () => {
           )}
           {moduleId === 'stats' && (
             <>
-      {/* Stats Grid: Market Metrics, Derivatives, Technical Indicators + Correlation */}
+      {/*
+        Stats Grid — ОБЩИЕ карточки `@/components/instrument` (задача §2, §17).
+
+        Раньше каждая карточка была написана прямо здесь, а страница фьючерса
+        не имела аналогов вовсе. Теперь «Рыночная статистика», «Деривативы»,
+        «Технические индикаторы» и «Корреляция с BTC» — один и тот же
+        компонент на обоих рынках; Spot отличается только НАБОРОМ строк
+        (`buildSpotStatisticsRows`) и источником данных.
+      */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Card 1: Key Market Stats */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
-          <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
-            <Activity className="w-4 h-4 text-brand-cyan" />
-            <span className="text-[13px] font-bold tracking-wide text-white">
-              Рыночная статистика
-            </span>
-          </div>
+        <InstrumentMetricsCard
+          title="Рыночная статистика"
+          icon={Activity}
+          market="spot"
+          status="ready"
+          qa="spot-market-statistics"
+          sourceNote={sectionSourceNote('spot', `${asset.symbol}USDT`)}
+          rows={buildSpotStatisticsRows(asset)}
+        />
 
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Капитализация</span>
-              <span className="font-bold text-white font-mono tabular-nums">{formatCurrency(asset.marketCap)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Объём торгов 24ч</span>
-              <span className="font-bold text-white font-mono tabular-nums">{formatCurrency(asset.volume24h)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">В обращении</span>
-              <span className="text-slate-200 font-mono tabular-nums">
-                {formatNumber(asset.circulatingSupply, { compact: true })} {asset.symbol}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Общий запас</span>
-              {asset.totalSupply != null ? (
-                <span className="text-slate-200 font-mono tabular-nums">
-                  {formatNumber(asset.totalSupply, { compact: true })} {asset.symbol}
-                  <span className="text-[11px] text-emerald-500 ml-1">CoinGecko</span>
-                </span>
-              ) : (
-                <span className="text-slate-500 font-mono text-[11px]" title="Источник (CoinGecko) не отдал данные">—</span>
-              )}
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Макс. запас</span>
-              {asset.maxSupply != null ? (
-                <span className="text-slate-200 font-mono tabular-nums">
-                  {formatNumber(asset.maxSupply, { compact: true })} {asset.symbol}
-                  <span className="text-[11px] text-emerald-500 ml-1">CoinGecko</span>
-                </span>
-              ) : (
-                <span className="text-slate-500 font-mono text-[11px]" title="Источник (CoinGecko) не отдал данные или неограничен">—</span>
-              )}
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Исторический максимум (ATH)</span>
-              {asset.ath != null && asset.athDate ? (
-                <span className="text-slate-200 font-mono tabular-nums">
-                  {formatCurrency(asset.ath)} ({asset.athDate.slice(0, 10)})
-                  <span className="text-[11px] text-emerald-500 ml-1">CoinGecko</span>
-                </span>
-              ) : (
-                <span className="text-slate-500 font-mono text-[11px]" title="Источник (CoinGecko) недоступен или не отдал данные">Н/Д</span>
-              )}
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Исторический минимум (ATL)</span>
-              {asset.atl != null && asset.atlDate ? (
-                <span className="text-slate-200 font-mono tabular-nums">
-                  {formatCurrency(asset.atl)} ({asset.atlDate.slice(0, 10)})
-                  <span className="text-[11px] text-emerald-500 ml-1">CoinGecko</span>
-                </span>
-              ) : (
-                <span className="text-slate-500 font-mono text-[11px]" title="Источник (CoinGecko) недоступен или не отдал данные">Н/Д</span>
-              )}
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Динамика за 7 дней</span>
-              {asset.change7d != null ? (
-                <span
-                  className={`font-bold ${
-                    asset.change7d >= 0 ? 'text-brand-green' : 'text-brand-red'
-                  }`}
-                >
-                  {formatPercent(asset.change7d)}
-                </span>
-              ) : (
-                <span className="text-slate-500 font-mono text-[11px]">—</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Futures & Derivatives Snapshot */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
-          <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
-            <Layers className="w-4 h-4 text-brand-purple" />
-            <span className="text-[13px] font-bold tracking-wide text-white">
-              Деривативы: детали контракта
-            </span>
-          </div>
-
-          {futuresData ? (
-            <div className="space-y-2 text-xs">
-              {/* Детализация без дублей со снимком Pulse: там OI, OI Δ24ч и фандинг 8ч,
-                  здесь — остальные метрики контракта и производные показатели. */}
-              <div className="flex justify-between">
-                <span className="text-slate-400">Метка / индексная цена</span>
-                <span className="font-bold text-white font-mono tabular-nums">
-                  {formatCurrency(futuresData.markPrice, { decimals: futuresData.markPrice > 10 ? 2 : 4 })} /{' '}
-                  {formatCurrency(futuresData.indexPrice, { decimals: futuresData.indexPrice > 10 ? 2 : 4 })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Спред метки к индексу</span>
-                <span className="text-slate-200 tabular-nums font-mono">
-                  {formatCurrency(futuresData.markPrice - futuresData.indexPrice, {
-                    decimals: futuresData.markPrice > 10 ? 2 : 4,
-                  })}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Ставка к следующему начислению{futuresData.nextFundingTime ? ` · ${formatUntil(futuresData.nextFundingTime)}` : ''}</span>
-                <span
-                  className={`font-bold tabular-nums  font-mono${
-                    futuresData.predictedFundingRate >= 0 ? 'text-brand-green' : 'text-brand-red'
-                  }`}
-                >
-                  {futuresData.predictedFundingRate >= 0 ? '+' : ''}
-                  {futuresData.predictedFundingRate.toFixed(4)}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Годовой фандинг (APR)</span>
-                <span className="text-slate-200 font-semibold tabular-nums font-mono">
-                  {formatPercent(futuresData.annualizedFundingRate)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">OI Δ за 1 час</span>
-                <span
-                  className={`font-bold tabular-nums font-mono ${
-                    futuresData.openInterestChange1h == null ? 'text-slate-500' : futuresData.openInterestChange1h >= 0 ? 'text-brand-green' : 'text-brand-red'
-                  }`}
-                >
-                  {futuresData.openInterestChange1h != null ? formatPercent(futuresData.openInterestChange1h) : '—'}
-                  <OiDeltaBadge source={futuresData.openInterestChangeSource} />
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Суточный фьючерсный объем</span>
-                <span className="text-slate-200 tabular-nums font-mono">
-                  {futuresData.futuresVolume24h != null
-                    ? formatCurrency(futuresData.futuresVolume24h, { compact: true })
-                    : <span className="text-slate-500">Нет данных</span>}
-                </span>
-              </div>
-              <Link
-                to="/futures"
-                className="inline-flex items-center space-x-1 text-[11px] text-brand-cyan hover:underline pt-1"
-              >
+        <InstrumentMetricsCard
+          title="Деривативы: детали контракта"
+          icon={Layers}
+          iconClassName="text-brand-purple"
+          market="futures"
+          status={futuresData ? 'ready' : 'no-data'}
+          qa="spot-derivatives"
+          sourceNote={sectionSourceNote('futures', futuresData?.contractSymbol ?? '—')}
+          emptyMessage={`По ${asset.symbol} нет активного бессрочного контракта USD-M.`}
+          rows={futuresData ? buildDerivativesRows(futuresData, 'compact') : []}
+          footer={
+            futuresData ? (
+              <Link to="/futures" className="inline-flex items-center space-x-1 pt-1 text-[11px] text-brand-cyan hover:underline">
                 <span>Все фьючерсы и фандинг</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>
-            </div>
-          ) : (
-            <div className="py-8 text-center text-[13px] text-slate-500">
-              Нет активного фьючерсного бессрочного контракта в демо-выборке.
-            </div>
-          )}
-        </div>
+            ) : undefined
+          }
+        />
 
-        {/* Card 3: Technical Indicators Snapshot */}
-        <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
-          <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
-            <SlidersHorizontal className="w-4 h-4 text-brand-sky" />
-            <span className="text-[13px] font-bold tracking-wide text-white">
-              Технические индикаторы
-            </span>
-          </div>
+        <InstrumentMetricsCard
+          title="Технические индикаторы"
+          icon={SlidersHorizontal}
+          iconClassName="text-brand-sky"
+          market="spot"
+          status={dynamicIndicators ? 'ready' : candlesLoading ? 'loading' : 'no-data'}
+          qa="spot-indicators"
+          sourceNote={sectionSourceNote('spot', `свечи ${timeframe}`)}
+          emptyMessage="Недостаточно фактических свечей для расчёта."
+          rows={buildTechnicalRows(dynamicIndicators ?? undefined)}
+        />
 
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-400">RSI (14)</span>
-              {dynamicIndicators?.rsi14 != null ? (
-                <span
-                  className={`font-bold ${
-                    dynamicIndicators.rsi14 >= 70
-                      ? 'text-rose-400'
-                      : dynamicIndicators.rsi14 <= 30
-                      ? 'text-emerald-400'
-                      : 'text-brand-cyan'
-                  }`}
-                >
-                  {dynamicIndicators.rsi14.toFixed(1)}{' '}
-                  <span className="text-[11px] font-normal text-slate-400">
-                    {dynamicIndicators.rsi14 >= 70
-                      ? '(Перекуплен)'
-                      : dynamicIndicators.rsi14 <= 30
-                      ? '(Перепродан)'
-                      : '(Нейтрально)'}
-                  </span>
-                </span>
-              ) : (
-                // З3: недостаточно фактических свечей — «нет данных», не RSI=50
-                <span className="text-slate-500 font-bold">—</span>
-              )}
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Гистограмма MACD</span>
-              {dynamicIndicators?.macd?.hist != null ? (
-                <span
-                  className={`font-bold ${
-                    dynamicIndicators.macd.hist >= 0 ? 'text-brand-green' : 'text-brand-red'
-                  }`}
-                >
-                  {dynamicIndicators.macd.hist.toFixed(2)}
-                </span>
-              ) : (
-                <span className="text-slate-500 font-bold">—</span>
-              )}
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">SMA (20 / 50 / 200)</span>
-              <span className="text-slate-200 font-mono tabular-nums">
-                {dynamicIndicators?.sma20 != null ? formatCurrency(dynamicIndicators.sma20, { compact: true }) : '—'} /{' '}
-                {dynamicIndicators?.sma50 != null ? formatCurrency(dynamicIndicators.sma50, { compact: true }) : '—'} /{' '}
-                {dynamicIndicators?.sma200 != null ? formatCurrency(dynamicIndicators.sma200, { compact: true }) : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Полосы Боллинджера (верх / низ)</span>
-              <span className="text-xs text-slate-400 font-mono tabular-nums">
-                {dynamicIndicators?.bollinger?.upper != null ? formatCurrency(dynamicIndicators.bollinger.upper, { compact: true }) : '—'} /{' '}
-                {dynamicIndicators?.bollinger?.lower != null ? formatCurrency(dynamicIndicators.bollinger.lower, { compact: true }) : '—'}
-              </span>
-            </div>
-            {dynamicIndicators && 'atr14' in dynamicIndicators && (
-              <div className="flex justify-between">
-                <span className="text-slate-400">ATR (14) / VWAP</span>
-                <span className="text-xs text-brand-cyan">
-                  ±{formatCurrency((dynamicIndicators as any).atr14, { compact: true })} /{' '}
-                  {formatCurrency((dynamicIndicators as any).vwap, { compact: true })}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Card 4: Correlation Context (compact, BTC only) */}
         {routeSymbol && routeSymbol !== 'BTC' && (
-          <div className="bg-surface border border-surface-border rounded-lg p-3.5 space-y-2.5 font-sans">
-            <div className="flex items-center space-x-2 pb-2 border-b border-surface-border">
-              <Activity className="w-4 h-4 text-amber-400" />
-              <span className="text-[13px] font-bold tracking-wide text-white">
-                Корреляция с BTC
-              </span>
-            </div>
-
-            {correlationContext ? (
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Корреляция (ρ)</span>
-                  {correlationContext.correlation != null ? (
-                    <span className={`font-bold font-mono tabular-nums ${
-                      Math.abs(correlationContext.correlation) >= 0.7
-                        ? 'text-amber-400'
-                        : Math.abs(correlationContext.correlation) >= 0.4
-                        ? 'text-slate-200'
-                        : 'text-emerald-400'
-                    }`}>
-                      {correlationContext.correlation.toFixed(2)}
-                    </span>
-                  ) : (
-                    <span className="text-slate-500">—</span>
-                  )}
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Бета (β)</span>
-                  {correlationContext.beta != null ? (
-                    <span className="text-slate-200 font-mono tabular-nums">
-                      {correlationContext.beta.toFixed(2)}
-                    </span>
-                  ) : (
-                    <span className="text-slate-500">—</span>
-                  )}
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Окно наблюдения</span>
-                  <span className="text-slate-300 font-mono">
-                    {correlationContext.lookback} свечей · {correlationContext.timeframe}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="py-4 text-center text-[13px] text-slate-500 font-sans">
-                Недостаточно истории для расчёта
-              </div>
-            )}
-          </div>
+          <InstrumentMetricsCard
+            title="Корреляция с BTC"
+            icon={Activity}
+            iconClassName="text-amber-400"
+            market="spot"
+            status={correlationContext ? 'ready' : candlesLoading ? 'loading' : 'no-data'}
+            qa="spot-btc-correlation"
+            sourceNote={sectionSourceNote('spot', 'BTCUSDT')}
+            emptyMessage="Недостаточно истории для расчёта"
+            rows={correlationContext ? buildCorrelationRows(correlationContext) : []}
+          />
         )}
       </div>
             </>
@@ -1076,57 +812,14 @@ export const CoinDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Radar events for this coin */}
-          <div className="bg-surface border border-surface-border rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-              <div className="flex items-center space-x-2">
-                <Radio className="w-4 h-4 text-brand-cyan" />
-                <span className="font-sans text-[13px] font-bold tracking-wide text-white">
-                  События Market Radar по {asset.symbol}
-                </span>
-              </div>
-              <Link
-                to="/radar"
-                className="flex items-center space-x-1 font-sans text-xs text-brand-cyan hover:underline"
-              >
-                <span>Все аномалии</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            {radarEvents.length === 0 ? (
-              <div className="py-6 text-center font-sans text-[13px] text-slate-500">
-                По инструменту {asset.symbol} активных аномалий не зафиксировано.
-              </div>
-            ) : (
-              <div className="space-y-2 font-sans">
-                {radarEvents.map((re) => (
-                  <div
-                    key={re.id}
-                    className="p-2.5 rounded bg-surface-elevated border border-surface-border text-xs flex items-center justify-between gap-2"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Badge
-                        variant={
-                          re.severity === 'HIGH' ? 'red' : re.severity === 'MEDIUM' ? 'amber' : 'cyan'
-                        }
-                        size="xs"
-                      >
-                        {radarSeverityLabel(re.severity)}
-                      </Badge>
-                      <span className="text-white font-semibold">{radarEventTypeLabel(re.type)}</span>
-                      <span className="hidden text-xs text-slate-400 sm:inline">
-                        {re.observation}
-                      </span>
-                    </div>
-                    <span className="text-brand-cyan font-bold whitespace-nowrap">
-                      {re.metricValue}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* События Radar — общая секция (та же, что на странице фьючерса). */}
+          <InstrumentRadarCard
+            events={radarEvents}
+            status="ready"
+            policy="native-spot"
+            sourceSymbol={asset.symbol}
+            qa="spot-radar"
+          />
         </div>
       </div>
             </>

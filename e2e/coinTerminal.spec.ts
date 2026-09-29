@@ -34,9 +34,11 @@ test.describe('Coin terminal chart UX', () => {
     await expect(terminal.locator('canvas').first()).toBeVisible();
     await page.screenshot({ path: 'e2e/screenshots/coin-terminal-desktop.png', fullPage: false });
 
-    // Volume is a chart-only setting and remains usable from the terminal.
-    const settings = page.getByTestId('chart-settings-trigger');
+    // Volume is a chart-only setting and remains usable from the terminal —
+    // теперь через общий overflow «•••» (единый тулбар Spot/Futures).
+    const settings = page.getByTestId('chart-more-trigger');
     await settings.click();
+    await expect(page.getByTestId('chart-more-trigger-menu')).toBeVisible();
     const volume = page.getByRole('menuitemcheckbox', { name: /^Объём/ });
     await expect(volume).toHaveAttribute('aria-checked', 'true');
     await volume.click();

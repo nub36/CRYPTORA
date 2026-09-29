@@ -10,6 +10,8 @@ const SYMBOL_RE = /^[A-Z0-9]{2,25}$/;
 const BINANCE_INTERVALS = new Set(['1s', '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']);
 const KUCOIN_CANDLE_TYPES = new Set(['1min', '3min', '5min', '15min', '30min', '1hour', '2hour', '4hour', '6hour', '8hour', '12hour', '1day', '1week']);
 const FUTURES_PERIODS = new Set(['5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', '1d']);
+/** Разрешённая сетка глубины стакана USD-M (`GET /fapi/v1/depth`, вес 2…20). */
+const FUTURES_DEPTH_LIMITS = new Set(['5', '10', '20', '50', '100', '500', '1000']);
 const MAX_LIMIT = 1000;
 const REQUEST_TIMEOUT_MS = 8_000;
 
@@ -82,6 +84,20 @@ const ROUTES = new Map([
   ['/binance/futures/fapi/v1/klines', {
     origin: BINANCE_FUTURES, path: '/fapi/v1/klines', required: ['symbol', 'interval', 'limit'],
     validators: { symbol, interval: oneOf(BINANCE_INTERVALS), limit: integer(1, MAX_LIMIT) },
+  }],
+  /**
+   * USD-M order book (задача §4). Отдельный фиксированный upstream-путь:
+   * стакан фьючерса берётся ТОЛЬКО с `fapi.binance.com/fapi/v1/depth` и
+   * никогда со спотового `/api/v3/depth` — это разные книги заявок
+   * с разной ликвидностью, подмена была бы фальсификацией рынка.
+   *
+   * `limit` ограничен сеткой Binance (5/10/20/50/100/500/1000): произвольное
+   * число биржа отвергает, а вес запроса растёт с глубиной (2…20),
+   * поэтому UI использует 50 уровней.
+   */
+  ['/binance/futures/fapi/v1/depth', {
+    origin: BINANCE_FUTURES, path: '/fapi/v1/depth', required: ['symbol'], optional: ['limit'],
+    validators: { symbol, limit: oneOf(FUTURES_DEPTH_LIMITS) },
   }],
   ['/binance/futures/futures/data/openInterestHist', {
     origin: BINANCE_FUTURES, path: '/futures/data/openInterestHist', required: ['symbol', 'period', 'limit'],

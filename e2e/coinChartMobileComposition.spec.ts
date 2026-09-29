@@ -483,7 +483,7 @@ test.describe('Desktop ChartTerminal UX of PR #32 is untouched', () => {
   });
 
   for (const width of [1280, 1920]) {
-    test(`${width}px keeps the single-row toolbar, «Вписать» and the fullscreen side rail`, async ({ page }) => {
+    test(`${width}px keeps the single-row unified toolbar and the fullscreen side rail`, async ({ page }) => {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto('/coin/ETH');
 
@@ -493,16 +493,15 @@ test.describe('Desktop ChartTerminal UX of PR #32 is untouched', () => {
 
       const toolbar = page.getByTestId('chart-terminal-toolbar');
       await expect(toolbar).toHaveAttribute('data-layout', 'desktop');
+      // Одна композиция контролов на обе ширины и оба рынка (задача §10/§17).
+      await expect(toolbar).toHaveAttribute('data-controls', 'unified');
 
-      // The full PR #32 control set, all on ONE row, никакого мобильного «⋯».
-      await expect(toolbar.locator('[data-qa="chart-more-trigger"]')).toHaveCount(0);
+      // Ровно те же четыре триггера, что и на мобильном: [ТФ][Тип][Индикаторы][•••].
       const controls = [
         'chart-timeframe-trigger',
         'chart-type-trigger',
         'chart-indicators-trigger',
-        'chart-templates-trigger',
-        'chart-settings-trigger',
-        'chart-reset-view',
+        'chart-more-trigger',
       ];
       const tops: number[] = [];
       for (const qa of controls) {
@@ -510,13 +509,30 @@ test.describe('Desktop ChartTerminal UX of PR #32 is untouched', () => {
         await expect(locator, `${width}: ${qa} present in the desktop toolbar`).toHaveCount(1);
         tops.push((await locator.boundingBox())!.y);
       }
+      expect(await toolbar.locator('button').count(), `${width}: no extra toolbar buttons`).toBe(controls.length);
       expect(Math.max(...tops) - Math.min(...tops), `${width}: one toolbar row`).toBeLessThan(6);
       expect((await toolbar.boundingBox())!.height, `${width}: single compact row`).toBeLessThan(60);
 
-      // «Вписать» is the right-most toolbar control (no leftover spacer).
+      // Шаблоны / Настройки / «Вписать данные» переехали в «•••» (нет дублей в ряду).
+      for (const qa of ['chart-templates-trigger', 'chart-settings-trigger', 'chart-reset-view']) {
+        await expect(toolbar.locator(`[data-qa="${qa}"]`), `${width}: ${qa} moved into the overflow menu`).toHaveCount(0);
+      }
+      // Длинные подписи вида «1ч · таймфрейм» на десктопе тоже запрещены.
+      expect((await toolbar.innerText()).replace(/\s+/g, ' ')).not.toContain('·');
+
+      const more = toolbar.locator('[data-qa="chart-more-trigger"]');
       const toolbarBox = (await toolbar.boundingBox())!;
-      const reset = (await toolbar.locator('[data-qa="chart-reset-view"]').boundingBox())!;
-      expect(toolbarBox.x + toolbarBox.width - (reset.x + reset.width)).toBeLessThan(20);
+      const moreBox = (await more.boundingBox())!;
+      expect(toolbarBox.x + toolbarBox.width - (moreBox.x + moreBox.width)).toBeLessThan(20);
+
+      await more.click();
+      const menu = page.getByTestId('chart-more-trigger-menu');
+      await expect(menu).toBeVisible();
+      await expect(menu.locator('[data-qa="chart-more-templates"]')).toBeVisible();
+      await expect(menu.locator('[data-qa="chart-more-settings"]')).toBeVisible();
+      await expect(menu.locator('[data-qa="chart-reset-view"]')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
 
       // Fullscreen still lives on the side rail, outside the toolbar.
       const rail = page.locator('[data-qa="chart-side-rail"]');

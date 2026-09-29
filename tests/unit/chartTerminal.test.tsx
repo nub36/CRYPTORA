@@ -54,12 +54,12 @@ describe('ChartTerminal toolbar', () => {
 
     expect(trigger).toHaveTextContent('15м');
     fireEvent.click(trigger);
-    expect(screen.getByRole('menu', { name: '15м' })).toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: 'Таймфрейм: 15м' })).toBeInTheDocument();
     expect(screen.getByTestId('chart-timeframe-1h')).toHaveTextContent('1ч');
 
     fireEvent.click(screen.getByTestId('chart-timeframe-1h'));
     expect(props.onTimeframeChange).toHaveBeenCalledWith('1h');
-    expect(screen.queryByRole('menu', { name: '15м' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menu', { name: 'Таймфрейм: 15м' })).not.toBeInTheDocument();
 
     rerender(<ChartTerminal {...props} timeframe="1h" />);
     expect(screen.getByTestId('chart-timeframe-trigger')).toHaveTextContent('1ч');
@@ -94,24 +94,73 @@ describe('ChartTerminal toolbar', () => {
     fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /RSI/ }));
     expect(props.onShowRSIChange).toHaveBeenCalledWith(true);
 
-    fireEvent.click(screen.getByTestId('chart-templates-trigger'));
+    // Шаблоны и настройки переехали в «Ещё» — на ЛЮБОЙ ширине (единый toolbar).
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
     fireEvent.click(screen.getByRole('menuitem', { name: /Momentum/ }));
     expect(props.onShowMACDChange).toHaveBeenCalledWith(true);
     expect(props.onShowVolumeChange).toHaveBeenCalledWith(true);
 
-    fireEvent.click(screen.getByTestId('chart-settings-trigger'));
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
     fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /^Объём/ }));
     expect(props.onShowVolumeChange).toHaveBeenCalledWith(false);
   });
 
+  /**
+   * ЕДИНЫЙ состав тулбара (задача §10, §17).
+   *
+   * Терминал рисует ОДНУ композицию контролов на всех ширинах, поэтому
+   * Spot и Futures не могут разъехаться, а правку тулбара не нужно повторять
+   * в мобильной и десктопной версиях.
+   */
+  it('renders the same four controls on desktop as on mobile', () => {
+    render(<ChartTerminal {...baseProps()} />);
+    const toolbar = document.querySelector('[data-qa="chart-terminal-toolbar"]')!;
+
+    expect(toolbar.getAttribute('data-layout')).toBe('desktop');
+    expect(toolbar.getAttribute('data-controls')).toBe('unified');
+    const triggers = Array.from(toolbar.querySelectorAll('button')).map((b) => b.getAttribute('data-qa'));
+    expect(triggers).toEqual([
+      'chart-timeframe-trigger',
+      'chart-type-trigger',
+      'chart-indicators-trigger',
+      'chart-more-trigger',
+    ]);
+    expect(toolbar.className).toMatch(/flex-nowrap/);
+  });
+
+  it('drops the long «1ч · таймфрейм» / «Тип графика · Свечи» labels', () => {
+    render(<ChartTerminal {...baseProps()} />);
+
+    expect(screen.getByTestId('chart-timeframe-trigger')).toHaveTextContent('15м');
+    expect(screen.getByTestId('chart-timeframe-trigger').textContent).not.toMatch(/таймфрейм/i);
+    // Кнопка типа показывает ТЕКУЩИЙ тип одним словом, без префикса «Тип графика ·».
+    expect(screen.getByTestId('chart-type-trigger')).toHaveTextContent('Свечи');
+    expect(screen.getByTestId('chart-type-trigger').textContent).not.toMatch(/·/);
+    expect(document.querySelector('[data-qa="chart-terminal-toolbar"]')!.textContent).not.toMatch(/·/);
+  });
+
   it('renders Russian terminal labels and does not duplicate the old timeframe strip', () => {
     render(<ChartTerminal {...baseProps()} />);
-    expect(screen.getByText('Тип графика')).toBeInTheDocument();
     expect(screen.getByText('Индикаторы')).toBeInTheDocument();
-    expect(screen.getByText('Шаблоны')).toBeInTheDocument();
-    expect(screen.getByText('Настройки')).toBeInTheDocument();
     expect(screen.getByLabelText('Развернуть график')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^5m$/ })).not.toBeInTheDocument();
+
+    // «Шаблоны» и «Настройки» существуют, но как разделы внутри «Ещё».
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
+    const menu = screen.getByTestId('chart-more-trigger-menu');
+    expect(menu.querySelector('[data-qa="chart-more-templates"]')!.textContent).toBe('Шаблоны');
+    expect(menu.querySelector('[data-qa="chart-more-settings"]')!.textContent).toBe('Настройки');
+  });
+
+  it('disables «Вписать данные» while the series is empty and enables it with data', () => {
+    const { unmount } = render(<ChartTerminal {...baseProps()} />);
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
+    expect(screen.getByTestId('chart-reset-view')).toBeDisabled();
+    unmount();
+
+    render(<ChartTerminal {...baseProps()} data={[{ time: 1, open: 1, high: 2, low: 0.5, close: 1.5, volume: 3 }]} />);
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
+    expect(screen.getByTestId('chart-reset-view')).not.toBeDisabled();
   });
 });
 
@@ -128,8 +177,10 @@ describe('ChartTerminal side fullscreen control', () => {
     expect(document.querySelectorAll('[data-qa="chart-fullscreen"]')).toHaveLength(1);
     expect(toolbar!.contains(fullscreen)).toBe(false);
     expect(rail.contains(fullscreen)).toBe(true);
-    // «Вписать» остаётся в верхнем toolbar.
-    expect(toolbar!.querySelector('[data-qa="chart-reset-view"]')).not.toBeNull();
+    // «Вписать» больше не постоянный контрол: он живёт пунктом внутри «Ещё».
+    expect(toolbar!.querySelector('[data-qa="chart-reset-view"]')).toBeNull();
+    fireEvent.click(screen.getByTestId('chart-more-trigger'));
+    expect(screen.getByTestId('chart-more-trigger-menu').querySelector('[data-qa="chart-reset-view"]')).not.toBeNull();
   });
 
   it('keeps the rail inside the terminal flow (no absolute overlay, no negative offsets)', () => {
@@ -337,8 +388,8 @@ describe('ChartTerminal mobile composition', () => {
 
     const type = screen.getByTestId('chart-type-trigger');
     expect(type).toHaveTextContent('Тип');
-    expect(type).toHaveAttribute('title', 'Тип графика');
-    expect(type).toHaveAttribute('aria-label', 'Тип графика');
+    expect(type).toHaveAttribute('title', 'Тип графика: Свечи');
+    expect(type).toHaveAttribute('aria-label', 'Тип графика: Свечи');
 
     const timeframe = screen.getByTestId('chart-timeframe-trigger');
     expect(timeframe).toHaveTextContent('15м');

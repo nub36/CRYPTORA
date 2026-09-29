@@ -12,7 +12,8 @@ import {
   TechnicalIndicators,
   MarketType,
 } from '@/types/market';
-import { MarketDataProvider, type CandleRequestOptions } from './MarketDataProvider';
+import { MarketDataProvider, type CandleRequestOptions, type FuturesOrderBookOptions } from './MarketDataProvider';
+import type { OrderBookSnapshot } from '@/types/realtime';
 import {
   getCanonicalAssets,
   getAssetBySymbol,
@@ -25,6 +26,7 @@ import {
   normalizeKuCoinStats,
   normalizeBinanceKlines,
   normalizeKuCoinCandles,
+  normalizeFuturesDepth,
 } from './adapters/normalization';
 import { fetchServerRadarEvents } from '../radar/serverRadarClient';
 import { BinanceFuturesAdapter } from './adapters/BinanceFuturesAdapter';
@@ -101,6 +103,13 @@ function snapshotTimeMs(iso: string): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
+/**
+ * TTL кэша стакана USD-M. Меньше периода опроса (5с), поэтому обычный поллинг
+ * всегда получает свежую книгу, а дубли запросов (второй виджет, StrictMode,
+ * быстрый возврат на страницу) обслуживаются из кэша.
+ */
+const FUTURES_DEPTH_TTL_MS = 4_000;
+
 export class LiveMarketDataProvider implements MarketDataProvider {
   public readonly isDemo = false;
 
@@ -121,6 +130,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
 
   // In-memory cache for rate-limiting protection
   private assetCache: { data: AssetSummary[]; timestamp: number } | null = null;
+  /** Кэш стакана USD-M: ключ «контракт_глубина», TTL FUTURES_DEPTH_TTL_MS. */
+  private readonly futuresDepthCache = new Map<string, { data: OrderBookSnapshot; timestamp: number }>();
   private candleCache = new Map<string, { data: OHLCV[]; timestamp: number }>();
   private futuresCache: { data: FuturesAsset[]; timestamp: number } | null = null;
   /** Покрытие метрик из последнего серверного снимка (для честного счётчика в UI). */
@@ -775,6 +786,8 @@ export class LiveMarketDataProvider implements MarketDataProvider {
               lastPrice: row.lastPrice ?? '',
               volume: row.baseVolume ?? '',
               quoteVolume: row.quoteVolume ?? '',
+              highPrice: row.highPrice ?? null,
+              lowPrice: row.lowPrice ?? null,
             }
           : undefined,
         row.openInterest !== null
@@ -843,6 +856,48 @@ export class LiveMarketDataProvider implements MarketDataProvider {
       || f.symbol.split('/')[0] === wanted
       || f.contractSymbol === `${wanted}USDT`,
     ) ?? null;
+  }
+
+  /**
+   * Стакан USD-M-перпетуала (задача §4).
+   *
+   * Источник ровно один — `GET /fapi/v1/depth` через futures-gateway. Если
+   * контракта нет в активной вселенной exchangeInfo, метод бросает
+   * `UnsupportedMarketSymbolError`: спотовая книга того же тикера НЕ
+   * подставляется (инвариант «никогда Spot вместо Futures»).
+   *
+   * Кэш — 4 секунды на пару «контракт+глубина». Стакан опрашивается раз в 5с,
+   * поэтому кэш гасит повторные запросы при перемонтировании/двух виджетах
+   * на странице и не даёт рейт-лимиту USD-M (вес 2 при limit<=50) расти
+   * линейно от числа вкладок.
+   */
+  public async getFuturesOrderBook(
+    baseOrContract: string,
+    options: FuturesOrderBookOptions = {},
+  ): Promise<OrderBookSnapshot | null> {
+    const wanted = String(baseOrContract ?? '').toUpperCase().trim();
+    if (!wanted) return null;
+    const limit = options.limit ?? 50;
+    const contracts = await this.futuresContracts().catch(() => null);
+    const contractSymbol = resolveFuturesContractSymbol(wanted, contracts);
+    if (!contractSymbol) {
+      throw new UnsupportedMarketSymbolError(wanted, 'futures');
+    }
+
+    const cacheKey = `${contractSymbol}_${limit}`;
+    const now = Date.now();
+    const cached = this.futuresDepthCache.get(cacheKey);
+    if (!options.forceRefresh && cached && now - cached.timestamp < FUTURES_DEPTH_TTL_MS) {
+      return cached.data;
+    }
+
+    const raw = await this.futuresAdapter.fetchDepth(contractSymbol, limit, options.signal);
+    const snapshot = normalizeFuturesDepth(raw, {
+      contractSymbol,
+      displaySymbol: contractSymbol.replace(/USDT$/, ''),
+    });
+    this.futuresDepthCache.set(cacheKey, { data: snapshot, timestamp: now });
+    return snapshot;
   }
 
   public async getLiquidations(): Promise<LiquidationData> {
