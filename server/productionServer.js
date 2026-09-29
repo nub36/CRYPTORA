@@ -68,10 +68,11 @@ const CONNECT_SRC = [
   'https://mempool.space', // сеть Bitcoin
   'https://api.coingecko.com', // CoinGecko: глобальный market cap, ATH/ATL metadata
   'https://api.telegram.org', // доставка алертов Telegram Bot (по настройке пользователя)
+  'https://telegram.org', // Telegram Login Widget (скрипт виджета входа)
 ];
 const CONTENT_SECURITY_POLICY =
-  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; " +
-  `connect-src ${CONNECT_SRC.join(' ')}; frame-ancestors 'self';`;
+  "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; " +
+  `connect-src ${CONNECT_SRC.join(' ')}; frame-src 'self' https://oauth.telegram.org; frame-ancestors 'self';`;
 
 // Standard production security headers
 function applySecurityHeaders(res) {

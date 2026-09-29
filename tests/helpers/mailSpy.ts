@@ -24,11 +24,14 @@ export interface MailSpy {
   lastRawToken: () => string | undefined;
   /** Extract the verification link of the last message. */
   lastLink: () => string | undefined;
+  /** Extract the 6-digit verification code from the last message. */
+  lastCode: () => string | undefined;
   reset: () => void;
 }
 
 const TOKEN_RE = /[?&]token=([A-Za-z0-9_-]+)/;
 const LINK_RE = /https?:\/\/\S*\/verify-email\?token=[A-Za-z0-9_-]+/;
+const CODE_RE = /Ваш код:\s*(\d{6})/;
 
 export function createMailSpy(): MailSpy {
   const sent: CapturedMail[] = [];
@@ -44,6 +47,10 @@ export function createMailSpy(): MailSpy {
     lastLink: () => {
       const m = last()?.text?.match(LINK_RE);
       return m ? m[0] : undefined;
+    },
+    lastCode: () => {
+      const m = last()?.text?.match(CODE_RE);
+      return m ? m[1] : undefined;
     },
     reset: () => {
       sent.length = 0;

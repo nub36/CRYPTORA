@@ -52,7 +52,7 @@ export class HttpClient {
   async request(
     method: string,
     path: string,
-    opts: { body?: unknown; headers?: Record<string, string> } = {}
+    opts: { body?: unknown; headers?: Record<string, string>; redirect?: RequestRedirect } = {}
   ): Promise<ApiResponse> {
     const headers: Record<string, string> = {
       // Same-origin by default: the CSRF middleware expects this.
@@ -69,7 +69,12 @@ export class HttpClient {
       payload = JSON.stringify(opts.body);
     }
 
-    const res = await fetch(`${this.base}${path}`, { method, headers, body: payload });
+    const res = await fetch(`${this.base}${path}`, {
+      method,
+      headers,
+      body: payload,
+      redirect: opts.redirect ?? 'follow',
+    });
     this.absorb(res);
 
     const text = await res.text();
@@ -94,11 +99,18 @@ export class HttpClient {
   get(path: string, headers?: Record<string, string>) {
     return this.request('GET', path, { headers });
   }
+  /** GET without following redirects — for OAuth 302 assertions. */
+  getNoFollow(path: string, headers?: Record<string, string>) {
+    return this.request('GET', path, { headers, redirect: 'manual' });
+  }
   post(path: string, body?: unknown, headers?: Record<string, string>) {
     return this.request('POST', path, { body, headers });
   }
   patch(path: string, body?: unknown, headers?: Record<string, string>) {
     return this.request('PATCH', path, { body, headers });
+  }
+  delete(path: string, headers?: Record<string, string>) {
+    return this.request('DELETE', path, { headers });
   }
 }
 

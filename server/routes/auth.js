@@ -1,41 +1,93 @@
 /**
  * CRYPTORA — Auth Routes
  *
- * POST /api/auth/register             — Create account (Argon2id hash, unverified)
- * POST /api/auth/login                — Authenticate, create server-side session
+ * POST /api/auth/register             — Create account (Argon2id hash, unverified) + send 6-digit code
+ * POST /api/auth/login                — Authenticate, regenerate + create server-side session
  * POST /api/auth/logout               — Destroy session
  * GET  /api/auth/session              — Return current session user (or 401)
- * POST /api/auth/verify-email         — Consume a one-time verification token
- * POST /api/auth/resend-verification  — Re-send the verification email
+ * POST /api/auth/verify-code          — Consume a 6-digit verification code
+ * POST /api/auth/verify-email         — Consume a legacy one-time verification LINK token
+ * POST /api/auth/resend-verification  — Re-send the verification code
  * GET  /api/auth/registration-status  — Public: is sign-up currently open?
+ * GET  /api/auth/providers            — Public: which login providers are configured?
+ *
+ * Social login (Google / Telegram / Yandex / VK ID) lives in routes/oauth.js
+ * and shares the SAME session mechanism (establishSession).
  */
 
 import { Router } from 'express';
 import argon2 from 'argon2';
-import { registerSchema, loginSchema, verifyEmailSchema, resendSchema } from '../validators/auth.js';
+import {
+  registerSchema,
+  loginSchema,
+  verifyEmailSchema,
+  resendSchema,
+  verifyCodeSchema,
+} from '../validators/auth.js';
 import { query } from '../db/pool.js';
 import {
   loginLimiter,
   registerLimiter,
   resendLimiter,
   verifyLimiter,
+  verifyCodeLimiter,
 } from '../middleware/rateLimit.js';
 import { config } from '../config.js';
-import { createVerificationToken, verifyRawToken, secondsSinceLastToken, VERIFY_RESULT } from '../services/emailVerification.js';
-import { sendVerificationEmail, getMailStatus, MailUnavailableError, maskEmail } from '../services/mail.js';
+import {
+  createVerificationCode,
+  verifyCodeForUser,
+  verifyRawToken,
+  secondsSinceLastToken,
+  VERIFY_RESULT,
+} from '../services/emailVerification.js';
+import {
+  sendVerificationCodeEmail,
+  getMailStatus,
+  MailUnavailableError,
+  maskEmail,
+} from '../services/mail.js';
+import { isProviderConfigured } from '../services/oauth/providers.js';
+import { establishSession } from '../services/sessionAuth.js';
 
 const router = Router();
+
+/**
+ * Derive a display name when the 2-step registration form did not collect
+ * one: the email local part, clamped to the validator's bounds.
+ */
+function deriveDisplayName(email) {
+  const local = String(email).split('@')[0] ?? '';
+  const cleaned = local.replace(/[^\p{L}\p{N}._-]/gu, '').slice(0, 50);
+  return cleaned.length >= 2 ? cleaned : 'Пользователь';
+}
 
 /* ------------------------------------------------------------------ */
 /* GET /api/auth/registration-status                                  */
 /*                                                                    */
 /* Public (no session required). Lets the sign-up page render an       */
 /* honest closed state instead of a form that always 403s.             */
-/* Reflects the same REGISTRATION_ENABLED flag the register handler    */
-/* enforces, so the UI and the API can never disagree.                 */
 /* ------------------------------------------------------------------ */
 router.get('/registration-status', (req, res) => {
   res.json({ registrationOpen: config.REGISTRATION_ENABLED === true });
+});
+
+/* ------------------------------------------------------------------ */
+/* GET /api/auth/providers                                            */
+/*                                                                    */
+/* Public capability map so the frontend can render exactly the        */
+/* buttons that will work. NO secrets: only booleans plus the public   */
+/* Telegram bot username (it is embedded in the widget markup anyway). */
+/* ------------------------------------------------------------------ */
+router.get('/providers', (req, res) => {
+  res.json({
+    emailPassword: true,
+    emailVerification: true,
+    google: isProviderConfigured('google'),
+    telegram: isProviderConfigured('telegram'),
+    yandex: isProviderConfigured('yandex'),
+    vk: isProviderConfigured('vk'),
+    telegramBotName: isProviderConfigured('telegram') ? config.TELEGRAM_BOT_USERNAME : null,
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -57,7 +109,8 @@ router.post('/register', registerLimiter, async (req, res) => {
     });
   }
 
-  const { email, displayName, password } = parsed.data;
+  const { email, password } = parsed.data;
+  const displayName = parsed.data.displayName || deriveDisplayName(email);
 
   // Check duplicate email
   const existing = await query(
@@ -87,23 +140,19 @@ router.post('/register', registerLimiter, async (req, res) => {
 
   const user = result.rows[0];
 
-  // Issue a one-time token (only its SHA-256 hash is persisted).
-  const { rawToken } = await createVerificationToken(user.id);
+  // Issue a one-time 6-digit code (only its HMAC is persisted).
+  const { code } = await createVerificationCode(user.id);
 
   // Deliver the email. A mail outage must NOT break the registration: the user
   // row stays (unverified) and the resend endpoint can recover later.
   let delivery = 'sent';
   try {
-    await sendVerificationEmail({
-      to: user.email,
-      displayName: user.display_name,
-      token: rawToken,
-    });
+    await sendVerificationCodeEmail({ to: user.email, code });
   } catch (err) {
     delivery = 'unavailable';
-    // No secrets, no token, no stack trace.
+    // No secrets, no code, no stack trace.
     console.warn(
-      `[register] verification email not delivered to=${user.email}: ${
+      `[register] verification code not delivered to=${user.email}: ${
         err instanceof MailUnavailableError ? err.message : 'mail error'
       }`
     );
@@ -122,9 +171,11 @@ router.post('/register', registerLimiter, async (req, res) => {
     },
     verification: {
       required: true,
+      method: 'code',
       emailMasked: maskEmail(user.email),
       delivery,
-      ttlMinutes: config.EMAIL_VERIFY_TOKEN_TTL_MINUTES,
+      ttlMinutes: config.EMAIL_VERIFY_CODE_TTL_MINUTES,
+      resendCooldownSeconds: config.RESEND_MIN_INTERVAL_SECONDS,
     },
   });
 });
@@ -159,12 +210,15 @@ router.post('/login', loginLimiter, async (req, res) => {
 
   const user = result.rows[0];
 
-  // Verify password
+  // Social-only accounts have no password hash; answer with the same generic
+  // 401 so the endpoint reveals nothing about the account's existence/type.
   let valid = false;
-  try {
-    valid = await argon2.verify(user.password_hash, password);
-  } catch {
-    valid = false;
+  if (user.password_hash) {
+    try {
+      valid = await argon2.verify(user.password_hash, password);
+    } catch {
+      valid = false;
+    }
   }
 
   if (!valid) {
@@ -192,13 +246,8 @@ router.post('/login', loginLimiter, async (req, res) => {
     [user.id]
   );
 
-  // Create session
-  req.session.userId = user.id;
-  req.session.role = user.role;
-
-  await new Promise((resolve, reject) => {
-    req.session.save((err) => (err ? reject(err) : resolve()));
-  });
+  // Create session. The ID is REGENERATED inside (session-fixation defence).
+  await establishSession(req, user);
 
   res.json({
     user: {
@@ -272,7 +321,65 @@ router.get('/session', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* POST /api/auth/verify-email                                        */
+/* POST /api/auth/verify-code                                         */
+/*                                                                    */
+/* Consumes a 6-digit code. ANTI-ENUMERATION: an unknown email, an     */
+/* already-verified account and a wrong code all produce the exact     */
+/* same INVALID response — the endpoint never confirms that an         */
+/* account exists.                                                     */
+/* ------------------------------------------------------------------ */
+router.post('/verify-code', verifyCodeLimiter, async (req, res) => {
+  const parsed = verifyCodeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'INVALID', message: 'Неверный код' });
+  }
+
+  const { email, code } = parsed.data;
+
+  const found = await query(
+    `SELECT id, email_verified, is_active FROM users WHERE lower(email) = lower($1)`,
+    [email]
+  );
+
+  // Unknown account / already verified / blocked → indistinguishable INVALID.
+  if (
+    found.rows.length === 0 ||
+    found.rows[0].email_verified ||
+    !found.rows[0].is_active
+  ) {
+    return res.status(400).json({ error: 'INVALID', message: 'Неверный код' });
+  }
+
+  const outcome = await verifyCodeForUser(found.rows[0].id, code);
+
+  switch (outcome.result) {
+    case VERIFY_RESULT.OK:
+      // Deliberately NO session is created here: the user logs in normally.
+      return res.json({ status: 'ok', message: 'Email подтверждён' });
+
+    case VERIFY_RESULT.EXPIRED:
+      return res.status(410).json({ error: 'EXPIRED', message: 'Срок действия кода истёк' });
+
+    case VERIFY_RESULT.TOO_MANY:
+      return res.status(429).json({
+        error: 'TOO_MANY_ATTEMPTS',
+        message: 'Слишком много попыток. Запросите новый код.',
+      });
+
+    case VERIFY_RESULT.USED:
+      // A consumed code is a replay attempt — same shape as invalid.
+      return res.status(400).json({ error: 'INVALID', message: 'Неверный код' });
+
+    default:
+      return res.status(400).json({ error: 'INVALID', message: 'Неверный код' });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* POST /api/auth/verify-email  (legacy link tokens)                  */
+/*                                                                    */
+/* Kept so links that were already delivered to mailboxes before the   */
+/* code-based flow keep working until they expire.                     */
 /* ------------------------------------------------------------------ */
 router.post('/verify-email', verifyLimiter, async (req, res) => {
   const parsed = verifyEmailSchema.safeParse(req.body);
@@ -317,7 +424,7 @@ router.post('/resend-verification', resendLimiter, async (req, res) => {
   const generic = () =>
     res.json({
       status: 'ok',
-      message: 'Если аккаунт существует и email не подтверждён, письмо отправлено повторно',
+      message: 'Если аккаунт существует и email не подтверждён, код отправлен повторно',
     });
 
   const found = await query(
@@ -333,7 +440,7 @@ router.post('/resend-verification', resendLimiter, async (req, res) => {
   // Already verified, or blocked: send nothing, reveal nothing.
   if (user.email_verified || !user.is_active) return generic();
 
-  // Per-email throttle on top of the per-IP rate limit (SMTP flood protection).
+  // Per-email cooldown on top of the per-IP rate limit (SMTP flood protection).
   const sinceLast = await secondsSinceLastToken(user.id);
   if (sinceLast !== null && sinceLast < config.RESEND_MIN_INTERVAL_SECONDS) {
     return generic();
@@ -347,14 +454,11 @@ router.post('/resend-verification', resendLimiter, async (req, res) => {
     });
   }
 
-  const { rawToken } = await createVerificationToken(user.id);
+  // Issuing a fresh code INVALIDATES every previous code/link for this user.
+  const { code } = await createVerificationCode(user.id);
 
   try {
-    await sendVerificationEmail({
-      to: user.email,
-      displayName: user.display_name,
-      token: rawToken,
-    });
+    await sendVerificationCodeEmail({ to: user.email, code });
   } catch (err) {
     console.warn(
       `[resend] delivery failed for=${user.email}: ${

@@ -114,6 +114,7 @@ describe('migration inventory', () => {
     // signal_monitor_state (010) and radar_events (012) are server monitor tables.
     expect([...tables].sort()).toEqual([
       'audit_log',
+      'auth_identities',
       'email_verification_tokens',
       'radar_events',
       'scan_universe',
@@ -136,9 +137,11 @@ describe('migration inventory', () => {
       'idx_audit_log_actor',
       'idx_audit_log_created_at',
       'idx_audit_log_target',
+      'idx_auth_identities_user_id',
       'idx_evt_expires_at',
       'idx_evt_token_hash',
       'idx_evt_user_id',
+      'idx_evt_user_kind_created',
       'idx_radar_events_created_at_asc',
       'idx_radar_events_event_timestamp_desc',
       'idx_radar_events_symbol_event_timestamp_desc',
@@ -242,9 +245,14 @@ describe('GIN cannot serve ->> extraction', () => {
   it('the one sess->> filter in admin.js is a documented sequential scan', () => {
     const admin = fs.readFileSync(path.resolve(__dirname, '../../server/routes/admin.js'), 'utf8');
     expect(admin).toMatch(/DELETE FROM sessions WHERE sess->>'userId' = \$1/);
-    // And the session really does carry a top-level userId key.
-    const auth = fs.readFileSync(path.resolve(__dirname, '../../server/routes/auth.js'), 'utf8');
-    expect(auth).toMatch(/req\.session\.userId\s*=/);
+    // And the session really does carry a top-level userId key — the stamp
+    // now lives in the shared establishSession() helper used by both the
+    // password login route and the OAuth callbacks.
+    const sessionAuth = fs.readFileSync(
+      path.resolve(__dirname, '../../server/services/sessionAuth.js'),
+      'utf8'
+    );
+    expect(sessionAuth).toMatch(/req\.session\.userId\s*=/);
     // …while the migration documents why no index is built for it.
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, '002_create_sessions.sql'), 'utf8');
     expect(sql).toMatch(/WHY THERE IS NO GIN INDEX/i);

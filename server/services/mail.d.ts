@@ -1,10 +1,10 @@
 /**
- * Type declarations for server/services/mail.js (plain-JS module).
+ * Type declarations for server/services/mail.js (facade over ./mail/).
  */
 
 export interface MailStatus {
-  /** 'smtp' (real delivery), 'json' (local echo), or 'unavailable'. */
-  kind: 'smtp' | 'json' | 'unavailable';
+  /** 'smtp' (real delivery), 'json' (local echo), or null (unavailable). */
+  kind: 'smtp' | 'json' | null;
   configured: boolean;
   reason?: string;
 }
@@ -34,15 +34,15 @@ export declare class MailUnavailableError extends Error {
   reason: string;
 }
 
+export declare function getMailFrom(): string;
 export declare function getMailStatus(): MailStatus;
 export declare function getTransport(): MailTransport;
-export declare function getTransportKind(): 'smtp' | 'json' | 'mock';
+export declare function getTransportKind(): 'smtp' | 'json' | 'mock' | null;
 export declare function sendMail(options: SendMailOptions): Promise<unknown>;
-export declare function maskEmail(email: string): string;
-export declare function sendVerificationEmail(args: {
+export declare function maskEmail(email: string | null | undefined): string;
+export declare function sendVerificationCodeEmail(args: {
   to: string;
-  displayName?: string;
-  token: string;
+  code: string;
 }): Promise<unknown>;
 
 /** Test seams — production code never calls these. */

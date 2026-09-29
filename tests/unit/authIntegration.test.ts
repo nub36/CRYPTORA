@@ -2,11 +2,11 @@
  * CRYPTORA — Auth integration tests.
  *
  * REAL: route handlers, middleware, Zod validators, express-session cookie
- *       flow, Argon2id hashing/verification, token hashing, audit service.
+ *       flow, Argon2id hashing/verification, code hashing, audit service.
  * MOCKED: the SQL layer (MemoryDb via __setPoolForTests) and the SMTP
  *         transport (spy — nothing is ever sent over the network).
  *
- * Flow under test: register (unverified) → verification email → verify token
+ * Flow under test: register (unverified) → 6-digit code email → verify code
  * → login. An unverified user must never obtain an authenticated session.
  */
 
@@ -18,13 +18,14 @@ import type { MailSpy } from '../helpers/mailSpy';
 process.env.LOGIN_RATE_LIMIT = '100000';
 process.env.REGISTER_RATE_LIMIT = '100000';
 process.env.API_RATE_LIMIT = '1000000';
+process.env.VERIFY_RATE_LIMIT = '100000';
 process.env.SESSION_STORE = 'memory';
 process.env.MAIL_TRANSPORT = 'json';
 
 const { createApp } = await import('../../server/app.js');
 const { __setPoolForTests } = await import('../../server/db/pool.js');
 const { __resetTransportForTests } = await import('../../server/services/mail.js');
-const { hashToken } = await import('../../server/services/emailVerification.js');
+const { hashCode } = await import('../../server/services/emailVerification.js');
 const { MemoryDb } = await import('../helpers/memoryDb');
 const { listen } = await import('../helpers/httpHarness');
 const { installMailSpy } = await import('../helpers/mailSpy');
@@ -59,17 +60,20 @@ const register = (over: Partial<{ email: string; displayName: string; password: 
     password: over.password ?? PASSWORD,
   });
 
-/** Register, then consume the real verification token via the real endpoint. */
+/** Register, then consume the real 6-digit code via the real endpoint. */
 async function registerAndVerify(
   over: Partial<{ email: string; displayName: string; password: string }> = {}
 ) {
   const reg = await register(over);
   expect(reg.status).toBe(201);
-  const token = mail.lastRawToken();
-  expect(token, 'verification email must carry a raw token').toBeTruthy();
+  const code = mail.lastCode();
+  expect(code, 'verification email must carry a 6-digit code').toBeTruthy();
 
   // Verifying must not sign the user in.
-  const ver = await client.post('/api/auth/verify-email', { token });
+  const ver = await client.post('/api/auth/verify-code', {
+    email: over.email ?? EMAIL,
+    code,
+  });
   expect(ver.status).toBe(200);
   client.clearCookies();
   return reg;
@@ -103,35 +107,40 @@ describe('POST /api/auth/register', () => {
     expect(db.users[0].password_hash).not.toContain(PASSWORD);
   });
 
-  it('creates a verification token and stores only its SHA-256 hash', async () => {
+  it('creates a verification code and stores only its keyed HMAC', async () => {
     await register();
     expect(db.tokens).toHaveLength(1);
+    expect(db.tokens[0].kind).toBe('code');
 
-    const raw = mail.lastRawToken()!;
-    expect(db.tokens[0].token_hash).toBe(hashToken(raw));
-    expect(db.tokens[0].token_hash).not.toBe(raw);
-    // The plaintext token must not appear anywhere in the stored row.
-    expect(JSON.stringify(db.tokens[0])).not.toContain(raw);
+    const code = mail.lastCode()!;
+    expect(code).toMatch(/^\d{6}$/);
+    expect(db.tokens[0].token_hash).toBe(hashCode(db.users[0].id, code));
+    expect(db.tokens[0].token_hash).not.toBe(code);
+    // The plaintext code must not appear anywhere in the stored row.
+    expect(JSON.stringify(db.tokens[0])).not.toContain(code);
   });
 
-  it('the mail service receives the raw token and a link under APP_ORIGIN', async () => {
+  it('the mail service receives the CRYPTORA code email (text + html, no remote assets)', async () => {
     await register();
     const msg = mail.last();
     expect(msg).toBeTruthy();
     expect(msg!.to).toBe(EMAIL);
-    expect(msg!.subject).toMatch(/Подтвердите email/);
-    expect(msg!.text).toContain('/verify-email?token=');
-    expect(msg!.html).toContain('/verify-email?token=');
-    // Text fallback present, no remote tracking assets in the HTML.
+    expect(msg!.subject).toBe('CRYPTORA — код подтверждения');
+    const code = mail.lastCode()!;
+    // Plain-text alternative carries the code (readable without images/HTML).
+    expect(msg!.text).toContain(`Ваш код: ${code}`);
+    expect(msg!.html).toContain(code);
+    // No remote tracking assets in the HTML.
     expect(msg!.html).not.toMatch(/<img[^>]+src=["']https?:/i);
     expect(msg!.html).not.toMatch(/<link[^>]+href=["']https?:/i);
   });
 
-  it('never returns the raw token or its hash through the API', async () => {
+  it('never returns the code or its hash through the API', async () => {
     const res = await register();
     const raw = JSON.stringify(res.body);
-    expect(raw).not.toContain(mail.lastRawToken()!);
-    expect(raw).not.toContain(hashToken(mail.lastRawToken()!));
+    const code = mail.lastCode()!;
+    expect(raw).not.toContain(code);
+    expect(raw).not.toContain(hashCode(db.users[0].id, code));
     expect(raw).not.toContain('token_hash');
   });
 
@@ -207,9 +216,9 @@ describe('POST /api/auth/login — verification gate', () => {
     await client.post('/api/auth/login', { email: EMAIL, password: PASSWORD });
     expect(db.users[0].last_login_at).toBeNull();
 
-    // Verify with the token from that same registration, then log in.
-    const token = mail.lastRawToken();
-    expect((await client.post('/api/auth/verify-email', { token })).status).toBe(200);
+    // Verify with the code from that same registration, then log in.
+    const code = mail.lastCode();
+    expect((await client.post('/api/auth/verify-code', { email: EMAIL, code })).status).toBe(200);
 
     await client.post('/api/auth/login', { email: EMAIL, password: PASSWORD });
     expect(db.users[0].last_login_at).toBeInstanceOf(Date);
