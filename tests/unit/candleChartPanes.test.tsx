@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { TickMarkType } from 'lightweight-charts';
 import type { OHLCV } from '@/types/market';
 import { CandleChart } from '@/components/common/CandleChart';
 import { CHART_RIGHT_OFFSET, RSI_FIXED_PRICE_RANGE } from '@/components/common/chartPresentationConfig';
 import { browserTimeZone, timeZoneLabel } from '@/utils/timePresentation';
+import { MIN_INDICATOR_HEIGHT, MIN_MAIN_CHART_HEIGHT } from '@/components/common/chartPaneLayout';
 
 const chartCapture = vi.hoisted(() => ({ instances: [] as any[] }));
 
@@ -31,6 +32,7 @@ vi.mock('lightweight-charts', async (importOriginal) => {
         subscribeClick: vi.fn(),
         unsubscribeClick: vi.fn(),
         timeScale: () => instance.scale,
+        priceScale: () => ({ width: vi.fn(() => 88), applyOptions: vi.fn() }),
         scale: {
           applyOptions: vi.fn(), fitContent: vi.fn(),
           getVisibleLogicalRange: vi.fn(() => null), setVisibleLogicalRange: vi.fn(),
@@ -107,6 +109,35 @@ describe('independent indicator panes and chart viewport', () => {
     expect(getByTestId('kline-freshness').textContent).toBe('KLINE WS');
     rerender(<CandleChart data={[]} realtimeKline={{ ...base, timestamp: Date.now() - 60_000 }} />);
     expect(getByTestId('kline-freshness').textContent).toBe('KLINE STALE');
+  });
+
+  it('resizes an indicator with pointer capture and keeps both panes above their minimums', () => {
+    const { getByRole, getByLabelText } = render(<CandleChart data={data} height={380} showRSI showMACD />);
+    const separator = getByRole('separator', { name: /RSI/ }) as HTMLDivElement;
+    let captured = false;
+    separator.setPointerCapture = vi.fn(() => { captured = true; });
+    separator.hasPointerCapture = vi.fn(() => captured);
+    separator.releasePointerCapture = vi.fn(() => { captured = false; });
+
+    const rsiPane = getByLabelText('RSI indicator pane');
+    const rsiCanvasHost = rsiPane.querySelector(':scope > div') as HTMLDivElement;
+    expect(Number.parseInt(rsiCanvasHost.style.height, 10)).toBe(126);
+
+    const pointer = (type: string, clientY: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperties(event, { pointerId: { value: 7 }, clientY: { value: clientY } });
+      fireEvent(separator, event);
+    };
+    pointer('pointerdown', 200);
+    pointer('pointermove', 120);
+    expect(Number.parseInt(rsiCanvasHost.style.height, 10)).toBeGreaterThan(126);
+    pointer('pointermove', 2000);
+    expect(Number.parseInt(rsiCanvasHost.style.height, 10)).toBe(MIN_INDICATOR_HEIGHT);
+    pointer('pointerup', 2000);
+
+    const mainHost = chartCapture.instances.find((chart: any) => chart.options.rightPriceScale?.scaleMargins?.bottom === 0.18);
+    const lastHeight = mainHost.applyOptions.mock.calls.at(-1)?.[0]?.height;
+    expect(lastHeight).toBeGreaterThanOrEqual(MIN_MAIN_CHART_HEIGHT);
   });
 
   it('uses a real right-side logical offset and formats ticks in the browser/OS timezone', () => {
