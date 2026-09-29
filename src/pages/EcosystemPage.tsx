@@ -105,7 +105,7 @@ export const EcosystemPage: React.FC = () => {
       <div className="bg-surface border border-surface-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3 pb-2 border-b border-surface-border">
           <span className="text-xs font-bold text-white font-sans">Рейтинг сетей по TVL</span>
-          <span className="text-[11px] text-slate-500 font-sans">Δ7д — по дневному ряду TVL источника</span>
+          <span className="text-[11px] text-slate-500 font-sans">Изменение TVL за 7 дней — по дневному ряду источника</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-sans">
@@ -114,7 +114,7 @@ export const EcosystemPage: React.FC = () => {
                 <th className="py-2.5 px-2">Сеть</th>
                 <th className="py-2.5 px-2 text-center">Слой</th>
                 <th className="py-2.5 px-2 text-right">TVL (USD)</th>
-                <th className="py-2.5 px-2 text-right">Δ 7д</th>
+                <th className="py-2.5 px-2 text-right" title="Изменение TVL за 7 дней">Изм. 7д</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-border/50 text-[11px]">

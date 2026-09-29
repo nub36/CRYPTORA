@@ -9,6 +9,7 @@ import { AssetPulsePanel } from '@/components/market/AssetPulsePanel';
 import {
   InstrumentChartCard,
   InstrumentMetricsCard,
+  InstrumentMetricsGrid,
   InstrumentRadarCard,
   buildCorrelationRows,
   buildDerivativesRows,
@@ -329,7 +330,15 @@ export const FuturesContractPage: React.FC = () => {
         meta={market === 'futures' ? 'BINANCE USD-M KLINES' : 'BINANCE SPOT KLINES'}
         className="coin-workspace-region"
       >
-        <div data-qa="futures-workspace" className="grid grid-cols-1 items-stretch gap-3.5 xl:grid-cols-[72fr_28fr]">
+        {/*
+         * `items-start`: карточка графика и Pulse-панель держат СВОЮ
+         * естественную высоту. Прежний `items-stretch` растягивал рамку
+         * карточки графика до высоты более высокой Pulse-панели — внутри
+         * рамки появлялась пустая полоса (UI-cleanup §2). Pulse-обёртка
+         * прозрачна (`<aside>` без фона), поэтому ничем растягивать её
+         * было не нужно.
+         */}
+        <div data-qa="futures-workspace" className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[72fr_28fr]">
           <InstrumentChartCard
             market={market}
             displayPair={displayPair}
@@ -369,7 +378,13 @@ export const FuturesContractPage: React.FC = () => {
 
       {/* ── Метрики: те же карточки и в том же порядке, что на Spot ──── */}
       <TerminalSection label="CONTRACT METRICS" title="Метрики контракта" className="market-workspace">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/*
+         * ОБЩАЯ сетка метрик (UI-cleanup §3/§4/§6): 1 колонка на мобильном,
+         * 2 на tablet, 3 на desktop; «Корреляция с BTC» поглощает хвостовую
+         * строку (`lg:col-span-3`) и внутри — горизонтальный inline-контент,
+         * поэтому сетка не резервирует две пустые ячейки второй строки.
+         */}
+        <InstrumentMetricsGrid>
           <InstrumentMetricsCard
             title="Рыночная статистика"
             icon={Activity}
@@ -432,6 +447,7 @@ export const FuturesContractPage: React.FC = () => {
               sourceNote={sectionSourceNote(market, 'BTCUSDT PERP')}
               emptyMessage="Недостаточно истории для расчёта"
               rows={correlation ? buildCorrelationRows(correlation) : []}
+              variant="inline"
               footer={
                 <p className="border-t border-surface-border pt-2 font-sans text-[11px] leading-4 text-slate-500">
                   Сравнение с фьючерсом BTCUSDT (USD-M), а не со спотовым BTC.
@@ -439,7 +455,7 @@ export const FuturesContractPage: React.FC = () => {
               }
             />
           )}
-        </div>
+        </InstrumentMetricsGrid>
       </TerminalSection>
 
       {/* ── Стакан USD-M + Radar базового актива ─────────────────────── */}

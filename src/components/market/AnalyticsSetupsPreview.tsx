@@ -64,9 +64,9 @@ export const AnalyticsSetupsPreview: React.FC<AnalyticsSetupsPreviewProps> = ({
         source={btcPriceSource ?? 'Источник недоступен'}
       />
       <Fact
-        label="OI · USD / Δ24h"
+        label="OI · USD / изм. 24ч"
         value={`${valueOrDash(openInterestUsd, (value) => formatCurrency(value, { compact: true }))} / ${valueOrDash(openInterestDelta24h, (value) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`)}`}
-        source={`${openInterestSource ?? 'OI недоступен'}; Δ24h: ${openInterestDeltaSource ?? 'история OI недоступна'}`}
+        source={`${openInterestSource ?? 'OI недоступен'}; изм. 24ч: ${openInterestDeltaSource ?? 'история OI недоступна'}`}
       />
       <Fact
         label="Funding · 8h"

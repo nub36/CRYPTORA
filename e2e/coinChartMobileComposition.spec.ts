@@ -520,10 +520,19 @@ test.describe('Desktop ChartTerminal UX of PR #32 is untouched', () => {
       // Длинные подписи вида «1ч · таймфрейм» на десктопе тоже запрещены.
       expect((await toolbar.innerText()).replace(/\s+/g, ' ')).not.toContain('·');
 
+      // «•••» стоит ВПЛОТНУЮ за «Индикаторами» (UI-cleanup §1): тот же gap,
+      // что и между остальными контролами, — никакого ml-auto/спейсера,
+      // отталкивающего «Ещё» к правому краю терминала.
       const more = toolbar.locator('[data-qa="chart-more-trigger"]');
-      const toolbarBox = (await toolbar.boundingBox())!;
+      const indicatorsTrigger = toolbar.locator('[data-qa="chart-indicators-trigger"]');
+      const indicatorsBox = (await indicatorsTrigger.boundingBox())!;
       const moreBox = (await more.boundingBox())!;
-      expect(toolbarBox.x + toolbarBox.width - (moreBox.x + moreBox.width)).toBeLessThan(20);
+      const toolbarBox = (await toolbar.boundingBox())!;
+      const gap = moreBox.x - (indicatorsBox.x + indicatorsBox.width);
+      expect(gap, `${width}: «•••» immediately follows «Индикаторы»`).toBeGreaterThan(0);
+      expect(gap, `${width}: «•••» immediately follows «Индикаторы»`).toBeLessThan(24);
+      // И контролы начинаются от левого края toolbar (justify-start).
+      expect(moreBox.x - toolbarBox.x).toBeLessThan(toolbarBox.width * 0.6);
 
       await more.click();
       const menu = page.getByTestId('chart-more-trigger-menu');
@@ -544,8 +553,16 @@ test.describe('Desktop ChartTerminal UX of PR #32 is untouched', () => {
       await expect(page.locator('[data-qa="chart-top-right-slot"]')).toHaveCount(0);
 
       // Desktop price labels keep the full PR#32 format (no compact units).
+      // После фикса PR #37 (lastValueVisible у overlay-гистограммы объёма
+      // выключен) ширину правой шкалы задают ТОЛЬКО ценовые подписи: для
+      // инструмента ~$0.5 это ~74px. Порог >80 относился к эпохе, когда шкалу
+      // растягивала метка объёма «11,320,428.00» (108px), и одинаково падал
+      // на HEAD до текущей ветки (проверено измерением: 74px там и там).
+      // Честный pixel-контракт: шкала видима и имеет реальную ширину;
+      // байтовая неизменность desktop-формата закреплена юнит-тестом
+      // tests/unit/chartPriceLabelFormat.test.ts.
       const geometry = await chartGeometry(page);
-      expect(geometry.priceScale!.width, `${width}: desktop price scale unchanged`).toBeGreaterThan(80);
+      expect(geometry.priceScale!.width, `${width}: desktop price scale is real, not hidden`).toBeGreaterThan(40);
 
       expect(await documentOverflow(page), `${width}: no horizontal overflow`).toBeLessThanOrEqual(1);
 

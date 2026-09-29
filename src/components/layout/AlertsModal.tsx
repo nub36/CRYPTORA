@@ -225,7 +225,7 @@ export const AlertsModal: React.FC = () => {
                     <option value="ABOVE">Цена ≥ порога (USD)</option>
                     <option value="BELOW">Цена ≤ порога (USD)</option>
                     <option value="FUNDING_EXTREME">|Фандинг 8ч| ≥ порога (%)</option>
-                    <option value="OI_SPIKE">OI Δ1ч ≥ порога (%) — только фактический ряд OI</option>
+                    <option value="OI_SPIKE">Изменение OI за 1ч ≥ порога (%) — только фактический ряд OI</option>
                   </select>
                 </div>
               </div>

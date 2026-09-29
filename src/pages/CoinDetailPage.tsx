@@ -9,6 +9,7 @@ import type { CandleChartType } from '@/components/common/CandleChart';
 import {
   InstrumentChartCard,
   InstrumentMetricsCard,
+  InstrumentMetricsGrid,
   InstrumentRadarCard,
   buildCorrelationRows,
   buildDerivativesRows,
@@ -616,10 +617,12 @@ export const CoinDetailPage: React.FC = () => {
             <>
       {/* Analytical Workspace: доминирующий график + снимок деривативов/ликвидаций.
           Двухколоночная раскладка включается от 1280px; ниже Pulse складывается под график.
-          items-stretch ensures Pulse panel fills the chart height — no vertical gap before next module. */}
+          items-start: обе колонки держат естественную высоту. Растягивание (`items-stretch`)
+          не давало визуально ничего — Pulse-обёртка прозрачна, — но растягивало РАМКУ карточки
+          графика под более высокий Pulse и оставляло внутри неё пустую полосу (UI-cleanup §2). */}
       <div
         data-qa="coin-workspace"
-        className="grid grid-cols-1 xl:grid-cols-[72fr_28fr] gap-3.5 items-stretch"
+        className="grid grid-cols-1 xl:grid-cols-[72fr_28fr] gap-3.5 items-start"
       >
       {/*
         Карточка графика — ОБЩИЙ компонент с /futures/:symbol (задача §2, §10).
@@ -691,8 +694,13 @@ export const CoinDetailPage: React.FC = () => {
         «Технические индикаторы» и «Корреляция с BTC» — один и тот же
         компонент на обоих рынках; Spot отличается только НАБОРОМ строк
         (`buildSpotStatisticsRows`) и источником данных.
+
+        ОБЩАЯ сетка `InstrumentMetricsGrid` (UI-cleanup §3/§4/§6): последняя
+        карточка поглощает хвостовые пустые ячейки — на desktop «Корреляция
+        с BTC» занимает всю вторую строку, на tablet нечётный хвост закрывает
+        оба столбца, на мобильном карточки стопкой в одну колонку.
       */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <InstrumentMetricsGrid>
         <InstrumentMetricsCard
           title="Рыночная статистика"
           icon={Activity}
@@ -746,9 +754,10 @@ export const CoinDetailPage: React.FC = () => {
             sourceNote={sectionSourceNote('spot', 'BTCUSDT')}
             emptyMessage="Недостаточно истории для расчёта"
             rows={correlationContext ? buildCorrelationRows(correlationContext) : []}
+            variant="inline"
           />
         )}
-      </div>
+      </InstrumentMetricsGrid>
             </>
           )}
           {moduleId === 'depth' && (

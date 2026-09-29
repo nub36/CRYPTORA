@@ -533,13 +533,17 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
    * ================= ЕДИНЫЙ TOOLBAR (desktop + mobile) =================
    *
    * Состав контролов ОДИН для всех ширин:
-   *     [1ч ▾] [Свечи ▾] [Индикаторы ▾] … [⋯]
+   *     [1ч ▾] [Свечи ▾] [Индикаторы ▾] [⋯]
+   * Все четыре контрола стоят ВПЛОТНУЮ друг к другу СЛЕВА с одинаковым
+   * `gap-1.5` (6px). Никаких `ml-auto`, `justify-between`, flex-спейсеров и
+   * иных правил, отталкивающих `⋯` к правому краю: на широком экране между
+   * «Индикаторами» и «Ещё» не должно возникать пустой полосы (layout-контракт
+   * закреплён тестами `chartTerminal.test.tsx` / `chartToolbarGap.test.tsx`).
+   *
    * «Шаблоны», «Настройки» и «Вписать данные» живут внутри «Ещё» на любой
-   * ширине — раньше это было верно только для мобильной композиции, а на
-   * desktop дублировалось пятью постоянными кнопками с длинными подписями
-   * («1ч · таймфрейм», «Тип графика · Свечи»). Одна композиция = одно место
-   * правки: изменение toolbar автоматически применяется к Spot и Futures,
-   * к мобильной и десктопной ширине (задача §10, §17).
+   * ширине. Одна композиция = одно место правки: изменение toolbar
+   * автоматически применяется к Spot и Futures, к мобильной и десктопной
+   * ширине (задача §10, §17).
    *
    * Отличается ТОЛЬКО плотность (`compact`): подписи, тап-цели 36px и место
    * fullscreen-контрола (рельс справа на desktop, оверлей внутри рамки на
@@ -554,7 +558,7 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
         data-layout={density}
         /* Единый состав контролов; `data-controls` фиксирует инвариант в DOM. */
         data-controls="unified"
-        className={`flex w-full min-w-0 flex-nowrap items-center gap-1.5 border-b border-white/[0.08] bg-surface/80 py-1.5 ${
+        className={`flex w-full min-w-0 flex-nowrap items-center justify-start gap-1.5 border-b border-white/[0.08] bg-surface/80 py-1.5 ${
           dense ? 'px-2' : 'px-2.5 sm:px-3'
         }`}
       >
@@ -600,28 +604,33 @@ export const ChartTerminal: React.FC<ChartTerminalProps> = ({
           {indicatorItems}
         </TerminalDropdown>
 
-        <div className="ml-auto flex shrink-0 items-center">
-          <TerminalDropdown
-            menuKey="more"
-            label="Ещё"
-            fullLabel="Ещё: шаблоны, настройки, вписать данные"
-            icon={MoreHorizontal}
-            compact={dense}
-            iconOnly
-            open={openMenu === 'more'}
-            onToggle={() => toggleMenu('more')}
-            onClose={closeMenu}
-            testId="chart-more-trigger"
-          >
-            <div data-qa="chart-more-templates" className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Шаблоны</div>
-            {templateItems}
-            <div data-qa="chart-more-settings" className="mt-1 border-t border-white/[0.08] px-3 pb-1.5 pt-2 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Настройки</div>
-            {settingsItems}
-            <div className="mt-1 border-t border-white/[0.08] pt-1">
-              {renderFitDataItem('chart-reset-view')}
-            </div>
-          </TerminalDropdown>
-        </div>
+        {/*
+         * «Ещё» — ЧЕТВЁРТЫЙ соседний контрол, а не «прижатая» вправо кнопка:
+         * раньше обёртка `ml-auto flex shrink-0` расталкивала его к правому
+         * краю, и на широком экране между «Индикаторами» и `⋯` висела пустая
+         * полоса. Обёртка удалена — контрол стоит в общем flex-ряду и
+         * наследует тот же `gap-1.5`, что и остальные три.
+         */}
+        <TerminalDropdown
+          menuKey="more"
+          label="Ещё"
+          fullLabel="Ещё: шаблоны, настройки, вписать данные"
+          icon={MoreHorizontal}
+          compact={dense}
+          iconOnly
+          open={openMenu === 'more'}
+          onToggle={() => toggleMenu('more')}
+          onClose={closeMenu}
+          testId="chart-more-trigger"
+        >
+          <div data-qa="chart-more-templates" className="px-3 pb-1.5 pt-1 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Шаблоны</div>
+          {templateItems}
+          <div data-qa="chart-more-settings" className="mt-1 border-t border-white/[0.08] px-3 pb-1.5 pt-2 font-sans text-[11px] font-semibold tracking-[0.14em] text-slate-500">Настройки</div>
+          {settingsItems}
+          <div className="mt-1 border-t border-white/[0.08] pt-1">
+            {renderFitDataItem('chart-reset-view')}
+          </div>
+        </TerminalDropdown>
       </div>
     );
   };

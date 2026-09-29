@@ -149,7 +149,7 @@ export const AssetPulsePanel: React.FC<AssetPulsePanelProps> = ({ pulse }) => {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">OI Δ за 24ч</span>
+              <span className="text-slate-400" title="Изменение открытого интереса за 24 часа">Изм. OI за 24ч</span>
               <span
                 className={`font-bold tabular-nums font-mono ${
                   derivatives.openInterestChange24h == null ? 'text-slate-500' : derivatives.openInterestChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'

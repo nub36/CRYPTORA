@@ -53,7 +53,8 @@ export function conditionLabelRu(c: UserAlertCondition): string {
     case 'BELOW':
       return 'цена ≤';
     case 'OI_SPIKE':
-      return 'OI Δ1ч ≥';
+      // UI-vocabulary (§12): без «Δ» — пользователь не должен угадывать символ.
+      return 'изм. OI за 1ч ≥';
     case 'FUNDING_EXTREME':
       return '|фандинг| ≥';
   }

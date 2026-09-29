@@ -247,26 +247,29 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const toolbar = page.getByTestId('chart-terminal-toolbar');
     await expect(toolbar).toBeVisible({ timeout: 20_000 });
 
-    // Single row: first control and the rightmost toolbar control («•••») share
-    // the same row. PR#32 moved fullscreen out of this toolbar, and the unified
-    // toolbar moved «Вписать данные» into the overflow menu, so the right-hand
-    // anchor of the row is now the overflow trigger.
+    // Single row: the first control and «•••» share the same row. PR#32 moved
+    // fullscreen out of this toolbar, and the unified toolbar moved
+    // «Вписать данные» into the overflow menu.
     const firstTrigger = page.getByTestId('chart-timeframe-trigger');
+    const indicators = page.getByTestId('chart-indicators-trigger');
     const overflow = page.locator('[data-qa="chart-more-trigger"]');
     const a = await firstTrigger.boundingBox();
+    const i = await indicators.boundingBox();
     const b = await overflow.boundingBox();
     expect(a).not.toBeNull();
+    expect(i).not.toBeNull();
     expect(b).not.toBeNull();
     expect(Math.abs(a!.y - b!.y), 'toolbar controls on same row').toBeLessThan(6);
-    // «•••» sits to the right of the dropdowns (flex spacer pushes it right).
+    // «•••» стоит сразу за «Индикаторами» с тем же gap — НЕ прижат к правому
+    // краю (UI-cleanup §1: между контролами не должно быть пустой полосы).
     expect(b!.x).toBeGreaterThan(a!.x);
+    const gap = b!.x - (i!.x + i!.width);
+    expect(gap, '«•••» immediately follows «Индикаторы»').toBeGreaterThan(0);
+    expect(gap, '«•••» immediately follows «Индикаторы»').toBeLessThan(24);
 
-    // The fullscreen control left the toolbar and no spacer/hole was left behind:
-    // «•••» is flush with the toolbar's right padding edge.
+    // The fullscreen control left the toolbar and no spacer/hole was left behind.
     await expect(toolbar.locator('[data-qa="chart-fullscreen"]')).toHaveCount(0);
     await expect(toolbar.locator('[data-qa="chart-reset-view"]'), '«Вписать данные» lives in the overflow menu').toHaveCount(0);
-    const toolbarRight = (await toolbar.boundingBox())!.x + (await toolbar.boundingBox())!.width;
-    expect(toolbarRight - (b!.x + b!.width), 'no leftover spacer where fullscreen used to be').toBeLessThan(20);
 
     const toolbarBox = await toolbar.boundingBox();
     expect(toolbarBox!.height, 'toolbar is a single compact row').toBeLessThan(60);

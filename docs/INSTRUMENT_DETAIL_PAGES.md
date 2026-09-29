@@ -53,7 +53,7 @@ Futures · MEWUSDT`). Правило жёсткое: **отсутствующа�
 |---|---|---|
 | График | `/api/v3/klines` (`market:'spot'`) | `/fapi/v1/klines` (`market:'futures'`) |
 | Рыночная статистика | цена, 24ч %, max/min, объём, капитализация, supply | цена, 24ч %, max/min, оборот USDT, базовый объём, диапазон/цена |
-| Деривативы | `compact`: mark/index, фандинг-APR, OI Δ1ч | `full`: mark/index, базис %, фандинг 8ч + APR, следующий фандинг, OI, OI Δ1ч/Δ24ч, объём фьючерса |
+| Деривативы | `compact`: mark/index, фандинг-APR, изм. OI 1ч | `full`: mark/index, базис %, фандинг 8ч + APR, следующий фандинг, OI, изм. OI 1ч/24ч, объём фьючерса |
 | Индикаторы | RSI/MACD/SMA/Bollinger/ATR/VWAP по SPOT-свечам | те же формулы по USD-M свечам |
 | Корреляция с BTC | против BTCUSDT Spot | против **BTCUSDT PERP** (USD-M) |
 | Стакан | WS Spot depth (`OrderBookL2 market="spot"`) | REST `/fapi/v1/depth` |
