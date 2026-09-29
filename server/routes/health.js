@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { checkDatabase } from '../db/pool.js';
 import { config } from '../config.js';
 import { getMailStatus } from '../services/mail.js';
+import { isProviderConfigured } from '../services/oauth/providers.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,11 +40,14 @@ router.get('/', async (req, res) => {
     environment: config.NODE_ENV,
     uptimeSeconds: Math.floor(process.uptime()),
     database: dbHealthy ? 'connected' : 'disconnected',
-    // Configuration status only — never a host, user or credential.
-    mail: (() => {
-      const s = getMailStatus();
-      return { configured: s.configured, kind: s.kind ?? 'unavailable' };
-    })(),
+    // Booleans ONLY — never a host, user, client id, credential or token.
+    mail: { configured: getMailStatus().configured === true },
+    providers: {
+      google: isProviderConfigured('google'),
+      telegram: isProviderConfigured('telegram'),
+      yandex: isProviderConfigured('yandex'),
+      vk: isProviderConfigured('vk'),
+    },
     timestamp: new Date().toISOString(),
   });
 });

@@ -119,8 +119,12 @@ FRESH_AUTH_MAX_AGE_MINUTES=30             # «свежий» вход для lin
    GOOGLE_CLIENT_SECRET=GOCSPX-...
    ```
 
-Сервер использует authorization-code flow с `state`, PKCE (S256) и `nonce`;
-ID-токен проверяется по `iss`, `aud`, `exp`, `nonce`. Email считается
+Сервер использует authorization-code flow с `state`, PKCE (S256) и `nonce`.
+ID-токен проходит полную OIDC-верификацию (`jose`): подпись RS256 против
+официального JWKS Google (URI из OIDC discovery, выбор ключа по `kid`,
+кеширование и авто-refetch при ротации ключей), затем `iss`, `aud ==
+GOOGLE_CLIENT_ID`, `exp`/`iat` (±60с clock tolerance), `nonce`. Токены с
+`alg:none`, чужим ключом или неизвестным `kid` отклоняются. Email считается
 подтверждённым только при `email_verified: true` от Google.
 
 ## 4. Telegram (Login Widget)

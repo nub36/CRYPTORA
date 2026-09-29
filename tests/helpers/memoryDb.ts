@@ -553,7 +553,7 @@ export class MemoryDb {
  */
 export function seedUser(
   db: MemoryDb,
-  overrides: Partial<UserRow> & { password_hash: string }
+  overrides: Partial<UserRow> & { password_hash: string | null }
 ): UserRow {
   const now = new Date();
   const row: UserRow = {

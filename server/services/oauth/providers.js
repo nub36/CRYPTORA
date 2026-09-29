@@ -23,14 +23,19 @@
  *   - Token exchange is strictly server-side; client secrets never reach the
  *     frontend and never appear in logs.
  *   - Redirect URIs are computed from APP_ORIGIN only (exact allowlist).
- *   - The ID-token claims are trusted because the token is obtained directly
- *     from the issuer's token endpoint over TLS (OIDC Core §3.1.3.7 allows
- *     skipping signature validation exactly in this case).
+ *   - Google ID tokens get FULL local OIDC verification (googleIdToken.js):
+ *     RS256 signature against Google's JWKS via official discovery, kid
+ *     selection with rotation-aware caching, iss/aud/exp/iat/nonce checks;
+ *     alg:none / foreign-key / malformed tokens are rejected.
+ *   - Yandex/VK identity (subject + email) comes ONLY from server-to-server
+ *     userinfo calls authenticated by the access token we just exchanged —
+ *     never from anything the browser sent.
  *   - Every outbound HTTP call is bounded by OAUTH_HTTP_TIMEOUT_MS.
  */
 
 import crypto from 'node:crypto';
 import { config } from '../../config.js';
+import { verifyGoogleIdToken } from './googleIdToken.js';
 
 /** Providers using the OAuth redirect dance (Telegram is widget-based). */
 export const OAUTH_PROVIDERS = ['google', 'yandex', 'vk'];
@@ -142,17 +147,6 @@ export class OAuthExchangeError extends Error {
   }
 }
 
-/** Decode a JWT payload WITHOUT trusting it yet — claims are validated below. */
-function decodeJwtPayload(jwt) {
-  const parts = String(jwt).split('.');
-  if (parts.length !== 3) throw new OAuthExchangeError('malformed id_token');
-  try {
-    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-  } catch {
-    throw new OAuthExchangeError('undecodable id_token payload');
-  }
-}
-
 async function exchangeGoogle({ code, codeVerifier, nonce }) {
   const res = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -170,29 +164,27 @@ async function exchangeGoogle({ code, codeVerifier, nonce }) {
   const body = await res.json();
   if (!body.id_token) throw new OAuthExchangeError('google: no id_token');
 
-  const claims = decodeJwtPayload(body.id_token);
-
-  // OIDC claim validation: issuer, audience, expiry, nonce (replay).
-  if (claims.iss !== 'https://accounts.google.com' && claims.iss !== 'accounts.google.com') {
-    throw new OAuthExchangeError('google: unexpected issuer');
+  // FULL OIDC verification (services/oauth/googleIdToken.js): RS256 signature
+  // against Google's JWKS (via official discovery, kid-selected, rotation-
+  // aware cache) + iss / aud / exp / iat (clock tolerance) / nonce / sub.
+  // Malformed, unsigned (alg:none) and foreign-key tokens are all rejected.
+  let verified;
+  try {
+    verified = await verifyGoogleIdToken(body.id_token, { nonce });
+  } catch (err) {
+    throw new OAuthExchangeError(
+      `google: ${err instanceof Error ? err.message : 'id_token verification failed'}`
+    );
   }
-  if (claims.aud !== config.GOOGLE_CLIENT_ID) {
-    throw new OAuthExchangeError('google: audience mismatch');
-  }
-  if (typeof claims.exp !== 'number' || claims.exp * 1000 < Date.now()) {
-    throw new OAuthExchangeError('google: id_token expired');
-  }
-  if (nonce && claims.nonce !== nonce) {
-    throw new OAuthExchangeError('google: nonce mismatch');
-  }
-  if (!claims.sub) throw new OAuthExchangeError('google: no subject');
 
   return {
     provider: 'google',
-    subject: String(claims.sub),
-    email: claims.email ? String(claims.email).toLowerCase() : null,
-    emailVerified: claims.email_verified === true,
-    displayName: claims.name || (claims.email ? String(claims.email).split('@')[0] : 'Google user'),
+    subject: verified.sub,
+    // email is only trusted downstream when emailVerified === true.
+    email: verified.email,
+    emailVerified: verified.emailVerified,
+    displayName:
+      verified.name || (verified.email ? verified.email.split('@')[0] : 'Google user'),
   };
 }
 
@@ -223,8 +215,11 @@ async function exchangeYandex({ code, codeVerifier }) {
     provider: 'yandex',
     subject: String(info.id),
     email: info.default_email ? String(info.default_email).toLowerCase() : null,
-    // Yandex only exposes mailbox addresses it hosts/verified for the account.
-    emailVerified: Boolean(info.default_email),
+    // `default_email` comes from the server-to-server /info call and is the
+    // Yandex-account mailbox (Yandex ID docs: the emails array only contains
+    // addresses attached to the account itself) — not client-supplied input.
+    // If Yandex ever adds an explicit verification flag we honour it.
+    emailVerified: Boolean(info.default_email) && info.email_verified !== false,
     displayName: info.display_name || info.real_name || info.login || 'Yandex user',
   };
 }
@@ -266,8 +261,13 @@ async function exchangeVk({ code, codeVerifier, deviceId, state }) {
   return {
     provider: 'vk',
     subject: String(subject),
+    // Email is taken ONLY from the server-to-server user_info response (the
+    // VK ID login mailbox), never from the token response or the browser.
     email: user.email ? String(user.email).toLowerCase() : null,
-    emailVerified: Boolean(user.email), // VK returns only confirmed addresses
+    // Trust the explicit claim when VK sends one; when absent, the address is
+    // the confirmed VK ID login email returned by user_info. An explicit
+    // `email_verified: false` always wins → treated as unverified.
+    emailVerified: Boolean(user.email) && user.email_verified !== false,
     displayName: name || 'VK user',
   };
 }
