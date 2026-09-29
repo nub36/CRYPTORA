@@ -1,6 +1,6 @@
 import { useTheme } from '@/context/ThemeContext';
 import { readThemeToken } from '@/theme/theme';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createChart, ColorType, LineStyle, IChartApi, ISeriesApi, IPriceLine, LineData, Time, TickMarkType } from 'lightweight-charts';
 import type { MouseEventParams, SeriesMarker } from 'lightweight-charts';
 import type { Timeframe } from '@/types/market';
@@ -17,6 +17,13 @@ import {
 } from './chartPresentationConfig';
 import { OHLCV } from '@/types/market';
 import { KlineTick } from '@/types/realtime';
+import {
+  calculatePaneLayout,
+  constrainPaneHeight,
+  DEFAULT_INDICATOR_HEIGHTS,
+  PANE_SEPARATOR_SIZE,
+  type IndicatorPaneKey,
+} from './chartPaneLayout';
 
 export interface ChartIndicatorData {
   sma20?: number[];
@@ -212,6 +219,47 @@ export function formatChartPriceLabel(price: number, compact = false): string {
   return trimTrailingZeros(baseChartPriceLabel(price));
 }
 
+interface PaneResizeSeparatorProps {
+  pane: IndicatorPaneKey;
+  onResizeStart: (pane: IndicatorPaneKey, clientY: number) => void;
+  onResizeMove: (pane: IndicatorPaneKey, clientY: number) => void;
+  onResizeEnd: (pane: IndicatorPaneKey) => void;
+}
+
+/** Thin visual divider with a 12px pointer/touch hit target. */
+const PaneResizeSeparator: React.FC<PaneResizeSeparatorProps> = ({ pane, onResizeStart, onResizeMove, onResizeEnd }) => (
+  <div
+    role="separator"
+    aria-orientation="horizontal"
+    aria-label={`Изменить высоту панели ${pane}`}
+    data-qa={`chart-pane-separator-${pane.toLowerCase()}`}
+    className="group/separator relative z-20 flex w-full cursor-row-resize touch-none select-none items-center justify-center"
+    style={{ height: PANE_SEPARATOR_SIZE }}
+    onPointerDown={(event) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      document.documentElement.classList.add('select-none');
+      onResizeStart(pane, event.clientY);
+    }}
+    onPointerMove={(event) => {
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+      event.preventDefault();
+      onResizeMove(pane, event.clientY);
+    }}
+    onPointerUp={(event) => {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      document.documentElement.classList.remove('select-none');
+      onResizeEnd(pane);
+    }}
+    onPointerCancel={() => {
+      document.documentElement.classList.remove('select-none');
+      onResizeEnd(pane);
+    }}
+  >
+    <span className="h-px w-full bg-white/[0.08] transition-colors group-hover/separator:bg-cyan-400/50 group-active/separator:bg-cyan-300/70" />
+  </div>
+);
+
 /**
  * Crosshair OHLCV snapshot — shown when user hovers over chart.
  */
@@ -308,6 +356,48 @@ export const CandleChart: React.FC<CandleChartProps> = ({
    * шкалы, а не угадывать их ширину константой.
    */
   const [priceScaleWidth, setPriceScaleWidth] = useState(0);
+  /**
+   * Separate lightweight-charts instances size their axes from their own labels.
+   * Keep the largest measured width as a shared minimum for every pane. The
+   * value is measured from real rendered labels (not guessed from a symbol).
+   */
+  const [sharedPriceScaleWidth, setSharedPriceScaleWidth] = useState(0);
+  const reportPriceScaleWidth = useCallback((width: number) => {
+    if (!Number.isFinite(width) || width <= 0) return;
+    setSharedPriceScaleWidth((current) => Math.max(current, Math.ceil(width)));
+  }, []);
+
+  const [requestedPaneHeights, setRequestedPaneHeights] = useState(DEFAULT_INDICATOR_HEIGHTS);
+  const visiblePanes = useMemo<IndicatorPaneKey[]>(() => [
+    ...(showRSI ? ['RSI' as const] : []),
+    ...(showMACD ? ['MACD' as const] : []),
+  ], [showRSI, showMACD]);
+  // Preserve the historic default main-chart height while making the combined
+  // stack a fixed budget during drag. Toggling panes therefore never changes
+  // horizontal geometry and user sizes survive within this component session.
+  const paneStackHeight = height
+    + visiblePanes.reduce((sum, key) => sum + DEFAULT_INDICATOR_HEIGHTS[key] + PANE_SEPARATOR_SIZE, 0);
+  const paneLayout = useMemo(
+    () => calculatePaneLayout(paneStackHeight, visiblePanes, requestedPaneHeights),
+    [paneStackHeight, visiblePanes, requestedPaneHeights],
+  );
+  const dragRef = useRef<{ pane: IndicatorPaneKey; startY: number; startHeight: number } | null>(null);
+  const handlePaneResizeStart = useCallback((pane: IndicatorPaneKey, clientY: number) => {
+    dragRef.current = { pane, startY: clientY, startHeight: paneLayout.paneHeights[pane] };
+  }, [paneLayout.paneHeights]);
+  const handlePaneResizeMove = useCallback((pane: IndicatorPaneKey, clientY: number) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pane !== pane) return;
+    // Separator is above its pane: moving upward gives that pane more room.
+    const requested = drag.startHeight - (clientY - drag.startY);
+    setRequestedPaneHeights((current) => ({
+      ...current,
+      [pane]: constrainPaneHeight(pane, requested, paneStackHeight, visiblePanes, current),
+    }));
+  }, [paneStackHeight, visiblePanes]);
+  const handlePaneResizeEnd = useCallback(() => { dragRef.current = null; }, []);
+  useEffect(() => () => document.documentElement.classList.remove('select-none'), []);
+
   const measurePriceScale = useCallback(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -319,7 +409,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     }
     if (!Number.isFinite(next)) return;
     setPriceScaleWidth((prev) => (Math.abs(prev - next) < 1 ? prev : next));
-  }, []);
+    reportPriceScaleWidth(next);
+  }, [reportPriceScaleWidth]);
   const measurePriceScaleRef = useRef(measurePriceScale);
   measurePriceScaleRef.current = measurePriceScale;
   const klineAgeMs = realtimeKline ? clockMs - realtimeKline.timestamp : Number.POSITIVE_INFINITY;
@@ -388,6 +479,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         // Отступ сверху, чтобы свечи/линия цены не прижимались к верхней подписи
         // оси и к последней цене (визуальный проход владельца по скринам).
         scaleMargins: { top: 0.12, bottom: 0.18 },
+        minimumWidth: sharedPriceScaleWidth,
       },
       timeScale: {
         borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
@@ -398,7 +490,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         tickMarkFormatter: (time: Time, tickType: TickMarkType) => formatChartAxisTime(time, tickType),
         barSpacing: 10, // свечи шире — плотность как на TradingView
       },
-      height,
+      height: paneLayout.mainHeight,
     });
 
     const candleSeries = chart.addCandlestickSeries({
@@ -591,9 +683,10 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     const chart = chartRef.current;
     if (!chart) return;
     const width = chartContainerRef.current?.clientWidth;
-    chart.applyOptions(width && width > 0 ? { height, width } : { height });
+    const nextHeight = paneLayout.mainHeight;
+    chart.applyOptions(width && width > 0 ? { height: nextHeight, width } : { height: nextHeight });
     timeSyncRef.current.syncFrom(chart);
-  }, [height]);
+  }, [paneLayout.mainHeight]);
 
   /**
    * Смена инструмента: сброс состояния графика под НОВЫЙ символ.
@@ -881,6 +974,12 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     handleResetView();
   }, [handleResetView, resetViewToken]);
 
+  useEffect(() => {
+    if (sharedPriceScaleWidth <= 0) return;
+    chartRef.current?.applyOptions({ rightPriceScale: { minimumWidth: sharedPriceScaleWidth } });
+    measurePriceScale();
+  }, [sharedPriceScaleWidth, measurePriceScale]);
+
   /*
    * Смена ширины экрана (desktop <-> mobile composition) переключает формат
    * подписей БЕЗ пересоздания графика: обновляется только опция localization,
@@ -1020,8 +1119,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         )}
       </div>
 
-      <div className="relative w-full" style={{ height }}>
-        <div ref={chartContainerRef} className="w-full" style={{ height }} />
+      <div className="relative w-full" style={{ height: paneLayout.mainHeight }}>
+        <div ref={chartContainerRef} className="w-full" style={{ height: paneLayout.mainHeight }} />
         {showResetControl && (
           <button
             type="button"
@@ -1033,8 +1132,29 @@ export const CandleChart: React.FC<CandleChartProps> = ({
           </button>
         )}
       </div>
-      {showRSI && <IndicatorPaneChart kind="RSI" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={126} showTimeAxis={!showMACD} timeSync={timeSyncRef.current} />}
-      {showMACD && <IndicatorPaneChart kind="MACD" candles={data} realtimeKline={realtimeKline} expectedSymbol={symbol.split('/')[0]} timeframe={timeframe} interval={mapTimeframeToBinanceInterval(timeframe)} height={146} showTimeAxis timeSync={timeSyncRef.current} />}
+      {visiblePanes.map((kind, index) => (
+        <React.Fragment key={kind}>
+          <PaneResizeSeparator
+            pane={kind}
+            onResizeStart={handlePaneResizeStart}
+            onResizeMove={handlePaneResizeMove}
+            onResizeEnd={handlePaneResizeEnd}
+          />
+          <IndicatorPaneChart
+            kind={kind}
+            candles={data}
+            realtimeKline={realtimeKline}
+            expectedSymbol={symbol.split('/')[0]}
+            timeframe={timeframe}
+            interval={mapTimeframeToBinanceInterval(timeframe)}
+            height={paneLayout.paneHeights[kind]}
+            showTimeAxis={index === visiblePanes.length - 1}
+            timeSync={timeSyncRef.current}
+            priceScaleMinimumWidth={sharedPriceScaleWidth}
+            onPriceScaleWidthChange={reportPriceScaleWidth}
+          />
+        </React.Fragment>
+      ))}
     </div>
   );
 };

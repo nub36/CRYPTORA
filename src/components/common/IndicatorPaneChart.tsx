@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time, TickMarkType } from 'lightweight-charts';
 import type { OHLCV, Timeframe } from '@/types/market';
 import type { KlineTick } from '@/types/realtime';
@@ -20,10 +20,14 @@ interface IndicatorPaneChartProps {
   height: number;
   showTimeAxis: boolean;
   timeSync: ChartTimeRangeSync;
+  /** Shared minimum keeps every independent lightweight-charts plot boundary aligned. */
+  priceScaleMinimumWidth: number;
+  onPriceScaleWidthChange: (width: number) => void;
 }
 
 export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
   kind, candles, realtimeKline, expectedSymbol, timeframe, interval, height, showTimeAxis, timeSync,
+  priceScaleMinimumWidth, onPriceScaleWidthChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -33,6 +37,15 @@ export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
   const zeroRef = useRef<ISeriesApi<'Line'> | null>(null);
   const levelRefs = useRef<Array<ISeriesApi<'Line'> | null>>([]);
   const { resolved: theme } = useTheme();
+  const widthCallbackRef = useRef(onPriceScaleWidthChange);
+  widthCallbackRef.current = onPriceScaleWidthChange;
+
+  const reportPriceScaleWidth = useCallback((chart: IChartApi) => {
+    try {
+      const width = chart.priceScale('right').width();
+      if (Number.isFinite(width) && width > 0) widthCallbackRef.current(width);
+    } catch { /* scale is not ready yet */ }
+  }, []);
 
   const effectiveCandles = useMemo(() => realtimeKline
     ? mergeKlineIntoCandles(candles, realtimeKline, expectedSymbol, interval)
@@ -56,6 +69,7 @@ export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
       rightPriceScale: {
         borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
         scaleMargins: kind === 'RSI' ? { top: 0.08, bottom: 0.08 } : { top: 0.1, bottom: 0.1 },
+        minimumWidth: priceScaleMinimumWidth,
       },
       timeScale: {
         borderColor: readThemeToken('--chart-border', 'rgba(255, 255, 255, 0.08)'),
@@ -105,13 +119,19 @@ export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver((entries) => {
-        const width = entries[0]?.contentRect.width;
-        if (width && chartRef.current === chart) chart.applyOptions({ width });
+        const rect = entries[0]?.contentRect;
+        if (rect?.width && chartRef.current === chart) {
+          chart.applyOptions({ width: rect.width, ...(rect.height > 0 ? { height: rect.height } : {}) });
+          reportPriceScaleWidth(chart);
+        }
       });
       observer.observe(containerRef.current);
     }
     const handleResize = () => {
-      if (containerRef.current && chartRef.current === chart) chart.applyOptions({ width: containerRef.current.clientWidth });
+      if (containerRef.current && chartRef.current === chart) {
+        chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight || height });
+        reportPriceScaleWidth(chart);
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -127,7 +147,20 @@ export const IndicatorPaneChart: React.FC<IndicatorPaneChartProps> = ({
       zeroRef.current = null;
       levelRefs.current = [];
     };
-  }, [height, kind, showTimeAxis, timeSync]);
+    // Creation is intentionally independent from pane height: pointer resize
+    // must resize the existing chart, not destroy its series/history.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, timeSync, reportPriceScaleWidth]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.applyOptions({
+      height,
+      rightPriceScale: { minimumWidth: priceScaleMinimumWidth },
+    });
+    reportPriceScaleWidth(chart);
+  }, [height, priceScaleMinimumWidth, reportPriceScaleWidth]);
 
   useEffect(() => {
     const chart = chartRef.current;
