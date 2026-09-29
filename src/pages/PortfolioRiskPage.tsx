@@ -156,7 +156,7 @@ export const PortfolioRiskPage: React.FC = () => {
       {/* Data source notice */}
       {report.staticReferenceUsed && (
         <div className="p-3 bg-amber-950/30 border border-amber-500/20 rounded-xl text-xs font-sans text-amber-300">
-          <span className="font-semibold">⚠ Справочные β / σ:</span> Для некоторых активов используются исторические справочные значения (не из свечей). Стресс-тесты используют фиксированные исторические шоки.
+          <span className="font-semibold">⚠ Справочные бета (β) / волатильность (σ):</span> Для некоторых активов используются исторические справочные значения (не из свечей). Стресс-тесты используют фиксированные исторические шоки.
         </div>
       )}
 
@@ -250,7 +250,7 @@ export const PortfolioRiskPage: React.FC = () => {
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <span className="font-bold text-white tracking-wide">Декомпозиция весов и параметров чувствительности</span>
             <span className="text-[11px] text-slate-500">
-              {riskOverrides ? 'β из свечей (DERIVED)' : 'β недоступны (UNAVAILABLE)'}
+              {riskOverrides ? 'Бета (β) из свечей (DERIVED)' : 'Бета (β) недоступны (UNAVAILABLE)'}
             </span>
           </div>
           <div className="overflow-x-auto">

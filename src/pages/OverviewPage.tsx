@@ -51,7 +51,7 @@ const fearGreedLabelRu = (s: string): string => FEAR_GREED_RU[s] ?? s;
 const DeltaChip: React.FC<{ value: number | null; qa: string; title: string }> = ({ value, qa, title }) =>
   value === null ? (
     <span data-qa={qa} data-state="unavailable" title={title} className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded text-slate-500 border border-white/[0.12]">
-      Δ24ч —
+      Изм. 24ч —
     </span>
   ) : (
     <span
@@ -295,7 +295,7 @@ export const OverviewPage: React.FC = () => {
             {dataMode !== 'live'
               ? 'Суммарный объём QA-датасета'
               : overview.volumeChange24h === null
-                ? 'Δ24ч появится после 24ч наблюдений в этом браузере'
+                ? 'Изменение за 24ч появится после 24ч наблюдений в этом браузере'
                 : 'Суммарный объём доступных источников'}
           </div>
         </div>
@@ -515,7 +515,7 @@ export const OverviewPage: React.FC = () => {
                   // DERIVED: взвешенный Δ OI 24ч по фьючерсам с ACTUAL-источником
                   const actualOi = futures.filter((f) => f.openInterestChangeSource === 'ACTUAL' && f.openInterest != null && f.openInterest > 0 && f.openInterestChange24h != null);
                   if (actualOi.length === 0) {
-                    return <div className="ui-helper mt-0.5">Δ24ч — нет фактических данных OI</div>;
+                    return <div className="ui-helper mt-0.5">Изм. OI за 24ч — нет фактических данных</div>;
                   }
                   const weightedChange = actualOi.reduce((s, f) => s + f.openInterestChange24h! * (f.openInterest ?? 0), 0)
                     / actualOi.reduce((s, f) => s + (f.openInterest ?? 0), 0);

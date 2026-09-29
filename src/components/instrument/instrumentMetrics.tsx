@@ -165,7 +165,7 @@ export function buildFuturesStatisticsRows(contract: FuturesAsset): InstrumentMe
  * Деривативные метрики контракта (§6).
  *
  * `variant='full'` (страница фьючерса) — полный набор: метка, индекс, базис,
- * фандинг 8ч и APR, ближайшее начисление, OI и его Δ1ч/Δ24ч, оборот.
+ * фандинг 8ч и APR, ближайшее начисление, OI и его изменение за 1ч/24ч, оборот.
  * `variant='compact'` (Spot-страница) — те же строки минус то, что рядом уже
  * показывает Pulse-панель, чтобы не дублировать метрику дважды на экране.
  */
@@ -221,19 +221,25 @@ export function buildDerivativesRows(
     });
   }
   rows.push({
-    label: 'OI Δ за 1 час',
+    /**
+     * UI-vocabulary (§12 cleanup): «Δ» в пользовательских подписях запрещён —
+     * одиночный математический символ выглядит как случайный треугольник.
+     * Полная форма для карточки + tooltip с расшифровкой.
+     */
+    label: 'Изменение OI за 1 час',
     value: contract.openInterestChange1h != null ? formatPercent(contract.openInterestChange1h) : <NoData />,
     tone: contract.openInterestChange1h ?? null,
     qa: 'deriv-oi-change-1h',
+    hint: 'Изменение открытого интереса за 1 час',
     suffix: <OiDeltaBadge source={contract.openInterestChangeSource} />,
   });
   if (full) {
     rows.push({
-      label: 'OI Δ за 24 часа',
+      label: 'Изменение OI за 24 часа',
       value: contract.openInterestChange24h != null ? formatPercent(contract.openInterestChange24h) : <NoData />,
       tone: contract.openInterestChange24h ?? null,
       qa: 'deriv-oi-change-24h',
-      hint: 'Ряд openInterestHist биржа отдаёт не по всем контрактам — тогда текущий OI показан, а дельта «Нет данных».',
+      hint: 'Изменение открытого интереса за 24 часа. Ряд openInterestHist биржа отдаёт не по всем контрактам — тогда текущий OI показан, а изменение «Нет данных».',
     });
   }
   rows.push({
@@ -324,7 +330,11 @@ export interface CorrelationContext {
 export function buildCorrelationRows(context: CorrelationContext): InstrumentMetricRowProps[] {
   return [
     {
-      label: 'Корреляция (ρ)',
+      /*
+       * UI-vocabulary (§12): «Корреляция» без одиночного «ρ» в подписи;
+       * символ живёт в tooltip, где он общепринят и объяснён.
+       */
+      label: 'Корреляция',
       value: context.correlation != null
         ? (
           <span className={
@@ -336,16 +346,19 @@ export function buildCorrelationRows(context: CorrelationContext): InstrumentMet
           </span>
         )
         : <NoData />,
+      hint: 'Коэффициент корреляции ρ с BTC (Пирсон): −1…+1',
       qa: 'correlation-rho',
     },
     {
-      label: 'Бета (β)',
+      label: 'Бета',
       value: context.beta != null ? context.beta.toFixed(2) : <NoData />,
+      hint: 'Бета (β) к BTC: во сколько раз сильнее реагирует цена инструмента',
       qa: 'correlation-beta',
     },
     {
       label: 'Окно наблюдения',
       value: `${context.lookback} свечей · ${context.timeframe}`,
+      hint: 'Сколько последних свечей участвует в расчёте',
       qa: 'correlation-window',
     },
   ];

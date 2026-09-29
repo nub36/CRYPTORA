@@ -13,6 +13,7 @@ export {
   type InstrumentMetricRowProps,
 } from './InstrumentSectionCard';
 export { InstrumentMetricsCard } from './InstrumentMetricsCard';
+export { InstrumentMetricsGrid, trailingFillClasses } from './InstrumentMetricsGrid';
 export { InstrumentChartCard } from './InstrumentChartCard';
 export { InstrumentRadarCard, type RadarSourcePolicy } from './InstrumentRadarCard';
 export {

@@ -55,10 +55,29 @@ export const InstrumentChartCard: React.FC<InstrumentChartCardProps> = ({
   terminal,
   qa = 'instrument-chart-card',
 }) => (
+  /*
+   * Компактный вертикальный стек карточки (UI-cleanup после PR #37, §2):
+   *
+   *  • карточка — ЯВНЫЙ flex-столбец `flex-col gap-2.5`: высота каждого
+   *    ребёнка определяется только его содержимым, поэтому между заголовком
+   *    и терминалом не может возникнуть «пустая полоса» — нет ни
+   *    зарезервированных слотов под toolbar, ни растягиваемых детей
+   *    (flex-grow), ни absolute-вставок, влияющих на поток;
+   *  • заголовок — ОДНА строка нормальной минимальной высоты (контент +
+   *    `pb-2` + divider). `min-height` не задаётся вовсе: лишнему воздуху
+   *    взяться неоткуда;
+   *  • состояния загрузки/ошибки (`ChartDataState`) и `notice` занимают
+   *    место ТОЛЬКО когда реально отрендерены — в `ready` они не оставляют
+   *    после себя пустых блоков;
+   *  • карточку нельзя «растянуть» под высоту соседа по grid — страницы
+   *    передают её в grid с `items-start` (см. CoinDetailPage /
+   *    FuturesContractPage), поэтому внутри рамки не появляется мёртвого
+   *    пространства снизу.
+   */
   <div
     data-qa={qa}
     data-market={market}
-    className="min-w-0 space-y-3 rounded-lg border border-surface-border bg-surface p-3 sm:p-4"
+    className="flex min-w-0 flex-col gap-2.5 rounded-lg border border-surface-border bg-surface p-3 sm:p-4"
   >
     <div className="flex flex-col gap-2 border-b border-surface-border pb-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
