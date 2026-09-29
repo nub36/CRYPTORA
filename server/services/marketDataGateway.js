@@ -1,5 +1,6 @@
 import { spotUniversePayload, futuresUniversePayload } from './exchangeUniverse.js';
 import { assetMetadataPayload } from './assetMetadata.js';
+import { futuresMarketSnapshotPayload } from './futuresMarketData.js';
 
 const BINANCE_SPOT = 'https://api.binance.com';
 const BINANCE_FUTURES = 'https://fapi.binance.com';
@@ -74,6 +75,14 @@ const ROUTES = new Map([
   ['/binance/futures/fapi/v1/ticker/24hr', {
     origin: BINANCE_FUTURES, path: '/fapi/v1/ticker/24hr', optional: ['symbol'], validators: { symbol },
   }],
+  /**
+   * USD-M klines. Separate fixed upstream path from the Spot kline route:
+   * a Futures chart must never be served Spot candles (task §5 / RC-6).
+   */
+  ['/binance/futures/fapi/v1/klines', {
+    origin: BINANCE_FUTURES, path: '/fapi/v1/klines', required: ['symbol', 'interval', 'limit'],
+    validators: { symbol, interval: oneOf(BINANCE_INTERVALS), limit: integer(1, MAX_LIMIT) },
+  }],
   ['/binance/futures/futures/data/openInterestHist', {
     origin: BINANCE_FUTURES, path: '/futures/data/openInterestHist', required: ['symbol', 'period', 'limit'],
     validators: { symbol, period: oneOf(FUTURES_PERIODS), limit: integer(1, 500) },
@@ -89,6 +98,12 @@ const COMPUTED_ROUTES = new Map([
   ['/universe/spot', { handler: spotUniversePayload, cacheSeconds: 300 }],
   ['/universe/futures', { handler: futuresUniversePayload, cacheSeconds: 300 }],
   ['/metadata/assets', { handler: assetMetadataPayload, cacheSeconds: 3600 }],
+  /**
+   * Aggregated USD-M snapshot (RC-1): price/funding/basis/volume/change for
+   * every active perpetual plus the server-swept per-symbol open interest.
+   * One browser request per poll replaces the previous N+1 OI storm.
+   */
+  ['/derivatives/futures', { handler: futuresMarketSnapshotPayload, cacheSeconds: 10 }],
 ]);
 
 /**

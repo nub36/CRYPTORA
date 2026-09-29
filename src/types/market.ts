@@ -2,6 +2,23 @@ import { z } from 'zod';
 
 export type Timeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '1D' | '1W';
 
+/**
+ * Explicit market dimension.
+ *
+ * It is carried end-to-end (route/UI → chart terminal → data service →
+ * adapter → gateway) so a Futures contract can never be charted from the Spot
+ * kline endpoint. It is NEVER inferred from the symbol string: `1000PEPE`
+ * exists only on USD-M, `BTC` exists on both, and a ticker alone carries no
+ * market information.
+ */
+export const MarketTypeSchema = z.enum(['spot', 'futures']);
+export type MarketType = z.infer<typeof MarketTypeSchema>;
+
+/** Parse a `?market=` query value; anything unrecognised degrades to Spot. */
+export function parseMarketType(value: string | null | undefined): MarketType {
+  return value === 'futures' ? 'futures' : 'spot';
+}
+
 export type AssetCategory = 'all' | 'l1' | 'defi' | 'l2' | 'ai' | 'meme' | 'other';
 
 export const DataProvenanceSchema = z.object({
@@ -102,9 +119,22 @@ export const AssetDetailSchema = AssetSummarySchema.extend({
 export type AssetDetail = z.infer<typeof AssetDetailSchema>;
 
 export const FuturesAssetSchema = z.object({
+  /** Display pair, e.g. `1000PEPE/USDT`. */
   symbol: z.string(),
+  /**
+   * Exchange contract symbol, e.g. `1000PEPEUSDT`. This — never the base
+   * ticker — is the join key for tickers/premium/OI and the symbol sent to the
+   * USD-M kline endpoint. Optional for the QA dataset.
+   */
+  contractSymbol: z.string().optional(),
+  /** Contract base asset as exchangeInfo reports it (`1000PEPE`, not `PEPE`). */
+  baseAsset: z.string().optional(),
   markPrice: z.number(),
   indexPrice: z.number(),
+  /** Last traded price from `/fapi/v1/ticker/24hr`; null = ticker row absent. */
+  lastPrice: z.number().nullable().optional(),
+  /** 24h change % from `/fapi/v1/ticker/24hr`; null = ticker row absent (never 0). */
+  priceChange24h: z.number().nullable().optional(),
   fundingRate: z.number(), // in % (e.g. 0.01%)
   /**
    * Ставка к ближайшему начислению. Binance отдаёт одну текущую ставку (`premiumIndex.lastFundingRate`), которая и будет применена
@@ -120,7 +150,11 @@ export const FuturesAssetSchema = z.object({
   openInterestChange24h: z.number().nullable(), // %; null = history unavailable, not zero
   /** Происхождение Δ OI: ACTUAL — из ряда OI биржи; ESTIMATED — ряд недоступен (нет эвристики); UNAVAILABLE — не рассчитано. */
   openInterestChangeSource: z.enum(['ACTUAL', 'ESTIMATED', 'UNAVAILABLE']).optional(),
-  futuresVolume24h: z.number(), // USD
+  /**
+   * Оборот 24ч в USD (quoteVolume). null = биржа не вернула ticker-строку по
+   * контракту — в UI «Нет данных», НИКОГДА не 0 (0 = реально мёртвый рынок).
+   */
+  futuresVolume24h: z.number().nullable(),
   longLiquidations24h: z.number(), // USD
   shortLiquidations24h: z.number(), // USD
   /**

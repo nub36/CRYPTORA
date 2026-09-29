@@ -244,7 +244,8 @@ export const OverviewPage: React.FC = () => {
   const btcChange24h = btcAsset && Number.isFinite(btcAsset.change24h) ? btcAsset.change24h : null;
 
   // Aggregate futures stats
-  const totalFuturesVolume = futures.reduce((acc, f) => acc + f.futuresVolume24h, 0);
+  // null-объём (биржа не вернула ticker-строку) в сумму не входит — как и null-OI.
+  const totalFuturesVolume = futures.reduce((acc, f) => acc + (f.futuresVolume24h ?? 0), 0);
   // null-OI (источник не ответил) в сумму не входит — суммируем только фактические значения
   const totalOpenInterest = futures.reduce((acc, f) => acc + (f.openInterest ?? 0), 0);
 

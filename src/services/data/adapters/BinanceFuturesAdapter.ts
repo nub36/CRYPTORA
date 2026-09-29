@@ -10,6 +10,8 @@ import {
   BinanceFuturesTicker24hrSchema,
   BinanceFuturesOpenInterestHistSchema,
   type BinanceFuturesOpenInterestHistItem,
+  BinanceFuturesKlinesResponseSchema,
+  type BinanceFuturesKlineRaw,
 } from './derivativesSchemas';
 import {
   AdapterNetworkError,
@@ -130,6 +132,29 @@ export class BinanceFuturesAdapter {
     return this.request(
       '/fapi/v1/ticker/24hr',
       z.array(BinanceFuturesTicker24hrSchema)
+    );
+  }
+
+  /**
+   * USD-M klines (`/fapi/v1/klines`).
+   *
+   * This is the ONLY candle source a Futures chart may use. It is deliberately
+   * a separate method on a separate adapter with a separate gateway route, so
+   * a Futures terminal cannot fall back to Spot candles of the same ticker
+   * (root cause RC-6). `symbol` is the CONTRACT symbol (`1000PEPEUSDT`), not a
+   * base ticker.
+   */
+  public async fetchKlines(
+    contractSymbol: string,
+    interval = '1h',
+    limit = 500,
+  ): Promise<BinanceFuturesKlineRaw[]> {
+    const upper = contractSymbol.toUpperCase().trim();
+    // Bounded to the gateway's allowlisted `limit` range (1…1000).
+    const bounded = Math.max(1, Math.min(1000, Math.floor(limit)));
+    return this.request(
+      `/fapi/v1/klines?symbol=${encodeURIComponent(upper)}&interval=${encodeURIComponent(interval)}&limit=${bounded}`,
+      BinanceFuturesKlinesResponseSchema,
     );
   }
 

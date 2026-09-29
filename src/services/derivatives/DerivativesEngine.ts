@@ -99,8 +99,21 @@ export class DerivativesEngine {
       oiUsd = this.calculateOpenInterestUsd(contracts, markPrice);
     }
 
-    const volume24hUsd = ticker ? parseFloat(ticker.quoteVolume) : 0;
-    const priceChange24h = ticker ? parseFloat(ticker.priceChangePercent) : 0;
+    // RC-3: «нет ticker-строки» ≠ «оборот 0». Отсутствие метрики отражается
+    // как null и рендерится «Нет данных»; 0 остаётся зарезервированным за
+    // реально нулевым оборотом. Эвристика ликвидаций ниже по-прежнему считает
+    // от 0, чтобы её числа не изменились (математика не тронута).
+    const parseFinite = (raw: string | undefined): number | null => {
+      if (raw === undefined || raw === null || raw === '') return null;
+      const parsed = parseFloat(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const volume24hQuote = ticker ? parseFinite(ticker.quoteVolume) : null;
+    const lastPrice = ticker ? parseFinite(ticker.lastPrice) : null;
+    // RC-2: priceChangePercent приходил с биржи и выбрасывался при нормализации.
+    const priceChangePercent24h = ticker ? parseFinite(ticker.priceChangePercent) : null;
+    const volume24hUsd = volume24hQuote ?? 0;
+    const priceChange24h = priceChangePercent24h ?? 0;
 
     // Δ OI: фактический ряд openInterestHist (1h), если он есть; иначе — null (не эвристика, не 0).
     const oiDelta = this.calculateOpenInterestChanges(openInterestHist);
@@ -119,8 +132,15 @@ export class DerivativesEngine {
 
     return {
       symbol: `${asset.symbol}/USDT`,
+      // Контрактный символ биржи — единственный корректный join-key и символ
+      // для USD-M klines. Никогда не восстанавливается из базового тикера:
+      // 1000PEPEUSDT ≠ PEPEUSDT.
+      contractSymbol: premium.symbol.toUpperCase(),
+      baseAsset: asset.symbol,
       markPrice,
       indexPrice,
+      lastPrice,
+      priceChange24h: priceChangePercent24h,
       fundingRate: Number(fundingRate8h.toFixed(4)),
       predictedFundingRate: Number(fundingRate8h.toFixed(4)), // источник не отдаёт отдельный прогноз — см. FuturesAssetSchema
       nextFundingTime: premium.nextFundingTime || undefined,
@@ -129,7 +149,7 @@ export class DerivativesEngine {
       openInterestChange1h,
       openInterestChange24h,
       openInterestChangeSource: oiDelta ? 'ACTUAL' : 'UNAVAILABLE',
-      futuresVolume24h: volume24hUsd,
+      futuresVolume24h: volume24hQuote,
       longLiquidations24h: Number(longLiquidations24h.toFixed(0)),
       shortLiquidations24h: Number(shortLiquidations24h.toFixed(0)),
       basisPct,
@@ -174,7 +194,8 @@ export class DerivativesEngine {
     for (const a of assets) {
       // null-OI (источник не ответил) не входит в суммы — учитываются только фактические значения.
       totalOI += a.openInterest ?? 0;
-      totalVol += a.futuresVolume24h;
+      // null-объём (биржа не вернула ticker-строку) не входит в сумму — как и null-OI.
+      totalVol += a.futuresVolume24h ?? 0;
       weightedFundingSum += a.fundingRate * (a.openInterest ?? 0);
       basisSum += a.basisPct;
 

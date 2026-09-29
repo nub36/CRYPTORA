@@ -9,7 +9,22 @@ import {
   RadarEvent,
   MarketOverviewData,
   ScreenerFilters,
+  MarketType,
 } from '@/types/market';
+
+/**
+ * Options for a candle request.
+ *
+ * `market` is EXPLICIT and travels from the route/UI down to the exchange
+ * adapter. It is never inferred from the symbol string — see RC-6 in
+ * docs/DIAGNOSTICS_SPOT_FUTURES_2026-09-29.md.
+ */
+export interface CandleRequestOptions {
+  forceRefresh?: boolean;
+  market?: MarketType;
+  /** Cancels the in-flight upstream request when the caller navigates away. */
+  signal?: AbortSignal;
+}
 
 export interface MarketDataProvider {
   readonly isDemo: boolean;
@@ -22,8 +37,15 @@ export interface MarketDataProvider {
    * Свечи по инструменту. `limit` — желаемая глубина истории (провайдер может
    * вернуть меньше; LIVE-провайдер запрашивает у биржи не более её лимита).
    */
-  getCandles(symbol: string, timeframe: Timeframe, limit?: number, options?: { forceRefresh?: boolean }): Promise<OHLCV[]>;
+  getCandles(symbol: string, timeframe: Timeframe, limit?: number, options?: CandleRequestOptions): Promise<OHLCV[]>;
   getFuturesList(): Promise<FuturesAsset[]>;
+  /**
+   * One USD-M perpetual by base ticker (`1000PEPE`) or contract symbol
+   * (`1000PEPEUSDT`). Returns null when the contract is not in the active
+   * universe — the caller then renders «контракт не поддерживается», never a
+   * Spot substitute.
+   */
+  getFuturesContract?(baseOrContract: string): Promise<FuturesAsset | null>;
   getLiquidations(): Promise<LiquidationData>;
   getRadarEvents(symbol?: string): Promise<RadarEvent[]>;
   getScreenerResults(filters: ScreenerFilters): Promise<AssetSummary[]>;

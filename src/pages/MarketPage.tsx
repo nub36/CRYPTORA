@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { TerminalSection } from '@/components/layout/TerminalSection';
 import { paginate, DEFAULT_PAGE_SIZE } from '@/utils/pagination';
-import { Pagination } from '@/components/common/Pagination';
 import { getCoinNames } from '@/services/data/registry/coinLogoRegistry';
 import { getActiveSpotBaseSet } from '@/services/data/registry/exchangeUniverse';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
@@ -10,13 +8,15 @@ import { useMarketData } from '@/context/MarketDataContext';
 import { DataSourceUnavailable } from '@/components/common/DataSourceUnavailable';
 import { AssetSummary, AssetCategory } from '@/types/market';
 import { formatCurrency, formatPercent } from '@/utils/formatters';
-import type { SortConfig } from '@/utils/sorting';
-import { buildMarketUniverse, sortMarketUniverse } from '@/services/data/registry/marketUniverse';
+import { buildMarketUniverse, SPOT_SORT_FIELDS } from '@/services/data/registry/marketUniverse';
 import type { MarketUniverseAsset } from '@/services/data/registry/marketUniverse';
 import { Sparkline } from '@/components/common/Sparkline';
 import { CoinIcon } from '@/components/common/CoinIcon';
-import { Star, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Star, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { MarketTableShell, type MarketTableStatus } from '@/components/market/MarketTableShell';
+import { MobileSortControl, SortableHeaderCell } from '@/components/market/MarketSortControls';
+import { nextSortState, sortMarketRows, type MarketSortState } from '@/utils/marketSort';
 
 /**
  * Человекочитаемые подписи категорий активов.
@@ -66,11 +66,10 @@ export const MarketPage: React.FC = () => {
     [names],
   );
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory>('all');
-  const [sortConfig, setSortConfig] = useState<SortConfig<AssetSummary>>({
-    key: 'rank',
-    direction: 'asc',
-  });
+  const [sortState, setSortState] = useState<MarketSortState>({ key: 'rank', direction: 'asc' });
+  const [loaded, setLoaded] = useState(false);
   const navigate = useNavigate();
+  const field = useCallback((key: string) => SPOT_SORT_FIELDS.find((f) => f.key === key)!, []);
 
   // Б1: список рынка обновляется сам (30с; пауза в фоновой вкладке;
   // возврат видимости/сети — внеочередной рефреш).
@@ -82,24 +81,17 @@ export const MarketPage: React.FC = () => {
       .then((data) => {
         setAssets(data);
         setSourceUnavailable(false);
+        setLoaded(true);
       })
-      .catch(() => setSourceUnavailable(true));
+      .catch(() => { setSourceUnavailable(true); setLoaded(true); });
   }, [provider]);
 
   useAutoRefresh(load, MARKET_REFRESH_MS);
 
-  // Handle column sort toggle
-  const handleSort = (key: keyof AssetSummary) => {
-    setSortConfig((prev) => {
-      if (prev?.key === key) {
-        return {
-          key,
-          direction: prev.direction === 'asc' ? 'desc' : 'asc',
-        };
-      }
-      return { key, direction: 'desc' };
-    });
-  };
+  // Column sort toggle — shared model with the Futures table.
+  const handleSort = useCallback((key: string) => {
+    setSortState((prev) => nextSortState(prev, SPOT_SORT_FIELDS, key));
+  }, []);
 
   // Filtered & sorted list
   const filteredAssets = useMemo(() => {
@@ -116,12 +108,21 @@ export const MarketPage: React.FC = () => {
       );
     }
 
-    return sortMarketUniverse(result, sortConfig.key, sortConfig.direction);
-  }, [marketUniverse, selectedCategory, search, sortConfig, displayName]);
+    // Strict order: filters → search → SORT → pagination.
+    return sortMarketRows(result, SPOT_SORT_FIELDS, sortState);
+  }, [marketUniverse, selectedCategory, search, sortState, displayName]);
 
   // Filters/sort reset to the first page; only ONE page of rows is ever rendered.
-  useEffect(() => { setPage(1); }, [selectedCategory, search, sortConfig]);
+  useEffect(() => { setPage(1); }, [selectedCategory, search, sortState]);
   const pageData = useMemo(() => paginate(filteredAssets, page, DEFAULT_PAGE_SIZE), [filteredAssets, page]);
+
+  const tableStatus: MarketTableStatus = !loaded
+    ? 'loading'
+    : sourceUnavailable && marketUniverse.length === 0
+      ? 'error'
+      : filteredAssets.length === 0
+        ? 'empty'
+        : 'ready';
 
   const categories: { label: string; value: AssetCategory }[] = [
     { label: 'Все активы', value: 'all' },
@@ -132,46 +133,6 @@ export const MarketPage: React.FC = () => {
     { label: 'ИИ и данные', value: 'ai' },
     { label: 'Мемкоины', value: 'meme' },
   ];
-
-  /**
-   * Заголовок столбца с сортировкой.
-   *
-   * Индикатор — отдельная иконка, а не «# ^» внутри текста: неактивный столбец
-   * показывает приглушённую нейтральную иконку, активный — стрелку направления.
-   * `aria-sort` объявляет текущее состояние сортировки для скринридеров.
-   */
-  const renderSortHeader = (
-    key: SortConfig<AssetSummary>['key'],
-    label: string,
-    align: 'left' | 'right',
-    extraClass: string
-  ) => {
-    const isActive = sortConfig.key === key;
-    const isAsc = sortConfig.direction === 'asc';
-    const alignClass = align === 'right' ? 'justify-end text-right' : 'justify-start text-left';
-    return (
-      <th
-        key={key}
-        scope="col"
-        aria-sort={isActive ? (isAsc ? 'ascending' : 'descending') : 'none'}
-        onClick={() => handleSort(key)}
-        className={`py-2.5 px-2.5 cursor-pointer hover:text-white transition-colors ${alignClass} ${extraClass}`}
-      >
-        <span className={`inline-flex items-center gap-1 ${align === 'right' ? 'flex-row-reverse' : ''}`}>
-          <span className="whitespace-nowrap">{label}</span>
-          {isActive ? (
-            isAsc ? (
-              <ArrowUp className="h-3 w-3 shrink-0 text-cyan-400" aria-hidden />
-            ) : (
-              <ArrowDown className="h-3 w-3 shrink-0 text-cyan-400" aria-hidden />
-            )
-          ) : (
-            <ArrowUpDown className="h-3 w-3 shrink-0 text-slate-500" aria-hidden />
-          )}
-        </span>
-      </th>
-    );
-  };
 
   return (
     <div className="route-shell space-y-4 max-w-[1920px] mx-auto px-3 sm:px-4 py-3.5" data-route="market" data-layout="table-first">
@@ -224,6 +185,8 @@ export const MarketPage: React.FC = () => {
             <input
               type="text"
               placeholder="Фильтр по названию или тикеру..."
+              aria-label="Поиск инструмента"
+              data-qa="market-search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 pr-3 py-1.5 bg-surface-elevated border border-white/[0.08] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-sans w-full sm:w-64 min-h-[34px]"
@@ -249,45 +212,68 @@ export const MarketPage: React.FC = () => {
         </div>
       </div>
 
-      <TerminalSection label="MARKET UNIVERSE" title="Spot instruments" meta={`${filteredAssets.length} visible`} className="market-workspace">
-      {/* Main High-Density Table */}
-      <div className="market-table">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left font-sans">
-            <thead className="bg-surface-elevated/80 text-slate-400 font-sans text-[11px] border-b border-surface-border select-none sticky top-0 z-10">
-              <tr>
-                <th className="py-2.5 px-3 w-10 text-center" aria-label="Избранное">
-                  <Star className="w-3 h-3 inline-block text-slate-500" aria-hidden />
-                </th>
-                {renderSortHeader('rank', '#', 'left', '')}
-                {renderSortHeader('symbol', 'Актив', 'left', '')}
-                {renderSortHeader('price', 'Цена, USD', 'right', '')}
-                {renderSortHeader('change1h', '1ч %', 'right', '')}
-                {renderSortHeader('change24h', '24ч %', 'right', '')}
-                {renderSortHeader('change7d', '7д %', 'right', 'hidden md:table-cell')}
-                {renderSortHeader('volume24h', 'Объём 24ч', 'right', 'hidden sm:table-cell')}
-                {renderSortHeader('marketCap', 'Капитализация', 'right', '')}
-                <th
-                  scope="col"
-                  className="py-2.5 px-3 text-right hidden lg:table-cell"
-                >
-                  Тренд 7д
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-border font-mono">
-              {filteredAssets.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500 font-sans">
-                    По вашему запросу активы не найдены.
-                  </td>
-                </tr>
-              ) : (
-                pageData.rows.map((asset) => {
+      <MarketTableShell
+        label="MARKET UNIVERSE"
+        title="Spot instruments"
+        meta={`${filteredAssets.length} visible`}
+        status={tableStatus}
+        columnCount={10}
+        page={pageData}
+        onPage={setPage}
+        paginationQa="market-pagination"
+        qa="market-table"
+        onRetry={load}
+        errorMessage="Источник рыночных данных недоступен — котировки не подставляются."
+        loadingMessage="Загрузка Spot-инструментов…"
+        emptyMessage="По вашему запросу активы не найдены."
+        toolbar={(
+          <MobileSortControl
+            fields={SPOT_SORT_FIELDS}
+            state={sortState}
+            onChange={setSortState}
+            qa="market-sort"
+            className="lg:hidden"
+          />
+        )}
+        footerSummary={(
+          <span data-qa="market-count">
+            {dataMode === 'live' && universeConfirmed === false
+              ? `Найдено: ${filteredAssets.length} из ${marketUniverse.length} — базовый каталог: список активных инструментов Binance (exchangeInfo) недоступен, активный статус не подтверждён`
+              : `Найдено: ${filteredAssets.length} из ${marketUniverse.length} активных Spot-инструментов`}
+          </span>
+        )}
+        footerStatus={(
+          <div className={`flex items-center space-x-1 text-[11px] ${
+            dataMode === 'live' ? (sourceUnavailable ? 'text-rose-400/90' : 'text-brand-green/90') : 'text-amber-400/90'
+          }`}>
+            {dataMode === 'live'
+              ? <span>{sourceUnavailable ? '● Источник недоступен' : '● Источник: Binance Spot / KuCoin'}</span>
+              : <span>● Детерминированный QA-датасет</span>}
+          </div>
+        )}
+        head={(
+          <tr>
+            <th className="py-2.5 px-3 w-10 text-center" aria-label="Избранное">
+              <Star className="w-3 h-3 inline-block text-slate-500" aria-hidden />
+            </th>
+            <SortableHeaderCell field={field('rank')} state={sortState} onSort={handleSort} align="left" />
+            <SortableHeaderCell field={field('symbol')} state={sortState} onSort={handleSort} align="left" />
+            <SortableHeaderCell field={field('price')} state={sortState} onSort={handleSort} align="right" />
+            <SortableHeaderCell field={field('change1h')} state={sortState} onSort={handleSort} align="right" />
+            <SortableHeaderCell field={field('change24h')} state={sortState} onSort={handleSort} align="right" />
+            <SortableHeaderCell field={field('change7d')} state={sortState} onSort={handleSort} align="right" className="hidden md:table-cell" />
+            <SortableHeaderCell field={field('volume24h')} state={sortState} onSort={handleSort} align="right" className="hidden sm:table-cell" />
+            <SortableHeaderCell field={field('marketCap')} state={sortState} onSort={handleSort} align="right" />
+            <th scope="col" className="py-2.5 px-3 text-right hidden lg:table-cell">Тренд 7д</th>
+          </tr>
+        )}
+      >
+        {pageData.rows.map((asset) => {
                   const isStarred = watchlist.includes(asset.symbol);
                   return (
                     <tr
                       key={asset.id}
+                      data-qa="market-row"
                       onClick={() => navigate(`/coin/${asset.symbol}`)}
                       className="hover:bg-surface-hover/80 transition-colors cursor-pointer group"
                     >
@@ -318,7 +304,10 @@ export const MarketPage: React.FC = () => {
                       <td className="py-2.5 px-3 font-sans">
                         <div className="flex items-center space-x-2">
                           <CoinIcon symbol={asset.symbol} size={22} />
-                          <span className="font-bold font-sans text-white group-hover:text-brand-cyan transition-colors">
+                          <span
+                            data-qa="market-symbol"
+                            className="font-bold font-sans text-white group-hover:text-brand-cyan transition-colors"
+                          >
                             {asset.symbol}
                           </span>
                           <span className="text-slate-400 text-xs hidden sm:inline">
@@ -381,36 +370,8 @@ export const MarketPage: React.FC = () => {
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer info in table */}
-        <div className="p-3 bg-surface-elevated/50 border-t border-surface-border flex items-center justify-between text-xs text-slate-400 font-sans">
-          <div className="flex flex-wrap items-center gap-3">
-            <span data-qa="market-count">
-              {dataMode === 'live' && universeConfirmed === false
-                ? `Найдено: ${filteredAssets.length} из ${marketUniverse.length} — базовый каталог: список активных инструментов Binance (exchangeInfo) недоступен, активный статус не подтверждён`
-                : `Найдено: ${filteredAssets.length} из ${marketUniverse.length} активных Spot-инструментов`}
-            </span>
-            <Pagination {...pageData} onPage={setPage} qa="market-pagination" />
-          </div>
-          <div
-            className={`flex items-center space-x-1 text-[11px] ${
-              dataMode === 'live' ? (sourceUnavailable ? 'text-rose-400/90' : 'text-brand-green/90') : 'text-amber-400/90'
-            }`}
-          >
-            {dataMode === 'live' ? (
-              <span>{sourceUnavailable ? '● Источник недоступен' : '● Источник: Binance Spot / KuCoin'}</span>
-            ) : (
-              <span>● Детерминированный QA-датасет</span>
-            )}
-          </div>
-        </div>
-      </div>
-      </TerminalSection>
+                })}
+      </MarketTableShell>
     </div>
   );
 };

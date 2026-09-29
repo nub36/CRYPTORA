@@ -136,6 +136,24 @@ export async function getSelectableSpotSymbols(fetchFn?: typeof fetch): Promise<
 }
 
 /**
+ * Map of futures base ticker → exchange contract symbol
+ * (`1000PEPE` → `1000PEPEUSDT`), or null when exchangeInfo is unavailable.
+ *
+ * This is the authoritative lookup used by the Futures chart route: the
+ * contract symbol is NEVER reconstructed from the base ticker when the
+ * universe is known.
+ */
+export async function getFuturesContractsByBase(fetchFn?: typeof fetch): Promise<Map<string, string> | null> {
+  const u = await getFuturesUniverse(fetchFn);
+  if (!u) return null;
+  const map = new Map<string, string>();
+  for (const contract of u.contracts) {
+    if (!map.has(contract.symbol)) map.set(contract.symbol, contract.exchangeSymbol);
+  }
+  return map;
+}
+
+/**
  * Futures base → Spot base for navigation. Binance lists some perps with a
  * multiplier prefix (1000PEPE, 1000000MOG, 1MBABYDOGE). Returns null when no
  * matching active Spot instrument exists (the row is then not navigable).

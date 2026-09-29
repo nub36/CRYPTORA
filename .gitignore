@@ -16,3 +16,6 @@ e2e/screenshots
 # Серверный бандл ядра стратегий (собирается esbuild из src/, в Git не хранится)
 server/services/strategyEngine/.generated/
 e2e/.request-audit.json
+
+# Локальные артефакты диагностики (scripts/diagnose-charts.mjs --json и т.п.)
+.diagnostics/
