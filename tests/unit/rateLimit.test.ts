@@ -114,4 +114,21 @@ describe('rate limiting — real express-rate-limit middleware', () => {
     expect(res.status).toBe(400);
     expect(res.headers.get('ratelimit-policy')).toBe('20;w=900');
   });
+
+  it('verify-code has its own independent bucket', async () => {
+    const res = await client.post('/api/auth/verify-code', {
+      email: 'nobody@example.com',
+      code: '123456',
+    });
+    // Unknown email → anti-enumeration INVALID, but the bucket is separate.
+    expect(res.status).toBe(400);
+    expect(res.headers.get('ratelimit-policy')).toBe('20;w=900');
+  });
+
+  it('OAuth start is rate limited (30 / 5 min per IP by default)', async () => {
+    // Unconfigured provider still passes through the limiter first.
+    const res = await client.request('GET', '/api/auth/oauth/google/start', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('ratelimit-policy')).toBe('30;w=300');
+  });
 });

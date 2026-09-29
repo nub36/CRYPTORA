@@ -21,6 +21,7 @@ import { apiLimiter } from './middleware/rateLimit.js';
 // Route modules
 import healthRouter from './routes/health.js';
 import authRouter from './routes/auth.js';
+import oauthRouter from './routes/oauth.js';
 import meRouter from './routes/me.js';
 import adminRouter from './routes/admin.js';
 import strategiesRouter from './routes/strategies.js';
@@ -112,6 +113,9 @@ export function createApp(options = {}) {
 
   // ── Routes ────────────────────────────────────────────────────────
   app.use('/api/health', healthRouter);
+  // Social login (Google / Yandex / VK ID / Telegram). Mounted before the
+  // generic auth router; shares the same session mechanism.
+  app.use('/api/auth/oauth', oauthRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/me', meRouter);
   app.use('/api/admin', adminRouter);

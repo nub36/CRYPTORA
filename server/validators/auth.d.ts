@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 export declare const registerSchema: z.ZodObject<{
   email: z.ZodEffects<z.ZodString, string, string>;
-  displayName: z.ZodEffects<z.ZodString, string, string>;
+  displayName: z.ZodOptional<z.ZodEffects<z.ZodString, string, string>>;
   password: z.ZodString;
 }>;
 
@@ -21,4 +21,17 @@ export declare const updateProfileSchema: z.ZodObject<{
 
 export declare const blockUserSchema: z.ZodObject<{
   userId: z.ZodString;
+}>;
+
+export declare const verifyEmailSchema: z.ZodObject<{
+  token: z.ZodString;
+}>;
+
+export declare const resendSchema: z.ZodObject<{
+  email: z.ZodEffects<z.ZodString, string, string>;
+}>;
+
+export declare const verifyCodeSchema: z.ZodObject<{
+  email: z.ZodEffects<z.ZodString, string, string>;
+  code: z.ZodString;
 }>;

@@ -1,10 +1,15 @@
 /**
  * CRYPTORA — Email verification integration tests.
  *
- * Covers: verify endpoint, resend endpoint, SMTP failure behaviour, and a
- * data-leak sweep over every auth/admin response.
+ * Covers: the legacy LINK-token endpoint (tokens already delivered to
+ * mailboxes before the code-based flow), the resend endpoint (now
+ * code-based), SMTP failure behaviour, and a data-leak sweep over every
+ * auth/admin response.
  *
- * REAL: route handlers, validators, token service (crypto + SHA-256),
+ * The 6-digit CODE flow itself has a dedicated suite:
+ * tests/unit/emailVerificationCode.test.ts.
+ *
+ * REAL: route handlers, validators, token/code service (crypto + hashing),
  *       transaction control flow, rate limiters, mail service.
  * MOCKED: SQL layer (MemoryDb) and the SMTP transport (spy / failing stub).
  */
@@ -21,12 +26,13 @@ process.env.API_RATE_LIMIT = '1000000';
 // a file, so the real budget is asserted in rateLimit.test.ts instead.
 process.env.RESEND_RATE_LIMIT = '100000';
 process.env.RESEND_MIN_INTERVAL_SECONDS = '0';
+process.env.VERIFY_RATE_LIMIT = '100000';
 process.env.SESSION_STORE = 'memory';
 
 const { createApp } = await import('../../server/app.js');
 const { __setPoolForTests } = await import('../../server/db/pool.js');
 const { __setTransportForTests, __resetTransportForTests } = await import('../../server/services/mail.js');
-const { hashToken } = await import('../../server/services/emailVerification.js');
+const { hashToken, hashCode, createVerificationToken } = await import('../../server/services/emailVerification.js');
 const { MemoryDb, seedUser } = await import('../helpers/memoryDb');
 const { listen } = await import('../helpers/httpHarness');
 const { installMailSpy, spyTransport, createMailSpy } = await import('../helpers/mailSpy');
@@ -64,10 +70,17 @@ async function register(email = EMAIL) {
   return res;
 }
 
-describe('POST /api/auth/verify-email', () => {
+/** Issue a LEGACY link token for a registered user, exactly like pre-code deployments did. */
+async function issueLegacyToken(email = EMAIL): Promise<string> {
+  const user = db.findUserByEmail(email)!;
+  const { rawToken } = await createVerificationToken(user.id);
+  return rawToken;
+}
+
+describe('POST /api/auth/verify-email (legacy link tokens keep working)', () => {
   it('a valid token sets email_verified and email_verified_at', async () => {
     await register();
-    const token = mail.lastRawToken()!;
+    const token = await issueLegacyToken();
 
     const res = await client.post('/api/auth/verify-email', { token });
     expect(res.status).toBe(200);
@@ -79,10 +92,11 @@ describe('POST /api/auth/verify-email', () => {
 
   it('the consumed token becomes unusable (replay rejected)', async () => {
     await register();
-    const token = mail.lastRawToken()!;
+    const token = await issueLegacyToken();
 
     expect((await client.post('/api/auth/verify-email', { token })).status).toBe(200);
-    expect(db.tokens[0].used_at).toBeInstanceOf(Date);
+    const row = db.tokens.find((t) => t.token_hash === hashToken(token))!;
+    expect(row.used_at).toBeInstanceOf(Date);
 
     const replay = await client.post('/api/auth/verify-email', { token });
     expect(replay.status).toBe(400);
@@ -91,8 +105,9 @@ describe('POST /api/auth/verify-email', () => {
 
   it('an expired token is rejected with 410 EXPIRED', async () => {
     await register();
-    const token = mail.lastRawToken()!;
-    db.tokens[0].expires_at = new Date(Date.now() - 1000); // simulate time passing
+    const token = await issueLegacyToken();
+    const row = db.tokens.find((t) => t.token_hash === hashToken(token))!;
+    row.expires_at = new Date(Date.now() - 1000); // simulate time passing
 
     const res = await client.post('/api/auth/verify-email', { token });
     expect(res.status).toBe(410);
@@ -126,7 +141,7 @@ describe('POST /api/auth/verify-email', () => {
 
   it('verifying does not create a session', async () => {
     await register();
-    const token = mail.lastRawToken()!;
+    const token = await issueLegacyToken();
     const res = await client.post('/api/auth/verify-email', { token });
 
     expect(res.status).toBe(200);
@@ -134,55 +149,63 @@ describe('POST /api/auth/verify-email', () => {
     expect((await client.get('/api/me')).status).toBe(401);
   });
 
-  it('verifying with one token invalidates the user\'s other outstanding tokens', async () => {
+  it('a resend (new code) invalidates an outstanding legacy token', async () => {
     await register();
-    const firstToken = mail.lastRawToken()!;
+    const token = await issueLegacyToken();
 
-    // Resend creates a second token and retires the first.
+    // Resend now issues a 6-digit code and retires every older credential.
     await client.post('/api/auth/resend-verification', { email: EMAIL });
-    const secondToken = mail.lastRawToken()!;
-    expect(secondToken).not.toBe(firstToken);
+    expect(mail.lastCode()).toMatch(/^\d{6}$/);
 
-    expect((await client.post('/api/auth/verify-email', { token: firstToken })).status).toBe(400);
-    expect((await client.post('/api/auth/verify-email', { token: secondToken })).status).toBe(200);
+    expect((await client.post('/api/auth/verify-email', { token })).status).toBe(400);
   });
 
   it('a token issued for one user cannot verify another', async () => {
     await register('alice@example.com');
-    const aliceToken = mail.lastRawToken()!;
     await register('bob@example.com');
+    const bobToken = await issueLegacyToken('bob@example.com');
 
-    // Verify Bob with Bob's token; Alice must stay unverified.
-    const bobToken = mail.lastRawToken()!;
     expect((await client.post('/api/auth/verify-email', { token: bobToken })).status).toBe(200);
 
     const alice = db.findUserByEmail('alice@example.com')!;
     const bob = db.findUserByEmail('bob@example.com')!;
     expect(alice.email_verified).toBe(false);
     expect(bob.email_verified).toBe(true);
-    expect(aliceToken).toBeTruthy();
   });
 });
 
-describe('POST /api/auth/resend-verification', () => {
-  it('invalidates the old token, creates a new one and dispatches a new mail', async () => {
+describe('POST /api/auth/resend-verification (code-based)', () => {
+  it('invalidates the old code, creates a new one and dispatches a new mail', async () => {
     await register();
-    const firstToken = mail.lastRawToken()!;
+    const firstCode = mail.lastCode()!;
     expect(mail.sent).toHaveLength(1);
 
     const res = await client.post('/api/auth/resend-verification', { email: EMAIL });
     expect(res.status).toBe(200);
 
     expect(mail.sent).toHaveLength(2);
-    const secondToken = mail.lastRawToken()!;
-    expect(secondToken).not.toBe(firstToken);
+    let secondCode = mail.lastCode()!;
+    // 1-in-a-million: if the fresh code equals the old one the "old code
+    // fails" assertion below would be ambiguous — request another.
+    while (secondCode === firstCode) {
+      await client.post('/api/auth/resend-verification', { email: EMAIL });
+      secondCode = mail.lastCode()!;
+    }
 
-    // Old token is retired.
-    const old = db.tokens.find((t) => t.token_hash === hashToken(firstToken));
-    expect(old?.used_at).toBeInstanceOf(Date);
+    // Old code row is retired regardless of the digits themselves.
+    const userId = db.users[0].id;
+    const oldRow = db.tokens.find((t) => t.token_hash === hashCode(userId, firstCode));
+    expect(oldRow?.used_at).toBeInstanceOf(Date);
 
-    // New token works.
-    expect((await client.post('/api/auth/verify-email', { token: secondToken })).status).toBe(200);
+    // Old code no longer works…
+    const oldAttempt = await client.post('/api/auth/verify-code', { email: EMAIL, code: firstCode });
+    // (409/400 shape: INVALID or USED — both are non-200)
+    expect(oldAttempt.status).not.toBe(200);
+    expect(db.users[0].email_verified).toBe(false);
+
+    // …the new one does.
+    expect((await client.post('/api/auth/verify-code', { email: EMAIL, code: secondCode })).status).toBe(200);
+    expect(db.users[0].email_verified).toBe(true);
   });
 
   it('returns a generic response for a nonexistent email', async () => {
@@ -194,7 +217,7 @@ describe('POST /api/auth/resend-verification', () => {
 
   it('does not leak whether an account exists or is verified', async () => {
     await register();
-    await client.post('/api/auth/verify-email', { token: mail.lastRawToken()! });
+    await client.post('/api/auth/verify-code', { email: EMAIL, code: mail.lastCode()! });
 
     const verifiedRes = await client.post('/api/auth/resend-verification', { email: EMAIL });
     const ghostRes = await client.post('/api/auth/resend-verification', { email: 'ghost@example.com' });
@@ -205,14 +228,13 @@ describe('POST /api/auth/resend-verification', () => {
     expect(mail.sent).toHaveLength(1);
   });
 
-  it('never returns a token in the response', async () => {
+  it('never returns a code in the response', async () => {
     await register();
     const res = await client.post('/api/auth/resend-verification', { email: EMAIL });
     const raw = JSON.stringify(res.body);
-    expect(raw).not.toContain(mail.lastRawToken()!);
+    expect(raw).not.toContain(mail.lastCode()!);
     expect(raw).not.toContain('token');
   });
-
 });
 
 describe('SMTP failure behaviour', () => {
@@ -240,7 +262,7 @@ describe('SMTP failure behaviour', () => {
     expect(db.users).toHaveLength(1);
     expect(db.users[0].email_verified).toBe(false);
     expect(db.users[0].password_hash).toMatch(/^\$argon2id\$/);
-    // The token still exists, so a later resend/verify can complete the flow.
+    // The code row still exists, so a later resend/verify can complete the flow.
     expect(db.tokens).toHaveLength(1);
   });
 
@@ -264,19 +286,19 @@ describe('SMTP failure behaviour', () => {
     expect(resend.status).toBe(200);
     expect(mail.sent).toHaveLength(1);
 
-    const token = mail.lastRawToken()!;
-    expect((await client.post('/api/auth/verify-email', { token })).status).toBe(200);
+    const code = mail.lastCode()!;
+    expect((await client.post('/api/auth/verify-code', { email: EMAIL, code })).status).toBe(200);
     expect(db.users[0].email_verified).toBe(true);
   });
 
-  it('resend reports a safe error when mail is unconfigured in production', async () => {
+  it('resend reports a safe error when mail delivery fails', async () => {
     // Simulate production with no SMTP_HOST by injecting a transport that throws.
     __setTransportForTests(
       { sendMail: async () => { throw new Error('not configured'); } },
       'mock'
     );
 
-    await register();
+    await client.post('/api/auth/register', { email: EMAIL, displayName: 'Alice', password: PASSWORD });
     const res = await client.post('/api/auth/resend-verification', { email: EMAIL });
 
     expect(res.status).toBe(503);
@@ -289,8 +311,9 @@ describe('SMTP failure behaviour', () => {
 describe('data-leak sweep', () => {
   it('no auth or admin response exposes secrets', async () => {
     await register();
-    const rawToken = mail.lastRawToken()!;
-    const tokenHash = hashToken(rawToken);
+    const code = mail.lastCode()!;
+    const userId = db.users[0].id;
+    const codeHash = hashCode(userId, code);
 
     const bodies: string[] = [];
     const collect = (r: { body: unknown }) => {
@@ -302,9 +325,10 @@ describe('data-leak sweep', () => {
     collect(await client.post('/api/auth/login', { email: EMAIL, password: 'wrong-password-x' }));
     collect(await client.get('/api/auth/session'));
     collect(await client.get('/api/me'));
-    collect(await client.post('/api/auth/verify-email', { token: rawToken }));
+    collect(await client.post('/api/auth/verify-code', { email: EMAIL, code }));
     collect(await client.post('/api/auth/resend-verification', { email: EMAIL }));
     collect(await client.get('/api/health'));
+    collect(await client.get('/api/auth/providers'));
     collect(await client.get('/api/admin/dashboard'));
     collect(await client.get('/api/admin/users'));
     collect(await client.get('/api/admin/system'));
@@ -312,11 +336,12 @@ describe('data-leak sweep', () => {
     const blob = bodies.join('\n');
     expect(blob).not.toContain('$argon2id$');
     expect(blob).not.toContain('password_hash');
-    expect(blob).not.toContain(tokenHash);
-    expect(blob).not.toContain(rawToken);
+    expect(blob).not.toContain(codeHash);
     expect(blob).not.toContain('SMTP_PASS');
     expect(blob).not.toContain('SESSION_SECRET');
     expect(blob).not.toContain(process.env.SESSION_SECRET ?? '__none__');
+    expect(blob).not.toContain('CLIENT_SECRET');
+    expect(blob).not.toContain('BOT_TOKEN');
   });
 
   it('admin users listing includes emailVerified', async () => {
@@ -339,12 +364,13 @@ describe('data-leak sweep', () => {
 });
 
 describe('mail service status (no silent fake transport)', () => {
-  it('reports unconfigured in production without SMTP_HOST', async () => {
+  it('reports configuration without exposing credentials', async () => {
     const { getMailStatus } = await import('../../server/services/mail.js');
     const status = getMailStatus();
     // In this suite MAIL_TRANSPORT is unset and SMTP_HOST is empty, NODE_ENV=test.
     expect(['json', 'smtp']).toContain(status.kind);
     expect(typeof status.configured).toBe('boolean');
+    expect(JSON.stringify(status)).not.toMatch(/pass/i);
   });
 
   it('createMailSpy captures messages without network I/O', async () => {

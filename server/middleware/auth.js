@@ -9,6 +9,7 @@
  */
 
 import { query } from '../db/pool.js';
+import { config } from '../config.js';
 
 /**
  * Reject if no valid session or user is blocked/missing.
@@ -68,6 +69,28 @@ export async function requireAuth(req, res, next) {
     console.error('[requireAuth] DB lookup failed:', err.message);
     res.status(503).json({ error: 'Сервис временно недоступен' });
   }
+}
+
+/**
+ * Require a RECENT interactive authentication (login / OAuth sign-in).
+ *
+ * Sensitive account operations (linking/unlinking login providers) must not
+ * be possible with a week-old ambient session cookie alone. The login and
+ * OAuth handlers stamp `req.session.authAt`; this middleware enforces that
+ * the stamp is younger than FRESH_AUTH_MAX_AGE_MINUTES.
+ *
+ * Must be used AFTER requireAuth.
+ */
+export function requireFreshAuth(req, res, next) {
+  const authAt = req.session?.authAt;
+  const maxAgeMs = config.FRESH_AUTH_MAX_AGE_MINUTES * 60 * 1000;
+  if (typeof authAt !== 'number' || Date.now() - authAt > maxAgeMs) {
+    return res.status(401).json({
+      error: 'REAUTH_REQUIRED',
+      message: 'Для этого действия войдите в аккаунт заново',
+    });
+  }
+  next();
 }
 
 /**

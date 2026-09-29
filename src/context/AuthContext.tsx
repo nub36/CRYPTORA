@@ -10,7 +10,8 @@ import React, { createContext, useCallback, useContext, useEffect, useState, use
 
 export interface AuthUser {
   id: string;
-  email: string;
+  /** May be null for social-only accounts (Telegram gives no email). */
+  email: string | null;
   displayName: string;
   role: 'user' | 'admin';
   isActive: boolean;
@@ -40,6 +41,31 @@ export function maskEmail(email: string): string {
   return `${first}${'*'.repeat(Math.max(1, name.length - 1))}@${domain}`;
 }
 
+/**
+ * Raised by verifyEmailCode() with a machine-readable code so the UI can
+ * render precise states: invalid / expired / too many attempts / throttled.
+ */
+export class VerifyCodeError extends Error {
+  constructor(
+    public readonly code: 'INVALID' | 'EXPIRED' | 'TOO_MANY_ATTEMPTS' | 'RATE_LIMITED' | 'UNKNOWN',
+    message: string
+  ) {
+    super(message);
+    this.name = 'VerifyCodeError';
+  }
+}
+
+/** Which login providers the backend actually has configured. */
+export interface AuthProvidersConfig {
+  emailPassword: boolean;
+  emailVerification: boolean;
+  google: boolean;
+  telegram: boolean;
+  yandex: boolean;
+  vk: boolean;
+  telegramBotName: string | null;
+}
+
 interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
@@ -47,8 +73,13 @@ interface AuthContextValue {
   isAdmin: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  /** Resolves once the account is created. Does NOT log the user in. */
+  /**
+   * Resolves once the account is created. Does NOT log the user in.
+   * displayName is optional: the server derives one from the email if empty.
+   */
   register: (email: string, displayName: string, password: string) => Promise<void>;
+  /** Confirms a 6-digit code. Throws VerifyCodeError on failure. */
+  verifyEmailCode: (email: string, code: string) => Promise<void>;
   resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -129,22 +160,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const register = useCallback(async (email: string, displayName: string, password: string) => {
+    const body: Record<string, string> = { email, password };
+    if (displayName) body.displayName = displayName;
+
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email, displayName, password }),
+      body: JSON.stringify(body),
     });
 
     const data = await res.json();
 
     if (!res.ok) {
-      throw new Error(data.message || 'Ошибка регистрации');
+      throw new Error(data.error || data.message || 'Ошибка регистрации');
     }
 
     // Registration never creates a session: the address must be verified
     // first. So we deliberately do NOT setUser() here.
     setError(null);
+  }, []);
+
+  const verifyEmailCode = useCallback(async (email: string, code: string) => {
+    const res = await fetch('/api/auth/verify-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, code }),
+    });
+
+    if (res.ok) return;
+
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    const apiError = typeof data.error === 'string' ? data.error : '';
+    const message = typeof data.message === 'string' ? data.message : 'Неверный код';
+
+    if (apiError === 'EXPIRED') throw new VerifyCodeError('EXPIRED', message);
+    if (apiError === 'TOO_MANY_ATTEMPTS') throw new VerifyCodeError('TOO_MANY_ATTEMPTS', message);
+    if (res.status === 429) throw new VerifyCodeError('RATE_LIMITED', message);
+    if (apiError === 'INVALID') throw new VerifyCodeError('INVALID', message);
+    throw new VerifyCodeError('UNKNOWN', message);
   }, []);
 
   const resendVerification = useCallback(async (email: string) => {
@@ -180,6 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     error,
     login,
     register,
+    verifyEmailCode,
     resendVerification,
     logout,
     refreshSession: fetchSession,

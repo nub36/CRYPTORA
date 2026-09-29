@@ -106,6 +106,40 @@ describe('real routes over real HTTP', () => {
     expect(['connected', 'disconnected']).toContain(body.database);
   });
 
+  it('GET /api/health exposes ONLY booleans for mail/providers — no hosts, ids or secrets', async () => {
+    const res = await client.get('/api/health');
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      mail: Record<string, unknown>;
+      providers: Record<string, unknown>;
+    };
+
+    // mail: exactly { configured: boolean } — no kind/host/user/from.
+    expect(Object.keys(body.mail).sort()).toEqual(['configured']);
+    expect(typeof body.mail.configured).toBe('boolean');
+
+    // providers: exactly the four enable flags, all booleans.
+    expect(Object.keys(body.providers).sort()).toEqual(['google', 'telegram', 'vk', 'yandex']);
+    for (const v of Object.values(body.providers)) expect(typeof v).toBe('boolean');
+
+    // Nothing config-shaped leaks anywhere in the payload.
+    const blob = JSON.stringify(res.body);
+    for (const needle of [
+      'smtp',
+      'SMTP',
+      'client_id',
+      'clientId',
+      'apps.googleusercontent.com',
+      'secret',
+      'SECRET',
+      'token',
+      'BOT',
+      '@', // no email addresses / smtp users
+    ]) {
+      expect(blob, `health leaked "${needle}"`).not.toContain(needle);
+    }
+  });
+
   it('GET /api/me without auth → 401 JSON', async () => {
     const res = await client.get('/api/me');
     expect(res.status).toBe(401);

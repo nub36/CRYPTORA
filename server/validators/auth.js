@@ -30,11 +30,17 @@ export const registerSchema = z.object({
       message: 'Некорректный email',
     }),
 
+  /**
+   * Optional since the 2-step registration UX (email → password → code):
+   * when absent the server derives a display name from the email local part.
+   * When provided, the original bounds still apply.
+   */
   displayName: z
     .string()
     .min(DISPLAY_NAME_MIN, `Имя не короче ${DISPLAY_NAME_MIN} символов`)
     .max(DISPLAY_NAME_MAX, `Имя не длиннее ${DISPLAY_NAME_MAX} символов`)
-    .trim(),
+    .trim()
+    .optional(),
 
   password: z
     .string()
@@ -85,4 +91,20 @@ export const resendSchema = z.object({
     .min(1, 'Введите email')
     .max(EMAIL_MAX_LENGTH)
     .transform(normalizeEmail),
+});
+
+/**
+ * 6-digit verification code entered by the user together with the email it
+ * was sent to. Exactly six ASCII digits — anything else is rejected before
+ * any DB round-trip.
+ */
+export const verifyCodeSchema = z.object({
+  email: z
+    .string()
+    .min(1, 'Введите email')
+    .max(EMAIL_MAX_LENGTH)
+    .transform(normalizeEmail),
+  code: z
+    .string()
+    .regex(/^\d{6}$/, 'Код состоит из 6 цифр'),
 });

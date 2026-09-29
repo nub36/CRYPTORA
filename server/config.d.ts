@@ -21,6 +21,31 @@ export interface ServerConfig {
   /** Minutes a verification link stays valid. */
   EMAIL_VERIFY_TOKEN_TTL_MINUTES: number;
 
+  /** Minutes a 6-digit verification code stays valid. */
+  EMAIL_VERIFY_CODE_TTL_MINUTES: number;
+  /** Wrong-guess budget per code. */
+  EMAIL_VERIFY_CODE_MAX_ATTEMPTS: number;
+  /** HMAC key used to hash codes at rest. */
+  EMAIL_CODE_HMAC_SECRET: string;
+
+  /** OAuth initiation/callback per-IP budget (per 5 minutes). */
+  OAUTH_RATE_LIMIT: number;
+  /** Max age of the last interactive authentication for sensitive ops. */
+  FRESH_AUTH_MAX_AGE_MINUTES: number;
+  /** Outbound HTTP timeout for OAuth exchanges (ms). */
+  OAUTH_HTTP_TIMEOUT_MS: number;
+  /** Telegram widget payload freshness bound (seconds). */
+  TELEGRAM_AUTH_MAX_AGE_SECONDS: number;
+
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  YANDEX_CLIENT_ID: string;
+  YANDEX_CLIENT_SECRET: string;
+  VK_CLIENT_ID: string;
+  VK_CLIENT_SECRET: string;
+  TELEGRAM_BOT_TOKEN: string;
+  TELEGRAM_BOT_USERNAME: string;
+
   LOGIN_RATE_LIMIT: number;
   REGISTER_RATE_LIMIT: number;
   API_RATE_LIMIT: number;
@@ -39,7 +64,10 @@ export interface ServerConfig {
   SMTP_SECURE: boolean;
   SMTP_USER: string;
   SMTP_PASS: string;
+  SMTP_FROM_EMAIL: string;
+  SMTP_FROM_NAME: string;
   MAIL_FROM: string;
+  SMTP_TIMEOUT_MS: number;
   /** 'smtp' | 'json' | '' (auto). */
   MAIL_TRANSPORT: 'smtp' | 'json' | '';
 

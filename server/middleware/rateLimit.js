@@ -70,3 +70,32 @@ export const verifyLimiter = rateLimit({
     res.status(429).json({ error: 'Слишком много попыток. Попробуйте позже.' });
   },
 });
+
+/**
+ * Verify-code limiter — separate per-IP bucket for the 6-digit code endpoint.
+ * The per-CODE guess budget lives in the DB (attempts column), so one IP
+ * cannot DoS someone else's verification and vice versa.
+ */
+export const verifyCodeLimiter = rateLimit({
+  windowMs: config.VERIFY_RATE_WINDOW_MINUTES * 60 * 1000,
+  max: config.VERIFY_RATE_LIMIT,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'RATE_LIMITED', message: 'Слишком много попыток. Попробуйте позже.' });
+  },
+});
+
+/**
+ * OAuth initiation/callback limiter. Redirect dances are cheap but should not
+ * be a general-purpose request amplifier; window is 5 minutes.
+ */
+export const oauthLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: config.OAUTH_RATE_LIMIT,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Слишком много запросов. Попробуйте позже.' });
+  },
+});
