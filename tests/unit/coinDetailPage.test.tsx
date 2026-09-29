@@ -125,8 +125,10 @@ describe('CoinDetailPage failure isolation and symbol navigation', () => {
 
     await act(async () => { await vi.advanceTimersByTimeAsync(17_100); });
     expect(getCandles).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/Spot-источник свечей недоступен/)).toBeInTheDocument();
-    expect(screen.queryByText('Загрузка свечей… остальные блоки доступны.')).not.toBeInTheDocument();
+    // §6: единый баннер состояний графика — «источник временно недоступен».
+    const chartState = document.querySelector('[data-qa="spot-chart-state"]');
+    expect(chartState?.getAttribute('data-chart-state')).toBe('unavailable');
+    expect(chartState?.textContent).toContain('Binance Spot');
   });
 
   it('forces a fresh Spot REST candle reconciliation after the kline WebSocket reconnects', async () => {
@@ -145,7 +147,8 @@ describe('CoinDetailPage failure isolation and symbol navigation', () => {
     });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(getCandles).toHaveBeenCalledTimes(2);
-    expect(getCandles).toHaveBeenLastCalledWith('BTC', '15m', 500, { forceRefresh: true });
+    // Рынок передаётся явно, чтобы Spot-терминал не мог получить USD-M свечи.
+    expect(getCandles).toHaveBeenLastCalledWith('BTC', '15m', 500, { forceRefresh: true, market: 'spot' });
   });
 
 

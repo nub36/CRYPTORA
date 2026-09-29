@@ -1,6 +1,7 @@
 import { AssetSummary, OHLCV, DataProvenance } from '@/types/market';
 import { CanonicalAsset } from '@/services/data/registry/assetRegistry';
 import { BinanceTicker24hr, BinanceKlineRaw, KuCoinStats24hrData, KuCoinCandleItem, KuCoinTickerItem } from './schemas';
+import { normalizeBinanceKlineSeries } from '../../../../shared/market/candleSeries.js';
 
 /** Normalize a USDT spot ticker without canonical CoinGecko metadata. Unknown
  * supply/cap stay as zero sentinels and are rendered as unavailable, never inferred. */
@@ -165,25 +166,34 @@ export function normalizeKuCoinTickerItem(
   };
 }
 
+/**
+ * Normalize Binance klines (Spot `/api/v3/klines` or USD-M `/fapi/v1/klines`).
+ *
+ * Delegates to `shared/market/candleSeries.js` — the SAME implementation the
+ * read-only diagnostic harness (`npm run diagnose:charts`) exercises, so the
+ * harness validates the product's path instead of a copy of it.
+ *
+ * Malformed rows (NaN/Infinity, non-positive OHLC, high < body, low > body,
+ * duplicate or backwards timestamps) are REJECTED, not repaired: a broken
+ * candle must never reach lightweight-charts and look like a loaded chart.
+ *
+ * @param market which market these candles came from. It is an explicit
+ *   argument rather than a guess from `symbol`, and lands in
+ *   `provenance.market` so a Futures chart is provably not Spot data.
+ */
 export function normalizeBinanceKlines(
-  klines: BinanceKlineRaw[],
-  symbol: string
+  klines: BinanceKlineRaw[] | unknown[],
+  symbol: string,
+  market: 'spot' | 'futures' = 'spot',
 ): OHLCV[] {
-  return klines.map((k) => ({
-    time: Math.floor(k[0] / 1000), // ms -> seconds
-    open: parseFloat(k[1]),
-    high: parseFloat(k[2]),
-    low: parseFloat(k[3]),
-    close: parseFloat(k[4]),
-    volume: parseFloat(k[5]),
-    provenance: {
-      exchange: 'binance',
-      market: 'spot',
-      symbol,
-      timestamp: k[6],
-      isFallback: false,
-    },
-  }));
+  const { candles, rejected } = normalizeBinanceKlineSeries(klines, { symbol, market, exchange: 'binance' });
+  if (rejected.length > 0) {
+    console.warn(
+      `[market-data] ${market} ${symbol}: отброшено ${rejected.length} некорректных свечей`,
+      rejected.slice(0, 5),
+    );
+  }
+  return candles as OHLCV[];
 }
 
 export function normalizeKuCoinCandles(

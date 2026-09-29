@@ -43,6 +43,28 @@ export const BinanceFuturesOpenInterestHistItemSchema = z.object({
 export const BinanceFuturesOpenInterestHistSchema = z.array(BinanceFuturesOpenInterestHistItemSchema);
 export type BinanceFuturesOpenInterestHistItem = z.infer<typeof BinanceFuturesOpenInterestHistItemSchema>;
 
+/**
+ * USD-M `/fapi/v1/klines` returns the same tuple shape as Spot `/api/v3/klines`.
+ * A dedicated schema keeps the Futures transport independent from the Spot one
+ * so the two can never be silently swapped (RC-6).
+ */
+export const BinanceFuturesKlineRawSchema = z.tuple([
+  z.number(), // 0: open time (ms)
+  z.string(), // 1: open
+  z.string(), // 2: high
+  z.string(), // 3: low
+  z.string(), // 4: close
+  z.string(), // 5: volume (base)
+  z.number(), // 6: close time (ms)
+  z.string(), // 7: quote asset volume
+  z.number(), // 8: number of trades
+  z.string(), // 9: taker buy base volume
+  z.string(), // 10: taker buy quote volume
+  z.string().optional(), // 11: ignore
+]);
+export type BinanceFuturesKlineRaw = z.infer<typeof BinanceFuturesKlineRawSchema>;
+export const BinanceFuturesKlinesResponseSchema = z.array(BinanceFuturesKlineRawSchema);
+
 export const BinanceFuturesExchangeInfoSchema = z.object({
   serverTime: z.number(),
   symbols: z.array(

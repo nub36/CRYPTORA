@@ -57,6 +57,28 @@ export class AdapterRateLimitError extends AdapterError {
   }
 }
 
+/**
+ * Инструмент не существует в запрошенном рынке (например, у Spot-тикера нет
+ * активного USD-M perpetual, или контракт делистнут). Отличается от сетевого
+ * отказа: повтор не поможет, UI показывает «пара не поддерживается», а НЕ
+ * подставляет данные другого рынка.
+ */
+export class UnsupportedMarketSymbolError extends AdapterError {
+  constructor(
+    public readonly symbol: string,
+    public readonly market: 'spot' | 'futures',
+  ) {
+    super(
+      market === 'futures'
+        ? `Контракт ${symbol} отсутствует в активной вселенной Binance USD-M`
+        : `Инструмент ${symbol} отсутствует в активной вселенной Binance Spot`,
+      'binance',
+      404,
+    );
+    this.name = 'UnsupportedMarketSymbolError';
+  }
+}
+
 export class SymbolNotFoundError extends AdapterError {
   constructor(exchange: AdapterSource, public readonly symbol: string) {
     super(`Инструмент ${symbol} не поддерживается на ${exchange.toUpperCase()}`, exchange, 404);

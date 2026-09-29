@@ -57,7 +57,8 @@ export interface AssetPulse {
     fundingRate8h: number;
     annualizedFundingRate: number;
     basisPct: number;
-    futuresVolume24h: number;
+    /** null = биржа не вернула ticker-строку по контракту («Нет данных», не 0). */
+    futuresVolume24h: number | null;
     markPrice: number;
     indexPrice: number;
     isDemo: boolean;

@@ -62,33 +62,86 @@ describe('Δ OI по фактическому ряду openInterestHist', () => 
     expect(noHist.openInterestChange24h).toBeNull();
   });
 
-  it('LiveMarketDataProvider: ряд запрашивается по каждому символу; отказ по символу → ESTIMATED только у него', async () => {
+  it('RC-1: браузер больше НЕ обходит символы сам — OI приходит из серверного снимка', async () => {
+    // Раньше клиент дёргал /fapi/v1/openInterest и openInterestHist по каждому
+    // символу (и обрывался на лимите в 30 контрактов). Теперь развёртку делает
+    // сервер: браузер читает агрегат, а при его недоступности честно деградирует
+    // до bulk-эндпоинтов с openInterest = null.
     const adapter = new BinanceFuturesAdapter();
     const symbols = getCanonicalAssets().filter((a) => a.binanceSymbol).map((a) => a.binanceSymbol as string);
     vi.spyOn(adapter, 'fetchPremiumIndexes').mockResolvedValue(symbols.map((s) => ({ ...PREMIUM, symbol: s })));
     vi.spyOn(adapter, 'fetch24hrTickers').mockResolvedValue(symbols.map((s) => ({ ...TICKER, symbol: s })));
-    const histSpy = vi.spyOn(adapter, 'fetchOpenInterestHist').mockImplementation(async (sym) => {
-      if (sym === 'ETHUSDT') throw new Error('HTTP 500');
-      return hist([100, 100, 103]).map((h) => ({ ...h, symbol: sym }));
-    });
-    // З4: spot-OI недоступен в этом сценарии (отказ по каждому символу) —
-    // OI берётся из фактического hist-ряда, у ETH честный null (не ×0.15 от объёма).
-    vi.spyOn(adapter, 'fetchOpenInterest').mockRejectedValue(new Error('HTTP 418'));
+    const histSpy = vi.spyOn(adapter, 'fetchOpenInterestHist');
+    const oiSpy = vi.spyOn(adapter, 'fetchOpenInterest');
 
-    const provider = new LiveMarketDataProvider({ futuresAdapter: adapter, cacheTtlMs: 0 });
+    const provider = new LiveMarketDataProvider({
+      futuresAdapter: adapter,
+      cacheTtlMs: 0,
+      // Серверный агрегат недоступен → путь деградации.
+      futuresSnapshotFetcher: async () => { throw new Error('snapshot unavailable'); },
+      futuresUniverse: async () => null,
+    });
     const list = await provider.getFuturesList();
-    expect(histSpy).toHaveBeenCalledTimes(symbols.length);
+
+    expect(histSpy).not.toHaveBeenCalled();
+    expect(oiSpy).not.toHaveBeenCalled();
+
+    const b = list.find((f) => f.symbol === 'BTC/USDT')!;
+    expect(b.openInterest).toBeNull(); // нет фактического OI — честный «Нет данных»
+    expect(b.openInterestChangeSource).toBe('UNAVAILABLE');
+    expect(b.openInterestChange1h).toBeNull();
+    // Цена/фандинг/объём/24ч% из bulk-эндпоинтов остаются фактическими.
+    expect(b.markPrice).toBe(65000);
+    expect(b.futuresVolume24h).toBe(650000000);
+    expect(b.priceChange24h).toBe(2);
+  });
+
+  it('серверный снимок отдаёт фактический OI и Δ по ряду (ACTUAL), пропуски остаются null', async () => {
+    const provider = new LiveMarketDataProvider({
+      cacheTtlMs: 0,
+      futuresSnapshotFetcher: async () => ({
+        source: 'binance-usdm',
+        filter: 'quoteAsset=USDT & status=TRADING & contractType=PERPETUAL',
+        fetchedAt: new Date(T0).toISOString(),
+        universeFetchedAt: new Date(T0).toISOString(),
+        stale: false,
+        activeUsdtContracts: 2,
+        perpetualCount: 2,
+        coverage: {
+          contracts: 2, withPrice: 2, withChange24h: 2, withVolume: 2, withFunding: 2,
+          withOpenInterest: 1, withOpenInterestDelta: 1, withoutPremium: 0, withoutTicker: 0,
+          openInterestSweptAt: null, openInterestFailures: 1, openInterestRateLimited: false,
+          openInterestHistSweptAt: null, openInterestHistCovered: 1, openInterestHistFailures: 1, openInterestHistRateLimited: false,
+        },
+        rows: [
+          {
+            contractSymbol: 'BTCUSDT', baseAsset: 'BTC', contractType: 'PERPETUAL',
+            markPrice: '65000', indexPrice: '64990', lastFundingRate: '0.0001',
+            nextFundingTime: 0, premiumTime: T0,
+            lastPrice: '65000', priceChangePercent: '2.00', quoteVolume: '650000000', baseVolume: '10000',
+            openInterest: null,
+            openInterestHist: hist([100, 100, 103]),
+          },
+          {
+            contractSymbol: 'ETHUSDT', baseAsset: 'ETH', contractType: 'PERPETUAL',
+            markPrice: '3200', indexPrice: '3199', lastFundingRate: '0.0002',
+            nextFundingTime: 0, premiumTime: T0,
+            lastPrice: '3200', priceChangePercent: '-1.00', quoteVolume: '120000000', baseVolume: '1000',
+            openInterest: null,
+            openInterestHist: null,
+          },
+        ],
+      }) as never,
+    });
+
+    const list = await provider.getFuturesList();
     const b = list.find((f) => f.symbol === 'BTC/USDT')!;
     const e = list.find((f) => f.symbol === 'ETH/USDT')!;
     expect(b.openInterestChangeSource).toBe('ACTUAL');
     expect(b.openInterestChange1h).toBe(3);
     expect(b.openInterest).toBe(103 * 65000); // последняя точка ряда — факт
     expect(e.openInterestChangeSource).toBe('UNAVAILABLE');
-    expect(e.openInterest).toBeNull(); // REGRESSION З4: раньше здесь было quoteVolume×0.15
-
-    // Кэш ряда OI (5 мин) — повторный вызов не дёргает openInterestHist заново.
-    await provider.getFuturesList();
-    expect(histSpy).toHaveBeenCalledTimes(symbols.length);
+    expect(e.openInterest).toBeNull(); // REGRESSION З4: не quoteVolume×0.15
   });
 
   it('адаптер: URL публичного endpoint /futures/data/openInterestHist с period=1h и валидация схемы', async () => {

@@ -8,6 +8,7 @@ import { AssetDetail, OHLCV, Timeframe, FuturesAsset, RadarEvent } from '@/types
 import { formatCurrency, formatPercent, formatNumber } from '@/utils/formatters';
 import { radarEventTypeLabel, radarSeverityLabel } from '@/utils/labels';
 import { ChartTerminal } from '@/components/common/ChartTerminal';
+import { ChartDataState } from '@/components/common/ChartDataState';
 import type { ChartIndicatorData, CandleChartType } from '@/components/common/CandleChart';
 import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
 import { CoinIcon } from '@/components/common/CoinIcon';
@@ -92,7 +93,8 @@ export const CoinDetailPage: React.FC = () => {
   const recoveryTargetOpenTimeRef = useRef<number | null>(null);
   const latestWsKlineRef = useRef<KlineTick | null>(null);
   const recoveryKeysRef = useRef(new Set<string>());
-  const candleRouteKeyRef = useRef(`${routeSymbol}:${timeframe}`);
+  // RC-8: ключ защиты от устаревших ответов включает рынок.
+  const candleRouteKeyRef = useRef(`${routeSymbol}:${timeframe}:spot`);
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
   const [chartType, setChartType] = useState<CandleChartType>('candles');
@@ -156,7 +158,7 @@ export const CoinDetailPage: React.FC = () => {
     let active = true;
     setBtcCandles([]);
     if (!routeSymbol || routeSymbol === 'BTC') return () => { active = false; };
-    void provider.getCandles('BTC', timeframe)
+    void provider.getCandles('BTC', timeframe, 500, { market: 'spot' })
       .then((rows) => { if (active) setBtcCandles(rows); })
       .catch(() => { if (active) setBtcCandles([]); });
     return () => { active = false; };
@@ -175,12 +177,12 @@ export const CoinDetailPage: React.FC = () => {
 
   const recoverCandleHistory = useCallback(async () => {
     if (!routeSymbol) return;
-    const requestKey = `${routeSymbol}:${timeframe}`;
+    const requestKey = `${routeSymbol}:${timeframe}:spot`;
     if (recoveryKeysRef.current.has(requestKey)) return;
     recoveryKeysRef.current.add(requestKey);
     try {
       // Force bypass the provider's short-lived candle cache on reconnect/gap recovery.
-      const recovered = await provider.getCandles(routeSymbol, timeframe, 500, { forceRefresh: true });
+      const recovered = await provider.getCandles(routeSymbol, timeframe, 500, { forceRefresh: true, market: 'spot' });
       if (candleRouteKeyRef.current !== requestKey) return;
       let reconciled = mergeCandleHistory(candlesRef.current, recovered);
       const latestWs = latestWsKlineRef.current;
@@ -211,7 +213,7 @@ export const CoinDetailPage: React.FC = () => {
   }, [provider, routeSymbol, timeframe]);
 
   useEffect(() => {
-    const key = `${routeSymbol}:${timeframe}`;
+    const key = `${routeSymbol}:${timeframe}:spot`;
     candleRouteKeyRef.current = key;
     latestCandleOpenTimeRef.current = null;
     recoveryTargetOpenTimeRef.current = null;
@@ -326,7 +328,7 @@ export const CoinDetailPage: React.FC = () => {
       candleDeadlineTimer = window.setTimeout(() => reject(new Error('Spot candle request exceeded 17s')), 17_000);
     });
 
-    void Promise.race([provider.getCandles(routeSymbol, timeframe), candleDeadline])
+    void Promise.race([provider.getCandles(routeSymbol, timeframe, 500, { market: 'spot' }), candleDeadline])
       .then((rows) => {
         if (!active) return;
         const latestRest = rows[rows.length - 1];
@@ -669,10 +671,20 @@ export const CoinDetailPage: React.FC = () => {
           <span className="shrink-0 font-sans text-[11px] tracking-[0.16em] text-slate-500">Аналитический terminal · без исполнения сделок</span>
         </div>
 
-        {candlesLoading && <div role="status" className="font-sans text-xs text-slate-400">Загрузка свечей… остальные блоки доступны.</div>}
-        {candlesUnavailable && <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">Spot-источник свечей недоступен; график и индикаторы не подменяются demo-данными.</div>}
+        {/* §6: явные состояния графика — загрузка / нет данных / источник недоступен / повтор. */}
+        <ChartDataState
+          status={
+            candlesLoading ? 'loading'
+              : candlesUnavailable ? 'unavailable'
+                : candles.length === 0 ? 'no-data'
+                  : 'ready'
+          }
+          symbol={`${asset.symbol}/USDT`}
+          market="spot"
+          onRetry={() => setRetryKey((key) => key + 1)}
+          qa="spot-chart-state"
+        />
         {candleRecoveryUnavailable && <div role="status" className="rounded border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2 font-sans text-xs text-amber-200">Не удалось восстановить историю после разрыва kline-потока; показаны только фактически полученные свечи.</div>}
-        {!candlesLoading && !candlesUnavailable && candles.length === 0 && <div role="status" className="font-sans text-xs text-slate-400">Источник пока не вернул историю свечей.</div>}
 
         <ChartTerminal
           data={candles}
@@ -851,7 +863,9 @@ export const CoinDetailPage: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-slate-400">Суточный фьючерсный объем</span>
                 <span className="text-slate-200 tabular-nums font-mono">
-                  {formatCurrency(futuresData.futuresVolume24h, { compact: true })}
+                  {futuresData.futuresVolume24h != null
+                    ? formatCurrency(futuresData.futuresVolume24h, { compact: true })
+                    : <span className="text-slate-500">Нет данных</span>}
                 </span>
               </div>
               <Link

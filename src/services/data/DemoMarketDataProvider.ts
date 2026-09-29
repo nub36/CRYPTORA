@@ -527,6 +527,8 @@ export const DEMO_OVERVIEW: MarketOverviewData = {
 export const DEMO_FUTURES: FuturesAsset[] = [
   {
     symbol: 'BTC/USDT',
+    contractSymbol: 'BTCUSDT',
+    baseAsset: 'BTC',
     markPrice: 64855.1,
     indexPrice: 64850.25,
     fundingRate: 0.0125,
@@ -543,6 +545,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'ETH/USDT',
+    contractSymbol: 'ETHUSDT',
+    baseAsset: 'ETH',
     markPrice: 3451.2,
     indexPrice: 3450.6,
     fundingRate: 0.0084,
@@ -559,6 +563,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'SOL/USDT',
+    contractSymbol: 'SOLUSDT',
+    baseAsset: 'SOL',
     markPrice: 154.35,
     indexPrice: 154.2,
     fundingRate: 0.0215,
@@ -575,6 +581,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'SUI/USDT',
+    contractSymbol: 'SUIUSDT',
+    baseAsset: 'SUI',
     markPrice: 1.623,
     indexPrice: 1.62,
     fundingRate: -0.0185,
@@ -591,6 +599,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'TAO/USDT',
+    contractSymbol: 'TAOUSDT',
+    baseAsset: 'TAO',
     markPrice: 433.1,
     indexPrice: 432.5,
     fundingRate: -0.024,
@@ -607,6 +617,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'DOGE/USDT',
+    contractSymbol: 'DOGEUSDT',
+    baseAsset: 'DOGE',
     markPrice: 0.1182,
     indexPrice: 0.118,
     fundingRate: 0.0105,
@@ -623,6 +635,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'AVAX/USDT',
+    contractSymbol: 'AVAXUSDT',
+    baseAsset: 'AVAX',
     markPrice: 28.78,
     indexPrice: 28.75,
     fundingRate: 0.0075,
@@ -639,6 +653,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'PEPE/USDT',
+    contractSymbol: 'PEPEUSDT',
+    baseAsset: 'PEPE',
     markPrice: 0.00000987,
     indexPrice: 0.00000985,
     fundingRate: 0.0165,
@@ -655,6 +671,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'NEAR/USDT',
+    contractSymbol: 'NEARUSDT',
+    baseAsset: 'NEAR',
     markPrice: 4.855,
     indexPrice: 4.85,
     fundingRate: 0.0112,
@@ -671,6 +689,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'WIF/USDT',
+    contractSymbol: 'WIFUSDT',
+    baseAsset: 'WIF',
     markPrice: 1.824,
     indexPrice: 1.82,
     fundingRate: 0.0195,
@@ -687,6 +707,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'TIA/USDT',
+    contractSymbol: 'TIAUSDT',
+    baseAsset: 'TIA',
     markPrice: 6.242,
     indexPrice: 6.25,
     fundingRate: -0.0315,
@@ -703,6 +725,8 @@ export const DEMO_FUTURES: FuturesAsset[] = [
   },
   {
     symbol: 'XRP/USDT',
+    contractSymbol: 'XRPUSDT',
+    baseAsset: 'XRP',
     markPrice: 0.5842,
     indexPrice: 0.584,
     fundingRate: 0.0052,
@@ -1055,6 +1079,16 @@ export class DemoMarketDataProvider implements MarketDataProvider {
 
   async getFuturesList(): Promise<FuturesAsset[]> {
     return [...DEMO_FUTURES];
+  }
+
+  /** Детерминированный QA-набор: контракт по базовому тикеру или символу контракта. */
+  async getFuturesContract(baseOrContract: string): Promise<FuturesAsset | null> {
+    const wanted = String(baseOrContract ?? '').toUpperCase().trim();
+    return DEMO_FUTURES.find(
+      (f) => f.symbol.split('/')[0] === wanted
+        || f.contractSymbol === wanted
+        || f.contractSymbol === `${wanted}USDT`,
+    ) ?? null;
   }
 
   async getLiquidations(): Promise<LiquidationData> {

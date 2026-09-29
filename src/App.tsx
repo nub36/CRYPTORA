@@ -15,6 +15,7 @@ import { OverviewPage } from '@/pages/OverviewPage';
 const MarketPage = React.lazy(() => import('@/pages/MarketPage').then(m => ({ default: m.MarketPage })));
 const CoinDetailPage = React.lazy(() => import('@/pages/CoinDetailPage').then(m => ({ default: m.CoinDetailPage })));
 const FuturesPage = React.lazy(() => import('@/pages/FuturesPage').then(m => ({ default: m.FuturesPage })));
+const FuturesContractPage = React.lazy(() => import('@/pages/FuturesContractPage').then(m => ({ default: m.FuturesContractPage })));
 const LiquidationsPage = React.lazy(() => import('@/pages/LiquidationsPage').then(m => ({ default: m.LiquidationsPage })));
 const ScreenerPage = React.lazy(() => import('@/pages/ScreenerPage').then(m => ({ default: m.ScreenerPage })));
 const RadarPage = React.lazy(() => import('@/pages/RadarPage').then(m => ({ default: m.RadarPage })));
@@ -56,6 +57,8 @@ export const App: React.FC = () => {
             <Route path="/market" element={<MarketPage />} />
             <Route path="/coin/:symbol" element={<CoinDetailPage />} />
             <Route path="/futures" element={<FuturesPage />} />
+            {/* Explicit market in the URL: a Futures contract charts USD-M klines (RC-6). */}
+            <Route path="/futures/:symbol" element={<FuturesContractPage />} />
             <Route path="/liquidations" element={<LiquidationsPage />} />
             <Route path="/screener" element={<ScreenerPage />} />
             <Route path="/radar" element={<RadarPage />} />
