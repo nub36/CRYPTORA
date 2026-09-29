@@ -260,3 +260,46 @@ export function extractBinanceSpread(ticker: BinanceTicker24hr): { spreadBps: nu
     bestAsk: ask,
   };
 }
+
+/**
+ * Нормализация стакана USD-M (`GET /fapi/v1/depth`) в канонический
+ * `OrderBookSnapshot` (задача §4).
+ *
+ * Контракт:
+ *  • `provenance.market = 'futures'` и `provenance.symbol` = символ КОНТРАКТА
+ *    (`1000PEPEUSDT`) — по нему в UI видно, что книга фьючерсная, а не спотовая;
+ *  • уровни с нулевым/нечисловым количеством отбрасываются: биржа присылает
+ *    их как «удалить уровень», рисовать их как ликвидность нельзя;
+ *  • bids сортируются по убыванию цены, asks — по возрастанию, поэтому
+ *    `bids[0]`/`asks[0]` — это всегда best bid/ask, а спред неотрицателен;
+ *  • время снапшота: `T` (matching engine) → `E` (event) → локальные часы,
+ *    чтобы «возраст» книги считался по бирже, когда она его прислала.
+ */
+export function normalizeFuturesDepth(
+  depth: { bids: [string, string][]; asks: [string, string][]; lastUpdateId?: number; E?: number | null; T?: number | null },
+  params: { contractSymbol: string; displaySymbol: string },
+): import('@/types/realtime').OrderBookSnapshot {
+  const levels = (rows: [string, string][]): [number, number][] =>
+    rows
+      .map(([price, qty]): [number, number] => [Number.parseFloat(price), Number.parseFloat(qty)])
+      .filter(([price, qty]) => Number.isFinite(price) && Number.isFinite(qty) && price > 0 && qty > 0);
+
+  const bids = levels(depth.bids ?? []).sort((a, b) => b[0] - a[0]);
+  const asks = levels(depth.asks ?? []).sort((a, b) => a[0] - b[0]);
+  const exchangeTime = Number(depth.T ?? depth.E ?? 0);
+  const timestamp = Number.isFinite(exchangeTime) && exchangeTime > 0 ? exchangeTime : Date.now();
+
+  return {
+    symbol: params.displaySymbol,
+    bids,
+    asks,
+    timestamp,
+    provenance: {
+      exchange: 'binance',
+      market: 'futures',
+      symbol: params.contractSymbol,
+      timestamp,
+      isFallback: false,
+    },
+  };
+}

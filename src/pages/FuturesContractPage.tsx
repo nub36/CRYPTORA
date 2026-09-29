@@ -1,21 +1,34 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
-import { ChartTerminal } from '@/components/common/ChartTerminal';
-import type { CandleChartType, ChartIndicatorData } from '@/components/common/CandleChart';
-import { ChartDataState, type ChartDataStatus } from '@/components/common/ChartDataState';
+import { Activity, ArrowLeft, ExternalLink, Layers, Radio, SlidersHorizontal } from 'lucide-react';
+import type { CandleChartType } from '@/components/common/CandleChart';
 import { CoinIcon } from '@/components/common/CoinIcon';
-import { OiDeltaBadge } from '@/components/common/OiDeltaBadge';
 import { TerminalSection } from '@/components/layout/TerminalSection';
+import { OrderBookL2 } from '@/components/market/OrderBookL2';
+import { AssetPulsePanel } from '@/components/market/AssetPulsePanel';
+import {
+  InstrumentChartCard,
+  InstrumentMetricsCard,
+  InstrumentRadarCard,
+  buildCorrelationRows,
+  buildDerivativesRows,
+  buildFuturesStatisticsRows,
+  buildTechnicalRows,
+  sectionSourceNote,
+  type RadarSourcePolicy,
+} from '@/components/instrument';
 import { useMarketData } from '@/context/MarketDataContext';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { UnsupportedMarketSymbolError } from '@/services/data/adapters/errors';
+import { useInstrumentCandles } from '@/hooks/useInstrumentCandles';
+import { useFuturesOrderBook } from '@/hooks/useFuturesOrderBook';
 import { getActiveSpotBaseSet, futuresBaseToSpot } from '@/services/data/registry/exchangeUniverse';
 import { parseFuturesMultiplier } from '@/services/data/registry/futuresSymbols';
 import { IndicatorEngine } from '@/services/indicators/IndicatorEngine';
-import type { FuturesAsset, OHLCV, Timeframe } from '@/types/market';
+import { buildChartIndicatorOverlays, buildCorrelationContext } from '@/services/indicators/chartOverlays';
+import { LiquidationPulse } from '@/services/liquidations/LiquidationPulse';
+import type { FuturesAsset, LiquidationData, OHLCV, RadarEvent, Timeframe } from '@/types/market';
 import { parseMarketType } from '@/types/market';
-import { formatCurrency, formatPercent } from '@/utils/formatters';
+import { formatInstrumentPrice, formatPercent } from '@/utils/formatters';
 
 /**
  * USD-M perpetual terminal.
@@ -27,17 +40,24 @@ import { formatCurrency, formatPercent } from '@/utils/formatters';
  * compatibility) and is threaded down as
  * `provider.getCandles(symbol, tf, limit, { market: 'futures' })`.
  *
+ * ЭТА СТРАНИЦА — ТОНКИЙ КОНТЕЙНЕР ДАННЫХ (задача §2). Вся презентация —
+ * общие компоненты `@/components/instrument`, те же самые, что рендерит
+ * Spot-страница: карточка графика с единым ChartTerminal, «Рыночная
+ * статистика», «Деривативы», «Технические индикаторы», «Корреляция с BTC»,
+ * стакан L2 и Radar. Второй копии Coin-страницы не создаётся, и правка общей
+ * карточки/тулбара автоматически применяется к обоим рынкам (§17).
+ *
+ * ИНВАРИАНТ РЫНКА (§3): каждый источник на этой странице — USD-M:
+ * свечи `{ market: 'futures' }`, стакан `/fapi/v1/depth`, метрики контракта
+ * из `premiumIndex`/`ticker/24hr`/`openInterest`, BTC для корреляции — тоже
+ * фьючерсный (`BTCUSDT` USD-M). Ни одна метрика не заменяется спотовой:
+ * отсутствующее значение показывается как «Нет данных».
+ *
  * Realtime merging is intentionally NOT enabled here: CRYPTORA's WebSocket
  * feed is a Binance **Spot** stream, and blending spot ticks into a futures
  * chart would be exactly the kind of silent cross-market contamination this
  * change removes.
  */
-
-const TIMEFRAME_LABELS: Record<Timeframe, string> = {
-  '5m': '5м', '15m': '15м', '30m': '30м', '1h': '1ч', '4h': '4ч', '1D': '1Д', '1W': '1Н',
-};
-
-const NO_DATA = <span className="font-sans text-[11px] text-slate-500">Нет данных</span>;
 
 function normalizeBase(raw: string | undefined): string {
   return String(raw ?? '').toUpperCase().trim().replace(/[^A-Z0-9]/g, '');
@@ -57,12 +77,14 @@ export const FuturesContractPage: React.FC = () => {
   const market = searchParams.has('market') ? parseMarketType(searchParams.get('market')) : 'futures';
 
   const [timeframe, setTimeframe] = useState<Timeframe>('1h');
-  const [candles, setCandles] = useState<OHLCV[]>([]);
-  const [chartStatus, setChartStatus] = useState<ChartDataStatus>('loading');
   const [contract, setContract] = useState<FuturesAsset | null>(null);
   const [contractStatus, setContractStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [spotBase, setSpotBase] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
+  const [radarEvents, setRadarEvents] = useState<RadarEvent[]>([]);
+  const [radarStatus, setRadarStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [liquidations, setLiquidations] = useState<LiquidationData | null>(null);
+  const [btcCandles, setBtcCandles] = useState<OHLCV[]>([]);
+  const [metaRetryKey, setMetaRetryKey] = useState(0);
   const [chartType, setChartType] = useState<CandleChartType>('candles');
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
@@ -75,12 +97,35 @@ export const FuturesContractPage: React.FC = () => {
   const chartHeight = isDesktop ? 460 : isPhone ? 300 : 340;
 
   /**
-   * Stale-response guard (RC-8). The key includes the MARKET, so switching
-   * Spot↔Futures for the same ticker can never apply the other market's
-   * response, and a slow response for a previous symbol is discarded.
+   * Свечи USD-M. Общий с Spot-страницей хук: рынок передаётся явно, ответ с
+   * устаревшим ключом отбрасывается, предыдущий запрос отменяется
+   * AbortSignal'ом (RC-8 / §18).
    */
-  const requestKeyRef = useRef('');
-  const requestKey = `${base}:${timeframe}:${market}:${retryKey}`;
+  const {
+    candles,
+    status: chartStatus,
+    retry: retryCandles,
+  } = useInstrumentCandles({
+    provider,
+    symbol: base,
+    market,
+    timeframe,
+    limit: 500,
+    abortOnChange: true,
+  });
+
+  /** Стакан USD-M (`/fapi/v1/depth`), поллинг 5с с отменой устаревших запросов. */
+  const { orderBook, status: orderBookStatus, updatedAt: orderBookAt } = useFuturesOrderBook({
+    provider,
+    symbol: base,
+    enabled: market === 'futures',
+  });
+
+  const retryMeta = useCallback(() => setMetaRetryKey((key) => key + 1), []);
+  const retryAll = useCallback(() => {
+    retryCandles();
+    retryMeta();
+  }, [retryCandles, retryMeta]);
 
   useEffect(() => {
     let active = true;
@@ -107,48 +152,92 @@ export const FuturesContractPage: React.FC = () => {
       })
       .catch(() => { if (active) setContractStatus('error'); });
     return () => { active = false; };
-  }, [base, provider, retryKey]);
+  }, [base, provider, metaRetryKey]);
 
-  // Candles — USD-M only, with abort + stale-response protection.
+  /**
+   * Radar и ликвидации — вторичные блоки: их отказ не влияет ни на график,
+   * ни на метрики контракта (§15). Radar запрашивается по СПОТОВОЙ базе,
+   * потому что серверный монитор считает аномалии спота (см. политику в
+   * `InstrumentRadarCard`).
+   */
   useEffect(() => {
     if (!base) return;
-    requestKeyRef.current = requestKey;
-    const controller = new AbortController();
-    setCandles([]);
-    setChartStatus('loading');
-
-    void provider
-      .getCandles(base, timeframe, 500, { market, signal: controller.signal })
-      .then((rows) => {
-        if (requestKeyRef.current !== requestKey) return; // stale response — discard
-        setCandles(rows);
-        setChartStatus(rows.length === 0 ? 'no-data' : 'ready');
-      })
-      .catch((error: unknown) => {
-        if (requestKeyRef.current !== requestKey) return;
-        setCandles([]);
-        setChartStatus(error instanceof UnsupportedMarketSymbolError ? 'unsupported' : 'unavailable');
+    let active = true;
+    setRadarStatus('loading');
+    setRadarEvents([]);
+    setLiquidations(null);
+    const radarSymbol = spotBase ?? base;
+    void Promise.allSettled([provider.getRadarEvents(radarSymbol), provider.getLiquidations()])
+      .then(([radarResult, liquidationResult]) => {
+        if (!active) return;
+        if (radarResult.status === 'fulfilled') {
+          setRadarEvents(radarResult.value);
+          setRadarStatus('ready');
+        } else {
+          setRadarStatus('error');
+        }
+        if (liquidationResult.status === 'fulfilled') setLiquidations(liquidationResult.value);
       });
+    return () => { active = false; };
+  }, [base, spotBase, provider, metaRetryKey]);
 
-    return () => { controller.abort(); };
-  }, [base, timeframe, market, provider, requestKey]);
+  /**
+   * Корреляция с BTC считается по ФЬЮЧЕРСНЫМ свечам BTCUSDT (§8): сравнивать
+   * перпетуал со спотовым BTC значит смешивать рынки. Формулы не изменены —
+   * используется тот же `IndicatorEngine`.
+   */
+  useEffect(() => {
+    let active = true;
+    setBtcCandles([]);
+    if (!base || base === 'BTC' || market !== 'futures') return () => { active = false; };
+    void provider.getCandles('BTC', timeframe, 500, { market: 'futures' })
+      .then((rows) => { if (active) setBtcCandles(rows); })
+      .catch(() => { if (active) setBtcCandles([]); });
+    return () => { active = false; };
+  }, [base, timeframe, market, provider]);
 
-  // Overlay series only (presentation). Indicator MATH is untouched — the same
-  // IndicatorEngine the Spot terminal uses, fed with USD-M closes.
-  const chartIndicators = useMemo<ChartIndicatorData | undefined>(() => {
-    if (candles.length < 20) return undefined;
-    const closes = candles.map((c) => c.close);
-    const pad = (series: number[], offset: number): number[] => new Array<number>(offset).fill(NaN).concat(series);
-    const sma20 = IndicatorEngine.calculateSMA(closes, 20);
-    const sma50 = IndicatorEngine.calculateSMA(closes, 50);
-    return {
-      sma20: candles.length >= 20 ? pad(sma20, closes.length - sma20.length) : undefined,
-      sma50: candles.length >= 50 ? pad(sma50, closes.length - sma50.length) : undefined,
-    };
-  }, [candles]);
+  // Оверлеи графика: общая с Spot реализация (SMA 20/50/200 + Bollinger).
+  const chartIndicators = useMemo(() => buildChartIndicatorOverlays(candles), [candles]);
+
+  /** Индикаторы считаются по свечам ЭТОГО рынка; формулы не тронуты (§7). */
+  const indicators = useMemo(
+    () => (candles.length > 0 ? IndicatorEngine.computeCompleteIndicators(candles) : undefined),
+    [candles],
+  );
+
+  const correlation = useMemo(() => {
+    const context = buildCorrelationContext(candles, btcCandles);
+    return context ? { ...context, timeframe } : null;
+  }, [candles, btcCandles, timeframe]);
 
   const multiplier = useMemo(() => parseFuturesMultiplier(base), [base]);
-  const retry = useCallback(() => setRetryKey((k) => k + 1), []);
+  const displayPair = `${base}/USDT`;
+  const contractSymbol = contract?.contractSymbol ?? `${base}USDT`;
+  const price = contract?.lastPrice ?? contract?.markPrice ?? candles.at(-1)?.close ?? 0;
+
+  /**
+   * Снимок ликвидаций/деривативов по контракту. Источник помечается самим
+   * компонентом (FACTUAL / ESTIMATED / UNAVAILABLE), поэтому оценочные
+   * значения нельзя принять за биржевой факт.
+   */
+  const pulse = useMemo(
+    () => LiquidationPulse.buildAssetPulse({
+      symbol: base,
+      liquidations,
+      futures: contract,
+      priceChange24h: contract?.priceChange24h ?? 0,
+    }),
+    [base, liquidations, contract],
+  );
+
+  const sectionStatus = contractStatus === 'ready'
+    ? 'ready'
+    : contractStatus === 'loading'
+      ? 'loading'
+      : contractStatus === 'missing' ? 'unsupported' : 'error';
+
+  /** Политика Radar (§9): спотовые аномалии показываются только с явной подписью. */
+  const radarPolicy: RadarSourcePolicy = spotBase ? 'spot-underlying' : 'hidden';
 
   if (!base) {
     return (
@@ -160,11 +249,12 @@ export const FuturesContractPage: React.FC = () => {
 
   return (
     <div
-      className="route-shell mx-auto max-w-[1920px] space-y-4 px-3 py-3.5 sm:px-4"
+      className="route-shell mx-auto max-w-[1920px] space-y-3.5 px-3 py-3 sm:px-4"
       data-route="futures-contract"
       data-market={market}
-      data-contract={contract?.contractSymbol ?? `${base}USDT`}
+      data-contract={contractSymbol}
     >
+      {/* ── Идентичность инструмента ─────────────────────────────────── */}
       <div className="flex flex-col gap-3 border-b border-white/[0.08] pb-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <button
@@ -179,7 +269,7 @@ export const FuturesContractPage: React.FC = () => {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate font-sans text-lg font-bold tracking-wide text-white sm:text-xl">
-                {base}/USDT
+                {displayPair}
               </h1>
               <span
                 data-qa="futures-market-badge"
@@ -197,143 +287,204 @@ export const FuturesContractPage: React.FC = () => {
               )}
             </div>
             <p className="mt-0.5 font-sans text-xs text-slate-400">
-              Свечи и метрики — Binance USD-M Futures ({contract?.contractSymbol ?? `${base}USDT`}). Spot-данные не подставляются.
+              Свечи и метрики — Binance USD-M Futures ({contractSymbol}). Spot-данные не подставляются.
             </p>
           </div>
         </div>
-        {spotBase && (
-          <Link
-            to={`/coin/${spotBase}`}
-            data-qa="futures-open-spot"
-            className="inline-flex min-h-[36px] w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-surface-elevated px-3 font-sans text-xs font-semibold text-slate-200 transition-colors hover:bg-surface-hover hover:text-white"
-          >
-            Открыть Spot {spotBase}
-            <ExternalLink className="h-3 w-3" aria-hidden />
-          </Link>
-        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Цена контракта каноничной точностью: 0.000478 не округляется (§14). */}
+          <div className="text-right font-mono">
+            <div data-qa="futures-last-price" className="text-xl font-black tabular-nums text-white sm:text-2xl">
+              {contractStatus === 'ready' && price > 0 ? formatInstrumentPrice(price) : '—'}
+            </div>
+            <div
+              data-qa="futures-change-24h"
+              className={`text-xs font-bold ${
+                contract?.priceChange24h == null
+                  ? 'text-slate-500'
+                  : contract.priceChange24h >= 0 ? 'text-brand-green' : 'text-brand-red'
+              }`}
+            >
+              24h: {contract?.priceChange24h != null ? formatPercent(contract.priceChange24h) : 'Нет данных'}
+            </div>
+          </div>
+          {spotBase && (
+            <Link
+              to={`/coin/${spotBase}`}
+              data-qa="futures-open-spot"
+              className="inline-flex min-h-[36px] w-fit items-center gap-1.5 rounded-lg border border-white/[0.08] bg-surface-elevated px-3 font-sans text-xs font-semibold text-slate-200 transition-colors hover:bg-surface-hover hover:text-white"
+            >
+              Открыть Spot {spotBase}
+              <ExternalLink className="h-3 w-3" aria-hidden />
+            </Link>
+          )}
+        </div>
       </div>
 
+      {/* ── График + снимок деривативов ──────────────────────────────── */}
       <TerminalSection
         label="DERIVATIVES TERMINAL"
-        title={`${base}/USDT · ${TIMEFRAME_LABELS[timeframe]}`}
+        title={`${displayPair} · USD-M`}
         meta={market === 'futures' ? 'BINANCE USD-M KLINES' : 'BINANCE SPOT KLINES'}
         className="coin-workspace-region"
       >
-        <div className="space-y-2">
-          <ChartDataState
-            status={chartStatus}
-            symbol={`${base}/USDT`}
+        <div data-qa="futures-workspace" className="grid grid-cols-1 items-stretch gap-3.5 xl:grid-cols-[72fr_28fr]">
+          <InstrumentChartCard
             market={market}
-            onRetry={retry}
-            qa="futures-chart-state"
+            displayPair={displayPair}
+            status={chartStatus}
+            onRetry={retryCandles}
+            stateQa="futures-chart-state"
+            high24h={contract?.high24h ?? null}
+            low24h={contract?.low24h ?? null}
+            note="Аналитический terminal · без исполнения сделок"
+            qa="futures-chart-card"
+            terminal={{
+              data: candles,
+              symbol: displayPair,
+              timeframe,
+              onTimeframeChange: setTimeframe,
+              height: chartHeight,
+              indicators: chartIndicators,
+              chartType,
+              onChartTypeChange: setChartType,
+              showRSI,
+              onShowRSIChange: setShowRSI,
+              showMACD,
+              onShowMACDChange: setShowMACD,
+              showMA,
+              onShowMAChange: setShowMA,
+              showVolume,
+              onShowVolumeChange: setShowVolume,
+              showTimezone,
+              onShowTimezoneChange: setShowTimezone,
+            }}
           />
-          {chartStatus === 'ready' && (
-            <ChartTerminal
-              data={candles}
-              symbol={`${base}/USDT`}
-              timeframe={timeframe}
-              onTimeframeChange={setTimeframe}
-              height={chartHeight}
-              indicators={chartIndicators}
-              chartType={chartType}
-              onChartTypeChange={setChartType}
-              showRSI={showRSI}
-              onShowRSIChange={setShowRSI}
-              showMACD={showMACD}
-              onShowMACDChange={setShowMACD}
-              showMA={showMA}
-              onShowMAChange={setShowMA}
-              showVolume={showVolume}
-              onShowVolumeChange={setShowVolume}
-              showTimezone={showTimezone}
-              onShowTimezoneChange={setShowTimezone}
+          <div className="self-start xl:sticky xl:top-[70px]">
+            <AssetPulsePanel pulse={pulse} />
+          </div>
+        </div>
+      </TerminalSection>
+
+      {/* ── Метрики: те же карточки и в том же порядке, что на Spot ──── */}
+      <TerminalSection label="CONTRACT METRICS" title="Метрики контракта" className="market-workspace">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <InstrumentMetricsCard
+            title="Рыночная статистика"
+            icon={Activity}
+            market={market}
+            status={sectionStatus}
+            qa="futures-market-statistics"
+            sourceNote={sectionSourceNote(market, contractSymbol)}
+            unsupportedMessage={`Контракт ${contractSymbol} отсутствует в активной вселенной Binance USD-M.`}
+            onRetry={retryMeta}
+            rows={contract ? buildFuturesStatisticsRows(contract) : []}
+            footer={
+              <p className="border-t border-surface-border pt-2 font-sans text-[11px] leading-4 text-slate-500">
+                Капитализация и данные об эмиссии относятся к базовому активу и у бессрочного контракта не определены.
+                {spotBase && (
+                  <>
+                    {' '}
+                    <Link to={`/coin/${spotBase}`} className="text-brand-cyan hover:underline">
+                      Открыть Spot {spotBase}
+                    </Link>
+                  </>
+                )}
+              </p>
+            }
+          />
+
+          <InstrumentMetricsCard
+            title="Деривативы: детали контракта"
+            icon={Layers}
+            iconClassName="text-brand-purple"
+            market={market}
+            status={sectionStatus}
+            qa="futures-derivatives"
+            sourceNote={sectionSourceNote(market, 'premiumIndex · openInterest')}
+            unsupportedMessage={`Контракт ${contractSymbol} отсутствует в активной вселенной Binance USD-M.`}
+            onRetry={retryMeta}
+            rows={contract ? buildDerivativesRows(contract, 'full') : []}
+          />
+
+          <InstrumentMetricsCard
+            title="Технические индикаторы"
+            icon={SlidersHorizontal}
+            iconClassName="text-brand-sky"
+            market={market}
+            status={chartStatus === 'ready' ? (indicators ? 'ready' : 'no-data') : chartStatus === 'loading' ? 'loading' : chartStatus === 'unsupported' ? 'unsupported' : 'no-data'}
+            qa="futures-indicators"
+            sourceNote={sectionSourceNote(market, `свечи ${timeframe}`)}
+            emptyMessage="Недостаточно фактических свечей контракта для расчёта."
+            onRetry={retryCandles}
+            rows={buildTechnicalRows(indicators)}
+          />
+
+          {base !== 'BTC' && (
+            <InstrumentMetricsCard
+              title="Корреляция с BTC"
+              icon={Activity}
+              iconClassName="text-amber-400"
+              market={market}
+              status={correlation ? 'ready' : chartStatus === 'loading' ? 'loading' : 'no-data'}
+              qa="futures-btc-correlation"
+              sourceNote={sectionSourceNote(market, 'BTCUSDT PERP')}
+              emptyMessage="Недостаточно истории для расчёта"
+              rows={correlation ? buildCorrelationRows(correlation) : []}
+              footer={
+                <p className="border-t border-surface-border pt-2 font-sans text-[11px] leading-4 text-slate-500">
+                  Сравнение с фьючерсом BTCUSDT (USD-M), а не со спотовым BTC.
+                </p>
+              }
             />
-          )}
-          {/* Пока график не готов (загрузка/ошибка) — таймфреймы остаются доступными. */}
-          {chartStatus !== 'ready' && (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Таймфрейм">
-              {(Object.keys(TIMEFRAME_LABELS) as Timeframe[]).map((tf) => (
-                <button
-                  key={tf}
-                  type="button"
-                  onClick={() => setTimeframe(tf)}
-                  aria-pressed={tf === timeframe}
-                  className={`min-h-[36px] min-w-[44px] rounded-lg border px-2.5 font-mono text-xs transition-colors ${
-                    tf === timeframe
-                      ? 'border-cyan-500 bg-cyan-500 font-bold text-slate-950'
-                      : 'border-white/[0.08] bg-surface-elevated text-slate-300 hover:bg-surface-hover hover:text-white'
-                  }`}
-                >
-                  {TIMEFRAME_LABELS[tf]}
-                </button>
-              ))}
-            </div>
           )}
         </div>
       </TerminalSection>
 
-      <TerminalSection label="CONTRACT METRICS" title="Метрики контракта" className="market-workspace">
-        {contractStatus === 'loading' && (
-          <p role="status" className="py-6 text-center font-sans text-xs text-slate-400">Загрузка метрик контракта…</p>
-        )}
-        {contractStatus === 'missing' && (
-          <p role="status" data-qa="futures-contract-missing" className="py-6 text-center font-sans text-xs text-slate-400">
-            Контракт {base}USDT отсутствует в активной вселенной Binance USD-M.
-          </p>
-        )}
-        {contractStatus === 'error' && (
-          <p role="alert" className="py-6 text-center font-sans text-xs text-rose-300">
-            Источник деривативов недоступен.
-          </p>
-        )}
-        {contractStatus === 'ready' && contract && (
-          <div className="grid grid-cols-2 gap-3 font-sans md:grid-cols-3 xl:grid-cols-6">
-            {[
-              { label: 'Цена метки', node: formatCurrency(contract.markPrice, { decimals: contract.markPrice > 10 ? 2 : 4 }) },
-              { label: 'Индексная цена', node: formatCurrency(contract.indexPrice, { decimals: contract.indexPrice > 10 ? 2 : 4 }) },
-              {
-                label: '24ч %',
-                node: contract.priceChange24h != null ? formatPercent(contract.priceChange24h) : NO_DATA,
-                tone: contract.priceChange24h,
-              },
-              { label: 'Фандинг (8ч)', node: `${contract.fundingRate >= 0 ? '+' : ''}${contract.fundingRate.toFixed(4)}%`, tone: contract.fundingRate },
-              {
-                label: 'Открытый интерес',
-                node: contract.openInterest != null ? formatCurrency(contract.openInterest, { compact: true }) : NO_DATA,
-              },
-              {
-                label: 'Объём 24ч',
-                node: contract.futuresVolume24h != null ? formatCurrency(contract.futuresVolume24h, { compact: true }) : NO_DATA,
-              },
-            ].map((metric) => (
-              <div key={metric.label} className="rounded-xl border border-white/[0.08] bg-surface p-3 shadow-panel">
-                <div className="text-[11px] tracking-wide text-slate-400">{metric.label}</div>
-                <div
-                  className={`mt-1 font-mono text-base font-bold tabular-nums ${
-                    metric.tone == null ? 'text-white' : metric.tone >= 0 ? 'text-brand-green' : 'text-brand-red'
-                  }`}
-                >
-                  {metric.node}
-                </div>
-              </div>
-            ))}
-            <div className="col-span-2 rounded-xl border border-white/[0.08] bg-surface p-3 shadow-panel md:col-span-3 xl:col-span-6">
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-xs tabular-nums text-slate-300">
-                <span>Базис: <span className={contract.basisPct >= 0 ? 'text-brand-green' : 'text-brand-red'}>{formatPercent(contract.basisPct, { decimals: 4 })}</span></span>
-                <span>APR: {formatPercent(contract.annualizedFundingRate)}</span>
-                <span className="inline-flex items-center">
-                  OI 1ч Δ:&nbsp;
-                  {contract.openInterestChange1h != null ? formatPercent(contract.openInterestChange1h) : NO_DATA}
-                  <OiDeltaBadge source={contract.openInterestChangeSource} />
-                </span>
-                <span className="inline-flex items-center">
-                  OI 24ч Δ:&nbsp;
-                  {contract.openInterestChange24h != null ? formatPercent(contract.openInterestChange24h) : NO_DATA}
-                </span>
-              </div>
-            </div>
+      {/* ── Стакан USD-M + Radar базового актива ─────────────────────── */}
+      <TerminalSection label="DEPTH & RADAR" title="Книга заявок и аномалии" className="market-workspace">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="min-h-[380px] lg:col-span-1">
+            <OrderBookL2
+              orderBook={orderBook}
+              currentPrice={price}
+              symbol={base}
+              market="futures"
+              status={orderBookStatus}
+              qa="futures-order-book"
+              sourceLabel={
+                orderBookAt
+                  ? `USD-M DEPTH · ${new Date(orderBookAt).toISOString().slice(11, 19)} UTC`
+                  : 'USD-M DEPTH · REST 5s'
+              }
+            />
           </div>
-        )}
+          <div className="space-y-4 lg:col-span-2">
+            {radarPolicy === 'hidden' ? (
+              <div
+                data-qa="futures-radar-hidden"
+                className="rounded-lg border border-surface-border bg-surface p-4 font-sans text-[13px] text-slate-500"
+              >
+                <div className="mb-1 flex items-center gap-2 text-white">
+                  <Radio className="h-4 w-4 text-brand-cyan" />
+                  <span className="text-[13px] font-bold tracking-wide">Market Radar</span>
+                </div>
+                Radar считает аномалии Spot-рынка. У контракта {contractSymbol} нет активной спотовой базы, поэтому
+                события не показываются: выдавать спотовую аномалию другого инструмента за фьючерсную нельзя.
+              </div>
+            ) : (
+              <InstrumentRadarCard
+                events={radarEvents}
+                status={radarStatus === 'error' ? 'error' : radarStatus === 'loading' ? 'loading' : 'ready'}
+                policy={radarPolicy}
+                sourceSymbol={spotBase ?? base}
+                qa="futures-radar"
+                onRetry={retryAll}
+              />
+            )}
+          </div>
+        </div>
       </TerminalSection>
     </div>
   );

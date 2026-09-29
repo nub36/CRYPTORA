@@ -73,8 +73,9 @@ async function isFullscreen(page: Page): Promise<boolean> {
  * already covered by coinTerminal.spec, so this stays stable.
  */
 async function warmUpTerminal(page: Page): Promise<void> {
-  const settings = page.getByTestId('chart-settings-trigger');
-  await settings.click({ timeout: 10_000 });
+  // Настройки живут в общем «•••» (единый тулбар desktop + mobile).
+  const more = page.getByTestId('chart-more-trigger');
+  await more.click({ timeout: 10_000 });
   const volume = page.getByRole('menuitemcheckbox', { name: /^Объём/ });
   await volume.click();
   await volume.click();
@@ -246,22 +247,24 @@ test.describe('Coin chart resize / fullscreen regression', () => {
     const toolbar = page.getByTestId('chart-terminal-toolbar');
     await expect(toolbar).toBeVisible({ timeout: 20_000 });
 
-    // Single row: first control and the rightmost toolbar control («Вписать»)
-    // share the same row. PR#32 moved fullscreen out of this toolbar, so the
-    // right-hand anchor of the row is now the reset-view button.
+    // Single row: first control and the rightmost toolbar control («•••») share
+    // the same row. PR#32 moved fullscreen out of this toolbar, and the unified
+    // toolbar moved «Вписать данные» into the overflow menu, so the right-hand
+    // anchor of the row is now the overflow trigger.
     const firstTrigger = page.getByTestId('chart-timeframe-trigger');
-    const resetView = page.locator('[data-qa="chart-reset-view"]');
+    const overflow = page.locator('[data-qa="chart-more-trigger"]');
     const a = await firstTrigger.boundingBox();
-    const b = await resetView.boundingBox();
+    const b = await overflow.boundingBox();
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
     expect(Math.abs(a!.y - b!.y), 'toolbar controls on same row').toBeLessThan(6);
-    // «Вписать» sits to the right of the dropdowns (flex spacer pushes it right).
+    // «•••» sits to the right of the dropdowns (flex spacer pushes it right).
     expect(b!.x).toBeGreaterThan(a!.x);
 
     // The fullscreen control left the toolbar and no spacer/hole was left behind:
-    // «Вписать» is flush with the toolbar's right padding edge.
+    // «•••» is flush with the toolbar's right padding edge.
     await expect(toolbar.locator('[data-qa="chart-fullscreen"]')).toHaveCount(0);
+    await expect(toolbar.locator('[data-qa="chart-reset-view"]'), '«Вписать данные» lives in the overflow menu').toHaveCount(0);
     const toolbarRight = (await toolbar.boundingBox())!.x + (await toolbar.boundingBox())!.width;
     expect(toolbarRight - (b!.x + b!.width), 'no leftover spacer where fullscreen used to be').toBeLessThan(20);
 

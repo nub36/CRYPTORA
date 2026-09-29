@@ -12,6 +12,8 @@ import {
   type BinanceFuturesOpenInterestHistItem,
   BinanceFuturesKlinesResponseSchema,
   type BinanceFuturesKlineRaw,
+  BinanceFuturesDepthSchema,
+  type BinanceFuturesDepth,
 } from './derivativesSchemas';
 import {
   AdapterNetworkError,
@@ -38,10 +40,19 @@ export class BinanceFuturesAdapter {
     this.fetchFn = config.fetchFn ?? ((...args) => globalThis.fetch(...args));
   }
 
-  private async request<T>(endpoint: string, schema: z.ZodType<T>): Promise<T> {
+  private async request<T>(endpoint: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    /*
+     * Внешняя отмена (смена символа/таймфрейма, размонтирование страницы)
+     * складывается с таймаутом: устаревший запрос стакана прекращается сразу,
+     * а не «догоняет» UI через секунду и не перезаписывает свежий снапшот.
+     */
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
 
     try {
       const response = await this.fetchFn(url, {
@@ -155,6 +166,35 @@ export class BinanceFuturesAdapter {
     return this.request(
       `/fapi/v1/klines?symbol=${encodeURIComponent(upper)}&interval=${encodeURIComponent(interval)}&limit=${bounded}`,
       BinanceFuturesKlinesResponseSchema,
+    );
+  }
+
+  /**
+   * Стакан USD-M (`GET /fapi/v1/depth`) — задача §4.
+   *
+   * Это ЕДИНСТВЕННЫЙ источник стакана для /futures/:symbol. Спотовый
+   * `/api/v3/depth` здесь недоступен физически: адаптер ходит только в
+   * gateway-префикс `/api/market/binance/futures`, который проксируется
+   * на `fapi.binance.com`.
+   *
+   * `symbol` — символ КОНТРАКТА (`1000PEPEUSDT`), не базовый тикер.
+   * `limit` округляется вниз до ближайшего разрешённого биржей значения
+   * (5/10/20/50/100/500/1000); 50 уровней стоят вес 2 — столько же, сколько 5.
+   */
+  public async fetchDepth(
+    contractSymbol: string,
+    limit = 50,
+    signal?: AbortSignal,
+  ): Promise<BinanceFuturesDepth> {
+    const upper = contractSymbol.toUpperCase().trim();
+    const allowed = [5, 10, 20, 50, 100, 500, 1000];
+    const bounded = allowed.includes(limit)
+      ? limit
+      : allowed.reduce((best, value) => (value <= limit && value > best ? value : best), 5);
+    return this.request(
+      `/fapi/v1/depth?symbol=${encodeURIComponent(upper)}&limit=${bounded}`,
+      BinanceFuturesDepthSchema,
+      signal,
     );
   }
 

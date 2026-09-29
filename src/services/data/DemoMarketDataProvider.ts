@@ -11,6 +11,7 @@ import {
   ScreenerFilters,
 } from '@/types/market';
 import { MarketDataProvider } from './MarketDataProvider';
+import type { OrderBookSnapshot } from '@/types/realtime';
 
 // Deterministic mock datasets
 const DEMO_TIMESTAMP = '2026-09-15T12:00:00Z';
@@ -1089,6 +1090,44 @@ export class DemoMarketDataProvider implements MarketDataProvider {
         || f.contractSymbol === wanted
         || f.contractSymbol === `${wanted}USDT`,
     ) ?? null;
+  }
+
+  /**
+   * Детерминированный QA-стакан USD-M вокруг цены демо-контракта.
+   *
+   * Это ДЕМО-данные: они помечены `provenance.isFallback = true`, чтобы UI
+   * показывал бейдж DEMO и никто не принял их за биржевую книгу.
+   * В LIVE-режиме этот путь не используется — там работает
+   * `LiveMarketDataProvider.getFuturesOrderBook` (`/fapi/v1/depth`).
+   */
+  async getFuturesOrderBook(baseOrContract: string, options: { limit?: number } = {}): Promise<OrderBookSnapshot | null> {
+    const contract = await this.getFuturesContract(baseOrContract);
+    if (!contract) return null;
+    const mid = contract.markPrice;
+    if (!Number.isFinite(mid) || mid <= 0) return null;
+    const levels = Math.max(5, Math.min(50, options.limit ?? 25));
+    const step = mid * 0.0004;
+    const round = (value: number) => Number(value.toPrecision(8));
+    const bids: [number, number][] = [];
+    const asks: [number, number][] = [];
+    for (let i = 0; i < levels; i += 1) {
+      const size = round(((i % 7) + 1) * 12.5);
+      bids.push([round(mid - step * (i + 1)), size]);
+      asks.push([round(mid + step * (i + 1)), size]);
+    }
+    return {
+      symbol: contract.symbol.split('/')[0],
+      bids,
+      asks,
+      timestamp: Date.now(),
+      provenance: {
+        exchange: 'binance',
+        market: 'futures',
+        symbol: contract.contractSymbol ?? `${contract.symbol.split('/')[0]}USDT`,
+        timestamp: Date.now(),
+        isFallback: true,
+      },
+    };
   }
 
   async getLiquidations(): Promise<LiquidationData> {

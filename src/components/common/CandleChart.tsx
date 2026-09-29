@@ -8,6 +8,7 @@ import type { ChartLevelLine, ChartMarker } from '@/types/chart';
 import { IndicatorPaneChart } from './IndicatorPaneChart';
 import { ChartTimeRangeSync } from './ChartTimeRangeSync';
 import { formatChartAxisTime, formatChartCrosshairTime } from '@/utils/chartTime';
+import { instrumentPriceDecimals, trimTrailingZeros } from '@/utils/formatters';
 import { browserTimeZone, timeZoneLabel } from '@/utils/timePresentation';
 import { klineTimeSeconds } from '@/services/realtime/candleHandoff';
 import { mapTimeframeToBinanceInterval } from '@/hooks/useRealtimeKline';
@@ -176,19 +177,27 @@ export function chartTimeToSeconds(time: Time | undefined): number | null {
 }
 
 /**
- * Базовый (desktop) формат подписи цены. Сохранён без изменений с PR #32:
- * >= 1000 — группы тысяч и 2 знака, >= 1 — 4 знака, иначе 6 знаков.
+ * Базовый (desktop) формат подписи цены. Контракт PR #32 сохранён:
+ * >= 1000 — группы тысяч и 2 знака, >= 1 — 4 знака, < 1 — 6 знаков.
+ *
+ * ЕДИНСТВЕННОЕ дополнение (задача §14, low-price контракты вроде MEW):
+ * если шести знаков не хватает даже на значащие цифры (0.0000012345 →
+ * «0.000001»), точность расширяется до предела биржи (8 знаков), а лишние
+ * хвостовые нули за пределами шести знаков не печатаются
+ * (0.000478 → «0.000478», а не «0.00047800»). Значения с ценой >= 0.00001
+ * форматируются в точности как раньше.
  */
 function baseChartPriceLabel(price: number): string {
-  if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (price >= 1) return price.toFixed(4);
-  return price.toFixed(6);
-}
-
-/** Убирает ЗАВЕДОМО лишние нули в хвосте дробной части: `0.120000` → `0.12`. */
-function trimTrailingZeros(text: string): string {
-  if (!text.includes('.')) return text;
-  return text.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  const abs = Math.abs(price);
+  if (abs >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (abs >= 1) return price.toFixed(4);
+  const decimals = Math.max(6, instrumentPriceDecimals(price));
+  const text = price.toFixed(decimals);
+  if (decimals <= 6) return text;
+  // Хвостовые нули срезаются, но не глубже базовых шести знаков.
+  const [intPart, fraction = ''] = text.split('.');
+  const trimmed = fraction.replace(/0+$/, '');
+  return `${intPart}.${trimmed.padEnd(6, '0')}`;
 }
 
 /**
@@ -533,10 +542,26 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       visible: false,
     });
 
+    /**
+     * Гистограмма ОБЪЁМА живёт на собственной overlay-шкале (`priceScaleId: ''`),
+     * но метка последнего значения и price-line серии рисуются на ТОЙ ЖЕ правой
+     * кромке, что и цена инструмента. Из-за этого на проде (скриншот MEW USD-M)
+     * рядом со шкалой цены висел зелёный ярлык `84,369,082.00` — объём,
+     * выглядящий как цена: он проходил через общий `localization.priceFormatter`
+     * (у него приоритет над `priceFormat: { type: 'volume' }`), задавал ширину
+     * шкалы и читался как котировка инструмента.
+     *
+     * Данные не скрываются: гистограмма объёма остаётся на графике, значение
+     * объёма по-прежнему доступно в OHLCV-подсказке под курсором. Убраны ровно
+     * два ПРЕЗЕНТАЦИОННЫХ дубликата на шкале цены — ровно так же, как это уже
+     * сделано для candle-серии выше и для RSI-панели.
+     */
     const volumeSeries = chart.addHistogramSeries({
       color: '#38bdf8',
       priceFormat: { type: 'volume' },
       priceScaleId: '',
+      lastValueVisible: false,
+      priceLineVisible: false,
     });
 
     volumeSeries.priceScale().applyOptions({

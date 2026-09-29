@@ -1,14 +1,47 @@
 import React, { useMemo } from 'react';
 import { OrderBookSnapshot } from '@/types/realtime';
-import { formatCurrency } from '@/utils/formatters';
+import type { MarketType } from '@/types/market';
+import { formatInstrumentPrice, instrumentPriceDecimals } from '@/utils/formatters';
+
+/**
+ * Стакан L2 — общий компонент для Spot и Futures (задача §4, §14).
+ *
+ * Рынок ЗАДАЁТСЯ ЯВНО пропом и влияет на подпись источника и на текст
+ * состояния: спотовая книга приходит из WS-потока, фьючерсная —
+ * из `GET /fapi/v1/depth`. Компонент НЕ выбирает источник сам и не может
+ * «дорисовать» уровни: пока фактического снапшота нет, рисуется скелетон.
+ *
+ * Цены печатаются каноничным `formatInstrumentPrice`, поэтому уровни
+ * контракта с ценой 0.000478 не схлопываются в «$0.0005» (§14). Все уровни
+ * книги печатаются с ОДИНАКОВОЙ точностью — по лучшей цене — чтобы колонка
+ * не «прыгала» между строками.
+ */
+export type OrderBookStatus = 'loading' | 'ready' | 'no-data' | 'unsupported' | 'unavailable';
 
 interface OrderBookL2Props {
   orderBook: OrderBookSnapshot | null;
   currentPrice: number;
   symbol: string;
+  /** Рынок книги. По умолчанию spot — исторический вызов Coin-страницы. */
+  market?: MarketType;
+  /** Состояние источника: управляет текстом бейджа и сообщением вместо уровней. */
+  status?: OrderBookStatus;
+  /** Подпись источника: «BINANCE L2 · LIVE», «USD-M DEPTH · 5s» и т.п. */
+  sourceLabel?: string;
+  qa?: string;
 }
 
-export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPrice, symbol }) => {
+const MARKET_TAG: Record<MarketType, string> = { spot: 'SPOT', futures: 'USD-M' };
+
+export const OrderBookL2: React.FC<OrderBookL2Props> = ({
+  orderBook,
+  currentPrice,
+  symbol,
+  market = 'spot',
+  status,
+  sourceLabel,
+  qa = 'order-book-l2',
+}) => {
   const depthData = useMemo(() => {
     if (!orderBook || orderBook.bids.length === 0 || orderBook.asks.length === 0) {
       // З6: данных потока ещё нет — НИКАКИХ выдуманных уровней. Рендерим скелетон
@@ -22,6 +55,17 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
       isSynthetic: false,
     };
   }, [orderBook, currentPrice]);
+
+  /**
+   * Точность колонки цены: по лучшему биду/аску (а не по каждому уровню),
+   * поэтому 0.0004780 и 0.0004775 печатаются одинаковой длиной и колонка
+   * читается как таблица, а не как рваный список.
+   */
+  const priceDecimals = useMemo(() => {
+    const reference = depthData.bids[0]?.[0] ?? depthData.asks[0]?.[0] ?? currentPrice;
+    return instrumentPriceDecimals(reference);
+  }, [depthData, currentPrice]);
+  const price = (value: number) => formatInstrumentPrice(Number(value.toFixed(priceDecimals)));
 
   const { bidsWithTotal, asksWithTotal, maxCumulative, spreadUsd, spreadBps } =
     useMemo(() => {
@@ -55,25 +99,67 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
       };
     }, [depthData, currentPrice]);
 
+  /**
+   * Состояние секции. Если страница его не передала (исторический вызов),
+   * оно выводится из наличия уровней — поведение не меняется.
+   */
+  const resolvedStatus: OrderBookStatus = status ?? (depthData.isSynthetic ? 'loading' : 'ready');
+  const defaultSource = market === 'futures' ? 'USD-M DEPTH · REST 5s' : 'BINANCE L2 · LIVE';
+  const badgeLabel = resolvedStatus === 'ready'
+    ? (sourceLabel ?? defaultSource)
+    : resolvedStatus === 'unsupported'
+      ? 'КОНТРАКТ НЕ ПОДДЕРЖИВАЕТСЯ'
+      : resolvedStatus === 'unavailable'
+        ? 'ИСТОЧНИК НЕДОСТУПЕН'
+        : resolvedStatus === 'no-data'
+          ? 'НЕТ ДАННЫХ'
+          : market === 'futures' ? 'ЗАГРУЗКА СТАКАНА' : 'ОЖИДАНИЕ ПОТОКА (WS)';
+
+  /** Книгу (скелетон или уровни) рисуем только когда источник жив. */
+  const showBook = resolvedStatus === 'ready' || resolvedStatus === 'loading';
+  const stateMessage = resolvedStatus === 'unsupported'
+    ? `Стакан ${market === 'futures' ? 'USD-M' : 'Spot'} для ${symbol}/USDT недоступен: инструмент не торгуется на этом рынке.`
+    : resolvedStatus === 'unavailable'
+      ? 'Источник стакана недоступен. Книга другого рынка не подставляется.'
+      : 'Биржа не вернула уровни книги.';
+
   return (
-    <div className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 font-sans text-xs flex flex-col justify-between h-full">
+    <div
+      data-qa={qa}
+      data-market={market}
+      data-state={resolvedStatus}
+      className="bg-surface border border-surface-border rounded-lg p-3 sm:p-4 font-sans text-xs flex flex-col justify-between h-full"
+    >
       {/* Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-surface-border">
-        <div className="flex items-center space-x-2">
+      <div className="flex items-center justify-between gap-2 pb-2 border-b border-surface-border">
+        <div className="flex min-w-0 items-center space-x-2">
           <span className="font-bold text-white tracking-wide">Стакан заявок (L2)</span>
-          <span className="text-[11px] text-slate-400">SPOT {symbol}/USDT</span>
+          <span data-qa={`${qa}-scope`} className="truncate text-[11px] text-slate-400">
+            {MARKET_TAG[market]} {symbol}/USDT
+          </span>
         </div>
         <span
-          className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
-            depthData.isSynthetic
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-              : 'bg-brand-green/10 text-brand-green border border-brand-green/30'
+          data-qa={`${qa}-badge`}
+          className={`shrink-0 text-[11px] px-1.5 py-0.5 rounded font-mono ${
+            resolvedStatus === 'ready'
+              ? 'bg-brand-green/10 text-brand-green border border-brand-green/30'
+              : resolvedStatus === 'unavailable' || resolvedStatus === 'unsupported'
+                ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
           }`}
         >
-          {depthData.isSynthetic ? 'ОЖИДАНИЕ ПОТОКА (WS)' : 'BINANCE L2 · LIVE'}
+          {badgeLabel}
         </span>
       </div>
 
+      {!showBook && (
+        <p data-qa={`${qa}-message`} role="status" className="py-8 text-center text-[13px] text-slate-500">
+          {stateMessage}
+        </p>
+      )}
+
+      {showBook && (
+      <>
       {/* Column Headers */}
       <div className="grid grid-cols-3 text-[11px] text-slate-400 font-semibold py-1.5 border-b border-surface-border/50">
         <div>ЦЕНА (USDT)</div>
@@ -109,7 +195,7 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
                   style={{ width: `${depthWidth}%` }}
                 />
                 <span className="text-brand-red font-semibold z-10 font-mono tabular-nums">
-                  {formatCurrency(item.price, { decimals: item.price > 10 ? 2 : 4 })}
+                  {price(item.price)}
                 </span>
                 <span className="text-right text-slate-300 z-10">
                   {item.size.toFixed(item.size < 1 ? 4 : 2)}
@@ -126,8 +212,8 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
       {/* Mid Price & Spread Bar */}
       <div className="my-1 py-1.5 px-2 bg-surface-elevated/70 border-y border-surface-border rounded flex items-center justify-between text-xs font-bold">
         <div className="flex items-center space-x-2">
-          <span className="text-white text-sm font-mono tabular-nums">
-            {formatCurrency(currentPrice, { decimals: currentPrice > 10 ? 2 : 4 })}
+          <span data-qa={`${qa}-mid`} className="text-white text-sm font-mono tabular-nums">
+            {formatInstrumentPrice(currentPrice)}
           </span>
           <span className="text-[11px] text-slate-400 font-normal">Средняя цена</span>
         </div>
@@ -136,7 +222,7 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
             'СПРЕД: —'
           ) : (
             <>
-              СПРЕД: <span className="text-slate-200 font-bold">${spreadUsd.toFixed(2)}</span>{' '}
+              СПРЕД: <span className="text-slate-200 font-bold">{formatInstrumentPrice(spreadUsd)}</span>{' '}
               <span className="text-brand-cyan">({spreadBps.toFixed(1)} bps)</span>
             </>
           )}
@@ -168,7 +254,7 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
                 style={{ width: `${depthWidth}%` }}
               />
               <span className="text-brand-green font-semibold z-10 font-mono tabular-nums">
-                {formatCurrency(item.price, { decimals: item.price > 10 ? 2 : 4 })}
+                {price(item.price)}
               </span>
               <span className="text-right text-slate-300 z-10">
                 {item.size.toFixed(item.size < 1 ? 4 : 2)}
@@ -181,6 +267,8 @@ export const OrderBookL2: React.FC<OrderBookL2Props> = ({ orderBook, currentPric
           })
         )}
       </div>
+      </>
+      )}
     </div>
   );
 };

@@ -42,7 +42,8 @@ async function isFullscreen(page: Page): Promise<boolean> {
  * in coinChartResize.spec.ts).
  */
 async function warmUpTerminal(page: Page): Promise<void> {
-  const settings = page.getByTestId('chart-settings-trigger');
+  // Настройки графика живут в общем «•••» единого тулбара.
+  const settings = page.getByTestId('chart-more-trigger');
   await settings.click({ timeout: 10_000 });
   const volume = page.getByRole('menuitemcheckbox', { name: /^Объём/ });
   await volume.click();

@@ -78,6 +78,7 @@ export interface DataProvenance {
 1. **Primary Source (Binance):**
    - Browser adapters call the same-origin `/api/market/binance/spot/*` and `/api/market/binance/futures/*` routes; the backend maps a fixed endpoint allowlist to `api.binance.com` / `fapi.binance.com`.
    - The response passes runtime Zod validation in the frontend adapter. The browser never calls Binance REST directly.
+   - **USD-M order book:** `/api/market/binance/futures/fapi/v1/depth` → `fapi.binance.com/fapi/v1/depth`. The spot `/api/v3/depth` path is intentionally NOT in the allowlist: a futures page must never render a spot book. `limit` is restricted to the exchange grid (5/10/20/50/100/500/1000); the UI polls 50 levels every 5 s with a single in-flight request, an abort on contract change, and a 4 s provider cache. See `docs/INSTRUMENT_DETAIL_PAGES.md` §4.
 2. **Secondary Source / Fallback (KuCoin):**
    - `/api/market/kucoin/spot/*` maps only the approved stats, all-tickers, and candles routes to `api.kucoin.com`; arbitrary hosts and paths are rejected.
    - In case of a Binance/network failure or unavailable pair, KuCoin is tried as a fallback. Successful data gets `isFallback: true` and `exchange: 'kucoin'`.

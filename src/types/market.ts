@@ -135,6 +135,21 @@ export const FuturesAssetSchema = z.object({
   lastPrice: z.number().nullable().optional(),
   /** 24h change % from `/fapi/v1/ticker/24hr`; null = ticker row absent (never 0). */
   priceChange24h: z.number().nullable().optional(),
+  /**
+   * Максимум/минимум цены ПЕРПЕТУАЛА за 24ч (`/fapi/v1/ticker/24hr`,
+   * поля highPrice/lowPrice). null = биржа/серверный снапшот не дали значения
+   * → в UI «Нет данных». Спотовый high/low того же тикера сюда НЕ попадает:
+   * это разные рынки с разной ценой (задача §5).
+   */
+  high24h: z.number().nullable().optional(),
+  low24h: z.number().nullable().optional(),
+  /**
+   * Оборот 24ч в БАЗОВОЙ валюте контракта (`ticker.volume`), т.е. в единицах
+   * `1000PEPE` для мультипликаторных контрактов. Отображается рядом с
+   * оборотом в USD, чтобы «объём» на фьючерсе нельзя было спутать со
+   * спотовым объёмом монеты.
+   */
+  baseVolume24h: z.number().nullable().optional(),
   fundingRate: z.number(), // in % (e.g. 0.01%)
   /**
    * Ставка к ближайшему начислению. Binance отдаёт одну текущую ставку (`premiumIndex.lastFundingRate`), которая и будет применена

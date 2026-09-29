@@ -27,6 +27,13 @@ export const FuturesSnapshotRowSchema = z.object({
   priceChangePercent: z.string().nullable(),
   quoteVolume: z.string().nullable(),
   baseVolume: z.string().nullable(),
+  /**
+   * 24h high/low перпетуала. `.optional()` — обратная совместимость: сервер
+   * предыдущей версии этих полей не присылает, и снапшот обязан
+   * валидироваться (метрика тогда просто «Нет данных»), а не падать целиком.
+   */
+  highPrice: z.string().nullable().optional(),
+  lowPrice: z.string().nullable().optional(),
   openInterest: z.string().nullable(),
   openInterestHist: z
     .array(
