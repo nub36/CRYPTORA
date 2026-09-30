@@ -18,10 +18,11 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  canonicalEntryReference, evaluateTargetQuality, V34_TP1_MIN_R, V34_TP2_MIN_R,
+  canonicalEntryReference, evaluateTargetQuality, expandEntryZone,
+  V34_ENTRY_ZONE_ATR_PAD, V34_TP1_MIN_R, V34_TP2_MIN_R,
 } from '@/services/signals/live/targetQuality';
 import {
-  applyTargetQualityGate, V34_STRATEGY_ID, V34_STRATEGY_VERSION,
+  applyTargetQualityGate, atrFromV33Corridor, V34_STRATEGY_ID, V34_STRATEGY_VERSION,
 } from '@/services/signals/live/replays/v34LiveReplay';
 import { V33_STRATEGY_ID, V33_STRATEGY_VERSION } from '@/services/signals/live/replays/v33LiveReplay';
 import { corridorGeometryOk, rrFrom } from '@/services/signals/live/replays/shared';
@@ -100,10 +101,11 @@ describe('A · V3.3 не изменилась', () => {
     // Массивы не разделяются по ссылке.
     expect(out.entryZone).not.toBe(src.entryZone);
     expect(out.targets).not.toBe(src.targets);
-    // Уровни НЕ сдвинуты: V3.4 не двигает цели, а отклоняет сетап.
-    expect(out.entryZone).toEqual(src.entryZone);
+    // Стоп и цели НЕ сдвинуты. Единственный изменённый уровень — границы входа.
     expect(out.stop).toBe(src.stop);
     expect(out.targets).toEqual(src.targets);
+    expect(out.meta!.baseEntryZoneLow).toBe(src.entryZone[0]);
+    expect(out.meta!.baseEntryZoneHigh).toBe(src.entryZone[1]);
   });
 });
 
@@ -219,17 +221,22 @@ describe('D · BTC-подобная фикстура: V3.3 принимает, V
     expect(r.publishable).toBe(true);
   });
 
-  it('V3.4 отклоняет его с TARGET_QUALITY_TP1 и НЕ трогает уровни', () => {
+  it('V3.4 отклоняет его и НЕ трогает ни стоп, ни цели', () => {
+    // TP1 (84104.5) лежит всего в 49.7 пунктах от нижней границы V3.3, а
+    // расширение опускает границу на 114.6 — цель оказывается ВНУТРИ зоны
+    // входа. Это невалидная геометрия, и правильный ответ — отклонить сетап.
     const out = applyTargetQualityGate(src());
     expect(out.publishable).toBe(false);
-    expect(out.meta!.targetQualityRejectReason).toBe('TARGET_QUALITY_TP1');
-    expect(out.outcome!.exitReason).toBe('TARGET_QUALITY_TP1');
+    expect(out.meta!.targetQualityRejectReason).toBe('GEOMETRY_INVALID');
+    expect(out.outcome!.exitReason).toBe('GEOMETRY_INVALID');
     expect(out.outcome!.status).toBe('CANCELLED');
     expect(out.fill).toBeNull();
+    // Стоп и цели остались ровно теми, что нашла структура V3.3.
+    expect(out.stop).toBe(84911.8);
     expect(out.targets).toEqual([84104.5, 82563.0]);
   });
 
-  it('TP2 у этой фикстуры порог проходит — причина отказа однозначна', () => {
+  it('без расширения зоны причиной был бы именно TARGET_QUALITY_TP1', () => {
     const q = evaluateTargetQuality({
       direction: 'SHORT', entryLow: 84154.2, entryHigh: 84245.9, stop: 84911.8, tp1: 84104.5, tp2: 82563.0,
     });
@@ -329,18 +336,246 @@ describe('F · точность: низкоценовой актив (PEPE-по�
     expect(broken.reason).toBe('GEOMETRY_INVALID');
   });
 
-  it('метаданные V3.4 хранят вход и риск БЕЗ округления', () => {
+  it('метаданные V3.4 хранят базовую зону и провенанс без округления', () => {
     const out = applyTargetQualityGate(record({
       direction: 'LONG', entryZone: [input.entryLow, input.entryHigh], stop: input.stop,
       targets: [input.tp1, input.tp2],
     }));
-    expect(out.meta!.entryReference).toBe(0.00001234);
+    expect(out.meta!.baseEntryZoneLow).toBe(input.entryLow);
+    expect(out.meta!.baseEntryZoneHigh).toBe(input.entryHigh);
     expect(out.meta!.entryReferenceRule).toBe('WORST_CORRIDOR_EDGE_ACTUAL_FILL');
-    expect(out.meta!.initialRisk).toBeCloseTo(3.4e-7, 15);
-    expect(out.meta!.targetQualityRejectReason).toBeNull();
-    expect(out.publishable).toBe(true);
+    expect(out.meta!.entryZoneRule).toBe('V33_CORRIDOR_EXPANDED_BY_0_25_ATR_EACH_SIDE');
     // Провенанс базы сохранён в данных.
     expect(out.meta!.baseStrategyId).toBe(V33_STRATEGY_ID);
     expect(out.meta!.baseStrategyVersion).toBe(V33_STRATEGY_VERSION);
+  });
+});
+
+/* ═════════════════════════════════════ G ═════════════════════════════════ */
+/**
+ * G · Расширение коридора входа V3.4 (0.25 ATR в каждую сторону).
+ *
+ * Фикстуры подобраны так, чтобы арифметика была точной в двоичной плавающей
+ * точке: base = close ± 0.10·ATR при close = 1000 и ATR = 100 даёт коридор
+ * [990, 1010], восстановленный ATR ровно 100 и отступ ровно 25.
+ */
+describe('G · расширение Entry Zone', () => {
+  const BASE_LOW = 990;
+  const BASE_HIGH = 1010;
+  const ATR = 100;
+  const PAD = 25;
+
+  /** LONG, который V3.4 ПРИНИМАЕТ после расширения. */
+  const longOk = () => record({
+    direction: 'LONG', entryZone: [BASE_LOW, BASE_HIGH], stop: 900, targets: [1110, 1250],
+  });
+  /** SHORT, который V3.4 ПРИНИМАЕТ после расширения (зеркало longOk). */
+  const shortOk = () => record({
+    direction: 'SHORT', entryZone: [BASE_LOW, BASE_HIGH], stop: 1100, targets: [890, 750],
+  });
+
+  /* ── 1. V3.3 Entry Zone не изменилась ─────────────────────────────────── */
+  it('1 · зона V3.3 не меняется: источник не мутируется, база сохранена в meta', () => {
+    for (const src of [longOk(), shortOk()]) {
+      const snapshot = JSON.parse(JSON.stringify(src));
+      const out = applyTargetQualityGate(src);
+
+      expect(src.entryZone).toEqual([BASE_LOW, BASE_HIGH]);
+      expect(JSON.parse(JSON.stringify(src))).toEqual(snapshot);
+      expect(out.meta!.baseEntryZoneLow).toBe(BASE_LOW);
+      expect(out.meta!.baseEntryZoneHigh).toBe(BASE_HIGH);
+    }
+  });
+
+  it('1b · формула коридора V3.3 в коде не тронута (close ± 0.10 ATR)', () => {
+    expect(V33_CONSTANTS.CORRIDOR_ATR_FRAC).toBe(0.10);
+    const v33 = fs.readFileSync(
+      path.join(ROOT, 'src/services/signals/live/replays/v33LiveReplay.ts'), 'utf8',
+    );
+    expect(v33).toContain('const half = CORRIDOR_ATR_FRAC * atr;');
+    expect(v33).toContain('zoneLow: c.close - half, zoneHigh: c.close + half');
+    // V3.3 ничего не знает ни о расширении, ни о фильтре качества.
+    expect(v33).not.toMatch(/targetQuality|expandEntryZone|V34_/);
+  });
+
+  /* ── 2. Зона V3.4 шире ────────────────────────────────────────────────── */
+  it('2 · зона V3.4 строго шире зоны V3.3 — с обеих сторон', () => {
+    for (const [src, dir] of [[longOk(), 'LONG'], [shortOk(), 'SHORT']] as const) {
+      const out = applyTargetQualityGate(src);
+      const [low, high] = out.entryZone;
+      expect(low, dir).toBeLessThan(BASE_LOW);
+      expect(high, dir).toBeGreaterThan(BASE_HIGH);
+      expect(high - low, dir).toBeGreaterThan(BASE_HIGH - BASE_LOW);
+      expect(high - low, dir).toBe(70); // 20 + 2×25
+    }
+  });
+
+  /* ── 3. База целиком внутри расширенной зоны ──────────────────────────── */
+  it('3 · структурная зона V3.3 целиком содержится в зоне V3.4', () => {
+    for (const [src, dir] of [[longOk(), 'LONG'], [shortOk(), 'SHORT']] as const) {
+      const [low, high] = applyTargetQualityGate(src).entryZone;
+      expect(low <= BASE_LOW && BASE_HIGH <= high, `${dir}: база внутри`).toBe(true);
+      // Строгое вложение: ни одна граница не совпадает.
+      expect(low, dir).not.toBe(BASE_LOW);
+      expect(high, dir).not.toBe(BASE_HIGH);
+    }
+  });
+
+  /* ── 4. Расширение = ровно 0.25 ATR с каждой стороны ──────────────────── */
+  it('4 · отступ равен 0.25 ATR с каждой стороны, ATR — тот же 1H-ATR V3.3', () => {
+    expect(V34_ENTRY_ZONE_ATR_PAD).toBe(0.25);
+    // ATR восстанавливается из коридора теми же константами, что его создали.
+    expect(atrFromV33Corridor(BASE_LOW, BASE_HIGH)).toBe(ATR);
+
+    const out = applyTargetQualityGate(longOk());
+    expect(out.meta!.atr1h).toBe(ATR);
+    expect(out.meta!.entryZonePad).toBe(PAD);
+    expect(out.meta!.entryZonePadAtrFraction).toBe(0.25);
+    expect(out.meta!.entryZonePad).toBe(V34_ENTRY_ZONE_ATR_PAD * ATR);
+
+    expect(out.entryZone[0]).toBe(BASE_LOW - 0.25 * ATR);
+    expect(out.entryZone[1]).toBe(BASE_HIGH + 0.25 * ATR);
+    // Симметрия: отступ вниз равен отступу вверх.
+    expect(BASE_LOW - out.entryZone[0]).toBe(out.entryZone[1] - BASE_HIGH);
+  });
+
+  it('4b · отступ пропорционален ATR, а не фиксированной сумме в долларах', () => {
+    // Тот же процентный сетап на цене в 1000 раз меньше даёт отступ в 1000 раз
+    // меньше. Фиксированная сумма так себя вести не может.
+    const big = expandEntryZone(990, 1010, 100);
+    const small = expandEntryZone(0.990, 1.010, 0.100);
+    expect(big.pad).toBe(25);
+    expect(small.pad).toBeCloseTo(0.025, 12);
+    expect(big.pad / small.pad).toBeCloseTo(1000, 6);
+  });
+
+  /* ── 5. Стоп не двигается ─────────────────────────────────────────────── */
+  it('5 · стоп остаётся структурным стопом V3.3 и от расширения не сдвигается', () => {
+    const l = longOk(); const outL = applyTargetQualityGate(l);
+    expect(outL.stop).toBe(900);
+    expect(outL.stop).toBe(l.stop);
+
+    const sh = shortOk(); const outS = applyTargetQualityGate(sh);
+    expect(outS.stop).toBe(1100);
+    expect(outS.stop).toBe(sh.stop);
+
+    // Расстояние стоп→база не изменилось, изменился только вход.
+    expect(BASE_LOW - outL.stop).toBe(90);
+    expect(outS.stop - BASE_HIGH).toBe(90);
+  });
+
+  /* ── 6. Цели не двигаются ─────────────────────────────────────────────── */
+  it('6 · TP1 и TP2 остаются исходными структурными целями V3.3', () => {
+    expect(applyTargetQualityGate(longOk()).targets).toEqual([1110, 1250]);
+    expect(applyTargetQualityGate(shortOk()).targets).toEqual([890, 750]);
+  });
+
+  /* ── 7. Quality считается по расширенной семантике ────────────────────── */
+  it('7 · качество целей считается от худшей границы РАСШИРЕННОЙ зоны', () => {
+    const outL = applyTargetQualityGate(longOk());
+    expect(outL.meta!.entryReference).toBe(1035);          // baseHigh + pad
+    expect(outL.meta!.initialRisk).toBe(135);              // 1035 − 900, а не 110
+    expect(outL.meta!.targetQualityTp1R).toBeCloseTo(0.5556, 4);
+    expect(outL.meta!.targetQualityTp2R).toBeCloseTo(1.5926, 4);
+    expect(outL.publishable).toBe(true);
+
+    const outS = applyTargetQualityGate(shortOk());
+    expect(outS.meta!.entryReference).toBe(965);           // baseLow − pad
+    expect(outS.meta!.initialRisk).toBe(135);
+    expect(outS.meta!.targetQualityTp1R).toBeCloseTo(0.5556, 4);
+    expect(outS.meta!.targetQualityTp2R).toBeCloseTo(1.5926, 4);
+    expect(outS.publishable).toBe(true);
+  });
+
+  it('7b · сетап, проходящий порог по зоне V3.3, отклоняется по расширенной зоне', () => {
+    // TP1 = 1080: от базовой границы 1010 это 0.636 R (прошло бы), от
+    // расширенной 1035 — всего 0.333 R. Порог не смягчается под расширение.
+    const long = applyTargetQualityGate(record({
+      direction: 'LONG', entryZone: [BASE_LOW, BASE_HIGH], stop: 900, targets: [1080, 1300],
+    }));
+    expect((1080 - BASE_HIGH) / (BASE_HIGH - 900)).toBeGreaterThanOrEqual(V34_TP1_MIN_R);
+    expect(long.meta!.targetQualityTp1R).toBeCloseTo(0.3333, 4);
+    expect(long.meta!.targetQualityRejectReason).toBe('TARGET_QUALITY_TP1');
+    expect(long.meta!.targetQualityTp2R!).toBeGreaterThanOrEqual(V34_TP2_MIN_R);
+    expect(long.publishable).toBe(false);
+    // Цели и стоп при отказе не тронуты.
+    expect(long.targets).toEqual([1080, 1300]);
+    expect(long.stop).toBe(900);
+
+    const short = applyTargetQualityGate(record({
+      direction: 'SHORT', entryZone: [BASE_LOW, BASE_HIGH], stop: 1100, targets: [920, 700],
+    }));
+    expect((BASE_LOW - 920) / (1100 - BASE_LOW)).toBeGreaterThanOrEqual(V34_TP1_MIN_R);
+    expect(short.meta!.targetQualityTp1R).toBeCloseTo(0.3333, 4);
+    expect(short.meta!.targetQualityRejectReason).toBe('TARGET_QUALITY_TP1');
+    expect(short.targets).toEqual([920, 700]);
+    expect(short.stop).toBe(1100);
+  });
+
+  /* ── 8. Невалидная геометрия после расширения → REJECT ────────────────── */
+  it('8 · расширенная зона пересекает стоп → REJECT, стоп НЕ переносится', () => {
+    // LONG: стоп 975 лежит ниже базовой зоны (V3.3 такой сетап приняла бы),
+    // но выше расширенной границы 965 — значит часть зоны за инвалидацией.
+    const l = record({ direction: 'LONG', entryZone: [BASE_LOW, BASE_HIGH], stop: 975, targets: [1200, 1400] });
+    expect(corridorGeometryOk('LONG', BASE_LOW, BASE_HIGH, 975, 1200, 1400)).toBe(true);
+    const outL = applyTargetQualityGate(l);
+    expect(outL.meta!.targetQualityRejectReason).toBe('ENTRY_ZONE_CROSSES_STOP');
+    expect(outL.publishable).toBe(false);
+    expect(outL.stop).toBe(975);          // стоп не сдвинут вниз «под зону»
+    expect(outL.targets).toEqual([1200, 1400]);
+
+    const sh = record({ direction: 'SHORT', entryZone: [BASE_LOW, BASE_HIGH], stop: 1025, targets: [800, 600] });
+    expect(corridorGeometryOk('SHORT', BASE_LOW, BASE_HIGH, 1025, 800, 600)).toBe(true);
+    const outS = applyTargetQualityGate(sh);
+    expect(outS.meta!.targetQualityRejectReason).toBe('ENTRY_ZONE_CROSSES_STOP');
+    expect(outS.stop).toBe(1025);
+    expect(outS.targets).toEqual([800, 600]);
+  });
+
+  it('8b · цель, оказавшаяся внутри расширенной зоны → GEOMETRY_INVALID', () => {
+    // TP1 = 1020 впереди базовой границы 1010, но позади расширенной 1035.
+    const outL = applyTargetQualityGate(record({
+      direction: 'LONG', entryZone: [BASE_LOW, BASE_HIGH], stop: 900, targets: [1020, 1400],
+    }));
+    expect(corridorGeometryOk('LONG', BASE_LOW, BASE_HIGH, 900, 1020, 1400)).toBe(true);
+    expect(outL.meta!.targetQualityRejectReason).toBe('GEOMETRY_INVALID');
+    expect(outL.targets).toEqual([1020, 1400]);
+    expect(outL.stop).toBe(900);
+
+    const outS = applyTargetQualityGate(record({
+      direction: 'SHORT', entryZone: [BASE_LOW, BASE_HIGH], stop: 1100, targets: [980, 600],
+    }));
+    expect(outS.meta!.targetQualityRejectReason).toBe('GEOMETRY_INVALID');
+    expect(outS.stop).toBe(1100);
+  });
+
+  /* ── 9. Точность на низкоценовом активе ───────────────────────────────── */
+  it('9 · низкоценовой актив (PEPE-подобный): расширение и качество без потери точности', () => {
+    // close = 0.00001234, 1H-ATR = 4e-7 ⇒ коридор V3.3 = close ± 4e-8.
+    const base: [number, number] = [0.00001230, 0.00001238];
+    const src = record({ direction: 'LONG', entryZone: base, stop: 0.00001150, targets: [0.00001297, 0.00001400] });
+    const out = applyTargetQualityGate(src);
+
+    expect(out.meta!.atr1h as number).toBeCloseTo(4e-7, 15);
+    expect(out.meta!.entryZonePad as number).toBeCloseTo(1e-7, 15);
+    expect(out.entryZone[0]).toBeCloseTo(0.0000122, 15);
+    expect(out.entryZone[1]).toBeCloseTo(0.00001248, 15);
+    // База по-прежнему внутри расширенной зоны.
+    expect(out.entryZone[0]).toBeLessThan(base[0]);
+    expect(out.entryZone[1]).toBeGreaterThan(base[1]);
+    // Качество посчитано по расширенной границе и порог пройден ровно.
+    expect(out.meta!.initialRisk as number).toBeCloseTo(9.8e-7, 15);
+    expect(out.meta!.targetQualityTp1R as number).toBeCloseTo(0.5, 9);
+    expect(out.meta!.targetQualityRejectReason).toBeNull();
+    expect(out.publishable).toBe(true);
+
+    // Ни одна граница не «схлопнулась» в ноль и не потеряла значащие цифры.
+    for (const v of [out.entryZone[0], out.entryZone[1], out.meta!.entryZonePad as number]) {
+      expect(v).toBeGreaterThan(0);
+      expect(Number.isFinite(v)).toBe(true);
+    }
+    // Те же цены, округлённые до точности отображения, расчёт уничтожают.
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    expect(atrFromV33Corridor(r2(base[0]), r2(base[1]))).toBe(0);
   });
 });

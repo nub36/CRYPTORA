@@ -52,10 +52,43 @@ export const V34_TP2_MIN_R = 1.0;
 export type TargetQualityReason =
   /** Геометрия сетапа невалидна сама по себе (цель/стоп не с той стороны, TP2 не дальше TP1, риск ≤ 0). */
   | 'GEOMETRY_INVALID'
+  /**
+   * Коридор входа пересекает стоп (или касается его). Для V3.4 это отдельная
+   * причина, потому что она возникает именно от РАСШИРЕНИЯ зоны: часть зоны
+   * оказывается по ту сторону инвалидации, где сделки уже нет. Стоп при этом
+   * НЕ двигается — отклоняется сетап.
+   */
+  | 'ENTRY_ZONE_CROSSES_STOP'
   /** TP1 ближе минимального качества. */
   | 'TARGET_QUALITY_TP1'
   /** TP2 ближе минимального качества. */
   | 'TARGET_QUALITY_TP2';
+
+/**
+ * Доля ATR, на которую V3.4 расширяет КАЖДУЮ сторону коридора V3.3.
+ *
+ * ATR — тот же, что уже использует V3.3: ATR(risk.atr_period) по 1H-ряду
+ * (`atrSeriesV2(h1, atrPeriod)` в v33LiveReplay.ts:97). Новый таймфрейм и новый
+ * расчёт ATR не вводятся.
+ */
+export const V34_ENTRY_ZONE_ATR_PAD = 0.25;
+
+/**
+ * Расширение коридора входа V3.4.
+ *
+ * Симметрично и строго наружу, поэтому базовая структурная зона V3.3 всегда
+ * целиком лежит внутри зоны V3.4 (при atr > 0 — строго внутри). Никакого
+ * фиксированного долларового отступа: величина отступа пропорциональна ATR,
+ * то есть масштабируется вместе с ценой актива.
+ *
+ * Округления нет намеренно: границы уходят в расчёт качества целей как есть.
+ */
+export function expandEntryZone(
+  baseLow: number, baseHigh: number, atr: number,
+): { low: number; high: number; pad: number } {
+  const pad = V34_ENTRY_ZONE_ATR_PAD * atr;
+  return { low: baseLow - pad, high: baseHigh + pad, pad };
+}
 
 export interface TargetQualityInput {
   direction: ArchiveDirection;
@@ -131,6 +164,19 @@ export function evaluateTargetQuality(input: TargetQualityInput): TargetQualityR
   const initialRisk = long ? entryReference - stop : stop - entryReference;
   if (!(initialRisk > 0)) return { ...empty, entryReference };
 
+  // ВЕСЬ коридор обязан лежать по рабочую сторону от стопа, а не только
+  // худшая граница. У V3.3 этой проверки нет и быть не должно (её коридор
+  // узкий и её математика заморожена), но для расширенной зоны V3.4 она
+  // обязательна: иначе часть зоны оказалась бы за инвалидацией. Стоп при
+  // отказе НЕ переносится — отклоняется сетап.
+  const zoneClearOfStop = long ? stop < entryLow : stop > entryHigh;
+  if (!zoneClearOfStop) {
+    return {
+      accepted: false, reason: 'ENTRY_ZONE_CROSSES_STOP', entryReference,
+      initialRisk, tp1R: null, tp2R: null, floors,
+    };
+  }
+
   const d1 = forwardDistance(direction, entryReference, tp1);
   const d2 = forwardDistance(direction, entryReference, tp2);
   const tp1R = d1 / initialRisk;
@@ -151,6 +197,9 @@ export function evaluateTargetQuality(input: TargetQualityInput): TargetQualityR
 /** Человекочитаемая причина отказа для журнала и UI. */
 export const TARGET_QUALITY_REASON_RU: Readonly<Record<TargetQualityReason, string>> = Object.freeze({
   GEOMETRY_INVALID: 'Геометрия сетапа невалидна: цель или стоп не с той стороны от входа.',
+  ENTRY_ZONE_CROSSES_STOP:
+    'Расширенный коридор входа пересекает стоп — часть зоны оказалась бы за уровнем инвалидации. '
+    + 'Стоп остаётся структурным и не переносится: отклоняется сетап.',
   TARGET_QUALITY_TP1: `Цель 1 ближе минимального качества ${V34_TP1_MIN_R} первоначального риска — сетап отклонён целиком, цель не сдвигается.`,
   TARGET_QUALITY_TP2: `Цель 2 ближе минимального качества ${V34_TP2_MIN_R} первоначального риска — сетап отклонён целиком, цель не сдвигается.`,
 });
