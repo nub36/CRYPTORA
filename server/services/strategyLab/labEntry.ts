@@ -13,10 +13,12 @@
  */
 
 export { runLabReplay, UnknownLabStrategyError } from '@/services/strategyLab/engine';
+export { evaluateDraftStrategy } from '@/services/strategyLab/strategies/draftStrategy';
 export {
   LAB_STRATEGIES,
   getLabStrategy,
   isKnownLabStrategy,
+  defaultDraftDefinition,
   defaultResearchConfig,
   EMA_ATR_ID,
 } from '@/services/strategyLab/registry';

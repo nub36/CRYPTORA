@@ -1,14 +1,14 @@
 /**
- * CRYPTORA — Strategy Lab · панель исследовательских параметров (frontend)
+ * CRYPTORA — Strategy Lab · панель параметров (frontend, RESEARCH ONLY)
  * ---------------------------------------------------------------------------
- * Поля строятся ИЗ описателей выбранной стратегии (registry.fields), а не
- * хардкодом «все поля для всех». Значения только собираются и уходят на сервер —
- * никакой стратегической математики на фронте.
+ * Поля строятся ИЗ описателей выбранной стратегии (registry.fields).
+ * Числовые поля используют LabNumericInput для корректного редактирования.
  */
 
 import React from 'react';
 import type { LabStrategyMeta, LabParamGroup } from '@/services/strategyLab/registry';
 import type { ResearchConfig } from '@/services/strategyLab/types';
+import { LabNumericInput } from './LabNumericInput';
 
 const GROUP_TITLES: Record<LabParamGroup, string> = {
   indicators: 'Индикаторы',
@@ -67,20 +67,14 @@ export const LabParamsPanel: React.FC<LabParamsPanelProps> = ({
               {fields.map((f) => (
                 <label key={f.path} className="flex flex-col gap-1 text-[12px] text-slate-300">
                   <span title={f.description}>{f.label}</span>
-                  <input
-                    type="number"
-                    inputMode="decimal"
+                  <LabNumericInput
                     min={f.min}
                     max={f.max}
                     step={f.integer ? 1 : f.step}
-                    value={Number.isFinite(readValue(config, f.path)) ? readValue(config, f.path) : ''}
+                    integer={f.integer}
+                    value={readValue(config, f.path)}
                     disabled={disabled}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === '') return;
-                      const parsed = f.integer ? parseInt(raw, 10) : parseFloat(raw);
-                      if (Number.isFinite(parsed)) onChange(f.path, parsed);
-                    }}
+                    onChange={(val) => onChange(f.path, val)}
                     className="rounded-md border border-white/[0.1] bg-surface-2 px-2 py-1.5 font-mono text-[13px] text-white outline-none focus:border-cyan-500/50 disabled:opacity-50"
                   />
                 </label>

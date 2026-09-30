@@ -1,16 +1,11 @@
 /**
  * CRYPTORA — Strategy Lab · реестр исследовательских стратегий (RESEARCH ONLY)
  * ---------------------------------------------------------------------------
- * Метаданные стратегий Lab: id, описание правила и ОПИСАТЕЛИ ПАРАМЕТРОВ. Панель
- * настроек на /strategy-lab строится ИЗ этого описания (а не хардкодом «все поля
- * для всех стратегий»): каждая стратегия объявляет ровно те поля, которые реально
- * использует.
- *
- * Это НЕ production-каталог стратегий (server/services/strategyCatalog.js) — он
- * не трогается. Здесь только новые research-стратегии.
+ * Метаданные стратегий Lab: id, описание правила и ОПИСАТЕЛИ ПАРАМЕТРОВ.
+ * В Phase 2A используется как база для Конструктора стратегий.
  */
 
-import type { ResearchConfig } from './types';
+import type { ResearchConfig, StrategyDraftDefinition } from './types';
 
 export type LabParamGroup = 'indicators' | 'strategy' | 'execution';
 
@@ -150,21 +145,82 @@ export function getLabStrategy(id: string): LabStrategyMeta | undefined {
 }
 
 export function isKnownLabStrategy(id: string): boolean {
+  if (id === 'CONSTRUCTOR' || id === 'DRAFT') return true;
   return LAB_STRATEGIES.some((s) => s.id === id);
 }
 
-/** Дефолтная researchConfig стратегии из описателей полей. */
-export function defaultResearchConfig(id: string): ResearchConfig {
-  const meta = getLabStrategy(id) ?? EMA_ATR;
-  const cfg: ResearchConfig = {
-    indicators: { emaFast: 20, emaSlow: 50, atrPeriod: 14 },
-    strategy: { stopAtrMult: 1.5, targetR: 2.0 },
-    execution: { feeBps: 5, slippageBps: 2 },
+/** Создать дефолтный чистый draft для Конструктора стратегий */
+export function defaultDraftDefinition(name = 'Новая стратегия'): StrategyDraftDefinition {
+  return {
+    name,
+    indicators: [
+      {
+        id: 'ema-fast',
+        type: 'EMA',
+        name: 'EMA 20',
+        period: 20,
+        source: 'close',
+        visible: true,
+      },
+      {
+        id: 'ema-slow',
+        type: 'EMA',
+        name: 'EMA 50',
+        period: 50,
+        source: 'close',
+        visible: true,
+      },
+      {
+        id: 'atr',
+        type: 'ATR',
+        name: 'ATR 14',
+        period: 14,
+        visible: false,
+      },
+    ],
+    long: {
+      left: 'ema-fast',
+      operator: 'crossesAbove',
+      right: 'ema-slow',
+    },
+    short: {
+      left: 'ema-fast',
+      operator: 'crossesBelow',
+      right: 'ema-slow',
+    },
+    stop: {
+      type: 'atrMultiple',
+      indicatorId: 'atr',
+      multiplier: 1.5,
+    },
+    target: {
+      type: 'rMultiple',
+      multiple: 2.0,
+    },
+    execution: {
+      feeBps: 5,
+      slippageBps: 2,
+    },
   };
-  for (const f of meta.fields) {
-    const [group, key] = f.path.split('.') as [keyof ResearchConfig, string];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (cfg[group] as any)[key] = f.default;
-  }
-  return cfg;
+}
+
+export const DEFAULT_DRAFT_DEFINITION = defaultDraftDefinition();
+
+/** Дефолтный ResearchConfig (Phase 1A fallback). */
+export function defaultResearchConfig(_strategyId?: string): ResearchConfig {
+  return {
+    indicators: {
+      emaFast: 20,
+      emaSlow: 50,
+      atrPeriod: 14,
+    },
+    strategy: {
+      stopAtrMult: 1.5,
+      targetR: 2.0,
+    },
+    execution: {
+      feeBps: 5,
+      slippageBps: 2,
+    },
+  };
 }

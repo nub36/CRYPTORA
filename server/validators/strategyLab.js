@@ -2,13 +2,10 @@
  * CRYPTORA — Strategy Lab · валидация запросов (RESEARCH ONLY)
  * ---------------------------------------------------------------------------
  * Серверная валидация — ОБЯЗАТЕЛЬНА (§12): фронтенд не является источником
- * истины. Zod-схема отклоняет неизвестные таймфреймы, некорректный config и
- * запросы, которые превысили бы жёсткий потолок свечей/диапазона (§13, §14).
+ * истины. Zod-схема отклоняет неизвестные таймфреймы, некорректный draft definition /
+ * config и запросы, которые превысили бы жёсткий потолок свечей/диапазона (§13, §14).
  *
  * ZodError глобально превращается в 400 (server/middleware/errorHandler.js).
- *
- * Константы (таймфреймы, потолок) осознанно продублированы здесь как
- * defense-in-depth и чтобы не собирать esbuild-бандл ради простой валидации.
  */
 
 import { z } from 'zod';
@@ -50,33 +47,188 @@ const timestampMs = z
     return Math.floor(ms);
   });
 
-const researchConfigSchema = z.object({
-  indicators: z.object({
-    emaFast: z.number().int().min(1).max(500),
-    emaSlow: z.number().int().min(2).max(1000),
-    atrPeriod: z.number().int().min(1).max(500),
-  }),
-  strategy: z.object({
-    stopAtrMult: z.number().min(0.1).max(20),
-    targetR: z.number().min(0.1).max(20),
-  }),
-  execution: z.object({
-    feeBps: z.number().min(0).max(100),
-    slippageBps: z.number().min(0).max(100),
-  }),
-}).superRefine((cfg, ctx) => {
-  if (cfg.indicators.emaSlow <= cfg.indicators.emaFast) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['indicators', 'emaSlow'],
-      message: 'EMA Slow должен быть больше EMA Fast',
-    });
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// Схема для Конструктора (Phase 2A Draft Definition)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const indicatorSchema = z.object({
+  id: z.string().min(1).max(64),
+  type: z.enum(['EMA', 'ATR']),
+  name: z.string().max(64).optional(),
+  period: z.number().int().min(1).max(1000),
+  source: z.enum(['close', 'open', 'high', 'low']).optional(),
+  visible: z.boolean().optional(),
 });
+
+export const logicRuleSchema = z.object({
+  left: z.string().min(1).max(64),
+  operator: z.enum(['crossesAbove', 'crossesBelow']),
+  right: z.string().min(1).max(64),
+});
+
+export const stopSchema = z.object({
+  type: z.literal('atrMultiple'),
+  indicatorId: z.string().min(1).max(64),
+  multiplier: z.number().min(0.01).max(100),
+});
+
+export const targetSchema = z.object({
+  type: z.literal('rMultiple'),
+  multiple: z.number().min(0.01).max(100),
+});
+
+export const executionSchema = z.object({
+  feeBps: z.number().min(0).max(100),
+  slippageBps: z.number().min(0).max(100),
+});
+
+export const strategyDefinitionSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    indicators: z.array(indicatorSchema).min(1).max(20),
+    long: logicRuleSchema,
+    short: logicRuleSchema,
+    stop: stopSchema,
+    target: targetSchema,
+    execution: executionSchema.optional(),
+  })
+  .superRefine((def, ctx) => {
+    const ids = new Set();
+    const indicatorMap = new Map();
+    for (const ind of def.indicators) {
+      if (ids.has(ind.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['indicators'],
+          message: `Дублирующийся ID индикатора: ${ind.id}`,
+        });
+      }
+      ids.add(ind.id);
+      indicatorMap.set(ind.id, ind);
+    }
+
+    // Проверка правила LONG
+    const longLeft = indicatorMap.get(def.long.left);
+    const longRight = indicatorMap.get(def.long.right);
+    if (!longLeft) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['long', 'left'],
+        message: `Неизвестный индикатор в правиле LONG: ${def.long.left}`,
+      });
+    } else if (longLeft.type !== 'EMA') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['long', 'left'],
+        message: `Индикатор для правила LONG должен быть EMA (получен ${longLeft.type})`,
+      });
+    }
+    if (!longRight) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['long', 'right'],
+        message: `Неизвестный индикатор в правиле LONG: ${def.long.right}`,
+      });
+    } else if (longRight.type !== 'EMA') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['long', 'right'],
+        message: `Индикатор для правила LONG должен быть EMA (получен ${longRight.type})`,
+      });
+    }
+    if (def.long.left === def.long.right) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['long'],
+        message: 'Левый и правый индикатор в правиле LONG не могут совпадать',
+      });
+    }
+
+    // Проверка правила SHORT
+    const shortLeft = indicatorMap.get(def.short.left);
+    const shortRight = indicatorMap.get(def.short.right);
+    if (!shortLeft) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['short', 'left'],
+        message: `Неизвестный индикатор в правиле SHORT: ${def.short.left}`,
+      });
+    } else if (shortLeft.type !== 'EMA') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['short', 'left'],
+        message: `Индикатор для правила SHORT должен быть EMA (получен ${shortLeft.type})`,
+      });
+    }
+    if (!shortRight) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['short', 'right'],
+        message: `Неизвестный индикатор в правиле SHORT: ${def.short.right}`,
+      });
+    } else if (shortRight.type !== 'EMA') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['short', 'right'],
+        message: `Индикатор для правила SHORT должен быть EMA (получен ${shortRight.type})`,
+      });
+    }
+    if (def.short.left === def.short.right) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['short'],
+        message: 'Левый и правый индикатор в правиле SHORT не могут совпадать',
+      });
+    }
+
+    // Проверка стопа
+    const stopInd = indicatorMap.get(def.stop.indicatorId);
+    if (!stopInd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['stop', 'indicatorId'],
+        message: `Неизвестный индикатор для стопа: ${def.stop.indicatorId}`,
+      });
+    } else if (stopInd.type !== 'ATR') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['stop', 'indicatorId'],
+        message: `Индикатор для стопа должен быть типа ATR (получен ${stopInd.type})`,
+      });
+    }
+  });
+
+// Legacy Phase 1A схема
+export const researchConfigSchema = z
+  .object({
+    indicators: z.object({
+      emaFast: z.number().int().min(1).max(500),
+      emaSlow: z.number().int().min(2).max(1000),
+      atrPeriod: z.number().int().min(1).max(500),
+    }),
+    strategy: z.object({
+      stopAtrMult: z.number().min(0.1).max(20),
+      targetR: z.number().min(0.1).max(20),
+    }),
+    execution: z.object({
+      feeBps: z.number().min(0).max(100),
+      slippageBps: z.number().min(0).max(100),
+    }),
+  })
+  .superRefine((cfg, ctx) => {
+    if (cfg.indicators.emaSlow <= cfg.indicators.emaFast) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['indicators', 'emaSlow'],
+        message: 'EMA Slow должен быть больше EMA Fast',
+      });
+    }
+  });
 
 export const replayRequestSchema = z
   .object({
-    strategyId: z.string().min(1).max(64),
+    strategyId: z.string().min(1).max(64).optional(),
+    strategyDefinition: strategyDefinitionSchema.optional(),
     market: z.enum(['spot', 'futures']),
     symbol: z
       .string()
@@ -85,9 +237,16 @@ export const replayRequestSchema = z
     timeframe: z.enum(['1m', '5m', '15m', '1h', '4h', '1d']),
     from: timestampMs,
     to: timestampMs,
-    researchConfig: researchConfigSchema,
+    researchConfig: researchConfigSchema.optional(),
   })
   .superRefine((req, ctx) => {
+    if (!req.strategyDefinition && !req.researchConfig) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['strategyDefinition'],
+        message: 'Необходимо передать `strategyDefinition` или `researchConfig`',
+      });
+    }
     if (!(req.from < req.to)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

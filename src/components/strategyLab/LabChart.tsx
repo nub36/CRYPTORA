@@ -1,14 +1,12 @@
 /**
- * CRYPTORA — Strategy Lab · обёртка графика (frontend, RESEARCH ONLY)
+ * CRYPTORA — Strategy Lab · Обёртка графика (frontend, RESEARCH ONLY)
  * ---------------------------------------------------------------------------
  * Переиспользует существующий CandleChart ТОЛЬКО через его публичные props
  * (data / indicators / markers / levelLines / onMarkerClick). CandleChart НЕ
- * модифицируется. EMA Fast/Slow подаются в слоты sma20/sma50 (график рисует их
- * как обычные линии; подписи цвета даём в собственной легенде Lab).
+ * модифицируется.
  *
- * Ограничение (§17): программное центрирование графика по клику сделки через
- * публичный API CandleChart недоступно — вместо этого мы подсвечиваем маркеры
- * выбранной сделки и её уровни. Центрирование отложено (без правки CandleChart).
+ * Видимые EMA подаются в слоты sma20/sma50/sma200. Легенда отображает только
+ * реально видимые на графике индикаторы.
  */
 
 import React, { useMemo } from 'react';
@@ -24,7 +22,6 @@ const TF_TO_CHART: Partial<Record<LabTimeframe, Timeframe>> = {
   '1h': '1h',
   '4h': '4h',
   '1d': '1D',
-  // '1m' у production-типа Timeframe нет — оставляем prop пустым (косметика осей).
 };
 
 function toChartData(result: LabReplayResult): OHLCV[] {
@@ -38,8 +35,8 @@ function toChartData(result: LabReplayResult): OHLCV[] {
   }));
 }
 
-function toAligned(series: (number | null)[]): number[] {
-  // CandleChart.toLineData фильтрует НЕ-конечные значения → null прогрева = NaN.
+function toAligned(series?: (number | null)[]): number[] | undefined {
+  if (!series || series.length === 0) return undefined;
   return series.map((v) => (v === null ? NaN : v));
 }
 
@@ -50,24 +47,56 @@ interface LabChartProps {
   height?: number;
 }
 
+const EMA_COLORS = [
+  { label: 'Amber', color: '#f59e0b' },
+  { label: 'Blue', color: '#3b82f6' },
+  { label: 'Purple', color: '#a855f7' },
+];
+
 export const LabChart: React.FC<LabChartProps> = ({
   result,
   selectedTrade,
   onSelectTrade,
-  height = 480,
+  height,
 }) => {
   const data = useMemo(() => (result ? toChartData(result) : []), [result]);
 
-  const indicators = useMemo(
-    () =>
-      result
-        ? {
-            sma20: toAligned(result.indicators.emaFast),
-            sma50: toAligned(result.indicators.emaSlow),
-          }
-        : undefined,
-    [result]
-  );
+  // Выборка видимых EMA серий для графика
+  const { indicators, legendEmas } = useMemo(() => {
+    if (!result) return { indicators: undefined, legendEmas: [] };
+
+    const defs = result.indicators.indicatorsList;
+    const byId = result.indicators.byIndicatorId;
+
+    if (defs && byId) {
+      const visibleEmas = defs.filter((ind) => ind.type === 'EMA' && ind.visible !== false);
+      const sma20 = visibleEmas[0] ? toAligned(byId[visibleEmas[0].id]) : undefined;
+      const sma50 = visibleEmas[1] ? toAligned(byId[visibleEmas[1].id]) : undefined;
+      const sma200 = visibleEmas[2] ? toAligned(byId[visibleEmas[2].id]) : undefined;
+
+      const legend = visibleEmas.slice(0, 3).map((ind, i) => ({
+        name: ind.name || `EMA ${ind.period}`,
+        color: EMA_COLORS[i]?.color ?? '#f59e0b',
+      }));
+
+      return {
+        indicators: { sma20, sma50, sma200 },
+        legendEmas: legend,
+      };
+    }
+
+    // Fallback на стандартные emaFast / emaSlow
+    return {
+      indicators: {
+        sma20: toAligned(result.indicators.emaFast),
+        sma50: toAligned(result.indicators.emaSlow),
+      },
+      legendEmas: [
+        { name: 'EMA Fast', color: '#f59e0b' },
+        { name: 'EMA Slow', color: '#3b82f6' },
+      ],
+    };
+  }, [result]);
 
   const markers = useMemo(
     () =>
@@ -89,42 +118,50 @@ export const LabChart: React.FC<LabChartProps> = ({
 
   const chartTf = result ? TF_TO_CHART[result.meta.timeframe as LabTimeframe] : undefined;
 
+  // Высота: адаптивная для мобильных и десктопа (по умолчанию 360-440px)
+  const effectiveHeight = height ?? 420;
+
   if (!result || data.length === 0) {
     return (
       <div
         data-lab-tutorial="chart"
-        className="flex items-center justify-center rounded-lg border border-white/[0.08] bg-surface-inset/40 text-sm text-slate-400"
-        style={{ height }}
+        className="flex min-h-[320px] sm:min-h-[380px] xl:min-h-[440px] items-center justify-center rounded-lg border border-white/[0.08] bg-surface-inset/40 p-4 text-center text-sm text-slate-400"
       >
-        Запустите бэктест, чтобы построить график.
+        <span>Запустите бэктест, чтобы построить график и отобразить сигналы.</span>
       </div>
     );
   }
 
   return (
-    <div data-lab-tutorial="chart" className="rounded-lg border border-white/[0.08] bg-surface-inset/40 p-2">
-      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[11px] text-slate-400">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-3 rounded-sm" style={{ background: '#f59e0b' }} />
-          EMA Fast
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-3 rounded-sm" style={{ background: '#3b82f6' }} />
-          EMA Slow
-        </span>
-        <span className="flex items-center gap-1">
+    <div data-lab-tutorial="chart" className="rounded-lg border border-white/[0.08] bg-surface-inset/40 p-2 sm:p-3">
+      {/* Легенда графика */}
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11px] text-slate-300">
+        {legendEmas.map((item) => (
+          <span key={item.name} className="flex items-center gap-1 font-medium">
+            <span className="inline-block h-2 w-3 rounded-sm" style={{ background: item.color }} />
+            {item.name}
+          </span>
+        ))}
+        <span className="flex items-center gap-1 font-medium">
           <span className="inline-block h-2 w-3 rounded-sm" style={{ background: '#10b981' }} />
           LONG / TP
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 font-medium">
           <span className="inline-block h-2 w-3 rounded-sm" style={{ background: '#f43f5e' }} />
           SHORT / SL
         </span>
+        {selectedTrade && (
+          <span className="flex items-center gap-1 text-cyan-300 font-medium">
+            <span className="inline-block h-2 w-2 rounded-full bg-cyan-400" />
+            Выбрана сделка {selectedTrade.side} ({selectedTrade.outcome})
+          </span>
+        )}
       </div>
+
       <CandleChart
         data={data}
         symbol={result.meta.symbol}
-        height={height}
+        height={effectiveHeight}
         timeframe={chartTf}
         indicators={indicators}
         showMA

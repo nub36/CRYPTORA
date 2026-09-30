@@ -1,10 +1,10 @@
 /**
  * CRYPTORA — Strategy Lab · форматирование для отображения (frontend)
  * ---------------------------------------------------------------------------
- * ТОЛЬКО презентация (§18). Исходные значения расчётов НЕ округляются здесь —
+ * ТОЛЬКО презентация. Исходные значения расчётов НЕ округляются здесь —
  * форматтеры получают уже посчитанные сервером числа и лишь готовят строку.
- * Low-price активы (PEPE-подобные) должны читаться: для |x|<1 показываем
- * достаточную значимость через toPrecision, не «0.0000».
+ * Low-price активы (PEPE-подобные) поддерживаются с высокой точностью:
+ * для |x|<1 показываем достаточную значимость через toPrecision, не «0.0000».
  */
 
 /** Адаптивная цена: крупные — с фикс. дробями, мелкие — со значащими цифрами. */
@@ -44,7 +44,7 @@ export function formatInt(value: number | null | undefined): string {
   return String(value);
 }
 
-/** Unix-СЕКУНДЫ → локальная дата-время. */
+/** Unix-СЕКУНДЫ → локальная дата-время на русском. */
 export function formatTime(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '—';
   return new Date(seconds * 1000).toLocaleString('ru-RU', {
@@ -58,4 +58,39 @@ export function formatTime(seconds: number | null | undefined): string {
 
 export function sideLabel(side: 'LONG' | 'SHORT' | undefined): string {
   return side === 'LONG' ? 'LONG' : side === 'SHORT' ? 'SHORT' : '—';
+}
+
+export function outcomeLabel(outcome: 'TARGET' | 'STOP' | 'EXIT' | string): string {
+  switch (outcome) {
+    case 'TARGET':
+      return 'Цель (TP)';
+    case 'STOP':
+      return 'Стоп (SL)';
+    case 'EXIT':
+      return 'Закрытие';
+    default:
+      return outcome;
+  }
+}
+
+export function reasonLabel(reason: string | undefined): string {
+  if (!reason) return '—';
+  switch (reason) {
+    case 'TARGET':
+      return 'Цель достигнута';
+    case 'STOP':
+      return 'Стоп-лосс';
+    case 'SAME_BAR_STOP_FIRST':
+      return 'Стоп (одна свеча)';
+    case 'END_OF_DATA':
+      return 'Конец данных';
+    case 'NO_ATR':
+      return 'Нет данных ATR';
+    case 'ZERO_ATR':
+      return 'ATR ≤ 0';
+    case 'NO_ENTRY_BAR':
+      return 'Нет бара входа';
+    default:
+      return reason;
+  }
 }

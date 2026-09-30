@@ -1,16 +1,17 @@
 /**
  * CRYPTORA — Strategy Lab · исследовательский движок (RESEARCH ONLY)
  * ---------------------------------------------------------------------------
- * Чистая детерминированная функция: свечи + config → события/сделки/отказы/
- * метрики. БЕЗ сети, БЕЗ БД, БЕЗ Math.random, БЕЗ Date.now в расчётах (только
- * `generatedAt` в meta как штамп ответа). Это ЕДИНСТВЕННЫЙ источник формул Lab —
- * сервер исполняет именно её (esbuild-бандл), фронтенд её НЕ дублирует.
+ * Чистая детерминированная функция: свечи + config/definition → события/сделки/
+ * отказы/метрики. БЕЗ сети, БЕЗ БД, БЕЗ Math.random, БЕЗ Date.now в расчётах
+ * (только `generatedAt` в meta как штамп ответа). Это ЕДИНСТВЕННЫЙ источник
+ * формул Lab — сервер исполняет именно её (esbuild-бандл), фронтенд её НЕ дублирует.
  *
  * No look-ahead гарантируется стратегией: решение на баре i использует только
- * бары ≤ i (см. strategies/emaAtr.ts).
+ * бары ≤ i.
  */
 
 import { evaluateEmaAtr } from './strategies/emaAtr';
+import { evaluateDraftStrategy } from './strategies/draftStrategy';
 import { computeMetrics } from './metrics';
 import { SAME_BAR_RULE } from './executionSimulator';
 import { EMA_ATR_ID, getLabStrategy } from './registry';
@@ -24,20 +25,34 @@ export class UnknownLabStrategyError extends Error {
 }
 
 export function runLabReplay(input: LabReplayInput, nowMs = Date.now()): LabReplayResult {
-  const meta = getLabStrategy(input.strategyId);
-  if (!meta) throw new UnknownLabStrategyError(input.strategyId);
-
   const candles = input.candles;
   const notes: string[] = [];
 
   let evaluation;
-  switch (input.strategyId) {
-    case EMA_ATR_ID:
+  let strategyId: string;
+  let strategyName: string;
+
+  if (input.strategyDefinition) {
+    strategyId = input.strategyId || 'CONSTRUCTOR';
+    strategyName = input.strategyDefinition.name || 'Конструктор стратегий';
+    evaluation = evaluateDraftStrategy(candles, input.strategyDefinition);
+  } else if (input.strategyId === EMA_ATR_ID && input.researchConfig) {
+    const meta = getLabStrategy(input.strategyId);
+    strategyId = EMA_ATR_ID;
+    strategyName = meta?.name || 'EMA + ATR';
+    evaluation = evaluateEmaAtr(candles, input.researchConfig);
+  } else if (input.strategyId) {
+    const meta = getLabStrategy(input.strategyId);
+    if (!meta) throw new UnknownLabStrategyError(input.strategyId);
+    strategyId = input.strategyId;
+    strategyName = meta.name;
+    if (input.researchConfig) {
       evaluation = evaluateEmaAtr(candles, input.researchConfig);
-      break;
-    default:
-      // getLabStrategy уже отсёк неизвестные id; ветка — страховка на будущее.
-      throw new UnknownLabStrategyError(input.strategyId);
+    } else {
+      throw new Error('Research configuration or strategy definition required');
+    }
+  } else {
+    throw new Error('Neither strategyDefinition nor strategyId provided');
   }
 
   const metrics = computeMetrics(
@@ -53,8 +68,8 @@ export function runLabReplay(input: LabReplayInput, nowMs = Date.now()): LabRepl
 
   return {
     meta: {
-      strategyId: input.strategyId,
-      strategyName: meta.name,
+      strategyId,
+      strategyName,
       market: input.market,
       symbol: input.symbol,
       timeframe: input.timeframe,

@@ -1,5 +1,5 @@
 /**
- * CRYPTORA — Strategy Lab · shared contracts (Phase 1A)
+ * CRYPTORA — Strategy Lab · shared contracts (Phase 2A Constructor)
  * ---------------------------------------------------------------------------
  * RESEARCH ONLY. Ничего из этого модуля не участвует в production-стратегиях
  * (V2.8/V3.0/V3.3/V3.4), production-сигналах, scheduler или БД. Это отдельный
@@ -50,7 +50,60 @@ export interface LabCandle {
   closeTime: number;
 }
 
-/** Исследовательская конфигурация (редактируется на странице /strategy-lab). */
+// ─────────────────────────────────────────────────────────────────────────────
+// Конструктор стратегий (Phase 2A: Декларативный Draft Definition)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type IndicatorType = 'EMA' | 'ATR';
+export type IndicatorSource = 'close' | 'open' | 'high' | 'low';
+
+export interface IndicatorDefinition {
+  id: string;
+  type: IndicatorType;
+  name?: string;
+  period: number;
+  source?: IndicatorSource;
+  visible?: boolean;
+}
+
+export type LogicOperator = 'crossesAbove' | 'crossesBelow';
+
+export interface LogicRule {
+  left: string; // ID индикатора
+  operator: LogicOperator;
+  right: string; // ID индикатора
+}
+
+export interface StopDefinition {
+  type: 'atrMultiple';
+  indicatorId: string; // ID индикатора ATR
+  multiplier: number;
+}
+
+export interface TargetDefinition {
+  type: 'rMultiple';
+  multiple: number;
+}
+
+export interface ExecutionSettings {
+  /** Комиссия в базисных пунктах (bps) НА СТОРОНУ (вход и выход). */
+  feeBps: number;
+  /** Проскальзывание в bps, применяется к цене входа/выхода. */
+  slippageBps: number;
+}
+
+/** Декларативное определение стратегии, собранной в Конструкторе. */
+export interface StrategyDraftDefinition {
+  name: string;
+  indicators: IndicatorDefinition[];
+  long: LogicRule;
+  short: LogicRule;
+  stop: StopDefinition;
+  target: TargetDefinition;
+  execution?: ExecutionSettings;
+}
+
+/** Исследовательская конфигурация (Legacy Phase 1A формат для обратной совместимости). */
 export interface ResearchConfig {
   indicators: {
     emaFast: number;
@@ -62,9 +115,7 @@ export interface ResearchConfig {
     targetR: number;
   };
   execution: {
-    /** Комиссия в базисных пунктах (bps) НА СТОРОНУ (вход и выход). */
     feeBps: number;
-    /** Проскальзывание в bps, применяется к цене входа/выхода. */
     slippageBps: number;
   };
 }
@@ -140,6 +191,10 @@ export interface LabIndicatorSeries {
   emaFast: (number | null)[];
   emaSlow: (number | null)[];
   atr: (number | null)[];
+  /** Полная карта серий по id индикаторов для конструктора. */
+  byIndicatorId?: Record<string, (number | null)[]>;
+  /** Список определений индикаторов (с флагами visible/period/name). */
+  indicatorsList?: IndicatorDefinition[];
 }
 
 export interface LabMetrics {
@@ -195,12 +250,13 @@ export interface LabReplayResult {
 
 /** Вход исследовательского движка (чистая функция, без сети). */
 export interface LabReplayInput {
-  strategyId: string;
+  strategyId?: string;
+  strategyDefinition?: StrategyDraftDefinition;
   market: LabMarket;
   symbol: string;
   timeframe: LabTimeframe;
   from: number;
   to: number;
   candles: LabCandle[];
-  researchConfig: ResearchConfig;
+  researchConfig?: ResearchConfig;
 }
