@@ -2,7 +2,7 @@
  * CRYPTORA — Admin Panel
  *
  * Protected route: requires admin role.
- * Tabs: Dashboard, Users, System
+ * Tabs: Dashboard, Users, Coins (scan universe), Testing (strategy test runs), System
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -19,10 +19,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Coins,
+  FlaskConical,
 } from 'lucide-react';
 import { ScanUniverseManager } from '@/components/admin/ScanUniverseManager';
+import { StrategyTestRunsManager } from '@/components/admin/StrategyTestRunsManager';
 
-type Tab = 'dashboard' | 'users' | 'coins' | 'system';
+type Tab = 'dashboard' | 'users' | 'coins' | 'testing' | 'system';
 
 interface DashboardData {
   health: {
@@ -232,6 +234,7 @@ export const AdminPage: React.FC = () => {
             { id: 'dashboard' as Tab, label: 'Обзор', icon: LayoutDashboard },
             { id: 'users' as Tab, label: 'Пользователи', icon: Users },
             { id: 'coins' as Tab, label: 'Монеты', icon: Coins },
+            { id: 'testing' as Tab, label: 'Тестирование стратегий', icon: FlaskConical },
             { id: 'system' as Tab, label: 'Система', icon: Server },
           ].map((t) => (
             <button
@@ -469,6 +472,13 @@ export const AdminPage: React.FC = () => {
       {tab === 'coins' && (
         <div id="admin-coins" data-testid="admin-coins">
           <ScanUniverseManager />
+        </div>
+      )}
+
+      {/* Testing Tab — тестовые периоды стратегий (сброс статистики с нуля) */}
+      {tab === 'testing' && (
+        <div id="admin-testing" data-testid="admin-testing">
+          <StrategyTestRunsManager />
         </div>
       )}
 

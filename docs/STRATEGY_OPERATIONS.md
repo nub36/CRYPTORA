@@ -103,10 +103,13 @@ last_scan_at · last_signal_at · last_error · updated_at · updated_by
 |---|---|---|---|
 | `GET` | `/api/strategies` | публично | состояние трёх стратегий |
 | `GET` | `/api/signals` | публично | сигналы; фильтры `strategy`, `status`, `symbol`, `limit` |
-| `GET` | `/api/signals/statistics` | публично | агрегаты по PostgreSQL: `period`, `strategy`, `symbol` |
+| `GET` | `/api/signals/statistics` | публично | агрегаты по PostgreSQL: `period`, `strategy`, `symbol`, `testRunId` |
+| `GET` | `/api/signals/test-runs` | публично | тестовые периоды стратегии (для фильтра статистики) |
 | `GET` | `/api/signals/monitor` | публично | телеметрия монитора открытых сигналов (только чтение) |
 | `PATCH` | `/api/admin/strategies/:strategyId` | `requireAdmin` | `{"enabled": true\|false}` |
 | `GET` | `/api/admin/strategies/status` | `requireAdmin` | сводка для админ-панели |
+| `GET` | `/api/admin/strategy-test-runs?strategyId=` | `requireAdmin` | состояние раздела «Тестирование стратегий» |
+| `POST` | `/api/admin/strategy-test-runs` | `requireAdmin` | `{"strategyId": "..."}` — начать новый тестовый период (атомарно) |
 
 Ошибки: неизвестная стратегия → `404`, небулево `enabled` → `400`,
 недопустимый `status` в фильтре → `400`, неадмин → `401/403`.
@@ -576,3 +579,96 @@ psql "$DATABASE_URL" -c "SELECT strategy_id, enabled FROM strategy_settings"   #
 * не меняет математику, пороги, комиссии и правила выхода;
 * не расширяет боевую вселенную скана: сужение до BTC/SOL — параметр одной
   стратегии, откатываемый значением `symbols = NULL`.
+
+---
+
+## 14. Тестовые периоды стратегий (миграция 015, 2026-09-30)
+
+### 14.1. Что это
+
+Административный механизм **«НАЧАТЬ НОВЫЙ ТЕСТОВЫЙ ПЕРИОД»**: статистика
+выбранной стратегии в Signals UI начинает считаться с нуля, при этом ни один
+старый сигнал не удаляется и не изменяется. Ответ на вопрос «как стратегия
+показала себя с этого момента», не трогая историю «как она показала себя
+всегда».
+
+Сущности:
+
+| Объект | Что это |
+|---|---|
+| `strategy_test_runs` | период тестирования: `strategy_id`, `started_at`, `ended_at`, `status` (`ACTIVE`/`COMPLETED`), `created_by` → `users.id` |
+| `signals.test_run_id` | членство сигнала в периоде; NULLable, FK без `ON DELETE` |
+
+### 14.2. Инварианты
+
+* **Один ACTIVE-период на стратегию** — партициональный уникальный индекс
+  `uq_strategy_test_runs_one_active (strategy_id) WHERE status = 'ACTIVE'`.
+  Прикладная сериализация старта — `SELECT … FOR UPDATE` строки
+  `strategy_settings` (разные стратегии не блокируют друг друга); индекс —
+  гарантия последней линии: даже обход сериализации не создаст два ACTIVE.
+  V3.0 и V3.4 имеют **независимые** активные периоды.
+* **Членство назначает только сервер, только в момент INSERT сигнала**
+  (`insertSignal` в `signalRepository.js`): единственный источник — ACTIVE-период
+  стратегии в той же транзакции. Фронтенд никогда не передаёт `test_run_id`;
+  переданное значение игнорируется. Нет периода → `test_run_id = NULL`, сигнал
+  создаётся штатно (периоды — не precondition работы сигналов).
+* **Членство неизменяемо.** Сигнал, созданный в Run 1, остаётся в Run 1, даже
+  если его TP/SL наступил во время Run 2 — исход считается в статистику Run 1.
+  `UPDATE signals SET test_run_id = …` в коде не существует; FK без
+  `ON DELETE SET NULL` не даёт «тихо расчленить» членство удалением периода.
+* **Статистика периода — по членству, не по датам:**
+  `WHERE test_run_id = $1`, а НЕ `created_at >= started_at`. Спец-значение
+  `testRunId=none` — «до тестовых периодов» (`test_run_id IS NULL`).
+* **Период не управляет включённостью стратегии.** `strategy_settings` операцией
+  не трогается: V3.4 с `enabled = false` остаётся выключенной и после старта
+  периода. Включение — по-прежнему только `PATCH /api/admin/strategies/:id`.
+* **Это не очистка данных.** Ни `DELETE`, ни `TRUNCATE`, ни пересчёт исторических
+  сигналов. Физическая очистка, если когда-нибудь понадобится, — отдельная
+  advanced-операция.
+
+### 14.3. Атомарный старт
+
+`POST /api/admin/strategy-test-runs {"strategyId": "…"}` (только `requireAdmin`,
+strategy_id проверяется по закрытому каталогу кода, не доверяем клиенту) —
+одна транзакция PostgreSQL:
+
+```
+BEGIN
+  SELECT … FROM strategy_settings WHERE strategy_id = $1 FOR UPDATE;  -- lock scope
+  UPDATE strategy_test_runs SET status='COMPLETED', ended_at=now()
+    WHERE strategy_id=$1 AND status='ACTIVE' RETURNING id;            -- завершить прежний
+  INSERT INTO strategy_test_runs (…, started_at=now(), status='ACTIVE') RETURNING *;
+  INSERT INTO audit_log (action='STRATEGY_TEST_RUN_STARTED',
+    metadata={strategyId, newRunId, previousRunId, strategyVersion});
+COMMIT
+```
+
+`ended_at` прежнего и `started_at` нового — один transaction timestamp (дыры
+между периодами нет). Ответ: `newRunId`, `startedAt`, `strategyId`,
+`previousRunId`. Аудит пишется той же транзакцией и не может разойтись с фактом.
+
+### 14.4. UI
+
+* **Admin → Тестирование стратегий** (`StrategyTestRunsManager.tsx`): выбор
+  стратегии, статус (Включена/Выключена), текущий период («Нет» / «Run от …»),
+  начало, число сигналов, кнопка «Начать новый тестовый период» с явным
+  подтверждением (предыдущий период завершается; сигналы НЕ удаляются;
+  настройки НЕ изменяются) и история периодов.
+* **Signals UI → Статистика** (`SignalStatisticsPanel.tsx`): селекторы
+  «Стратегия» (Все стратегии / V3.0 / V3.3 / V3.4) и «Период» (Все данные /
+  До тестовых периодов / Текущий тестовый период / предыдущие Run). Сразу после
+  старта периода его статистика — честные нули и «—» (знаменатель 0), без NaN
+  и без fake 0%.
+
+### 14.5. Проверено тестами
+
+`tests/integration/strategyTestRuns.test.ts` — на настоящем PostgreSQL через
+настоящие миграции и настоящее приложение: создание/завершение периодов,
+отказ БД от второго ACTIVE (23505), независимость V3.3/V3.4, назначение
+членства на INSERT, NULL без периода, неизменность исторических строк (полное
+сравнение до/после), членство открытого сигнала через границу периода,
+неизменность `strategy_settings`/`users`/enabled, конкурентные старты (один
+ACTIVE), 401/403 не-админам, 404/400 для неверных strategy id, а также вся
+статистика по периодам (§20 владельца). UI-контракты —
+`tests/unit/strategyTestRunsManager.test.tsx`,
+`tests/unit/signalsStatisticsPeriodFilter.test.tsx`.

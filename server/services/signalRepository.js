@@ -316,6 +316,12 @@ function mapRow(r) {
     // означал бы «фильтры происхождения не применились», что опаснее лишнего
     // UNKNOWN. НЕ входит в hashPayloadV2 — хэш-цепочка не зависит от карантина.
     provenanceStatus: r.provenance_status ?? PROVENANCE_UNKNOWN,
+    // ── Тестовый период (миграция 015; не влияет на уровни и хэши) ──
+    // Членство назначено СЕРВЕРОМ в момент INSERT и неизменяемо: сигнал навсегда
+    // остаётся членом периода, в котором создан, даже если исход наступил в
+    // следующем периоде. NULL — сигнал создан вне периода. НЕ входит в
+    // hashPayloadV2 — публикация не зависит от членства.
+    testRunId: r.test_run_id ?? null,
   };
 }
 
@@ -328,6 +334,11 @@ const INSERT_COLUMNS = [
   // Миграция 011. НЕ участвует в hashPayloadV2: перенесение строки в карантин
   // не переписывает `hash` и не рвёт цепочку.
   'provenance_status',
+  // Миграция 015. Членство в тестовом периоде: назначается ТОЛЬКО здесь, на
+  // INSERT, из ACTIVE-периода стратегии (см. SELECT в insertSignal). UPDATE
+  // этой колонки кодом не выполняется никогда. НЕ участвует в hashPayloadV2 —
+  // хэш-цепочка публикации не зависит от членства.
+  'test_run_id',
 ];
 
 /**
@@ -357,6 +368,24 @@ export async function insertSignal(signal) {
       await client.query('COMMIT');
       return { inserted: false, signal: null };
     }
+
+    /**
+     * ЧЛЕНСТВО В ТЕСТОВОМ ПЕРИОДЕ (миграция 015) — назначается ТОЛЬКО здесь,
+     * на сервере, в момент INSERT. Вызывающий код (и тем более фронтенд) не
+     * передаёт test_run_id: единственный источник — ACTIVE-период стратегии
+     * в этой же транзакции. Нет периода → NULL: тестовые периоды НЕ являются
+     * precondition работы сигналов, сигнал создаётся штатно.
+     *
+     * Чтение без FOR UPDATE сознательно: членство фиксируется по состоянию на
+     * момент создания сигнала. Если период завершится микросекундой позже —
+     * сигнал всё равно член того периода, который был ACTIVE при его INSERT.
+     */
+    const activeRun = await client.query(
+      `SELECT id FROM strategy_test_runs
+        WHERE strategy_id = $1 AND status = 'ACTIVE'
+        LIMIT 1`,
+      [signal.strategyId]
+    );
 
     const tail = await client.query(
       'SELECT hash FROM signals ORDER BY created_at DESC, id DESC LIMIT 1'
@@ -396,6 +425,9 @@ export async function insertSignal(signal) {
       // передан, строка уходит в UNKNOWN, а не в VERIFIED (fail-closed).
       // Поле НЕ входит в hashPayloadV2 — см. комментарий к INSERT_COLUMNS.
       provenance_status: signal.provenanceStatus ?? PROVENANCE_UNKNOWN,
+      // Членство из ACTIVE-периода (миграция 015). Внешнее значение
+      // игнорируется НАМЕРЕННО: фронтенд никогда не назначает test_run_id.
+      test_run_id: activeRun.rows[0]?.id ?? null,
     };
 
     const hash = computeSignalHash(hashPayloadV2(row), prevHash);

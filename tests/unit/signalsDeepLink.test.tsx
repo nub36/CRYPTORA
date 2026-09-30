@@ -62,6 +62,7 @@ function runeSignal(overrides: Partial<SignalDto> = {}): SignalDto {
     hash: 'a'.repeat(64),
     previousHash: 'GENESIS',
     outcomeHash: null,
+    testRunId: null,
     chainVersion: 2,
     provenanceStatus: 'VERIFIED',
     ...overrides,
