@@ -524,11 +524,24 @@ describe('13. историческая семантика V3.0/V3.3 не изм�
     expect(a.kind).toBe('RESOLVED');
   });
 
-  it('V3.4 на тех же данных БЕЗ минуток не исполняется (fail-closed)', () => {
-    const r = trackPublishedSetup(setup(), h1);
-    expect(r.kind).toBe('SKIP');
-    if (r.kind !== 'SKIP') throw new Error('unreachable');
-    expect(r.reason).toContain('минутных');
+  it('НОВЫЙ ЦИКЛ НЕ ПОДКЛЮЧЁН: V3.4 без минуток ведётся ровно как сегодня', () => {
+    // Ни один продуктовый вызов минутные свечи не передаёт, поэтому в рантайме
+    // V3.4 обязана вести себя в точности как прежде — часовой семантикой.
+    const v34 = trackPublishedSetup(setup(), h1);
+    const v33 = trackPublishedSetup(setup({ strategyId: V33_STRATEGY_ID }), h1);
+    expect(v34.kind).toBe('RESOLVED');
+    expect(v34).toEqual(v33);
+  });
+
+  it('пустая минутная серия тоже не включает новый цикл', () => {
+    expect(trackPublishedSetup(setup(), h1, { m1: [] }))
+      .toEqual(trackPublishedSetup(setup(), h1));
+  });
+
+  it('новый цикл включается ТОЛЬКО явной передачей минуток', () => {
+    const optedIn = trackPublishedSetup(setup(), h1, { m1: calmMinutes(SETUP_CLOSE + MIN, 30, 105) });
+    expect(optedIn.kind).toBe('UNCHANGED');                 // зона после публикации не задета
+    expect(optedIn).not.toEqual(trackPublishedSetup(setup(), h1));
   });
 
   it('V3.4 и V3.3 на одних данных дают РАЗНЫЙ вход — в этом и смысл', () => {
