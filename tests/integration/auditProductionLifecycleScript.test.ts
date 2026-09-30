@@ -19,6 +19,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { startPgHarness, type PgHarness } from '../helpers/embeddedPgHarness';
 
@@ -135,9 +137,9 @@ async function snapshot(h: PgHarness): Promise<string> {
   return JSON.stringify({ signals, state, settings });
 }
 
-function runAudit(url: string): { code: number; out: string } {
+function runAudit(url: string, extra: string[] = []): { code: number; out: string } {
   try {
-    const out = execFileSync(process.execPath, [SCRIPT, '--noMarket'], {
+    const out = execFileSync(process.execPath, [SCRIPT, '--noMarket', ...extra], {
       cwd: ROOT,
       encoding: 'utf8',
       env: { ...process.env, DATABASE_URL: url },
@@ -219,6 +221,30 @@ describe('scripts/audit-production-lifecycle.mjs — read-only контракт'
     const { out } = runAudit(harness.url);
     expect(out).not.toContain('cryptora:cryptora@');
     expect(out).toContain('***@127.0.0.1');
+  }, 180_000);
+
+  it('--dump делает READ-ONLY выгрузку для исследования конфликтов и не трогает базу', async () => {
+    if (!harness) return;
+    const dumpPath = path.join(os.tmpdir(), `cryptora-dump-${process.pid}.json`);
+    const before = await snapshot(harness);
+    const { code, out } = runAudit(harness.url, ['--dump', dumpPath]);
+    expect(code, out.slice(-3000)).toBe(0);
+    expect(out).toContain('ВЫГРУЗКА ДЛЯ ИССЛЕДОВАНИЯ КОНФЛИКТОВ');
+    expect(await snapshot(harness)).toBe(before);
+
+    const dump = JSON.parse(fs.readFileSync(dumpPath, 'utf8'));
+    // Три строки с исполнением: два SOL и SOL SHORT; APT помечен FILLED без fill.
+    expect(dump.signals.length).toBe(2);
+    const long = dump.signals.find((s: any) => s.direction === 'LONG');
+    expect(long.fillPrice).toBe(117.27);
+    expect(long.targets).toEqual([119.1, 124.95]);
+    // Секретов и лишних полей в дампе нет.
+    const raw = fs.readFileSync(dumpPath, 'utf8');
+    expect(raw).not.toContain('cryptora:cryptora');
+    expect(raw).not.toContain('previous_hash');
+    expect(raw).not.toContain('"metadata"');
+    expect(raw).not.toContain('"hash"');
+    fs.rmSync(dumpPath, { force: true });
   }, 180_000);
 
   it('аварийно останавливается, если каталог не является установкой CRYPTORA', () => {

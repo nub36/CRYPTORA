@@ -64,6 +64,15 @@ const MAX_GROUPS = Number(flag('maxGroups', '64'));
 const STALE_MIN = Number(flag('staleMinutes', '10'));
 const SKIP_MARKET = has('noMarket');
 
+/**
+ * Путь для READ-ONLY выгрузки сигналов и окон свечей в локальный JSON.
+ * Это запись НА ДИСК (обычно в /tmp), а не в базу: дамп нужен, чтобы
+ * scripts/audit-signal-conflicts.mts прогнал по боевым конфликтам те же
+ * политики, что и по историческому датасету. Секреты в дамп не попадают:
+ * выгружаются только уровни, статусы и времена, без metadata и хэшей.
+ */
+const DUMP_PATH = flag('dump');
+
 const APT_ID = flag('aptId', 'bff009bb-4c98-4beb-8e50-aaa0d3adcf1e');
 const SOL_SHORT_ID = flag('solShortId', '1bb7a4ad-2edb-4513-a06f-2857b1b4ceeb');
 
@@ -877,6 +886,61 @@ try {
     out(`${k}: ${list.length}`);
     for (const e of list.slice(0, 50)) out(`  • ${e}`);
     if (list.length > 50) out(`  … ещё ${list.length - 50}`);
+  }
+
+  /* ── 5f. READ-ONLY выгрузка для исследования конфликтов ──────────── */
+
+  if (DUMP_PATH) {
+    const dumpRows = await sel(`
+      SELECT ${SEL_LIST} FROM signals
+      WHERE filled_at IS NOT NULL
+      ORDER BY filled_at`);
+    const candles = {};
+    for (const [key, arr] of marketCache) {
+      if (!arr || arr.length === 0) continue;
+      const [symbol, timeframe] = key.split('|');
+      const k = `${symbol}|${timeframe}`;
+      if (!candles[k] || candles[k].length < arr.length) {
+        candles[k] = arr.map((c) => ({
+          openTime: c.openTime, closeTime: c.closeTime,
+          open: c.open, high: c.high, low: c.low, close: c.close,
+          volume: c.volume, isClosed: true,
+        }));
+      }
+    }
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      note: 'READ-ONLY выгрузка. Только уровни, статусы и времена. Без metadata, хэшей и секретов.',
+      signals: dumpRows.rows.map((r) => ({
+        id: r.id,
+        strategyId: r.strategy_id,
+        symbol: r.symbol,
+        timeframe: r.timeframe,
+        direction: r.direction,
+        signalCandleTs: iso(r.signal_candle_ts),
+        createdAt: iso(r.created_at),
+        entryMin: n(r.entry_min),
+        entryMax: n(r.entry_max),
+        stopLoss: n(r.stop_loss),
+        targets: Array.isArray(r.targets) && r.targets.length
+          ? r.targets.map(Number)
+          : [n(r.tp1), n(r.tp2)].filter((x) => x != null),
+        status: r.status,
+        fillPrice: n(r.fill_price),
+        filledAt: iso(r.filled_at),
+        closedAt: iso(r.closed_at),
+        closeReason: r.close_reason ?? null,
+        resultR: n(r.result_r),
+        netResultR: n(r.net_result_r),
+      })),
+      candles,
+    };
+    fs.writeFileSync(DUMP_PATH, JSON.stringify(payload));
+    out('');
+    out(`ВЫГРУЗКА ДЛЯ ИССЛЕДОВАНИЯ КОНФЛИКТОВ: ${DUMP_PATH}`);
+    out(`  строк с исполнением: ${payload.signals.length}`);
+    out(`  окон свечей        : ${Object.keys(candles).length}`);
+    out('  В файле нет metadata, хэшей, DSN и любых секретов.');
   }
 
   /* ── 6. Телеметрия монитора ──────────────────────────────────────── */
