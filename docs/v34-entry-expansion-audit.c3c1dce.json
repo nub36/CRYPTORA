@@ -1,0 +1,379 @@
+{
+  "dataset": {
+    "repo": "svechnoy-suslik-binance-data",
+    "commit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f"
+  },
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "DOGEUSDT"
+  ],
+  "from": "2022-01-01",
+  "to": "2025-12-31",
+  "bars1h": 210378,
+  "bars4h": 52596,
+  "rows": [
+    {
+      "pad": 0,
+      "total": 26767,
+      "publishable": 6300,
+      "publishablePct": 23.53644412896477,
+      "filled": 5431,
+      "fillPct": 20.289909216572646,
+      "fillOfPublishablePct": 86.2063492063492,
+      "expiredNoFill": 0,
+      "cancelledNoFill": 21336,
+      "reject": {
+        "GEOMETRY_INVALID": 14815,
+        "TARGET_QUALITY_TP1": 5559,
+        "TARGET_QUALITY_TP2": 93
+      },
+      "outcomes": {
+        "TP1_THEN_BE": 1472,
+        "SL": 2749,
+        "TP2": 662,
+        "TP1_THEN_TIMEOUT": 428,
+        "TIMEOUT": 117,
+        "OPEN": 3
+      },
+      "r1": {
+        "p25": 0.7470236209937201,
+        "med": 1.0989397709782507,
+        "p75": 1.7033691938369127,
+        "n": 6300
+      },
+      "r2": {
+        "p25": 2.753123111936655,
+        "med": 3.9448628027028922,
+        "p75": 5.68137122303437,
+        "n": 6300
+      },
+      "widthAtrMed": 0.20000000000000012,
+      "widthPctMed": 0.18747213486244815,
+      "grossAvg": 0.12013327192336004,
+      "grossMed": -1,
+      "netAvg": 0.05681551215917481,
+      "netMed": -1.01205,
+      "closed": 5428,
+      "expOnly": {
+        "count": 0,
+        "outcomes": {},
+        "grossAvg": null,
+        "netAvg": null,
+        "n": 0
+      },
+      "setupsAbsentInBaseline": 0
+    },
+    {
+      "pad": 0.05,
+      "total": 26767,
+      "publishable": 5968,
+      "publishablePct": 22.29611088280345,
+      "filled": 5132,
+      "fillPct": 19.172862106324953,
+      "fillOfPublishablePct": 85.99195710455764,
+      "expiredNoFill": 0,
+      "cancelledNoFill": 21635,
+      "reject": {
+        "GEOMETRY_INVALID": 15140,
+        "TARGET_QUALITY_TP1": 5564,
+        "TARGET_QUALITY_TP2": 95
+      },
+      "outcomes": {
+        "TP1_THEN_BE": 1328,
+        "SL": 2654,
+        "TP2": 614,
+        "TP1_THEN_TIMEOUT": 419,
+        "TIMEOUT": 115,
+        "OPEN": 2
+      },
+      "r1": {
+        "p25": 0.7391621171882845,
+        "med": 1.0716788448587513,
+        "p75": 1.646544231726645,
+        "n": 5968
+      },
+      "r2": {
+        "p25": 2.7050065934969414,
+        "med": 3.8220793887952205,
+        "p75": 5.459010944234454,
+        "n": 5968
+      },
+      "widthAtrMed": 0.30000000000000004,
+      "widthPctMed": 0.28120820229367227,
+      "grossAvg": 0.11929571150097425,
+      "grossMed": -1,
+      "netAvg": 0.0555131189083822,
+      "netMed": -1.016,
+      "closed": 5130,
+      "expOnly": {
+        "count": 0,
+        "outcomes": {},
+        "grossAvg": null,
+        "netAvg": null,
+        "n": 0
+      },
+      "setupsAbsentInBaseline": 0
+    },
+    {
+      "pad": 0.1,
+      "total": 26767,
+      "publishable": 5663,
+      "publishablePct": 21.156648111480557,
+      "filled": 4866,
+      "fillPct": 18.179101131990887,
+      "fillOfPublishablePct": 85.92618753310965,
+      "expiredNoFill": 0,
+      "cancelledNoFill": 21901,
+      "reject": {
+        "GEOMETRY_INVALID": 15460,
+        "TARGET_QUALITY_TP1": 5544,
+        "TARGET_QUALITY_TP2": 100
+      },
+      "outcomes": {
+        "TP1_THEN_BE": 1199,
+        "SL": 2565,
+        "TP2": 584,
+        "TP1_THEN_TIMEOUT": 403,
+        "TIMEOUT": 113,
+        "OPEN": 2
+      },
+      "r1": {
+        "p25": 0.7244729931149967,
+        "med": 1.040454760201727,
+        "p75": 1.5796830290928852,
+        "n": 5663
+      },
+      "r2": {
+        "p25": 2.635858583588632,
+        "med": 3.691826995951877,
+        "p75": 5.250616583367757,
+        "n": 5663
+      },
+      "widthAtrMed": 0.40000000000000024,
+      "widthPctMed": 0.3749442697248963,
+      "grossAvg": 0.1206458059210522,
+      "grossMed": -1,
+      "netAvg": 0.056592886513158025,
+      "netMed": -1.0185,
+      "closed": 4864,
+      "expOnly": {
+        "count": 0,
+        "outcomes": {},
+        "grossAvg": null,
+        "netAvg": null,
+        "n": 0
+      },
+      "setupsAbsentInBaseline": 0
+    },
+    {
+      "pad": 0.15,
+      "total": 26767,
+      "publishable": 5335,
+      "publishablePct": 19.93125863936937,
+      "filled": 4565,
+      "fillPct": 17.054582134718125,
+      "fillOfPublishablePct": 85.56701030927834,
+      "expiredNoFill": 0,
+      "cancelledNoFill": 22202,
+      "reject": {
+        "GEOMETRY_INVALID": 15760,
+        "TARGET_QUALITY_TP1": 5578,
+        "TARGET_QUALITY_TP2": 94
+      },
+      "outcomes": {
+        "TP1_THEN_BE": 1073,
+        "SL": 2449,
+        "TP2": 547,
+        "TP1_THEN_TIMEOUT": 382,
+        "TIMEOUT": 112,
+        "OPEN": 2
+      },
+      "r1": {
+        "p25": 0.7123431549635538,
+        "med": 1.015895750115894,
+        "p75": 1.526616960190729,
+        "n": 5335
+      },
+      "r2": {
+        "p25": 2.583317306140155,
+        "med": 3.595424248481546,
+        "p75": 5.0625660536085135,
+        "n": 5335
+      },
+      "widthAtrMed": 0.5,
+      "widthPctMed": 0.46868033715612045,
+      "grossAvg": 0.12314998904229643,
+      "grossMed": -1,
+      "netAvg": 0.058610541310541456,
+      "netMed": -1.021,
+      "closed": 4563,
+      "expOnly": {
+        "count": 0,
+        "outcomes": {},
+        "grossAvg": null,
+        "netAvg": null,
+        "n": 0
+      },
+      "setupsAbsentInBaseline": 0
+    },
+    {
+      "pad": 0.2,
+      "total": 26767,
+      "publishable": 5030,
+      "publishablePct": 18.791795868046478,
+      "filled": 4304,
+      "fillPct": 16.079500877946725,
+      "fillOfPublishablePct": 85.56660039761431,
+      "expiredNoFill": 0,
+      "cancelledNoFill": 22463,
+      "reject": {
+        "GEOMETRY_INVALID": 16101,
+        "TARGET_QUALITY_TP1": 5545,
+        "TARGET_QUALITY_TP2": 91
+      },
+      "outcomes": {
+        "TP1_THEN_BE": 957,
+        "SL": 2347,
+        "TP2": 515,
+        "TP1_THEN_TIMEOUT": 372,
+        "TIMEOUT": 111,
+        "OPEN": 2
+      },
+      "r1": {
+        "p25": 0.7035390255497805,
+        "med": 0.9938920067733762,
+        "p75": 1.4823055757741654,
+        "n": 5030
+      },
+      "r2": {
+        "p25": 2.5299641119575282,
+        "med": 3.498685209103484,
+        "p75": 4.881061274737343,
+        "n": 5030
+      },
+      "widthAtrMed": 0.6,
+      "widthPctMed": 0.5624164045873088,
+      "grossAvg": 0.12649288702928857,
+      "grossMed": -1,
+      "netAvg": 0.06139853556485367,
+      "netMed": -1.0229,
+      "closed": 4302,
+      "expOnly": {
+        "count": 0,
+        "outcomes": {},
+        "grossAvg": null,
+        "netAvg": null,
+        "n": 0
+      },
+      "setupsAbsentInBaseline": 0
+    },
+    {
+      "pad": 0.25,
+      "total": 26767,
+      "publishable": 4722,
+      "publishablePct": 17.641125266185973,
+      "filled": 4035,
+      "fillPct": 15.074532073075057,
+      "fillOfPublishablePct": 85.45108005082592,
+      "expiredNoFill": 0,
+      "cancelledNoFill": 22732,
+      "reject": {
+        "GEOMETRY_INVALID": 16408,
+        "TARGET_QUALITY_TP1": 5543,
+        "TARGET_QUALITY_TP2": 93,
+        "ENTRY_ZONE_CROSSES_STOP": 1
+      },
+      "outcomes": {
+        "TP1_THEN_BE": 865,
+        "SL": 2232,
+        "TP2": 471,
+        "TP1_THEN_TIMEOUT": 356,
+        "TIMEOUT": 109,
+        "OPEN": 2
+      },
+      "r1": {
+        "p25": 0.702846123591627,
+        "med": 0.9800121199525782,
+        "p75": 1.4435546413085163,
+        "n": 4722
+      },
+      "r2": {
+        "p25": 2.4871985434342516,
+        "med": 3.4133702989527004,
+        "p75": 4.7167920400070935,
+        "n": 4722
+      },
+      "widthAtrMed": 0.7000000000000001,
+      "widthPctMed": 0.656152472018533,
+      "grossAvg": 0.12369992561368721,
+      "grossMed": -1,
+      "netAvg": 0.05833858170096703,
+      "netMed": -1.0247,
+      "closed": 4033,
+      "expOnly": {
+        "count": 0,
+        "outcomes": {},
+        "grossAvg": null,
+        "netAvg": null,
+        "n": 0
+      },
+      "setupsAbsentInBaseline": 0
+    },
+    {
+      "pad": 0.3,
+      "total": 26767,
+      "publishable": 4433,
+      "publishablePct": 16.561437591063623,
+      "filled": 3780,
+      "fillPct": 14.12186647737886,
+      "fillOfPublishablePct": 85.26956914053689,
+      "expiredNoFill": 0,
+      "cancelledNoFill": 22987,
+      "reject": {
+        "GEOMETRY_INVALID": 16754,
+        "TARGET_QUALITY_TP1": 5496,
+        "TARGET_QUALITY_TP2": 83,
+        "ENTRY_ZONE_CROSSES_STOP": 1
+      },
+      "outcomes": {
+        "TP1_THEN_BE": 767,
+        "SL": 2125,
+        "TP2": 438,
+        "TP1_THEN_TIMEOUT": 346,
+        "TIMEOUT": 102,
+        "OPEN": 2
+      },
+      "r1": {
+        "p25": 0.7006442936265852,
+        "med": 0.9613853171488336,
+        "p75": 1.4088218809989803,
+        "n": 4433
+      },
+      "r2": {
+        "p25": 2.4529029168801175,
+        "med": 3.3160438162414243,
+        "p75": 4.568537684254073,
+        "n": 4433
+      },
+      "widthAtrMed": 0.8,
+      "widthPctMed": 0.749888539449757,
+      "grossAvg": 0.12454330333509805,
+      "grossMed": -1,
+      "netAvg": 0.0586262837480149,
+      "netMed": -1.0261,
+      "closed": 3778,
+      "expOnly": {
+        "count": 0,
+        "outcomes": {},
+        "grossAvg": null,
+        "netAvg": null,
+        "n": 0
+      },
+      "setupsAbsentInBaseline": 0
+    }
+  ]
+}

@@ -75,9 +75,9 @@ export interface SignalUiModel {
   directionHint: string;
   strategyId: string;
   strategyShort: string;
-  /** «V3.0 · v3.0» — короткое имя + версия на момент публикации. */
+  /** Короткое имя стратегии; версия добавляется только если отличается от него («V3.4 · v3.4.1»). */
   strategyText: string;
-  /** Таймфрейм СИГНАЛА (исполнения) как его отдал сервер; у всех трёх стратегий '1h'. */
+  /** Таймфрейм СИГНАЛА (исполнения) как его отдал сервер; у всех продуктовых стратегий '1h'. */
   timeframe: string;
   status: string;
   statusLabel: string;

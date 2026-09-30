@@ -151,12 +151,13 @@ describe('006_strategy_settings на реальном PostgreSQL', () => {
     }
   });
 
-  run('ровно 3 строки — и это три продуктовые стратегии', async () => {
+  run('ровно 4 строки — и это продуктовые стратегии (V3.4 добавлена миграцией 014)', async () => {
     const rows = await q('SELECT strategy_id FROM strategy_settings ORDER BY strategy_id');
     expect(rows.map((r: any) => r.strategy_id)).toEqual([
       'V2_8_ZERO_FEE_SNIPER_TRAILING',
       'V3_0_HTF_LIQUIDATION_TRAP',
       'V3_3_HTF_ZONE_MITIGATION',
+      'V3_4_HTF_ZONE_MITIGATION_QUALITY',
     ]);
   });
 
@@ -179,7 +180,7 @@ describe('006_strategy_settings на реальном PostgreSQL', () => {
       ),
     ).rejects.toMatchObject({ code: '23514' }); // check_violation
     const n = (await q('SELECT count(*)::int AS n FROM strategy_settings'))[0].n;
-    expect(n).toBe(3);
+    expect(n).toBe(4);
   });
 
   run('известную стратегию нельзя переименовать в несуществующую', async () => {
@@ -468,7 +469,7 @@ describe('Миграции идемпотентны и не ломают сос�
     await client.query(fs.readFileSync(path.join(dir, '007_signals.sql'), 'utf8'));
 
     const rows = await q('SELECT strategy_id, enabled FROM strategy_settings ORDER BY strategy_id');
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     const v33 = rows.find((r: any) => r.strategy_id === 'V3_3_HTF_ZONE_MITIGATION');
     expect(v33.enabled).toBe(true);
   });

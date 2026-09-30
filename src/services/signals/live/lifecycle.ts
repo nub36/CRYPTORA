@@ -6,7 +6,7 @@
  * захэшированы), а не по повторному прогону стратегии. Используются те же
  * замороженные функции архива, что и в исследовании:
  *
- *   • V3.0 / V3.3 (LIMIT_CORRIDOR): `corridorStep` (N+1…N+3: исполнение по худшей
+ *   • V3.0 / V3.3 / V3.4 (LIMIT_CORRIDOR): `corridorStep` (N+1…N+3: исполнение по худшей
  *     границе, отмена при касании стопа, отклонение геометрии, истечение) →
  *     `manageTrade` соответствующей версии (стоп раньше целей, TP1 → BE со
  *     следующего бара, таймаут 50 / 48 баров);
@@ -23,6 +23,7 @@ import { v28EntryAtNextOpen, v28TrailOutcome } from '@/services/strategyArchive'
 import type { AnalyticalSetup, SetupFill, SetupOutcome } from '@/services/signals/SignalsAuditLedger';
 import { V30_STRATEGY_ID } from './replays/v30LiveReplay';
 import { V33_STRATEGY_ID } from './replays/v33LiveReplay';
+import { V34_STRATEGY_ID } from './replays/v34LiveReplay';
 import { V28_STRATEGY_ID } from './replays/v28LiveReplay';
 import { managedExitPrice, managedStatus, round } from './replays/shared';
 
@@ -36,17 +37,17 @@ export type LifecycleResult =
   /** Финальный исход (с исполнением или без). */
   | { kind: 'RESOLVED'; fill: SetupFill | null; outcome: SetupOutcome };
 
-function isoOf(ms: number): string {
+export function isoOf(ms: number): string {
   return new Date(ms).toISOString();
 }
 
-function pnlPct(direction: 'LONG' | 'SHORT', entry: number, exit: number): number {
+export function pnlPct(direction: 'LONG' | 'SHORT', entry: number, exit: number): number {
   if (!(entry > 0)) return 0;
   const raw = direction === 'LONG' ? (exit - entry) / entry : (entry - exit) / entry;
   return round(raw * 100, 4);
 }
 
-function noTrade(status: 'EXPIRED' | 'CANCELLED' | 'UNRESOLVED', at: number, reason: string): SetupOutcome {
+export function noTrade(status: 'EXPIRED' | 'CANCELLED' | 'UNRESOLVED', at: number, reason: string): SetupOutcome {
   return { status, closedAt: isoOf(at), exitReason: reason, exitPrice: null, resultR: null, netResultR: null, pnlResultPct: null, barsHeld: null };
 }
 
@@ -66,6 +67,7 @@ export function trackPublishedSetup(entry: AnalyticalSetup, h1: readonly Archive
     if (h1[i]!.openTime < entry.setupOpenTime) break;
   }
   if (setupIndex < 0) return { kind: 'SKIP', reason: 'бар сетапа отсутствует в окне данных' };
+
   if (setupIndex === h1.length - 1) return { kind: 'UNCHANGED' };
 
   if (entry.entryType === 'MARKET_NEXT_OPEN') return trackNextOpen(entry, h1, setupIndex);
@@ -73,7 +75,12 @@ export function trackPublishedSetup(entry: AnalyticalSetup, h1: readonly Archive
 }
 
 function trackCorridor(entry: AnalyticalSetup, h1: readonly ArchiveCandle[], setupIndex: number): LifecycleResult {
-  const isV33 = entry.strategyId === V33_STRATEGY_ID;
+  // V3.4 ведётся ЗДЕСЬ, теми же константами V3.3: у неё отличается только
+  // отбор сетапа (расширенный коридор + фильтр качества целей), а коридорный
+  // вход и сопровождение позиции после публикации идентичны V3.3.
+  // Экспериментальный вход по минутным свечам в рантайме НЕ используется и в
+  // этом модуле отсутствует — см. research/v34LifecycleResearch.ts.
+  const isV33 = entry.strategyId === V33_STRATEGY_ID || entry.strategyId === V34_STRATEGY_ID;
   const isV30 = entry.strategyId === V30_STRATEGY_ID;
   if (!isV30 && !isV33) return { kind: 'SKIP', reason: `неизвестная стратегия коридора ${entry.strategyId}` };
   const tp1 = entry.targets[0];

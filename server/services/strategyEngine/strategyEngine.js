@@ -43,6 +43,7 @@ import { recordScanResult, recordSignalEmitted } from '../strategySettings.js';
 export const ENGINE_STRATEGY_KEY = {
   V3_0_HTF_LIQUIDATION_TRAP: 'V3.0',
   V3_3_HTF_ZONE_MITIGATION: 'V3.3',
+  V3_4_HTF_ZONE_MITIGATION_QUALITY: 'V3.4',
   V2_8_ZERO_FEE_SNIPER_TRAILING: 'V2.8',
 };
 
@@ -142,7 +143,7 @@ export function normalizeScanSymbols(requested) {
  * @param {object} p.setup — AnalyticalSetup из ledger ядра
  * @param {string} p.strategyId — registry id (V3_0_HTF_LIQUIDATION_TRAP, …)
  * @param {string} p.fallbackVersion — версия из каталога, если сетап её не несёт
- * @param {string} p.engineKey — ключ стратегии в ядре ('V3.0', 'V3.3', 'V2.8')
+ * @param {string} p.engineKey — ключ стратегии в ядре ('V3.0', 'V3.3', 'V3.4', 'V2.8')
  * @param {string} p.execTf — таймфрейм исполнения ядра
  * @returns {{setupOpenTime: number, record: object|null, provenanceMismatch?: string}|null}
  *   null — нет валидного ключа дедупликации: такой сетап НЕ сохраняется

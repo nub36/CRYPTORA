@@ -448,7 +448,7 @@ describe('Сквозной сценарий: планировщик → ядро
       `SELECT strategy_id, last_scan_at, last_error FROM strategy_settings WHERE strategy_id <> $1`,
       [V30]
     );
-    expect(others.length).toBe(2);
+    expect(others.length).toBe(3);
     for (const o of others) {
       expect(o.last_scan_at, 'выключенные стратегии не сканируются').toBeNull();
       expect(o.last_error).toBeNull();

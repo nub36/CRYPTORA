@@ -10,11 +10,16 @@
  * (пороги RVOL, wick/body, ATR, коридоры, цели) живёт в коде определений и
  * отсюда не меняется.
  *
- * РОВНО ТРИ стратегии. Четвёртой нет и через API она не появится: id зашиты в
- * PRIMARY KEY и CHECK-ограничение таблицы strategy_settings (миграция 006).
+ * Состав каталога закрыт: id зашиты в PRIMARY KEY и CHECK-ограничение таблицы
+ * strategy_settings (миграции 006 и 014). Через API новая стратегия не
+ * появится — только миграцией плюс записью здесь.
+ *
+ * V3.4 (2026-09-30) — надстройка над V3.3 (фильтр качества целей). Она
+ * присутствует в каталоге, но НИГДЕ не включается по умолчанию: и миграция, и
+ * серверный слой настроек трактуют отсутствие строки как enabled = false.
  */
 
-/** @typedef {'RESEARCH'|'TRAIN_ONLY'|'GROSS_ONLY'} StrategyBadge */
+/** @typedef {'RESEARCH'|'TRAIN_ONLY'|'GROSS_ONLY'|'DERIVED_NO_BACKTEST'} StrategyBadge */
 
 /**
  * @typedef {object} ProductStrategy
@@ -82,6 +87,22 @@ export const PRODUCT_STRATEGIES = [
     defaultScanIntervalSeconds: 60,
     badge: 'GROSS_ONLY',
   },
+  {
+    id: 'V3_4_HTF_ZONE_MITIGATION_QUALITY',
+    version: '3.4',
+    name: 'HTF Zone Mitigation + Target Quality',
+    nameRu: 'Митигация зоны старшего таймфрейма с фильтром качества целей',
+    // Ровно те же серии, что у V3.3: V3.4 использует её обнаружение сетапа
+    // без изменений и добавляет только допуск по качеству целей.
+    timeframes: ['1h', '4h'],
+    execTimeframe: '1h',
+    contextTimeframes: ['4h'],
+    defaultSymbols: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT'],
+    defaultScanIntervalSeconds: 60,
+    // Отдельного исследования у V3.4 нет: это производная от V3.3, бэктеста на
+    // TRAIN/VALIDATION никто не прогонял. Обещать «Train only» было бы враньём.
+    badge: 'DERIVED_NO_BACKTEST',
+  },
 ];
 
 /** Множество допустимых id — тот же список, что в CHECK-ограничении 006. */
@@ -110,4 +131,5 @@ export const BADGE_LABELS = {
   RESEARCH: 'Research validated',
   TRAIN_ONLY: 'Train only',
   GROSS_ONLY: 'Gross-only validated',
+  DERIVED_NO_BACKTEST: 'Derived · no backtest',
 };

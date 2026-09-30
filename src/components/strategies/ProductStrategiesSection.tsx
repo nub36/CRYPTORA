@@ -19,6 +19,19 @@ export const PRODUCT_STRATEGY_IDS = [
 ] as const;
 
 /**
+ * V3.4 — производная стратегия CRYPTORA, а НЕ строка исследовательского архива.
+ *
+ * Её нет в `strategyArchive`, и это принципиально: архив хранит 13 версий,
+ * пришедших из внешнего исследования, у каждой есть источник, датасет,
+ * sha256 артефактов и вердикт TRAIN/VALIDATION. У V3.4 нет НИЧЕГО из этого —
+ * её никто не бэктестил. Добавить её в архив значило бы выдумать провенанс.
+ *
+ * Поэтому карточка V3.4 описывается здесь, отдельным честным типом: правила
+ * читаются из кода, а в графе «результаты исследования» стоит «нет данных».
+ */
+export const DERIVED_STRATEGY_ID = 'V3_4_HTF_ZONE_MITIGATION_QUALITY';
+
+/**
  * Честные подписи статуса исследования.
  *
  * Правило: UI не имеет права обещать больше, чем доказано. «Рабочая»,
@@ -164,7 +177,167 @@ export const ProductStrategiesSection: React.FC = () => {
           onOpsChanged={applyState}
         />
       ))}
+      <DerivedStrategyCard
+        opsState={states[DERIVED_STRATEGY_ID] ?? null}
+        onOpsChanged={applyState}
+      />
     </section>
+  );
+};
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * V3.4 — карточка производной стратегии
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Правила V3.4 — сверены с кодом, а не с описанием. */
+const V34_RULES: readonly (readonly [string, string])[] = [
+  ['Зоны', 'Полностью как в V3.3: 4H order block / FVG после displacement-движения. Функция та же (buildZones), ни один порог не изменён.'],
+  ['Митигация', 'Как в V3.3: окно «while» от бара митигации до смерти зоны, RVOL ≥ 1.25, абсорбция (тень ≥ 35 % или реклейм).'],
+  [
+    'Entry logic (расширен)',
+    'База — коридор V3.3 close ± 0.10 ATR, затем он расширяется на 0.25 ATR в каждую сторону: итог close ± 0.35 ATR, 3 бара, исполнение по худшей границе. ATR тот же самый, 1H — новый расчёт и новый таймфрейм не вводятся. Структурная зона V3.3 целиком лежит внутри расширенной.',
+  ],
+  ['Stop Loss', 'Как в V3.3: min(климакс, грань зоны) ∓ 0.15 ATR. От расширения зоны стоп НЕ отодвигается. Если расширенная зона пересекает стоп, сетап отклоняется (ENTRY_ZONE_CROSSES_STOP), а не «чинится» переносом стопа.'],
+  ['Take Profit', 'Как в V3.3: TP1 = середина displacement-ноги 4H, TP2 = противоположный подтверждённый 4H-свинг. Уровни НЕ пересчитываются и НЕ сдвигаются.'],
+  [
+    'Фильтр качества целей (единственное отличие)',
+    'Считается ЗАНОВО по уже расширенной зоне: TP1 ≥ 0.50 и TP2 ≥ 1.00 первоначального риска, где риск берётся от ХУДШЕЙ границы расширенного коридора (фактическая цена входа раннера). Ровно 0.50 и ровно 1.00 проходят. Поэтому расширение входа нельзя «оплатить» подкруткой целей: более широкая зона сама ухудшает R и чаще упирается в порог.',
+  ],
+  ['Exit logic', 'Как в V3.3: TP1 закрывает 50 %, остаток переводится в безубыток со следующего бара, TP2 закрывает остаток, таймаут 48 баров. Ведение считается от фактической цены входа в расширенном коридоре.'],
+  ['Комиссии', 'Та же модель, что у V3.3: 2 bps maker на вход, 5 bps taker на каждый выход.'],
+];
+
+const DerivedStrategyCard: React.FC<{
+  opsState: StrategyStateDto | null;
+  onOpsChanged: (strategyId: string, enabled: boolean) => void;
+}> = ({ opsState, onOpsChanged }) => {
+  const [open, setOpen] = useState(false);
+  const id = DERIVED_STRATEGY_ID;
+
+  return (
+    <article
+      data-testid={`product-strategy-${id}`}
+      className="flex flex-col rounded-lg border border-surface-border bg-surface p-3.5 shadow-panel transition-colors hover:border-brand-cyan/25"
+    >
+      <header className="space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="ui-label font-mono text-brand-cyan">V3.4</div>
+            <h3 className="ui-card-title mt-0.5 break-words">HTF Zone Mitigation + Target Quality</h3>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {/* «Без бэктеста» — единственная честная подпись: исследования у V3.4 нет. */}
+            <Badge variant="amber" size="xs">Без бэктеста</Badge>
+            <span className="group relative">
+              <Info
+                aria-label="Производная от V3.3. Отдельного исследования на TRAIN/VALIDATION не проводилось — исторических результатов именно этой конфигурации не существует."
+                className="h-3.5 w-3.5 cursor-help text-slate-500"
+              />
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute right-0 top-5 z-20 hidden w-60 rounded-md border border-surface-border bg-surface-elevated p-2 text-[11px] font-normal leading-relaxed text-slate-300 shadow-xl group-hover:block"
+              >
+                Производная от V3.3. Отдельного исследования на TRAIN/VALIDATION не проводилось — исторических результатов именно этой конфигурации не существует.
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <div className="flex items-center gap-1">
+            <dt className="ui-label">Timeframe</dt>
+            <dd className="ui-num text-slate-200">1h</dd>
+          </div>
+          <div className="flex items-center gap-1">
+            <dt className="ui-label">Структура</dt>
+            <dd className="ui-num text-slate-200">4h</dd>
+          </div>
+          <div className="flex items-center gap-1">
+            <dt className="sr-only">Тип</dt>
+            <dd><Badge variant="cyan" size="xs">SMC · Order Block / FVG + Target Quality</Badge></dd>
+          </div>
+        </dl>
+
+        <p className="ui-secondary text-slate-400">
+          V3.3 без единого изменения в структурной математике, плюс две вещи: коридор входа шире на 0.25 ATR
+          с каждой стороны, а сетап берётся, только если структурные цели отстоят от расширенного входа
+          минимум на 0.50 R (TP1) и 1.00 R (TP2). Стоп и цели при этом не двигаются.
+        </p>
+      </header>
+
+      {opsState && <StrategyOpsPanel state={opsState} onChanged={onOpsChanged} />}
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={`details-${id}`}
+        className="mt-3 inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-md border border-surface-border px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:border-brand-cyan/40 hover:text-white"
+      >
+        {open ? 'Свернуть' : 'Подробнее'}
+      </button>
+
+      <div id={`details-${id}`} hidden={!open} className="mt-3 space-y-2.5">
+        <div className="space-y-2">
+          {V34_RULES.map(([label, text]) => (
+            <div key={label} className="rounded-md border border-surface-border/60 bg-surface-2/40 p-2.5">
+              <div className="ui-label mb-0.5">{label}</div>
+              <p className="ui-secondary text-[11px] text-slate-300">{text}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-md border border-surface-border/60 bg-surface-2/40 p-2.5">
+          <div className="ui-label mb-1">Backtest status</div>
+          <div className="ui-secondary text-[11px]">Проверка: НЕ ПРОВОДИЛАСЬ</div>
+          <div className="ui-secondary text-[11px]">Исторические результаты: НЕТ ДАННЫХ</div>
+          <div className="ui-secondary text-[11px]">Воспроизведение: НЕПРИМЕНИМО (нет исходного исследования)</div>
+        </div>
+
+        <Collapsible
+          testId={`risks-${id}`}
+          tone="warning"
+          icon={<AlertTriangle className="h-3.5 w-3.5" />}
+          label="Риски и ограничения"
+          count={4}
+        >
+          <ul className="list-disc space-y-1 pl-4">
+            <li>Бэктеста V3.4 не существует. Цифры V3.3 к ней неприменимы: фильтр меняет состав сделок.</li>
+            <li>Базовая V3.3 сама валидирована только на TRAIN и не проверена на отложенной выборке.</li>
+            <li>Фильтр уменьшает число сделок. Насколько — неизвестно до прогона; обещать «меньше убыточных» нельзя.</li>
+            <li>Более широкий вход — это и более высокий первоначальный риск: худшая цена входа дальше от цели и ближе к стопу, чем у V3.3.</li>
+            <li>Расширенный коридор ловит входы, которых у V3.3 не было: состав сделок отличается, и переносить на V3.4 статистику V3.3 нельзя.</li>
+          </ul>
+        </Collapsible>
+
+        <Collapsible
+          testId={`technical-${id}`}
+          tone="muted"
+          icon={<Layers className="h-3.5 w-3.5" />}
+          label="Технические сведения"
+        >
+          <dl className="space-y-1">
+            <div>
+              <dt className="ui-label inline">База: </dt>
+              <dd className="ui-hash inline">V3_3_HTF_ZONE_MITIGATION (вызывается напрямую; коридор передаётся hook'ом до обнаружения входа)</dd>
+            </div>
+            <div>
+              <dt className="ui-label inline">Фильтр: </dt>
+              <dd className="ui-hash inline">src/services/signals/live/targetQuality.ts</dd>
+            </div>
+            <div>
+              <dt className="ui-label inline">Якорь входа: </dt>
+              <dd className="ui-hash inline">WORST_CORRIDOR_EDGE_ACTUAL_FILL</dd>
+            </div>
+            <div>
+              <dt className="ui-label inline">Зона входа: </dt>
+              <dd className="ui-hash inline">V33_CORRIDOR_EXPANDED_BY_0_25_ATR_EACH_SIDE</dd>
+            </div>
+            <div className="ui-helper">0 артефактов sha256 · исследовательских прогонов нет</div>
+          </dl>
+        </Collapsible>
+      </div>
+    </article>
   );
 };
 

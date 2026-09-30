@@ -50,10 +50,74 @@ export const V33_EXIT_RULE_RU =
   + 'TP1 = середина displacement-ноги 4H (50 % позиции), после TP1 стоп в безубыток со следующего бара; '
   + 'TP2 = противоположный подтверждённый 4H-свинг; стоп = min(климакс, грань зоны) ∓ 0.15 ATR; таймаут 48 баров.';
 
+/**
+ * Контекст сетапа, передаваемый в `corridor`-hook В МОМЕНТ его создания —
+ * до того, как коридор начнёт участвовать в обнаружении исполнения.
+ *
+ * `atr` — тот самый ATR(risk.atr_period) по 1H, которым V3.3 построила и
+ * коридор, и стоп. Производная стратегия обязана пользоваться им, а не заводить
+ * второй ряд или вторую формулу.
+ */
+export interface V33CorridorCtx {
+  direction: 'LONG' | 'SHORT';
+  /** Границы коридора V3.3: `close ∓ CORRIDOR_ATR_FRAC · atr`. */
+  baseLow: number;
+  baseHigh: number;
+  atr: number;
+  close: number;
+  stop: number;
+  tp1: number;
+  tp2: number;
+}
+
+/**
+ * План коридора, который реально пойдёт в работу: в `touches`, в цену фила, в
+ * риск, в `manageTrade` и в опубликованную зону входа.
+ */
+export interface V33CorridorPlan {
+  low: number;
+  high: number;
+  /**
+   * Непустая строка = сетап НЕ берётся в работу: pending не создаётся, сделки
+   * нет, слот коридора остаётся свободным для следующего бара. Запись сетапа
+   * при этом сохраняется для диагностики с этой причиной.
+   */
+  rejectReason?: string | null;
+  rejectNote?: string | null;
+  meta?: Record<string, number | string | null>;
+  confirming?: readonly string[];
+  invalidation?: readonly string[];
+}
+
+/**
+ * Hook производной стратегии. Может изменить ТОЛЬКО границы коридора входа и
+ * отклонить сетап. Стоп и цели ему не отдаются на запись намеренно: сдвигать
+ * структурные уровни нельзя, можно только отказаться от сетапа.
+ */
+export type V33CorridorHook = (ctx: V33CorridorCtx) => V33CorridorPlan;
+
+/**
+ * Коридор V3.3 без изменений — поведение по умолчанию.
+ *
+ * Пока `args.corridor` не передан, реплей работает ровно как раньше: это
+ * проверяется parity-тестом против архивного раннера `runV33Series`.
+ */
+export const V33_IDENTITY_CORRIDOR: V33CorridorHook = (ctx) => ({ low: ctx.baseLow, high: ctx.baseHigh });
+
 export interface V33ReplayArgs {
   symbol: string;
   h1: readonly ArchiveCandle[];
   h4: readonly ArchiveCandle[];
+  /**
+   * Преобразование коридора входа для ПРОИЗВОДНОЙ стратегии (V3.4).
+   *
+   * Единственная точка расширения. Не задан — математика V3.3 работает как
+   * работала; задан — возвращённые границы становятся настоящим коридором
+   * стратегии и участвуют в обнаружении касания, цене исполнения, риске,
+   * ведении сделки и исходе. Пост-обработки готовой сделки здесь нет и быть
+   * не может: hook вызывается ДО создания pending.
+   */
+  corridor?: V33CorridorHook;
 }
 
 interface Pending {
@@ -78,6 +142,7 @@ export function runV33LiveReplay(args: V33ReplayArgs): ReplayOutput {
   const atrPeriod = FROZEN_ENGINE.atrPeriod;
   const volPeriod = FROZEN_ENGINE.volumePeriod;
 
+  const corridorHook = args.corridor ?? V33_IDENTITY_CORRIDOR;
   const h1 = args.h1.filter((c) => c.isClosed);
   const out: ReplayOutput = { records: [], evaluatedBars: 0, firstEvaluatedOpenTime: null, lastEvaluatedOpenTime: null, notes: [] };
   if (h1.length <= WARMUP_BARS) {
@@ -214,13 +279,22 @@ export function runV33LiveReplay(args: V33ReplayArgs): ReplayOutput {
             const opposing = long ? levels.high[closed4h] : levels.low[closed4h];
             if (opposing === null || opposing === undefined) continue;
             const tp1 = (z.legLow + z.legHigh) / 2;
+            // Границы коридора V3.3. Производная стратегия может заменить их
+            // ЗДЕСЬ — до того, как коридор начнёт ловить исполнение.
+            const baseLow = c.close - half;
+            const baseHigh = c.close + half;
+            const plan = corridorHook({
+              direction: z.dir, baseLow, baseHigh, atr, close: c.close, stop, tp1, tp2: opposing,
+            });
             const pending: Pending = {
-              dir: z.dir, zoneLow: c.close - half, zoneHigh: c.close + half, stop, tp1, tp2: opposing,
+              dir: z.dir, zoneLow: plan.low, zoneHigh: plan.high, stop, tp1, tp2: opposing,
               setupIndex: i, zoneType: z.type, kind,
             };
             const mid = c.close;
             const zoneKnownBar = h4[z.knownAt4h];
-            const geometryOk = corridorGeometryOk(z.dir, pending.zoneLow, pending.zoneHigh, stop, tp1, opposing);
+            const planRejected = typeof plan.rejectReason === 'string' && plan.rejectReason.length > 0;
+            const geometryOk = !planRejected
+              && corridorGeometryOk(z.dir, pending.zoneLow, pending.zoneHigh, stop, tp1, opposing);
             const record: ReplayRecord = {
               strategyId: V33_STRATEGY_ID,
               strategyVersion: V33_STRATEGY_VERSION,
@@ -243,6 +317,7 @@ export function runV33LiveReplay(args: V33ReplayArgs): ReplayOutput {
                 `Displacement-нога ${fmtPx(z.legLow)}–${fmtPx(z.legHigh)}: середина ${fmtPx(tp1)} = TP1; противоположный подтверждённый 4H-свинг ${fmtPx(opposing)} = TP2.`,
                 `ATR(${atrPeriod}) 1H = ${fmtPx(atr)}; коридор ${fmtPx(pending.zoneLow)}–${fmtPx(pending.zoneHigh)}, стоп ${fmtPx(stop)} (${long ? 'min' : 'max'}(климакс ${fmtPx(climax)}, грань зоны ${fmtPx(zoneEdge)}) ${long ? '−' : '+'} ${STOP_BUFFER_ATR} ATR).`,
                 ...(candidates.length > 1 ? [`Пересечено зон: ${candidates.length}; выбрана самая свежая (Amendment 1, OB раньше FVG).`] : []),
+                ...(plan.confirming ?? []),
               ],
               invalidationFactors: [
                 `Касание стопа ${fmtPx(stop)} до исполнения отменяет коридор; коридор и стоп на одном баре — отмена.`,
@@ -250,6 +325,7 @@ export function runV33LiveReplay(args: V33ReplayArgs): ReplayOutput {
                 'Исследование V3.3: только TRAIN (не валидировано на отложенной выборке); результат хрупок к хвосту (без топ-1 % сделок ниже комиссии).',
                 'Зона умирает при закрытии за дальней гранью (OB) или полном заполнении (FVG) — после этого новые триггеры по ней не рассматриваются.',
                 ...(long ? !(tp1 > c.close) : !(tp1 < c.close)) ? ['TP1 находится позади закрытия триггерного бара — геометрия будет проверена при исполнении.'] : [],
+                ...(plan.invalidation ?? []),
               ],
               fill: null,
               outcome: null,
@@ -263,9 +339,20 @@ export function runV33LiveReplay(args: V33ReplayArgs): ReplayOutput {
                 zoneMitigatedAtOpenTime: h1[w.mitigationIndex]!.openTime,
                 absorption: kind,
                 rvol: round(rvol, 4),
+                ...(plan.meta ?? {}),
               },
             };
             out.records.push(record);
+            if (planRejected) {
+              // Сетап отклонён производной стратегией ДО создания pending:
+              // сделки не будет, коридор не занимается, следующий бар свободен.
+              record.publishNote = plan.rejectNote ?? plan.rejectReason!;
+              record.outcome = {
+                status: 'CANCELLED', barOpenTime: c.openTime, exitReason: plan.rejectReason!,
+                exitPrice: null, grossR: null, netR: null, barsHeld: null,
+              };
+              continue;
+            }
             pend = { record, pending };
           }
         }

@@ -7,7 +7,7 @@
  * исполняется через скомпилированное ядро.
  */
 
-export type StrategyBadge = 'RESEARCH' | 'TRAIN_ONLY' | 'GROSS_ONLY';
+export type StrategyBadge = 'RESEARCH' | 'TRAIN_ONLY' | 'GROSS_ONLY' | 'DERIVED_NO_BACKTEST';
 
 export interface ProductStrategy {
   /** Идентификатор в реестре (тот же, что в `strategy_settings` и в сигналах). */
@@ -20,7 +20,7 @@ export interface ProductStrategy {
   timeframes: string[];
   /**
    * Таймфрейм ИСПОЛНЕНИЯ: бар, на котором принимается решение и публикуется
-   * сетап. У всех трёх продуктовых стратегий — '1h' (сверено с `EXEC_TIMEFRAME`
+   * сетап. У всех продуктовых стратегий — '1h' (сверено с `EXEC_TIMEFRAME`
    * ядра и `V28_LIVE_TIMEFRAME`); '15m' — параметр исторического исследования
    * V2.8, а не LIVE-характеристика.
    */

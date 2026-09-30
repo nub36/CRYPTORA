@@ -1,9 +1,10 @@
 /**
- * LiveSignalEngine — три архивные стратегии на LIVE-свечах биржи.
+ * LiveSignalEngine — продуктовые стратегии на LIVE-свечах биржи.
  *
  *   V3.0 — HTF Liquidation Trap      (VALIDATED в источнике; флагман)
  *   V3.3 — HTF Zone Mitigation        (TRAIN-only; headline-вариант while-protective-displacement)
  *   V2.8 — Zero-fee Sniper + Trailing (VALIDATED_GROSS_ONLY; замороженный движок V2 @4839074)
+ *   V3.4 — HTF Zone Mitigation + Target Quality (надстройка над V3.3; по умолчанию ВЫКЛЮЧЕНА)
  *
  * Как это работает (без переписывания правил стратегий):
  *
@@ -34,16 +35,18 @@ import { ohlcvToArchive } from '@/services/signals/live/ohlcvAdapter';
 import { runV30LiveReplay, V30_STRATEGY_ID } from './replays/v30LiveReplay';
 import { runV33LiveReplay, V33_STRATEGY_ID } from './replays/v33LiveReplay';
 import { runV28LiveReplay, V28_STRATEGY_ID } from './replays/v28LiveReplay';
+import { runV34LiveReplay, V34_STRATEGY_ID } from './replays/v34LiveReplay';
 import type { ReplayOutput, ReplayRecord } from './replays/types';
 import { trackPublishedSetup } from './lifecycle';
 import { pairLabel } from '@/utils/labels';
 
-export type SignalStrategy = 'V3.0' | 'V3.3' | 'V2.8';
+export type SignalStrategy = 'V3.0' | 'V3.3' | 'V2.8' | 'V3.4';
 
 export const STRATEGY_IDS: Readonly<Record<SignalStrategy, string>> = Object.freeze({
   'V3.0': V30_STRATEGY_ID,
   'V3.3': V33_STRATEGY_ID,
   'V2.8': V28_STRATEGY_ID,
+  'V3.4': V34_STRATEGY_ID,
 });
 
 export const DEFAULT_SIGNAL_SYMBOLS: readonly string[] = Object.freeze(['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE']);
@@ -242,6 +245,10 @@ export class LiveSignalEngine {
   constructor(config: LiveSignalConfig) {
     this.provider = config.provider;
     this.symbols = config.symbols ?? DEFAULT_SIGNAL_SYMBOLS;
+    // V3.4 СОЗНАТЕЛЬНО НЕ ВХОДИТ В СПИСОК ПО УМОЛЧАНИЮ: новая стратегия
+    // включается только явным выбором (в браузере — через config.strategies,
+    // на сервере — через strategy_settings.enabled = TRUE). Отсутствие
+    // настройки никогда не означает «включено».
     this.strategies = config.strategies ?? ['V3.0', 'V3.3', 'V2.8'];
     this.scanIntervalMs = config.scanIntervalMs ?? DEFAULT_SCAN_INTERVAL_MS;
     this.initialDelayMs = config.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
@@ -501,6 +508,8 @@ export class LiveSignalEngine {
     switch (strategy) {
       case 'V3.0': return runV30LiveReplay({ symbol, h1, h4 });
       case 'V3.3': return runV33LiveReplay({ symbol, h1, h4 });
+      // V3.4 = тот же реплей V3.3 + фильтр качества целей (см. v34LiveReplay.ts).
+      case 'V3.4': return runV34LiveReplay({ symbol, h1, h4 });
       case 'V2.8': return runV28LiveReplay({ symbol, h1, htf: { '4h': h4, '1d': h1d } });
       default: return { records: [], evaluatedBars: 0, firstEvaluatedOpenTime: null, lastEvaluatedOpenTime: null, notes: [] };
     }

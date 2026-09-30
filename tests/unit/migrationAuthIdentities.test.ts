@@ -25,7 +25,13 @@ describe('migration 013 — auth identities', () => {
   it('exists and follows the numbering convention', () => {
     const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
     expect(files).toContain(FILE);
-    expect(files[files.length - 1]).toBe(FILE); // latest migration
+    // 013 is no longer the newest file (014 registers strategy V3.4), so the
+    // invariant that still matters is the numbering itself: strictly
+    // increasing, gapless, three-digit prefixes with no duplicates.
+    const numbers = files.map((f) => Number(f.slice(0, 3)));
+    expect(numbers).toEqual(numbers.map((_, i) => i + 1));
+    expect(numbers[numbers.indexOf(13)]).toBe(13);
+    expect(files[12]).toBe(FILE);
   });
 
   it('is strictly additive — no destructive statements', () => {

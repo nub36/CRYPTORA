@@ -28,6 +28,8 @@ import { SIGNAL_STATUSES } from '../signalRepository.js';
 export const TRACKED_STRATEGY_IDS = Object.freeze([
   'V3_0_HTF_LIQUIDATION_TRAP',
   'V3_3_HTF_ZONE_MITIGATION',
+  // V3.4 ведётся теми же frozen-функциями коридора, что и V3.3 (lifecycle.ts).
+  'V3_4_HTF_ZONE_MITIGATION_QUALITY',
   'V2_8_ZERO_FEE_SNIPER_TRAILING',
 ]);
 
