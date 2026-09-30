@@ -6,7 +6,7 @@
  * захэшированы), а не по повторному прогону стратегии. Используются те же
  * замороженные функции архива, что и в исследовании:
  *
- *   • V3.0 / V3.3 (LIMIT_CORRIDOR): `corridorStep` (N+1…N+3: исполнение по худшей
+ *   • V3.0 / V3.3 / V3.4 (LIMIT_CORRIDOR): `corridorStep` (N+1…N+3: исполнение по худшей
  *     границе, отмена при касании стопа, отклонение геометрии, истечение) →
  *     `manageTrade` соответствующей версии (стоп раньше целей, TP1 → BE со
  *     следующего бара, таймаут 50 / 48 баров);
@@ -23,6 +23,7 @@ import { v28EntryAtNextOpen, v28TrailOutcome } from '@/services/strategyArchive'
 import type { AnalyticalSetup, SetupFill, SetupOutcome } from '@/services/signals/SignalsAuditLedger';
 import { V30_STRATEGY_ID } from './replays/v30LiveReplay';
 import { V33_STRATEGY_ID } from './replays/v33LiveReplay';
+import { V34_STRATEGY_ID } from './replays/v34LiveReplay';
 import { V28_STRATEGY_ID } from './replays/v28LiveReplay';
 import { managedExitPrice, managedStatus, round } from './replays/shared';
 
@@ -73,7 +74,11 @@ export function trackPublishedSetup(entry: AnalyticalSetup, h1: readonly Archive
 }
 
 function trackCorridor(entry: AnalyticalSetup, h1: readonly ArchiveCandle[], setupIndex: number): LifecycleResult {
-  const isV33 = entry.strategyId === V33_STRATEGY_ID;
+  // V3.4 ведётся ровно теми же frozen-функциями, что и V3.3: фильтр качества
+  // целей работает ТОЛЬКО на допуске сетапа и не меняет ни ведение позиции, ни
+  // тайм-аут, ни модель комиссий. Опубликованный сетап V3.4 обязан вестись, а
+  // не попадать в SKIP «неизвестная стратегия».
+  const isV33 = entry.strategyId === V33_STRATEGY_ID || entry.strategyId === V34_STRATEGY_ID;
   const isV30 = entry.strategyId === V30_STRATEGY_ID;
   if (!isV30 && !isV33) return { kind: 'SKIP', reason: `неизвестная стратегия коридора ${entry.strategyId}` };
   const tp1 = entry.targets[0];

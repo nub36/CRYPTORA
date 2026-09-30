@@ -1324,13 +1324,13 @@ describe('Статистика — знаменатели и результат 
 describe('Монитор при выключенных стратегиях', () => {
   it('монитор стартует, стратегии остаются OFF, сохранённый сигнал доводится до исхода', async (ctx) => {
     if (guard(ctx)) return;
-    // Все три стратегии выключены — ровно состояние production.
+    // Все стратегии выключены — ровно состояние production.
     await q('UPDATE strategy_settings SET enabled = FALSE');
     const settingsBefore = await q(
       'SELECT strategy_id, enabled, scan_interval_seconds, symbols, last_scan_at, last_signal_at, last_error FROM strategy_settings ORDER BY strategy_id'
     );
     expect(settingsBefore.every((r: any) => r.enabled === false)).toBe(true);
-    expect(settingsBefore).toHaveLength(3);
+    expect(settingsBefore).toHaveLength(4);
 
     await q('DELETE FROM signals');
     const { signal } = await seedSignal();

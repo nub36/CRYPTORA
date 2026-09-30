@@ -118,6 +118,7 @@ export function countTradeOutcomes(setups: readonly AnalyticalSetup[]): TradeOut
 const STRATEGY_SHORT_MAP: Record<string, string> = {
   V3_0_HTF_LIQUIDATION_TRAP: 'V3.0',
   V3_3_HTF_ZONE_MITIGATION: 'V3.3',
+  V3_4_HTF_ZONE_MITIGATION_QUALITY: 'V3.4',
   V2_8_ZERO_FEE_SNIPER_TRAILING: 'V2.8',
 };
 

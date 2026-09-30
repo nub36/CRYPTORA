@@ -292,10 +292,28 @@ export const V28_GROSS_ONLY_NOTE =
   'V2.8 валидирована только по gross (без комиссий): live-путь считает net по той же модели 2/5 bps, ' +
   'поэтому отрицательный net у этой стратегии — её свойство, а не ошибка расчёта.';
 
-/** Короткое имя стратегии (V3.0 / V3.3 / V2.8) + версия из DTO, если она есть. */
+/**
+ * Короткое имя стратегии + версия из DTO, если она добавляет информацию.
+ *
+ * ПОЧЕМУ ЗДЕСЬ ЕСТЬ УСЛОВИЕ
+ * -------------------------
+ * `strategy_id` и `strategy_version` — два независимых поля хранилища:
+ * первое отвечает на «чей это сетап», второе — «какой версией кода он
+ * опубликован». Для продуктовых стратегий короткая метка id ('V3.3') и версия
+ * ('3.3') совпадают, и витрина показывала «V3.3 · v3.3» — один и тот же факт
+ * дважды. Это шум, а не провенанс.
+ *
+ * Поэтому версия печатается ТОЛЬКО когда она отличается от короткой метки.
+ * Полное происхождение (`strategyId`, `strategyVersion`, `engine_setup_id`,
+ * хэш-цепочка) остаётся в данных и в API без изменений — правится подпись, а
+ * не запись. Если однажды сигнал опубликуют кодом версии 3.4.1 под id V3.4,
+ * подпись честно станет «V3.4 · v3.4.1».
+ */
 export function strategyText(strategyId: string, strategyVersion: string | null): string {
   const short = strategyShortLabel(strategyId);
-  return strategyVersion ? `${short} · v${strategyVersion}` : short;
+  if (!strategyVersion) return short;
+  const sameFact = short.toLowerCase() === `v${strategyVersion}`.toLowerCase();
+  return sameFact ? short : `${short} · v${strategyVersion}`;
 }
 
 /** Пара в форме «BTC/USDT» из любого серверного представления символа. */

@@ -236,9 +236,10 @@ describe('Настоящий серверный путь: миграция 009',
     if (guard(ctx)) return;
     await db.query('DELETE FROM signals');
 
-    // 3 продуктовые стратегии, все выключены — никто ничего не включает.
+    // Все продуктовые стратегии (включая производную V3.4) выключены — никто
+    // ничего не включает.
     const settings = await q('SELECT strategy_id, enabled FROM strategy_settings ORDER BY strategy_id');
-    expect(settings.length).toBe(3);
+    expect(settings.length).toBe(4);
     expect(settings.every((s: any) => s.enabled === false)).toBe(true);
 
     // GET /api/signals честно отдаёт пустую ленту: 0 строк, не ошибка.

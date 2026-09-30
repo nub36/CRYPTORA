@@ -178,14 +178,25 @@ const guard = (ctx: any) => {
 /* ═════════════════ Настройки стратегий ═════════════════ */
 
 describe('Настройки стратегий — начальное состояние', () => {
-  it('ровно 3 строки, и это три продуктовые стратегии', async (ctx) => {
+  it('ровно 4 строки, и это продуктовые стратегии', async (ctx) => {
     if (guard(ctx)) return;
     const ids = await q('SELECT strategy_id FROM strategy_settings ORDER BY strategy_id');
     expect(ids.map((r: any) => r.strategy_id)).toEqual([
       'V2_8_ZERO_FEE_SNIPER_TRAILING',
       'V3_0_HTF_LIQUIDATION_TRAP',
       'V3_3_HTF_ZONE_MITIGATION',
+      'V3_4_HTF_ZONE_MITIGATION_QUALITY',
     ]);
+  });
+
+  it('V3.4 зарегистрирована и ВЫКЛЮЧЕНА — отсутствие включения проверяется явно', async (ctx) => {
+    if (guard(ctx)) return;
+    const rows = await q(
+      'SELECT enabled FROM strategy_settings WHERE strategy_id = $1',
+      ['V3_4_HTF_ZONE_MITIGATION_QUALITY']
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].enabled).toBe(false);
   });
 
   it('по умолчанию все выключены', async (ctx) => {
@@ -200,7 +211,7 @@ describe('Настройки стратегий — начальное сост�
     const res = await anon.get('/api/strategies');
     expect(res.status).toBe(200);
     const body = res.body as any;
-    expect(body.strategies).toHaveLength(3);
+    expect(body.strategies).toHaveLength(4);
     expect(body.source).toBe('server');
 
     const first = body.strategies[0];
@@ -372,7 +383,7 @@ describe('Переключатель ВКЛ/ВЫКЛ — авторизация'
     const admin = await login(ADMIN.email, ADMIN.password);
     const res = await admin.patch('/api/admin/strategies/V9_9_MADE_UP', { enabled: true });
     expect(res.status).toBe(404);
-    expect((await q('SELECT count(*)::int AS n FROM strategy_settings'))[0].n).toBe(3);
+    expect((await q('SELECT count(*)::int AS n FROM strategy_settings'))[0].n).toBe(4);
   });
 
   it('тело без булева enabled отклоняется (400)', async (ctx) => {
@@ -537,7 +548,7 @@ describe('Репозиторий настроек', () => {
     if (guard(ctx)) return;
     await db.query(`UPDATE strategy_settings SET enabled=TRUE WHERE strategy_id='V3_3_HTF_ZONE_MITIGATION'`);
     const st = await settingsRepo.engineStatus();
-    expect(st.totalStrategies).toBe(3);
+    expect(st.totalStrategies).toBe(4);
     expect(st.enabledCount).toBe(1);
     expect(st.errorCount).toBe(0);
     expect(st.signalsTotal).toBe(0);

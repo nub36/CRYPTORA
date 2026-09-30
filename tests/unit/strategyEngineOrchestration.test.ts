@@ -837,11 +837,12 @@ describe('Каталог стратегий и ключи ядра', () => {
       V3_0_HTF_LIQUIDATION_TRAP: '1h',
       V3_3_HTF_ZONE_MITIGATION: '1h',
       V2_8_ZERO_FEE_SNIPER_TRAILING: '1h',
+      V3_4_HTF_ZONE_MITIGATION_QUALITY: '1h',
     });
   });
 
-  it('ENGINE_STRATEGY_KEY покрывает все три продуктовые стратегии', () => {
-    expect(Object.values(ENGINE_STRATEGY_KEY).sort()).toEqual(['V2.8', 'V3.0', 'V3.3']);
+  it('ENGINE_STRATEGY_KEY покрывает все продуктовые стратегии', () => {
+    expect(Object.values(ENGINE_STRATEGY_KEY).sort()).toEqual(['V2.8', 'V3.0', 'V3.3', 'V3.4']);
     expect(Object.keys(EXEC_TIMEFRAME).sort()).toEqual(Object.keys(ENGINE_STRATEGY_KEY).sort());
   });
 });

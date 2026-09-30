@@ -243,7 +243,7 @@ describe('Паритет серверных констант с замороже
 
   it('таймфрейм исполнения каталога = EXEC_TIMEFRAME ядра (1h, не 15m)', () => {
     expect(EXEC_TIMEFRAME).toBe('1h');
-    expect(PRODUCT_STRATEGIES).toHaveLength(3);
+    expect(PRODUCT_STRATEGIES).toHaveLength(4);
     for (const s of PRODUCT_STRATEGIES) {
       expect(s.execTimeframe, `${s.id}: execTimeframe`).toBe(EXEC_TIMEFRAME);
       expect(s.timeframes, `${s.id}: исполнение входит в набор серий`).toContain(EXEC_TIMEFRAME);

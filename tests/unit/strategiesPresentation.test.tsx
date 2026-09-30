@@ -20,7 +20,7 @@ import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { StrategiesPage } from '@/pages/StrategiesPage';
-import { ProductStrategiesSection, PRODUCT_STRATEGY_IDS } from '@/components/strategies/ProductStrategiesSection';
+import { ProductStrategiesSection, PRODUCT_STRATEGY_IDS, DERIVED_STRATEGY_ID } from '@/components/strategies/ProductStrategiesSection';
 import { Footer } from '@/components/layout/Footer';
 
 const mockFetch = vi.fn();
@@ -62,14 +62,23 @@ beforeEach(() => {
 /* ══ 1. Primary UI = ровно три стратегии ════════════════════════ */
 
 describe('/strategies — primary UI', () => {
-  it('показывает ровно три продуктовые стратегии', () => {
+  it('показывает три архивные продуктовые стратегии + производную V3.4', () => {
     const { container } = render(<ProductStrategiesSection />);
     const ids = Array.from(
       container.querySelectorAll('[data-testid^="product-strategy-"]')
     ).map((el) => (el.getAttribute('data-testid') ?? '').replace('product-strategy-', ''));
 
-    expect(ids.sort()).toEqual([...PRODUCT_STRATEGY_IDS].sort());
-    expect(ids).toHaveLength(3);
+    // V3.4 сознательно НЕ входит в PRODUCT_STRATEGY_IDS: этот список —
+    // подмножество исследовательского архива, а у V3.4 исследования нет.
+    expect(ids.sort()).toEqual([...PRODUCT_STRATEGY_IDS, DERIVED_STRATEGY_ID].sort());
+    expect(ids).toHaveLength(4);
+  });
+
+  it('карточка V3.4 честно помечена как «Без бэктеста» и не обещает результатов', () => {
+    render(<ProductStrategiesSection />);
+    expect(screen.getByText('V3.4')).toBeInTheDocument();
+    expect(screen.getByText('HTF Zone Mitigation + Target Quality')).toBeInTheDocument();
+    expect(screen.getByText('Без бэктеста')).toBeInTheDocument();
   });
 
   it('названия соответствуют фактической реализации реестра', () => {
