@@ -58,6 +58,17 @@ export interface TraceArgs {
   takerBps: number;
   /** Досрочное закрытие: на этом баре (индекс от бара входа) по этой цене. */
   closeAt?: { bar: number; price: number };
+  /**
+   * Позицию, не закрывшуюся внутри окна, вернуть переоценённой по close
+   * последнего бара вместо `null`.
+   *
+   * Нужно ТОЛЬКО для боевого режима. В проде часть сигналов прямо сейчас в
+   * позиции; если такие сделки отбрасывать, из анализа исчезнут именно те
+   * конфликты, ради которых он затевался. В датасетном режиме флаг не
+   * передаётся, поэтому равенство с замороженной `manageTrade` там остаётся
+   * тотальным.
+   */
+  allowOpen?: boolean;
 }
 
 /**
@@ -70,7 +81,7 @@ export interface TraceArgs {
  * политик C и D.
  */
 export function traceTrade(a: TraceArgs): TraceResult | null {
-  const { direction, entry, stop0, tp1, tp2, bars, timeoutBars, makerBps, takerBps, closeAt } = a;
+  const { direction, entry, stop0, tp1, tp2, bars, timeoutBars, makerBps, takerBps, closeAt, allowOpen } = a;
   const risk = Math.abs(entry - stop0);
   if (!(risk > 0) || bars.length === 0) return null;
   const long = direction === 'LONG';
@@ -130,6 +141,15 @@ export function traceTrade(a: TraceArgs): TraceResult | null {
       return finish('TP2', tp2, 0.5, i);
     }
     if (i + 1 >= timeoutBars) return finish(hitTp1 ? 'TP1_THEN_TIMEOUT' : 'TIMEOUT', c.close, hitTp1 ? 0.5 : 1, i);
+  }
+  if (allowOpen) {
+    // Позиция ещё живёт. Переоценка по последнему закрытому бару — это НЕ исход
+    // сделки, а отметка «здесь и сейчас»; в отчёте такие строки видны по
+    // exit = OPEN_AT_WINDOW_END и не должны читаться как реализованный R.
+    const lastIdx = Math.min(bars.length, timeoutBars) - 1;
+    const lastBar = bars[lastIdx];
+    if (!lastBar) return null;
+    return finish('OPEN_AT_WINDOW_END', lastBar.close, hitTp1 ? 0.5 : 1, lastIdx);
   }
   return null;
 }
@@ -198,6 +218,13 @@ export function verifyTracer(trades: Trade[]): { checked: number; mismatches: st
   for (const t of trades) {
     const manage = t.strategyId === V33_ID ? manageV33 : manageV30;
     const r = manage(t.direction, t.fillPrice, t.stop, t.tp1, t.tp2, t.bars);
+    if (t.base.exit === 'OPEN_AT_WINDOW_END') {
+      // Позиция открыта: ядро ОБЯЗАНО вернуть null. Если оно её закрыло —
+      // расхождение, и оно опаснее любого другого.
+      if (r) mismatches.push(`${t.id}: tracer считает позицию открытой, ядро закрыло её как ${r.exit}`);
+      checked++;
+      continue;
+    }
     if (!r) { mismatches.push(`${t.id}: ядро вернуло null, tracer — ${t.base.exit}`); continue; }
     const fee = r.feeR(t.makerBps, t.takerBps);
     const netCore = r.grossR - fee;
@@ -499,7 +526,12 @@ export function buildTradesFromDump(dump: ProdDump): { trades: Trade[]; skipped:
     const series = dump.candles[`${s.symbol}|${s.timeframe}`];
     if (!series || series.length === 0) { skipped.push(`${s.id}: нет свечей ${s.symbol} ${s.timeframe}`); continue; }
     const fillTime = new Date(s.filledAt).getTime();
-    const i = series.findIndex((c) => c.openTime === fillTime);
+    // filled_at в проде — openTime бара исполнения, но полагаться на побайтовое
+    // совпадение нельзя: достаточно одной миграции с округлением, чтобы сделка
+    // молча исчезла из анализа. Поэтому берётся бар, в интервал которого
+    // попадает отметка, и только если такого нет — пропуск с причиной.
+    let i = series.findIndex((c) => c.openTime === fillTime);
+    if (i < 0) i = series.findIndex((c) => fillTime >= c.openTime && fillTime <= c.closeTime);
     if (i < 0) { skipped.push(`${s.id}: бар исполнения ${s.filledAt} вне окна свечей`); continue; }
 
     const isV33 = s.strategyId === V33_ID;
@@ -510,8 +542,9 @@ export function buildTradesFromDump(dump: ProdDump): { trades: Trade[]; skipped:
     const base = traceTrade({
       direction: s.direction, entry: s.fillPrice, stop0: s.stopLoss,
       tp1: s.targets[0]!, tp2: s.targets[1]!, bars, timeoutBars, makerBps, takerBps,
+      allowOpen: true,
     });
-    if (!base) { skipped.push(`${s.id}: позиция ещё не закрыта по закрытым свечам`); continue; }
+    if (!base) { skipped.push(`${s.id}: не удалось восстановить ведение (пустое окно свечей)`); continue; }
     trades.push({
       id: s.id, strategyId: s.strategyId, symbol: s.symbol, direction: s.direction,
       publishedAt: s.createdAt ? new Date(s.createdAt).getTime() : new Date(s.signalCandleTs).getTime(),
@@ -522,4 +555,66 @@ export function buildTradesFromDump(dump: ProdDump): { trades: Trade[]; skipped:
   }
   trades.sort((a, b) => a.publishedAt - b.publishedAt || a.fillTime - b.fillTime);
   return { trades, skipped };
+}
+
+/* ═══════════════════════════════ однонаправленный стек (ОТДЕЛЬНО) ══ */
+
+export interface StackCluster {
+  strategyId: string;
+  symbol: string;
+  direction: ArchiveDirection;
+  /** Максимум одновременно открытых позиций ОДНОГО направления. */
+  maxDepth: number;
+  from: number;
+  to: number;
+  ids: string[];
+}
+
+/**
+ * Однонаправленное наслоение позиций — это не то же самое, что встречный
+ * конфликт, и считается отдельно: здесь нет противоположных экспозиций, есть
+ * кратное увеличение размера ставки на одну идею.
+ *
+ * Пары (как в overlapsOf) для этого не годятся: три одновременных SHORT дают
+ * три пары и выглядят как три независимых события, хотя риск в этот момент
+ * утроен один раз. Поэтому считается ГЛУБИНА стека.
+ */
+export function stackClusters(applied: Applied[], minDepth = 2): StackCluster[] {
+  const byKey = new Map<string, Applied[]>();
+  for (const a of applied) {
+    const k = `${a.trade.strategyId}|${a.trade.symbol}|${a.trade.direction}`;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k)!.push(a);
+  }
+  const res: StackCluster[] = [];
+  for (const [k, list] of byKey) {
+    const [strategyId, symbol, direction] = k.split('|') as [string, string, ArchiveDirection];
+    const ev: { t: number; d: number; a: Applied }[] = [];
+    for (const a of list) {
+      ev.push({ t: a.trade.fillTime, d: 1, a });
+      ev.push({ t: exitTimeOf(a), d: -1, a });
+    }
+    ev.sort((x, y) => x.t - y.t || x.d - y.d);
+    let depth = 0;
+    let cluster: { from: number; maxDepth: number; ids: Set<string> } | null = null;
+    for (const e of ev) {
+      depth += e.d;
+      if (e.d === 1 && depth >= minDepth) {
+        if (!cluster) cluster = { from: e.t, maxDepth: depth, ids: new Set() };
+        cluster.maxDepth = Math.max(cluster.maxDepth, depth);
+        for (const a of list) {
+          if (a.trade.fillTime <= e.t && exitTimeOf(a) >= e.t) cluster.ids.add(a.trade.id);
+        }
+      }
+      if (cluster && depth < minDepth) {
+        res.push({ strategyId, symbol, direction, maxDepth: cluster.maxDepth, from: cluster.from, to: e.t, ids: [...cluster.ids] });
+        cluster = null;
+      }
+    }
+    if (cluster) {
+      res.push({ strategyId, symbol, direction, maxDepth: cluster.maxDepth, from: cluster.from, to: ev[ev.length - 1]!.t, ids: [...cluster.ids] });
+    }
+  }
+  res.sort((a, b) => b.maxDepth - a.maxDepth || a.from - b.from);
+  return res;
 }

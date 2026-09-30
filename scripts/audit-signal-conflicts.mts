@@ -50,10 +50,10 @@ import type { ArchiveCandle, ArchiveDirection } from '@/services/strategyArchive
 import { runV33LiveReplay } from '@/services/signals/live/replays/v33LiveReplay';
 import { runV30LiveReplay } from '@/services/signals/live/replays/v30LiveReplay';
 import {
-  V33_ID, V30_ID, buildTrades, buildTradesFromDump, verifyTracer, stateAt, runPolicy, metricsOf,
+  V33_ID, V30_ID, buildTrades, buildTradesFromDump, verifyTracer, stackClusters, stateAt, runPolicy, metricsOf,
   overlapsOf, maxConcurrent,
   type Trade, type PolicyId, type PolicyRun, type Metrics, type OverlapRec, type StateAt,
-  type ProdDump,
+  type ProdDump, type Applied, type StackCluster,
 } from './lib/conflictPolicies';
 
 /* ─────────────────────────────────────────────────────────── аргументы ── */
@@ -69,6 +69,8 @@ const SYMBOLS = (arg('symbols', 'BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSD
 const FOCUS = arg('focus', 'SOLUSDT')!;
 /** Боевой режим: путь к READ-ONLY дампу продакшена вместо датасета. */
 const PROD_DUMP = arg('prod');
+/** Подробный разбор конкретной пары по id: --pair <idПервой>,<idВстречной>. */
+const PAIR = arg('pair');
 const FOCUS_CASES = Number(arg('focusCases', '3'));
 
 const LINES: string[] = [];
@@ -77,6 +79,13 @@ const hr = (t: string): void => { out(''); out('═'.repeat(100)); out(t); out('
 const iso = (ms: number): string => new Date(ms).toISOString().replace('.000Z', 'Z');
 const f4 = (x: number | null): string => (x == null || !Number.isFinite(x) ? '—' : x.toFixed(4));
 const f2 = (x: number | null): string => (x == null || !Number.isFinite(x) ? '—' : x.toFixed(2));
+/**
+ * Цена печатается БЕЗ округления до двух знаков: разница между TP1 119.095 и
+ * «119.09» — это разница между уровнем стратегии и его искажением в отчёте.
+ */
+const fp = (x: number | null): string => (x == null || !Number.isFinite(x)
+  ? '—'
+  : x.toFixed(6).replace(/0+$/, '').replace(/\.$/, ''));
 
 function die(msg: string): never {
   out('');
@@ -229,7 +238,7 @@ for (const { o, st } of stateRows) {
     out(`  ${String(idxRow).padStart(2)} ${s} ${strat} ${dir} ПЕРВАЯ УЖЕ ЗАКРЫТА на момент публикации встречной (пересечение только по исполнению)`);
     continue;
   }
-  out(`  ${String(idxRow).padStart(2)} ${s} ${strat} ${dir} ${st.state.padEnd(12)} ${st.size.padEnd(16)} ${st.protection.padEnd(14)} ${f4(st.realizedR).padStart(7)} ${f4(st.unrealizedR).padStart(10)} ${f2(st.nextTarget).padStart(10)}`);
+  out(`  ${String(idxRow).padStart(2)} ${s} ${strat} ${dir} ${st.state.padEnd(12)} ${st.size.padEnd(16)} ${st.protection.padEnd(14)} ${f4(st.realizedR).padStart(7)} ${f4(st.unrealizedR).padStart(10)} ${fp(st.nextTarget).padStart(10)}`);
 }
 out('');
 const cntBefore = stateRows.filter((r) => r.st?.state === 'BEFORE_TP1').length;
@@ -322,7 +331,7 @@ const focusOverlaps = oppOverlaps.filter((o) => o.symbol.startsWith(focusSym.rep
 out(`Найдено встречных пересечений по ${focusSym}: ${focusOverlaps.length}`);
 if (focusOverlaps.length === 0) out('  нет случаев для разбора');
 
-for (const o of focusOverlaps.slice(0, FOCUS_CASES)) {
+function explainCase(o: OverlapRec): void {
   const A1 = o.first, B1 = o.second;
   const t = A1.trade, u = B1.trade;
   out('');
@@ -330,11 +339,11 @@ for (const o of focusOverlaps.slice(0, FOCUS_CASES)) {
   out(`СЛУЧАЙ: ${o.strategyId} ${o.symbol} — ${t.direction} → встречный ${u.direction}`);
   out('─'.repeat(100));
   out(`Первая  : сетап ${iso(t.setupOpenTime)}  публикация ${iso(t.publishedAt)}`);
-  out(`          вход ${f2(t.fillPrice)} @ ${iso(t.fillTime)}  стоп ${f2(t.stop)}  TP1 ${f2(t.tp1)}  TP2 ${f2(t.tp2)}`);
-  out(`          BASELINE исход: ${t.base.exit} @ ${iso(t.bars[t.base.exitBar]!.openTime)} по ${f2(t.base.exitPrice)}  gross ${f4(t.base.grossR)}  net ${f4(t.base.netR)}`);
+  out(`          вход ${fp(t.fillPrice)} @ ${iso(t.fillTime)}  стоп ${fp(t.stop)}  TP1 ${fp(t.tp1)}  TP2 ${fp(t.tp2)}`);
+  out(`          BASELINE исход: ${t.base.exit} @ ${iso(t.bars[t.base.exitBar]!.openTime)} по ${fp(t.base.exitPrice)}  gross ${f4(t.base.grossR)}  net ${f4(t.base.netR)}`);
   out(`Встречная: сетап ${iso(u.setupOpenTime)}  публикация ${iso(u.publishedAt)}`);
-  out(`          вход ${f2(u.fillPrice)} @ ${iso(u.fillTime)}  стоп ${f2(u.stop)}  TP1 ${f2(u.tp1)}  TP2 ${f2(u.tp2)}`);
-  out(`          BASELINE исход: ${u.base.exit} @ ${iso(u.bars[u.base.exitBar]!.openTime)} по ${f2(u.base.exitPrice)}  gross ${f4(u.base.grossR)}  net ${f4(u.base.netR)}`);
+  out(`          вход ${fp(u.fillPrice)} @ ${iso(u.fillTime)}  стоп ${fp(u.stop)}  TP1 ${fp(u.tp1)}  TP2 ${fp(u.tp2)}`);
+  out(`          BASELINE исход: ${u.base.exit} @ ${iso(u.bars[u.base.exitBar]!.openTime)} по ${fp(u.base.exitPrice)}  gross ${f4(u.base.grossR)}  net ${f4(u.base.netR)}`);
   out(`Пересечение позиций: ${iso(o.from)} … ${iso(o.to)}  (${o.hours.toFixed(2)} ч)`);
 
   const st = stateAt(t, u.publishedAt);
@@ -343,7 +352,7 @@ for (const o of focusOverlaps.slice(0, FOCUS_CASES)) {
   if (!st) out('  первая уже закрыта');
   else {
     out(`  ${st.state} · ${st.size} · ${st.protection}`);
-    out(`  realized R ${f4(st.realizedR)} · unrealized R ${f4(st.unrealizedR)} · следующая цель ${f2(st.nextTarget)}`);
+    out(`  realized R ${f4(st.realizedR)} · unrealized R ${f4(st.unrealizedR)} · следующая цель ${fp(st.nextTarget)}`);
   }
 
   out('');
@@ -353,14 +362,14 @@ for (const o of focusOverlaps.slice(0, FOCUS_CASES)) {
   for (let i = 0; i <= last; i++) {
     const c = t.bars[i]!;
     const marks: string[] = [];
-    if (i === 0) marks.push(`ВХОД ${f2(t.fillPrice)}`);
-    if (i === t.base.tp1Bar) marks.push(`TP1 ${f2(t.tp1)} — закрыто 50 %`);
+    if (i === 0) marks.push(`ВХОД ${fp(t.fillPrice)}`);
+    if (i === t.base.tp1Bar) marks.push(`TP1 ${fp(t.tp1)} — закрыто 50 %`);
     if (t.base.tp1Bar >= 0 && i === t.base.tp1Bar + 1) marks.push('стоп переведён в безубыток');
     const uFillBar = u.fillTime === c.openTime;
     if (c.openTime === u.publishedAt - (c.closeTime - c.openTime)) marks.push('ПУБЛИКАЦИЯ встречного сигнала');
-    if (uFillBar) marks.push(`ИСПОЛНЕНИЕ встречной по ${f2(u.fillPrice)}`);
-    if (i === t.base.exitBar) marks.push(`ВЫХОД ${t.base.exit} по ${f2(t.base.exitPrice)}`);
-    out(`  ${String(i).padStart(3)}  ${iso(c.openTime).padEnd(21)} ${f2(c.open).padStart(9)} ${f2(c.high).padStart(9)} ${f2(c.low).padStart(9)} ${f2(c.close).padStart(9)}  ${marks.join(' · ')}`);
+    if (uFillBar) marks.push(`ИСПОЛНЕНИЕ встречной по ${fp(u.fillPrice)}`);
+    if (i === t.base.exitBar) marks.push(`ВЫХОД ${t.base.exit} по ${fp(t.base.exitPrice)}`);
+    out(`  ${String(i).padStart(3)}  ${iso(c.openTime).padEnd(21)} ${fp(c.open).padStart(10)} ${fp(c.high).padStart(10)} ${fp(c.low).padStart(10)} ${fp(c.close).padStart(10)}  ${marks.join(' · ')}`);
   }
 
   out('');
@@ -381,6 +390,56 @@ for (const o of focusOverlaps.slice(0, FOCUS_CASES)) {
     out(`  ${p.padEnd(28)} ${parts.join(' · ')} → сумма ${f4(sum)} R`);
   }
 }
+
+for (const o of focusOverlaps.slice(0, FOCUS_CASES)) explainCase(o);
+
+/* ── 5a. Явно заданная пара ──────────────────────────────────────────── */
+
+if (PAIR) {
+  const [idA, idB] = PAIR.split(',').map((x) => x.trim());
+  hr(`5a. ПОДРОБНЫЙ РАЗБОР ЗАДАННОЙ ПАРЫ  ${idA} ↔ ${idB}`);
+  const found = oppOverlaps.find(
+    (o) => (o.first.trade.id === idA && o.second.trade.id === idB)
+      || (o.first.trade.id === idB && o.second.trade.id === idA),
+  );
+  if (found) {
+    explainCase(found);
+  } else {
+    const ta = allTrades.find((t) => t.id === idA);
+    const tb = allTrades.find((t) => t.id === idB);
+    out(`  Пара НЕ образует пересечения позиций в baseline.`);
+    for (const [label, t] of [['A', ta], ['B', tb]] as const) {
+      if (!t) { out(`  ${label} ${label === 'A' ? idA : idB}: сделки нет в наборе (нет исполнения либо нет свечей — см. список пропусков выше)`); continue; }
+      out(`  ${label} ${t.id}: ${t.symbol} ${t.direction} вход ${fp(t.fillPrice)} @ ${iso(t.fillTime)}`
+        + ` → ${t.base.exit} @ ${iso(t.bars[t.base.exitBar]!.openTime)}, net ${f4(t.base.netR)}`);
+    }
+  }
+}
+
+/* ── 5b. Однонаправленное наслоение (ОТДЕЛЬНО от opposite) ───────────── */
+
+hr('5b. SAME-DIRECTION STACKING — исследуется ОТДЕЛЬНО от встречных конфликтов');
+out('Здесь нет противоположных экспозиций: есть кратное увеличение ставки на одну');
+out('идею. Поэтому меряется ГЛУБИНА стека, а не число пар: три одновременных SHORT');
+out('дают три пары, но риск в этот момент утроен ОДИН раз.');
+out('');
+const clusters = stackClusters(baseline.applied);
+out(`Кластеров с глубиной ≥ 2: ${clusters.length}`);
+const depthHist = new Map<number, number>();
+for (const c of clusters) depthHist.set(c.maxDepth, (depthHist.get(c.maxDepth) ?? 0) + 1);
+out(`Распределение по максимальной глубине: ${[...depthHist.entries()].sort((a, b) => a[0] - b[0]).map(([d, n]) => `${d}×:${n}`).join(' · ')}`);
+out('');
+out('  глубина  стратегия / символ / напр           начало (UTC)          конец (UTC)           сделки');
+for (const c of clusters.slice(0, 25)) {
+  out(`  ${String(c.maxDepth).padStart(7)}  ${`${c.strategyId === V33_ID ? 'V3.3' : 'V3.0'} ${c.symbol} ${c.direction}`.padEnd(34)} ${iso(c.from).padEnd(21)} ${iso(c.to).padEnd(21)} ${c.ids.length}`);
+  for (const id of c.ids.slice(0, 6)) out(`             ${id}`);
+}
+if (clusters.length > 25) out(`  … ещё ${clusters.length - 25} кластеров`);
+out('');
+const eRun = runs.get('E_SAME_DIRECTION_DEDUP')!;
+out(`Политика E убирает такие кластеры полностью: глубина стека сводится к 1,`);
+out(`максимум одновременных позиций ${maxConcurrent(baseline.applied)} → ${maxConcurrent(eRun.applied)},`);
+out(`ценой ${eRun.rejected.length} неоткрытых сделок.`);
 
 /* ── 6. Итог ─────────────────────────────────────────────────────────── */
 

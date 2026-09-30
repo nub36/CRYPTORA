@@ -24,7 +24,7 @@ import { V33_CONSTANTS, manageTrade as manageV33 } from '@/services/strategyArch
 import { V30_CONSTANTS, manageTrade as manageV30 } from '@/services/strategyArchive/definitions/v3_0-htf-liquidation-trap/v30Core';
 import {
   traceTrade, verifyTracer, stateAt, runPolicy, metricsOf, overlapsOf, maxConcurrent,
-  V33_ID, buildTradesFromDump, type Trade, type ProdDump,
+  V33_ID, buildTradesFromDump, stackClusters, type Trade, type ProdDump,
 } from '../../scripts/lib/conflictPolicies';
 
 const HOUR = 3_600_000;
@@ -358,5 +358,114 @@ describe('buildTradesFromDump — вход из боевого READ-ONLY дам�
     expect(trades).toHaveLength(0);
     expect(skipped[0]).toContain('нет исполнения');
     expect(skipped[1]).toContain('вне окна свечей');
+  });
+});
+
+describe('боевой режим: открытые позиции и допуски', () => {
+  /** Позиция, которая не закрылась внутри окна: TP1 взят, исхода нет. */
+  const OPEN_BARS: ArchiveCandle[] = [
+    bar(0, 100, 111, 99, 110),   // TP1 110 взят
+    bar(1, 110, 112, 108, 111),
+  ];
+
+  it('без allowOpen незакрытая позиция даёт null (датасетный режим не меняется)', () => {
+    const t = traceTrade({ ...LONG_TRADE, bars: OPEN_BARS, ...V33 });
+    expect(t).toBeNull();
+    expect(manageV33('LONG', 100, 90, 110, 130, OPEN_BARS)).toBeNull();
+  });
+
+  it('с allowOpen позиция помечается OPEN_AT_WINDOW_END и переоценивается по close', () => {
+    const t = traceTrade({ ...LONG_TRADE, bars: OPEN_BARS, ...V33, allowOpen: true })!;
+    expect(t.exit).toBe('OPEN_AT_WINDOW_END');
+    expect(t.hitTp1).toBe(true);
+    // 0.5 * (110-100)/10 зафиксировано + 0.5 * (111-100)/10 переоценка остатка
+    expect(t.grossR).toBeCloseTo(0.5 + 0.55, 12);
+  });
+
+  it('verifyTracer требует, чтобы ядро тоже считало такую позицию открытой', () => {
+    const openTrade: Trade = {
+      ...FIRST, id: 'OPEN', bars: OPEN_BARS,
+      base: traceTrade({ ...LONG_TRADE, bars: OPEN_BARS, ...V33, allowOpen: true })!,
+    };
+    expect(verifyTracer([openTrade]).mismatches).toEqual([]);
+    // Подмена: помечаем открытой сделку, которую ядро закрывает по TP2.
+    const lying: Trade = {
+      ...FIRST, id: 'LIAR',
+      base: { ...FIRST.base, exit: 'OPEN_AT_WINDOW_END' },
+    };
+    expect(verifyTracer([lying]).mismatches[0]).toContain('ядро закрыло её');
+  });
+
+  it('открытая боевая позиция НЕ выбрасывается из анализа', () => {
+    const { trades, skipped } = buildTradesFromDump({
+      generatedAt: 'x',
+      signals: [{
+        id: 'still-open', strategyId: V33_ID, symbol: 'SOL/USDT', timeframe: '1h',
+        direction: 'LONG' as ArchiveDirection,
+        signalCandleTs: new Date(T0 - HOUR).toISOString(), createdAt: null,
+        entryMin: 99, entryMax: 100, stopLoss: 90, targets: [110, 130],
+        status: 'FILLED', fillPrice: 100, filledAt: new Date(T0).toISOString(),
+      }],
+      candles: { 'SOL/USDT|1h': OPEN_BARS },
+    } as ProdDump);
+    expect(skipped).toEqual([]);
+    expect(trades).toHaveLength(1);
+    expect(trades[0]!.base.exit).toBe('OPEN_AT_WINDOW_END');
+  });
+
+  it('filled_at внутри бара (не ровно openTime) всё равно находит бар исполнения', () => {
+    const { trades, skipped } = buildTradesFromDump({
+      generatedAt: 'x',
+      signals: [{
+        id: 'offset', strategyId: V33_ID, symbol: 'SOL/USDT', timeframe: '1h',
+        direction: 'LONG' as ArchiveDirection,
+        signalCandleTs: new Date(T0 - HOUR).toISOString(), createdAt: null,
+        entryMin: 99, entryMax: 100, stopLoss: 90, targets: [110, 130],
+        status: 'FILLED', fillPrice: 100,
+        filledAt: new Date(T0 + 12_345).toISOString(),   // середина бара 0
+      }],
+      candles: { 'SOL/USDT|1h': TP2_BARS },
+    } as ProdDump);
+    expect(skipped).toEqual([]);
+    expect(trades[0]!.fillIndex).toBe(0);
+  });
+});
+
+describe('stackClusters — однонаправленное наслоение', () => {
+  function stackTrade(id: string, fillBar: number, lastBar: number): Trade {
+    const bars = [
+      ...Array.from({ length: lastBar - fillBar }, (_, k) => bar(fillBar + k, 100, 101, 99, 100)),
+      bar(lastBar, 100, 131, 99, 130),
+    ];
+    return mkTrade({
+      id, direction: 'SHORT', fillIndex: fillBar, entry: 100, stop: 110, tp1: 90, tp2: 70,
+      bars: [...bars.slice(0, -1), bar(lastBar, 100, 111, 99, 110)], publishedAtBar: fillBar - 1,
+    });
+  }
+
+  it('три одновременных SHORT — это ОДИН кластер глубины 3, а не три события', () => {
+    const a = stackTrade('S1', 0, 5);
+    const b = stackTrade('S2', 1, 6);
+    const c = stackTrade('S3', 2, 7);
+    const run = runPolicy('A_BASELINE', [a, b, c]);
+    // Как пары это выглядит тремя конфликтами…
+    expect(overlapsOf(run.applied, false)).toHaveLength(3);
+    // …а как риск — одним утроением.
+    const cl = stackClusters(run.applied);
+    expect(cl).toHaveLength(1);
+    expect(cl[0]!.maxDepth).toBe(3);
+    expect(cl[0]!.ids.sort()).toEqual(['S1', 'S2', 'S3']);
+    expect(cl[0]!.direction).toBe('SHORT');
+  });
+
+  it('политика E сводит глубину стека к 1', () => {
+    const run = runPolicy('E_SAME_DIRECTION_DEDUP', [stackTrade('S1', 0, 5), stackTrade('S2', 1, 6), stackTrade('S3', 2, 7)]);
+    expect(stackClusters(run.applied)).toEqual([]);
+    expect(maxConcurrent(run.applied)).toBe(1);
+  });
+
+  it('последовательные, не пересекающиеся позиции кластером не считаются', () => {
+    const run = runPolicy('A_BASELINE', [stackTrade('S1', 0, 2), stackTrade('S2', 10, 12)]);
+    expect(stackClusters(run.applied)).toEqual([]);
   });
 });
