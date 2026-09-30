@@ -8,6 +8,7 @@ import {
   PRIMARY_NAV_ITEMS,
   ANALYTICS_NAV_ITEMS,
   TOOLS_NAV_ITEMS,
+  LAB_NAV_ITEM,
   type NavItem,
   type SubNavItem,
 } from '@/components/layout/navigation';
@@ -486,6 +487,9 @@ export const Header: React.FC = () => {
             'blue',
             Wrench
           )}
+
+          {/* Strategy Lab — отдельный ADMIN-ONLY пункт (research-контур). */}
+          {isAdmin && renderPrimaryLink(LAB_NAV_ITEM)}
         </nav>
 
         {/* ----------------------- Secondary service controls ----------------------- */}
@@ -928,6 +932,31 @@ export const Header: React.FC = () => {
               })}
             </div>
           </div>
+
+          {/* Strategy Lab — ADMIN-ONLY (research-контур) */}
+          {isAdmin && (
+            <div>
+              <div className="mb-1.5 font-sans text-[11px] font-bold tracking-wide text-slate-400">
+                Research
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <NavLink
+                  to={LAB_NAV_ITEM.path}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-x-2 rounded-md border px-3 py-2 text-[13px] font-medium transition-colors ${
+                      isActive
+                        ? 'border-cyan-500/40 bg-cyan-500/20 font-bold text-cyan-300'
+                        : 'border-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white'
+                    }`
+                  }
+                >
+                  <LAB_NAV_ITEM.icon className="h-4 w-4 text-cyan-400 opacity-90" />
+                  <span className="truncate">{LAB_NAV_ITEM.label}</span>
+                </NavLink>
+              </div>
+            </div>
+          )}
 
           {/* Auth Section in Mobile Menu */}
           <div className="border-t border-white/[0.08] pt-3">

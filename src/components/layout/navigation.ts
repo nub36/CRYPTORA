@@ -15,6 +15,7 @@ import {
   Newspaper,
   Calendar,
   PieChart,
+  FlaskConical,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -28,6 +29,11 @@ export interface NavItem {
    * активной секции и для прямого перехода в мобильном drawer).
    */
   children?: SubNavItem[];
+  /**
+   * Если true — пункт показывается только администраторам. Видимость фильтрует
+   * шапка через существующий `useAuth().isAdmin`; отдельной системы ролей нет.
+   */
+  adminOnly?: boolean;
 }
 
 export interface SubNavItem extends NavItem {
@@ -82,6 +88,22 @@ export const TOOLS_NAV_ITEMS: SubNavItem[] = [
   { label: 'Стратегии', sublabel: 'Лаборатория формализованных правил', path: '/strategies', icon: Cpu },
   { label: 'Сигналы', sublabel: 'LIVE-сетапы V3.0 / V3.3 / V2.8, журнал append-only', path: '/signals', icon: BarChart3 },
 ];
+
+/**
+ * Strategy Lab — отдельный ADMIN-ONLY пункт верхнего уровня (research-контур).
+ *
+ * Держится ОТДЕЛЬНО от PRIMARY/ANALYTICS/TOOLS и от `ALL_NAV_PATHS`, чтобы:
+ *  • не занимать слот публичной прямой навигации (бюджет ёмкости не трогаем);
+ *  • не протекать в футер/QA, которые перебирают публичные списки;
+ *  • показываться исключительно администраторам (шапка фильтрует по isAdmin).
+ * Это единственная регистрация раздела «Лаборатория» в модели навигации.
+ */
+export const LAB_NAV_ITEM: NavItem = {
+  label: 'Лаборатория',
+  path: '/strategy-lab',
+  icon: FlaskConical,
+  adminOnly: true,
+};
 
 /** Максимально допустимое число пунктов прямой навигации (см. бюджет ёмкости выше). */
 export const PRIMARY_NAV_CAPACITY = 6;

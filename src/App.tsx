@@ -37,6 +37,8 @@ const RegisterPage = React.lazy(() => import('@/pages/RegisterPage').then(m => (
 const VerifyEmailPage = React.lazy(() => import('@/pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
 const ProfilePage = React.lazy(() => import('@/pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
 const AdminPage = React.lazy(() => import('@/pages/AdminPage').then(m => ({ default: m.AdminPage })));
+// Strategy Lab — изолированный research-раздел (admin-only, RESEARCH ONLY).
+const StrategyLabPage = React.lazy(() => import('@/pages/StrategyLabPage').then(m => ({ default: m.StrategyLabPage })));
 
 const PageLoader: React.FC = () => (
   <div className="flex items-center justify-center min-h-[50vh] text-slate-400 font-sans text-sm">
@@ -80,6 +82,7 @@ export const App: React.FC = () => {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/strategy-lab" element={<StrategyLabPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
