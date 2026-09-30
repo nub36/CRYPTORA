@@ -1,0 +1,234 @@
+{
+  "dataset": {
+    "repo": "svechnoy-suslik-binance-data",
+    "commit": "c3c1dcecfe2784a147f591f2b5b4526cbf99df9f"
+  },
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "DOGEUSDT"
+  ],
+  "perSymbol": {
+    "BTCUSDT": {
+      "setups": 4458,
+      "publishable": 724,
+      "withMinutes": 724
+    },
+    "ETHUSDT": {
+      "setups": 4383,
+      "publishable": 838,
+      "withMinutes": 838
+    },
+    "BNBUSDT": {
+      "setups": 4379,
+      "publishable": 735,
+      "withMinutes": 735
+    },
+    "SOLUSDT": {
+      "setups": 4395,
+      "publishable": 780,
+      "withMinutes": 780
+    },
+    "XRPUSDT": {
+      "setups": 4918,
+      "publishable": 812,
+      "withMinutes": 812
+    },
+    "DOGEUSDT": {
+      "setups": 4234,
+      "publishable": 833,
+      "withMinutes": 833
+    }
+  },
+  "totalSetups": 26767,
+  "totalPublishable": 4722,
+  "gapNoMinute": 0,
+  "baseFrac": 0.1,
+  "expandedFrac": 0.35,
+  "primaryLagS": 60,
+  "expiryBars": 3,
+  "lags": [
+    {
+      "lagS": 0,
+      "n": 4722,
+      "insideBase": 4722,
+      "insideExpanded": 4722,
+      "outsideFavourable": 0,
+      "outsideAdverse": 0,
+      "distAtr": {
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "driftAtr": {
+        "p50": 0,
+        "p90": 0,
+        "max": 0
+      }
+    },
+    {
+      "lagS": 15,
+      "n": 4722,
+      "insideBase": 4722,
+      "insideExpanded": 4722,
+      "outsideFavourable": 0,
+      "outsideAdverse": 0,
+      "distAtr": {
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "driftAtr": {
+        "p50": 0,
+        "p90": 0,
+        "max": 0
+      }
+    },
+    {
+      "lagS": 30,
+      "n": 4722,
+      "insideBase": 4722,
+      "insideExpanded": 4722,
+      "outsideFavourable": 0,
+      "outsideAdverse": 0,
+      "distAtr": {
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "driftAtr": {
+        "p50": 0,
+        "p90": 0,
+        "max": 0
+      }
+    },
+    {
+      "lagS": 60,
+      "n": 4722,
+      "insideBase": 3093,
+      "insideExpanded": 4672,
+      "outsideFavourable": 33,
+      "outsideAdverse": 17,
+      "distAtr": {
+        "p50": 0,
+        "p75": 0.024311730390471235,
+        "p90": 0.08909501135928972,
+        "p99": 0.25430497817152614,
+        "max": 0.9095930781835145
+      },
+      "driftAtr": {
+        "p50": 0.07222862287220037,
+        "p90": 0.18909501135928572,
+        "max": 1.0095930781835072
+      }
+    },
+    {
+      "lagS": 90,
+      "n": 4722,
+      "insideBase": 3093,
+      "insideExpanded": 4672,
+      "outsideFavourable": 33,
+      "outsideAdverse": 17,
+      "distAtr": {
+        "p50": 0,
+        "p75": 0.024311730390471235,
+        "p90": 0.08909501135928972,
+        "p99": 0.25430497817152614,
+        "max": 0.9095930781835145
+      },
+      "driftAtr": {
+        "p50": 0.07222862287220037,
+        "p90": 0.18909501135928572,
+        "max": 1.0095930781835072
+      }
+    },
+    {
+      "lagS": 120,
+      "n": 4722,
+      "insideBase": 2354,
+      "insideExpanded": 4544,
+      "outsideFavourable": 97,
+      "outsideAdverse": 81,
+      "distAtr": {
+        "p50": 0.0003781969721413166,
+        "p75": 0.07145542166417812,
+        "p90": 0.15843685935453744,
+        "p99": 0.4129772774713426,
+        "max": 1.1702411234680217
+      },
+      "driftAtr": {
+        "p50": 0.1003781969721377,
+        "p90": 0.2584368593545574,
+        "max": 1.2702411234680229
+      }
+    },
+    {
+      "lagS": 300,
+      "n": 4722,
+      "insideBase": 1593,
+      "insideExpanded": 4135,
+      "outsideFavourable": 340,
+      "outsideAdverse": 247,
+      "distAtr": {
+        "p50": 0.051276827912736106,
+        "p75": 0.15714751780055738,
+        "p90": 0.2852352470670097,
+        "p99": 0.6262925166468248,
+        "max": 4.904591895970162
+      },
+      "driftAtr": {
+        "p50": 0.1512768279127381,
+        "p90": 0.3852352470670154,
+        "max": 5.00459189597016
+      }
+    }
+  ],
+  "intrabar": {
+    "n": 4722,
+    "baseFilled": 4688,
+    "expFilled": 4718,
+    "expansionOnly": 30,
+    "baseCancelledByStop": 2,
+    "expCancelledByStop": 2,
+    "baseNoTouch": 32,
+    "expNoTouch": 2,
+    "immediateBase": 4459,
+    "immediateExp": 4712,
+    "expansionOnlyDetail": [
+      "BTCUSDT 2022-04-08T13:00 LONG база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2022-12-14T18:00 SHORT база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2023-02-13T17:00 LONG база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2023-07-17T19:00 LONG база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2023-09-19T16:00 SHORT база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2023-10-29T18:00 SHORT база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2024-01-23T14:00 LONG база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2024-04-30T20:00 LONG база NONE, расширение FILL через 0 мин",
+      "BTCUSDT 2024-12-23T20:00 LONG база NONE, расширение FILL через 0 мин",
+      "ETHUSDT 2022-02-20T21:00 LONG база NONE, расширение FILL через 0 мин",
+      "ETHUSDT 2022-06-02T14:00 LONG база NONE, расширение FILL через 0 мин",
+      "ETHUSDT 2024-03-14T19:00 LONG база NONE, расширение FILL через 0 мин",
+      "ETHUSDT 2024-10-28T14:00 SHORT база NONE, расширение FILL через 0 мин",
+      "BNBUSDT 2022-08-08T12:00 SHORT база NONE, расширение FILL через 0 мин",
+      "BNBUSDT 2022-09-06T01:00 SHORT база NONE, расширение FILL через 0 мин",
+      "BNBUSDT 2024-03-14T19:00 LONG база NONE, расширение FILL через 0 мин",
+      "BNBUSDT 2024-12-14T13:00 LONG база NONE, расширение FILL через 0 мин",
+      "SOLUSDT 2022-05-08T03:00 LONG база NONE, расширение FILL через 0 мин",
+      "SOLUSDT 2024-04-30T19:00 LONG база NONE, расширение FILL через 0 мин",
+      "SOLUSDT 2024-09-24T13:00 SHORT база NONE, расширение FILL через 0 мин",
+      "SOLUSDT 2025-04-14T14:00 SHORT база NONE, расширение FILL через 0 мин",
+      "SOLUSDT 2025-08-13T13:00 SHORT база NONE, расширение FILL через 0 мин",
+      "XRPUSDT 2023-06-21T05:00 SHORT база NONE, расширение FILL через 1 мин",
+      "XRPUSDT 2023-12-03T11:00 SHORT база NONE, расширение FILL через 0 мин",
+      "XRPUSDT 2024-03-14T19:00 LONG база NONE, расширение FILL через 0 мин"
+    ]
+  }
+}
