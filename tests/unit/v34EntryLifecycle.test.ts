@@ -26,8 +26,9 @@ import type { AnalyticalSetup } from '@/services/signals/SignalsAuditLedger';
 import {
   entryEligibleFrom, entryExpiresAt, partialHourFromFill, resolveV34Entry,
   touchesZone, v34FillPrice, V34_ENTRY_EXPIRY_BARS, V34_EXEC_TF_MS,
-} from '@/services/signals/live/v34EntryLifecycle';
+} from '@/services/signals/live/research/v34EntryLifecycle';
 import { trackPublishedSetup } from '@/services/signals/live/lifecycle';
+import { trackPublishedSetupV34Research } from '@/services/signals/live/research/v34LifecycleResearch';
 import { V33_STRATEGY_ID } from '@/services/signals/live/replays/v33LiveReplay';
 import { V34_STRATEGY_ID } from '@/services/signals/live/replays/v34LiveReplay';
 import { V30_STRATEGY_ID } from '@/services/signals/live/replays/v30LiveReplay';
@@ -138,7 +139,7 @@ describe('2. после публикации цена не касается зо
 
   it('в lifecycle это UNCHANGED, а не выдуманный исход', () => {
     const h1 = [hour(SETUP_OPEN, 105, 106, 104, 105)];
-    const r = trackPublishedSetup(setup(), h1, { m1: calmMinutes(SETUP_CLOSE + MIN, 45, 105) });
+    const r = trackPublishedSetupV34Research(setup(), h1, calmMinutes(SETUP_CLOSE + MIN, 45, 105));
     expect(r.kind).toBe('UNCHANGED');
   });
 });
@@ -311,7 +312,7 @@ describe('8. касания не было → истечение', () => {
     const expiresAt = entryExpiresAt(LONG);
     const total = Math.ceil((expiresAt - SETUP_CLOSE) / MIN) + 5;
     const h1 = [hour(SETUP_OPEN, 105, 106, 104, 105)];
-    const r = trackPublishedSetup(setup(), h1, { m1: calmMinutes(SETUP_CLOSE + MIN, total, 105) });
+    const r = trackPublishedSetupV34Research(setup(), h1, calmMinutes(SETUP_CLOSE + MIN, total, 105));
     expect(r.kind).toBe('RESOLVED');
     if (r.kind !== 'RESOLVED') throw new Error('unreachable');
     expect(r.fill).toBeNull();
@@ -349,7 +350,7 @@ describe('9. TP до входа не считается TP', () => {
       ...calmMinutes(SETUP_CLOSE + MIN, 3, 105),
       m(SETUP_CLOSE + 4 * MIN, 106, 111, 105.5, 110.5),
     ];
-    const r = trackPublishedSetup(setup(), h1, { m1 });
+    const r = trackPublishedSetupV34Research(setup(), h1, m1);
     expect(r.kind).toBe('RESOLVED');
     if (r.kind !== 'RESOLVED') throw new Error('unreachable');
     expect(r.fill).toBeNull();
@@ -398,7 +399,7 @@ describe('10. SL до входа не считается убытком сдел
   it('в lifecycle это CANCELLED со STOP_BEFORE_ENTRY и без R', () => {
     const h1 = [hour(SETUP_OPEN, 105, 106, 104, 105)];
     const m1 = [m(SETUP_CLOSE + MIN, 97, 97.2, 94.5, 94.8)];
-    const r = trackPublishedSetup(setup(), h1, { m1 });
+    const r = trackPublishedSetupV34Research(setup(), h1, m1);
     expect(r.kind).toBe('RESOLVED');
     if (r.kind !== 'RESOLVED') throw new Error('unreachable');
     expect(r.fill).toBeNull();
@@ -424,7 +425,7 @@ describe('11. после входа работает существующий ц
       // следующий час возвращается ровно к цене входа ⇒ стоп в безубытке срабатывает
       hour(SETUP_CLOSE + HOUR, 110, 111, 101, 101.5),
     ];
-    const r = trackPublishedSetup(setup(), h1, { m1 });
+    const r = trackPublishedSetupV34Research(setup(), h1, m1);
     expect(r.kind).toBe('RESOLVED');
     if (r.kind !== 'RESOLVED') throw new Error('unreachable');
     expect(r.fill!.price).toBe(102);
@@ -439,7 +440,7 @@ describe('11. после входа работает существующий ц
       hour(SETUP_OPEN, 105, 106, 104, 105),
       hour(SETUP_CLOSE, 105, 131, 94, 130),
     ];
-    const r = trackPublishedSetup(setup(), h1, { m1: calmMinutes(SETUP_CLOSE + MIN, 30, 105) });
+    const r = trackPublishedSetupV34Research(setup(), h1, calmMinutes(SETUP_CLOSE + MIN, 30, 105));
     expect(r.kind).toBe('UNCHANGED');
   });
 });
@@ -452,7 +453,7 @@ describe('12. после входа работает существующий ц
       hour(SETUP_OPEN, 105, 106, 104, 105),
       hour(SETUP_CLOSE + HOUR, 103, 131, 102.5, 130.5),   // TP2 = 130
     ];
-    const r = trackPublishedSetup(setup(), h1, { m1 });
+    const r = trackPublishedSetupV34Research(setup(), h1, m1);
     expect(r.kind).toBe('RESOLVED');
     if (r.kind !== 'RESOLVED') throw new Error('unreachable');
     expect(r.outcome.exitReason).toBe('TP2');
@@ -467,7 +468,7 @@ describe('12. после входа работает существующий ц
       hour(SETUP_OPEN, 105, 106, 104, 105),
       hour(SETUP_CLOSE + HOUR, 102, 102.5, 94, 94.5),
     ];
-    const r = trackPublishedSetup(setup(), h1, { m1 });
+    const r = trackPublishedSetupV34Research(setup(), h1, m1);
     expect(r.kind).toBe('RESOLVED');
     if (r.kind !== 'RESOLVED') throw new Error('unreachable');
     expect(r.outcome.status).toBe('INVALIDATED');
@@ -509,45 +510,43 @@ describe('13. историческая семантика V3.0/V3.3 не изм�
     expect(r.fill!.barOpenTime).toBe(SETUP_CLOSE);
   });
 
-  it('передача минутных свечей на V3.3 НИЧЕГО не меняет', () => {
-    const withM1 = trackPublishedSetup(setup({ strategyId: V33_STRATEGY_ID }), h1, {
-      m1: calmMinutes(SETUP_CLOSE + MIN, 300, 105),
-    });
-    const withoutM1 = trackPublishedSetup(setup({ strategyId: V33_STRATEGY_ID }), h1);
-    expect(withM1).toEqual(withoutM1);
+  it('продуктовый trackPublishedSetup вообще не принимает минутные свечи', () => {
+    // Раньше эксперимент включался третьим аргументом. Теперь его нет: у
+    // продуктовой функции ровно два параметра, и включить экспериментальный
+    // вход из рантайма нечем — это сильнее прежней проверки «опция
+    // игнорируется».
+    expect(trackPublishedSetup.length).toBe(2);
   });
 
-  it('V3.0 тоже не затронут', () => {
+  it('V3.0 не затронут', () => {
     const a = trackPublishedSetup(setup({ strategyId: V30_STRATEGY_ID }), h1);
-    const b = trackPublishedSetup(setup({ strategyId: V30_STRATEGY_ID }), h1, { m1: calmMinutes(SETUP_CLOSE, 200, 105) });
-    expect(a).toEqual(b);
     expect(a.kind).toBe('RESOLVED');
   });
 
-  it('НОВЫЙ ЦИКЛ НЕ ПОДКЛЮЧЁН: V3.4 без минуток ведётся ровно как сегодня', () => {
-    // Ни один продуктовый вызов минутные свечи не передаёт, поэтому в рантайме
-    // V3.4 обязана вести себя в точности как прежде — часовой семантикой.
+  it('ЭКСПЕРИМЕНТ НЕ ПОДКЛЮЧЁН: V3.4 в рантайме ведётся ровно как V3.3', () => {
+    // Единственный достижимый в проде путь — часовой trackCorridor с
+    // константами V3.3. Он обязан давать тот же результат, что и V3.3.
     const v34 = trackPublishedSetup(setup(), h1);
     const v33 = trackPublishedSetup(setup({ strategyId: V33_STRATEGY_ID }), h1);
     expect(v34.kind).toBe('RESOLVED');
     expect(v34).toEqual(v33);
   });
 
-  it('пустая минутная серия тоже не включает новый цикл', () => {
-    expect(trackPublishedSetup(setup(), h1, { m1: [] }))
-      .toEqual(trackPublishedSetup(setup(), h1));
+  it('research-вход отвергает пустую минутную серию, а не выдумывает вход', () => {
+    const r = trackPublishedSetupV34Research(setup(), h1, []);
+    expect(r.kind).toBe('SKIP');
   });
 
-  it('новый цикл включается ТОЛЬКО явной передачей минуток', () => {
-    const optedIn = trackPublishedSetup(setup(), h1, { m1: calmMinutes(SETUP_CLOSE + MIN, 30, 105) });
-    expect(optedIn.kind).toBe('UNCHANGED');                 // зона после публикации не задета
-    expect(optedIn).not.toEqual(trackPublishedSetup(setup(), h1));
+  it('research-вход даёт ДРУГОЙ результат, чем продуктовый путь — в этом и смысл', () => {
+    const research = trackPublishedSetupV34Research(setup(), h1, calmMinutes(SETUP_CLOSE + MIN, 30, 105));
+    expect(research.kind).toBe('UNCHANGED');                // зона после публикации не задета
+    expect(research).not.toEqual(trackPublishedSetup(setup(), h1));
   });
 
-  it('V3.4 и V3.3 на одних данных дают РАЗНЫЙ вход — в этом и смысл', () => {
+  it('V3.4 research и V3.3 на одних данных дают РАЗНЫЙ вход', () => {
     const v33 = trackPublishedSetup(setup({ strategyId: V33_STRATEGY_ID }), h1);
     // у V3.4 после публикации цена в зону не возвращается
-    const v34 = trackPublishedSetup(setup(), h1, { m1: calmMinutes(SETUP_CLOSE + MIN, 30, 105) });
+    const v34 = trackPublishedSetupV34Research(setup(), h1, calmMinutes(SETUP_CLOSE + MIN, 30, 105));
     expect(v33.kind).toBe('RESOLVED');
     expect(v34.kind).toBe('UNCHANGED');
   });

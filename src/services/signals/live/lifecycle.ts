@@ -6,11 +6,7 @@
  * захэшированы), а не по повторному прогону стратегии. Используются те же
  * замороженные функции архива, что и в исследовании:
  *
- *   • V3.4 (LIMIT_CORRIDOR): СОБСТВЕННЫЙ вход по закрытым минутным свечам
- *     (`v34EntryLifecycle.ts`): бар-триггер не исполняет сам себя, наблюдение
- *     начинается не раньше публикации, до касания зоны позиции нет. После
- *     исполнения — та же `manageTrade` V3.3, без изменений;
- *   • V3.0 / V3.3 (LIMIT_CORRIDOR): `corridorStep` (N+1…N+3: исполнение по худшей
+ *   • V3.0 / V3.3 / V3.4 (LIMIT_CORRIDOR): `corridorStep` (N+1…N+3: исполнение по худшей
  *     границе, отмена при касании стопа, отклонение геометрии, истечение) →
  *     `manageTrade` соответствующей версии (стоп раньше целей, TP1 → BE со
  *     следующего бара, таймаут 50 / 48 баров);
@@ -30,7 +26,6 @@ import { V33_STRATEGY_ID } from './replays/v33LiveReplay';
 import { V34_STRATEGY_ID } from './replays/v34LiveReplay';
 import { V28_STRATEGY_ID } from './replays/v28LiveReplay';
 import { managedExitPrice, managedStatus, round } from './replays/shared';
-import { partialHourFromFill, resolveV34Entry } from './v34EntryLifecycle';
 
 export type LifecycleResult =
   /** Ничего нового по закрытым свечам. */
@@ -42,36 +37,21 @@ export type LifecycleResult =
   /** Финальный исход (с исполнением или без). */
   | { kind: 'RESOLVED'; fill: SetupFill | null; outcome: SetupOutcome };
 
-function isoOf(ms: number): string {
+export function isoOf(ms: number): string {
   return new Date(ms).toISOString();
 }
 
-function pnlPct(direction: 'LONG' | 'SHORT', entry: number, exit: number): number {
+export function pnlPct(direction: 'LONG' | 'SHORT', entry: number, exit: number): number {
   if (!(entry > 0)) return 0;
   const raw = direction === 'LONG' ? (exit - entry) / entry : (entry - exit) / entry;
   return round(raw * 100, 4);
 }
 
-function noTrade(status: 'EXPIRED' | 'CANCELLED' | 'UNRESOLVED', at: number, reason: string): SetupOutcome {
+export function noTrade(status: 'EXPIRED' | 'CANCELLED' | 'UNRESOLVED', at: number, reason: string): SetupOutcome {
   return { status, closedAt: isoOf(at), exitReason: reason, exitPrice: null, resultR: null, netResultR: null, pnlResultPct: null, barsHeld: null };
 }
 
-/**
- * Дополнительные наблюдения рынка для стратегий, у которых вход — реальное
- * событие, а не следствие закрытия часового бара.
- *
- * Сейчас это только V3.4: ей нужны ЗАКРЫТЫЕ минутные свечи, чтобы проверить
- * касание опубликованной зоны после публикации. V3.0/V3.3 поле игнорируют —
- * их путь не читает `opts` вообще.
- */
-export interface TrackOptions {
-  /** Закрытые 1m-свечи по возрастанию openTime (только V3.4). */
-  m1?: readonly ArchiveCandle[];
-}
-
-export function trackPublishedSetup(
-  entry: AnalyticalSetup, h1: readonly ArchiveCandle[], opts?: TrackOptions,
-): LifecycleResult {
+export function trackPublishedSetup(entry: AnalyticalSetup, h1: readonly ArchiveCandle[]): LifecycleResult {
   if (h1.length === 0) return { kind: 'SKIP', reason: 'нет закрытых свечей' };
   const first = h1[0]!;
   const last = h1[h1.length - 1]!;
@@ -88,132 +68,18 @@ export function trackPublishedSetup(
   }
   if (setupIndex < 0) return { kind: 'SKIP', reason: 'бар сетапа отсутствует в окне данных' };
 
-  /**
-   * V3.4 — исследовательский жизненный цикл входа. НЕ ПОДКЛЮЧЁН.
-   *
-   * Ветка срабатывает ТОЛЬКО когда вызывающий явно передал минутные свечи.
-   * Ни один продуктовый вызов их не передаёт (`LiveSignalEngine.trackOpenSetups`,
-   * `signalMonitor.js`), поэтому в рантайме V3.4 продолжает вестись ровно так
-   * же, как вчера, — существующей часовой семантикой `trackCorridor`. Это
-   * сознательный opt-in: канонические статусы, модель исполнения и судьба
-   * исторической ретроспективы ещё не решены (см.
-   * docs/V34_REAL_ENTRY_LIFECYCLE_2026-09-30.md, раздел «known issue»).
-   *
-   * Проверка стоит ДО правила «бар сетапа последний ⇒ UNCHANGED»: минутный
-   * вход наступает внутри часа, когда часовой бар ещё не закрылся.
-   * V3.0/V3.3 сюда не попадают ни при каких аргументах.
-   */
-  if (
-    entry.strategyId === V34_STRATEGY_ID
-    && entry.entryType === 'LIMIT_CORRIDOR'
-    && opts?.m1 !== undefined && opts.m1.length > 0
-  ) {
-    return trackCorridorV34(entry, h1, opts);
-  }
-
   if (setupIndex === h1.length - 1) return { kind: 'UNCHANGED' };
 
   if (entry.entryType === 'MARKET_NEXT_OPEN') return trackNextOpen(entry, h1, setupIndex);
   return trackCorridor(entry, h1, setupIndex);
 }
 
-/**
- * V3.4: опубликовано → WAITING_FOR_ENTRY → FILLED → TP1/TP2/SL.
- *
- * Отличие от `trackCorridor` ровно одно — УЧАСТОК ВХОДА. После исполнения
- * сопровождение идёт той же замороженной `manageTradeV33` с теми же
- * константами, что и у V3.3: правила выхода не менялись и не дублировались.
- *
- * Вызывается только когда минутные свечи переданы явно (см. развилку в
- * `trackPublishedSetup`). Пустая серия сюда не доходит: без данных о рынке
- * после публикации подтвердить вход нечем, и выдумывать его нельзя.
- */
-function trackCorridorV34(
-  entry: AnalyticalSetup, h1: readonly ArchiveCandle[], opts?: TrackOptions,
-): LifecycleResult {
-  const m1 = opts?.m1;
-  if (!m1 || m1.length === 0) {
-    return { kind: 'SKIP', reason: 'V3.4: нет минутных свечей — вход по часовым не подтверждается' };
-  }
-  // Ниже — участок входа; всё, что после FILLED, отдаётся замороженной V3.3.
-  const tp1 = entry.targets[0];
-  const tp2 = entry.targets[1] ?? entry.targets[0];
-  if (tp1 === undefined || tp2 === undefined) return { kind: 'SKIP', reason: 'у публикации нет целей' };
-  const publishedAtMs = Date.parse(entry.createdAt);
-  if (!Number.isFinite(publishedAtMs)) return { kind: 'SKIP', reason: 'у публикации нет времени создания' };
-
-  const res = resolveV34Entry({
-    direction: entry.direction,
-    zoneLow: entry.entryZone[0],
-    zoneHigh: entry.entryZone[1],
-    stop: entry.invalidationLevel,
-    tp1,
-    setupOpenTime: entry.setupOpenTime,
-    publishedAtMs,
-    m1,
-  });
-
-  // До исполнения позиции нет: ни TP, ни SL не могут дать результат сделки.
-  if (res.state === 'WAITING_FOR_ENTRY') return { kind: 'UNCHANGED' };
-  if (res.state === 'INVALIDATED') {
-    return { kind: 'RESOLVED', fill: null, outcome: noTrade('CANCELLED', res.decidedAt ?? entry.setupOpenTime, 'STOP_BEFORE_ENTRY') };
-  }
-  if (res.state === 'MISSED') {
-    return { kind: 'RESOLVED', fill: null, outcome: noTrade('CANCELLED', res.decidedAt ?? entry.setupOpenTime, 'MISSED') };
-  }
-  if (res.state === 'EXPIRED') {
-    return { kind: 'RESOLVED', fill: null, outcome: noTrade('EXPIRED', res.expiresAt, 'EXPIRED') };
-  }
-
-  const f = res.fill!;
-  // Геометрия проверяется на фактической цене входа — та же проверка, что в
-  // замороженном `corridorStep`, потому что цена исполнения могла оказаться
-  // лучше опубликованной грани (гэп сквозь зону).
-  const long = entry.direction === 'LONG';
-  const stop = entry.invalidationLevel;
-  const risk = Math.abs(f.price - stop);
-  const geomOk = risk > 0
-    && (long ? stop < f.price : stop > f.price)
-    && (long ? tp1 > f.price && tp2 > tp1 : tp1 < f.price && tp2 < tp1);
-  if (!geomOk) {
-    return { kind: 'RESOLVED', fill: null, outcome: noTrade('CANCELLED', f.barOpenTime, 'REJECTED_GEOMETRY') };
-  }
-
-  const fill: SetupFill = { price: f.price, at: isoOf(f.barOpenTime), barOpenTime: f.barOpenTime, stop, targets: [tp1, tp2] };
-
-  // Первый бар сопровождения — остаток часа от минуты входа; дальше обычные
-  // часовые бары. Так `manageTrade` не видит движение, случившееся ДО входа.
-  const partial = partialHourFromFill(m1, f.barOpenTime);
-  if (!partial) return { kind: 'FILLED', fill };
-  const rest = h1.filter((c) => c.openTime > partial.openTime).slice(0, V33_CONSTANTS.TIMEOUT_BARS + 1);
-  const bars: ArchiveCandle[] = [partial, ...rest];
-
-  const r = manageTradeV33(entry.direction, f.price, stop, tp1, tp2, bars);
-  if (!r) return { kind: 'FILLED', fill };
-  const lastBar = bars[Math.min(bars.length, r.barsHeld) - 1]!;
-  const exitPrice = managedExitPrice(r.exit, f.price, stop, tp2, lastBar);
-  const fee = r.feeR(V33_CONSTANTS.MAKER_BPS, V33_CONSTANTS.TAKER_BPS);
-  return {
-    kind: 'RESOLVED', fill,
-    outcome: {
-      status: managedStatus(r.exit),
-      closedAt: isoOf(lastBar.closeTime),
-      exitReason: r.exit,
-      exitPrice,
-      resultR: round(r.grossR, 4),
-      netResultR: round(r.grossR - fee, 4),
-      pnlResultPct: exitPrice !== null ? pnlPct(entry.direction, f.price, exitPrice) : null,
-      barsHeld: r.barsHeld,
-    },
-  };
-}
-
 function trackCorridor(entry: AnalyticalSetup, h1: readonly ArchiveCandle[], setupIndex: number): LifecycleResult {
-  // V3.4 сюда БОЛЬШЕ НЕ ПОПАДАЕТ: её вход разбирает `trackCorridorV34` по
-  // минутным свечам (ветка выше). Проверка оставлена намеренно — если маршрут
-  // когда-нибудь изменится, сетап V3.4 должен вестись теми же константами
-  // V3.3, а не уходить в SKIP «неизвестная стратегия». Сопровождение позиции
-  // у V3.3 и V3.4 идентично; различается только участок входа.
+  // V3.4 ведётся ЗДЕСЬ, теми же константами V3.3: у неё отличается только
+  // отбор сетапа (расширенный коридор + фильтр качества целей), а коридорный
+  // вход и сопровождение позиции после публикации идентичны V3.3.
+  // Экспериментальный вход по минутным свечам в рантайме НЕ используется и в
+  // этом модуле отсутствует — см. research/v34LifecycleResearch.ts.
   const isV33 = entry.strategyId === V33_STRATEGY_ID || entry.strategyId === V34_STRATEGY_ID;
   const isV30 = entry.strategyId === V30_STRATEGY_ID;
   if (!isV30 && !isV33) return { kind: 'SKIP', reason: `неизвестная стратегия коридора ${entry.strategyId}` };
