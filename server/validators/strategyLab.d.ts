@@ -12,6 +12,9 @@ import {
 
 export const LAB_TIMEFRAMES: readonly string[];
 export const LAB_TF_MS: Readonly<Record<string, number>>;
+export const REST_MAX_CANDLES: number;
+export const LOCAL_MAX_CANDLES: number;
+/** @deprecated Alias for REST_MAX_CANDLES. */
 export const LAB_MAX_CANDLES: number;
 
 export {

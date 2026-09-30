@@ -3,7 +3,8 @@
  * ---------------------------------------------------------------------------
  * Серверная валидация — ОБЯЗАТЕЛЬНА (§12): фронтенд не является источником
  * истины. Zod-схема отклоняет неизвестные таймфреймы, некорректный draft definition /
- * config и запросы, которые превысили бы жёсткий потолок свечей/диапазона (§13, §14).
+ * config и базовую корректность диапазона. Источник-специфичный потолок свечей
+ * применяется сервисом только после проверки покрытия локального архива.
  *
  * ZodError глобально превращается в 400 (server/middleware/errorHandler.js).
  */
@@ -11,20 +12,24 @@
 import { z } from 'zod';
 
 /** Разрешённые таймфреймы Lab (зеркало src/services/strategyLab/types.ts). */
-export const LAB_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
+export const LAB_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
 
 /** Длительность бара в мс — для проверки диапазона. */
 export const LAB_TF_MS = {
   '1m': 60_000,
   '5m': 5 * 60_000,
   '15m': 15 * 60_000,
+  '30m': 30 * 60_000,
   '1h': 60 * 60_000,
   '4h': 4 * 60 * 60_000,
   '1d': 24 * 60 * 60_000,
 };
 
-/** Жёсткий потолок закрытых свечей на один replay. */
-export const LAB_MAX_CANDLES = 5000;
+/** Лимиты применяются ПОСЛЕ выбора источника в Lab-сервисе. */
+export const REST_MAX_CANDLES = 5000;
+export const LOCAL_MAX_CANDLES = 120000;
+/** @deprecated Совместимый alias старого REST-лимита. */
+export const LAB_MAX_CANDLES = REST_MAX_CANDLES;
 
 const SYMBOL_RE = /^[A-Z0-9]{2,25}$/;
 
@@ -234,7 +239,7 @@ export const replayRequestSchema = z
       .string()
       .transform((s) => s.trim().toUpperCase())
       .refine((s) => SYMBOL_RE.test(s), { message: 'Некорректный символ' }),
-    timeframe: z.enum(['1m', '5m', '15m', '1h', '4h', '1d']),
+    timeframe: z.enum(['1m', '5m', '15m', '30m', '1h', '4h', '1d']),
     from: timestampMs,
     to: timestampMs,
     researchConfig: researchConfigSchema.optional(),
@@ -255,15 +260,8 @@ export const replayRequestSchema = z
       });
       return;
     }
-    const spanMs = LAB_TF_MS[req.timeframe];
-    const estimatedBars = Math.ceil((req.to - req.from) / spanMs);
-    if (estimatedBars > LAB_MAX_CANDLES) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['to'],
-        message: `Диапазон ~${estimatedBars} свечей превышает лимит ${LAB_MAX_CANDLES}. Сузьте период или увеличьте таймфрейм.`,
-      });
-    }
+    // Лимит нельзя применять здесь: сначала Lab-сервис должен определить,
+    // покрывает ли запрос локальный архив (120000) или нужен REST (5000).
   });
 
 /** Разобрать и валидировать тело POST /api/strategy-lab/replay. Бросает ZodError. */

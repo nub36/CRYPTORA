@@ -23,6 +23,21 @@ export interface StrategiesResponse {
   researchOnly: boolean;
 }
 
+export type LabDataCoverage =
+  | { datasetAvailable: false }
+  | {
+      datasetAvailable: true;
+      coverageFrom: string | null;
+      coverageTo: string | null;
+      markets: LabMarket[];
+      symbols: string[];
+      timeframes: string[];
+      validSeries: number;
+      totalSeries: number;
+      datasetVersion: string;
+      manifestGeneratedAt: string;
+    };
+
 export interface ReplayRequestBody {
   strategyId?: string;
   strategyDefinition?: StrategyDraftDefinition;
@@ -58,6 +73,15 @@ async function parseError(res: Response): Promise<never> {
 
 export async function fetchLabStrategies(signal?: AbortSignal): Promise<StrategiesResponse> {
   const res = await fetch('/api/strategy-lab/strategies', {
+    credentials: 'include',
+    signal,
+  });
+  if (!res.ok) return parseError(res);
+  return res.json();
+}
+
+export async function fetchLabDataCoverage(signal?: AbortSignal): Promise<LabDataCoverage> {
+  const res = await fetch('/api/strategy-lab/data-coverage', {
     credentials: 'include',
     signal,
   });

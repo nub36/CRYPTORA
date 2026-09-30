@@ -9,6 +9,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Play, PlusCircle, Save, FolderOpen, Loader2, ChevronDown } from 'lucide-react';
 import type { LabMarket, LabTimeframe } from '@/services/strategyLab/types';
 import { LAB_TIMEFRAMES } from '@/services/strategyLab/types';
+import type { LabDataCoverage } from '@/services/strategyLab/labClient';
 import { SymbolPickerModal } from '@/components/common/SymbolPickerModal';
 import { getSpotUniverse, getFuturesUniverse } from '@/services/data/registry/exchangeUniverse';
 import { getCoinNames } from '@/services/data/registry/coinLogoRegistry';
@@ -28,10 +29,18 @@ interface LabControlsProps {
   onNewStrategy: () => void;
   onRun: () => void;
   loading: boolean;
+  coverage?: LabDataCoverage | null;
 }
 
 const fieldCls =
   'rounded-md border border-white/[0.1] bg-surface-2 px-2.5 py-1.5 text-[13px] text-white outline-none focus:border-cyan-500/50';
+
+function formatCoverageDate(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '—';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}.${date.getUTCFullYear()}`;
+}
 
 function formatDisplayPair(symbol: string): string {
   const s = symbol.trim().toUpperCase();
@@ -49,6 +58,7 @@ export const LabControls: React.FC<LabControlsProps> = ({
   onNewStrategy,
   onRun,
   loading,
+  coverage = null,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [availableAssets, setAvailableAssets] = useState<{ symbol: string; name: string }[]>([]);
@@ -232,6 +242,25 @@ export const LabControls: React.FC<LabControlsProps> = ({
           />
         </label>
       </div>
+
+      {coverage && (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1 text-[11px] text-slate-400"
+          data-testid="strategy-lab-data-coverage"
+        >
+          {coverage.datasetAvailable && coverage.coverageFrom && coverage.coverageTo ? (
+            <>
+              <span className="font-semibold text-slate-300">История:</span>
+              <span className="font-mono">
+                {formatCoverageDate(coverage.coverageFrom)} — {formatCoverageDate(coverage.coverageTo)}
+              </span>
+              <span className="text-emerald-400">Локальный архив</span>
+            </>
+          ) : (
+            <span className="text-slate-500">Локальный архив недоступен</span>
+          )}
+        </div>
+      )}
 
       <SymbolPickerModal
         open={pickerOpen}

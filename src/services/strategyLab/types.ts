@@ -16,7 +16,7 @@
  */
 
 /** Таймфреймы, разрешённые в Lab (собственный список; НЕ production `Timeframe`). */
-export const LAB_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
+export const LAB_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'] as const;
 export type LabTimeframe = (typeof LAB_TIMEFRAMES)[number];
 
 /** Длительность бара в СЕКУНДАХ — для проверки диапазона и семантики закрытия. */
@@ -24,6 +24,7 @@ export const LAB_TF_SECONDS: Readonly<Record<LabTimeframe, number>> = Object.fre
   '1m': 60,
   '5m': 5 * 60,
   '15m': 15 * 60,
+  '30m': 30 * 60,
   '1h': 60 * 60,
   '4h': 4 * 60 * 60,
   '1d': 24 * 60 * 60,
@@ -32,8 +33,11 @@ export const LAB_TF_SECONDS: Readonly<Record<LabTimeframe, number>> = Object.fre
 export type LabMarket = 'spot' | 'futures';
 export type LabSide = 'LONG' | 'SHORT';
 
-/** Жёсткий потолок числа ЗАКРЫТЫХ свечей на один replay (§13). */
-export const LAB_MAX_CANDLES = 5000;
+/** Источник-специфичные потолки; сервер применяет их после выбора источника. */
+export const REST_MAX_CANDLES = 5000;
+export const LOCAL_MAX_CANDLES = 120000;
+/** @deprecated Совместимый alias старого REST-лимита. */
+export const LAB_MAX_CANDLES = REST_MAX_CANDLES;
 
 /**
  * Свеча Lab. `time`/`closeTime` — Unix-секунды. `closeTime` = последняя секунда
@@ -219,6 +223,15 @@ export interface LabMetrics {
 }
 
 export interface LabReplayMeta {
+  /** Server replay source; pure engine calls may omit it before orchestration. */
+  dataSource?: 'local-dataset' | 'binance-rest';
+  dataset?: {
+    version: string;
+    manifestGeneratedAt: string;
+    coverageFrom: string;
+    coverageTo: string;
+    seriesSha256: string;
+  };
   strategyId: string;
   strategyName: string;
   market: LabMarket;

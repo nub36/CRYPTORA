@@ -10,7 +10,7 @@
  * Жёсткие границы (§13):
  *   • одна пара symbol × timeframe × market за запрос;
  *   • чанки по ≤ 1000 баров, пагинация по startTime/endTime;
- *   • hard max = LAB_MAX_CANDLES (5000) ЗАКРЫТЫХ свечей;
+ *   • hard REST max = REST_MAX_CANDLES (5000) ЗАКРЫТЫХ свечей;
  *   • формирующаяся (незакрытая) свеча ОТБРАСЫВАЕТСЯ (closeTime должен быть < now).
  *
  * Возвращает LabCandle[] с временем в СЕКУНДАХ (time = openTime/1000,
@@ -27,6 +27,7 @@ const INTERVAL_BY_TIMEFRAME = Object.freeze({
   '1m': '1m',
   '5m': '5m',
   '15m': '15m',
+  '30m': '30m',
   '1h': '1h',
   '4h': '4h',
   '1d': '1d',
@@ -36,12 +37,15 @@ const TF_MS = Object.freeze({
   '1m': 60_000,
   '5m': 5 * 60_000,
   '15m': 15 * 60_000,
+  '30m': 30 * 60_000,
   '1h': 60 * 60_000,
   '4h': 4 * 60 * 60_000,
   '1d': 24 * 60 * 60_000,
 });
 
-export const LAB_MAX_CANDLES = 5000;
+export const REST_MAX_CANDLES = 5000;
+/** @deprecated Compatibility alias for the REST-only limit. */
+export const LAB_MAX_CANDLES = REST_MAX_CANDLES;
 
 export class LabHistoricalError extends Error {
   constructor(message, code = 'LAB_HISTORICAL_ERROR') {
@@ -52,7 +56,9 @@ export class LabHistoricalError extends Error {
 }
 
 function endpointFor(market) {
-  return market === 'futures' ? BINANCE_FUTURES : BINANCE_SPOT;
+  if (market === 'spot') return BINANCE_SPOT;
+  if (market === 'futures') return BINANCE_FUTURES;
+  throw new LabHistoricalError(`Unsupported market: ${market}`, 'BAD_MARKET');
 }
 
 /**
@@ -67,7 +73,7 @@ export async function fetchLabCandles(params, options = {}) {
   const { market, symbol, timeframe, fromMs, toMs } = params;
   const fetchFn = options.fetchFn ?? globalThis.fetch;
   const nowMs = options.nowMs ?? Date.now();
-  const maxCandles = options.maxCandles ?? LAB_MAX_CANDLES;
+  const maxCandles = options.maxCandles ?? REST_MAX_CANDLES;
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 
   const interval = INTERVAL_BY_TIMEFRAME[timeframe];

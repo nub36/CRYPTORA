@@ -1,16 +1,26 @@
 /**
- * CRYPTORA — Strategy Lab · сервис (RESEARCH ONLY, изолированно)
- * ---------------------------------------------------------------------------
- * Оркестрация одного replay: исторические свечи (Lab-сервис) → исследовательское
- * ядро из src/ (esbuild-бандл) → результат. НИКАКИХ production-записей: не
- * трогает strategy_settings, signals, strategy_test_runs, scheduler, БД.
+ * CRYPTORA — Strategy Lab service (RESEARCH ONLY, isolated).
  *
- * Server = source of truth: индикаторы/entry/stop/tp/rejection/метрики считает
- * ЯДРО на сервере, фронтенд только визуализирует ответ.
+ * Orchestrates one replay: exact local archive when it fully covers the range,
+ * otherwise the existing Lab-only Binance REST reader. It never touches the
+ * production market pipeline, DB, settings, signals, test runs, or scheduler.
  */
 
 import { loadLabCore } from './labCoreBundle.js';
 import { fetchLabCandles } from './historicalCandles.js';
+import {
+  inspectLocalSeriesCoverage,
+  readLocalHistoricalCandles,
+} from './localHistoricalCandles.js';
+import {
+  LAB_TF_MS,
+  REST_MAX_CANDLES,
+  LOCAL_MAX_CANDLES,
+} from '../../validators/strategyLab.js';
+
+const LOCAL_ARCHIVE_TIMEFRAMES = new Set(['5m', '15m', '30m', '1h', '4h']);
+
+export { REST_MAX_CANDLES, LOCAL_MAX_CANDLES };
 
 export class LabRequestError extends Error {
   constructor(message, status = 400, code = 'LAB_BAD_REQUEST') {
@@ -21,21 +31,94 @@ export class LabRequestError extends Error {
   }
 }
 
-/** Список исследовательских стратегий + описатели параметров (для UI). */
+/** List research strategies and parameter descriptors for the UI. */
 export async function listStrategies() {
   const core = await loadLabCore();
   return core.LAB_STRATEGIES;
 }
 
+export function estimateRequestedCandles(parsed) {
+  const intervalMs = LAB_TF_MS[parsed.timeframe];
+  if (!intervalMs || !(parsed.from < parsed.to)) {
+    throw new LabRequestError('Некорректный диапазон или таймфрейм', 400, 'BAD_RANGE');
+  }
+  return Math.ceil((parsed.to - parsed.from) / intervalMs);
+}
+
+function enforceLimit(estimated, maximum, source) {
+  if (estimated <= maximum) return;
+  const sourceLabel = source === 'local-dataset' ? 'локального архива' : 'Binance REST';
+  throw new LabRequestError(
+    `Диапазон требует ~${estimated} свечей, максимум для ${sourceLabel}: ${maximum}. Сузьте период или увеличьте таймфрейм.`,
+    400,
+    source === 'local-dataset' ? 'LOCAL_RANGE_TOO_LARGE' : 'REST_RANGE_TOO_LARGE'
+  );
+}
+
 /**
- * Выполнить replay. `parsed` — уже провалидированный объект из
- * validators/strategyLab.js (strategyId / strategyDefinition, market, symbol,
- * timeframe, from(ms), to(ms), researchConfig).
- *
- * @param {{ fetchFn?: typeof fetch, nowMs?: number }} [options]
+ * Select one exact source only after basic request validation. Test seams are
+ * optional and never used by the HTTP route in production.
+ */
+export async function selectHistoricalCandles(parsed, options = {}) {
+  const params = {
+    market: parsed.market,
+    symbol: parsed.symbol,
+    timeframe: parsed.timeframe,
+    fromMs: parsed.from,
+    toMs: parsed.to,
+  };
+  const estimated = estimateRequestedCandles(parsed);
+  const inspect = options.localInspector ?? inspectLocalSeriesCoverage;
+  const readLocal = options.localReader ?? readLocalHistoricalCandles;
+
+  const inspection = LOCAL_ARCHIVE_TIMEFRAMES.has(parsed.timeframe)
+    ? await inspect(params, { root: options.dataRoot })
+    : { datasetAvailable: false, covered: false, reason: 'unsupported-local-timeframe' };
+
+  if (inspection.covered) {
+    enforceLimit(estimated, LOCAL_MAX_CANDLES, 'local-dataset');
+    const local = await readLocal(params, {
+      root: options.dataRoot,
+      nowMs: options.nowMs,
+      inspection,
+    });
+    if (!local?.covered || !Array.isArray(local.candles)) {
+      throw new LabRequestError('Локальный архив изменился во время чтения', 503, 'LOCAL_DATA_CHANGED');
+    }
+    return {
+      candles: local.candles,
+      meta: {
+        dataSource: 'local-dataset',
+        dataset: {
+          version: local.meta.datasetVersion,
+          manifestGeneratedAt: local.meta.manifestGeneratedAt,
+          coverageFrom: local.meta.coverageFrom,
+          coverageTo: local.meta.coverageTo,
+          seriesSha256: local.meta.seriesSha256,
+        },
+      },
+    };
+  }
+
+  // Missing series or insufficient coverage may use REST, but the strict REST
+  // cap remains unchanged and is enforced before any external request.
+  enforceLimit(estimated, REST_MAX_CANDLES, 'binance-rest');
+  const candles = await fetchLabCandles(params, {
+    fetchFn: options.fetchFn,
+    nowMs: options.nowMs,
+    maxCandles: REST_MAX_CANDLES,
+    timeoutMs: options.timeoutMs,
+  });
+  return { candles, meta: { dataSource: 'binance-rest' } };
+}
+
+/**
+ * Run one replay from a parsed validator result. Source selection and its
+ * source-specific limit happen before loading/executing the calculation core.
  */
 export async function runReplay(parsed, options = {}) {
-  const core = await loadLabCore();
+  const historical = await selectHistoricalCandles(parsed, options);
+  const core = options.core ?? (await loadLabCore());
 
   const strategyId = parsed.strategyDefinition
     ? (parsed.strategyId || 'CONSTRUCTOR')
@@ -46,18 +129,6 @@ export async function runReplay(parsed, options = {}) {
   }
 
   const nowMs = options.nowMs ?? Date.now();
-
-  const candles = await fetchLabCandles(
-    {
-      market: parsed.market,
-      symbol: parsed.symbol,
-      timeframe: parsed.timeframe,
-      fromMs: parsed.from,
-      toMs: parsed.to,
-    },
-    { fetchFn: options.fetchFn, nowMs, maxCandles: core.LAB_MAX_CANDLES }
-  );
-
   const result = core.runLabReplay(
     {
       strategyId,
@@ -67,11 +138,17 @@ export async function runReplay(parsed, options = {}) {
       timeframe: parsed.timeframe,
       from: parsed.from,
       to: parsed.to,
-      candles,
+      candles: historical.candles,
       researchConfig: parsed.researchConfig,
     },
     nowMs
   );
 
-  return result;
+  return {
+    ...result,
+    meta: {
+      ...result.meta,
+      ...historical.meta,
+    },
+  };
 }
