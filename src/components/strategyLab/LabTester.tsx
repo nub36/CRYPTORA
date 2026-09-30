@@ -1,9 +1,8 @@
 /**
  * CRYPTORA — Strategy Lab · Strategy Tester (frontend, RESEARCH ONLY)
  * ---------------------------------------------------------------------------
- * Вкладки ОБЗОР / СДЕЛКИ / ОТКАЗЫ. Показывает ТОЛЬКО реально посчитанные
- * сервером значения; «—» там, где метрика не вычислима. Клик по сделке →
- * выбор (подсветка на графике + уровни).
+ * Вкладки ОБЗОР / СДЕЛКИ / ОТКАЗЫ на русском языке.
+ * Показывает только реально рассчитанные сервером значения.
  */
 
 import React from 'react';
@@ -16,6 +15,8 @@ import {
   formatRatio,
   formatTime,
   sideLabel,
+  outcomeLabel,
+  reasonLabel,
 } from './labFormat';
 
 export type LabTab = 'overview' | 'trades' | 'rejections';
@@ -101,12 +102,12 @@ function Trades({
               <tr
                 key={t.id}
                 onClick={() => onSelectTrade(selected ? null : t.id)}
-                className={`cursor-pointer border-t border-white/[0.05] hover:bg-white/[0.05] ${
-                  selected ? 'bg-cyan-500/10' : ''
+                className={`cursor-pointer border-t border-white/[0.05] hover:bg-white/[0.05] transition-colors ${
+                  selected ? 'bg-cyan-500/15' : ''
                 }`}
               >
                 <td className="px-2 py-1.5 font-mono text-slate-300">{formatTime(t.entryTime)}</td>
-                <td className="px-2 py-1.5 font-mono">{result.meta.symbol}</td>
+                <td className="px-2 py-1.5 font-mono font-medium">{result.meta.symbol}</td>
                 <td
                   className={`px-2 py-1.5 font-semibold ${
                     t.side === 'LONG' ? 'text-emerald-400' : 'text-rose-400'
@@ -118,11 +119,11 @@ function Trades({
                 <td className="px-2 py-1.5 text-right font-mono">{formatPrice(t.stop)}</td>
                 <td className="px-2 py-1.5 text-right font-mono">{formatPrice(t.target)}</td>
                 <td className="px-2 py-1.5">
-                  <span className="text-slate-300">{t.outcome}</span>
-                  <span className="ml-1 text-[11px] text-slate-500">{t.exitReason}</span>
+                  <span className="text-slate-200">{outcomeLabel(t.outcome)}</span>
+                  <span className="ml-1 text-[11px] text-slate-500">({reasonLabel(t.exitReason)})</span>
                 </td>
                 <td
-                  className={`px-2 py-1.5 text-right font-mono ${
+                  className={`px-2 py-1.5 text-right font-mono font-bold ${
                     t.netR > 0 ? 'text-emerald-400' : t.netR < 0 ? 'text-rose-400' : 'text-slate-300'
                   }`}
                 >
@@ -164,7 +165,7 @@ function Rejections({ result }: { result: LabReplayResult }) {
               >
                 {sideLabel(r.side)}
               </td>
-              <td className="px-2 py-1.5 font-mono text-amber-300">{r.reason}</td>
+              <td className="px-2 py-1.5 font-mono text-amber-300">{reasonLabel(r.reason)}</td>
               <td className="px-2 py-1.5 font-mono text-[11px] text-slate-400">
                 {Object.entries(r.diagnostics)
                   .map(([k, v]) => `${k}=${typeof v === 'number' ? formatPrice(v) : v ?? '—'}`)

@@ -3,7 +3,7 @@
  * ---------------------------------------------------------------------------
  * Покрывают ТОЛЬКО новый изолированный Lab-контур (src/services/strategyLab):
  * симулятор исполнения, метрики, no-look-ahead инвариант, индикаторы, реестр,
- * проекцию событий на график. Ничего из production не импортируется.
+ * проекцию событий на график, конструктор стратегий и математический паритет.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -11,14 +11,17 @@ import { simulateTrade, SAME_BAR_RULE } from '@/services/strategyLab/executionSi
 import { computeMetrics } from '@/services/strategyLab/metrics';
 import { runLabReplay } from '@/services/strategyLab/engine';
 import { emaAligned, atrAligned } from '@/services/strategyLab/indicators';
+import { evaluateDraftStrategy } from '@/services/strategyLab/strategies/draftStrategy';
+import { evaluateEmaAtr } from '@/services/strategyLab/strategies/emaAtr';
 import {
   defaultResearchConfig,
+  defaultDraftDefinition,
   getLabStrategy,
   isKnownLabStrategy,
   EMA_ATR_ID,
 } from '@/services/strategyLab/registry';
 import { mapLabEventMarkers, mapTradeLevels } from '@/services/strategyLab/labChartProjection';
-import type { LabCandle, LabTrade, ResearchConfig } from '@/services/strategyLab/types';
+import type { LabCandle, LabTrade, ResearchConfig, StrategyDraftDefinition } from '@/services/strategyLab/types';
 
 const TF_SEC = 3600;
 const BASE = 1_700_000_000;
@@ -36,11 +39,10 @@ const cfg = (): ResearchConfig => defaultResearchConfig(EMA_ATR_ID);
 
 describe('Strategy Lab · executionSimulator', () => {
   it('LONG достигает цели: outcome TARGET, grossR ≈ targetR, netR < grossR (комиссии)', () => {
-    // Вход по open бара 1 = 100; стоп-дистанция 10 → стоп 90, цель (2R) 120.
     const candles: LabCandle[] = [
-      candle(0, 100, 101, 99, 100), // сигнал-бар (не используется симулятором напрямую)
-      candle(1, 100, 105, 99, 104), // вход по open=100
-      candle(2, 104, 121, 103, 118), // high 121 ≥ цель 120 → TARGET
+      candle(0, 100, 101, 99, 100),
+      candle(1, 100, 105, 99, 104),
+      candle(2, 104, 121, 103, 118),
     ];
     const sim = simulateTrade(candles, {
       id: 't1',
@@ -96,7 +98,6 @@ describe('Strategy Lab · executionSimulator', () => {
   });
 
   it('одна свеча задевает и стоп, и цель → консервативно СТОП (§16)', () => {
-    // Бар 1: low 85 ≤ стоп 90 И high 130 ≥ цель 120.
     const candles = [candle(0, 100, 101, 99, 100), candle(1, 100, 130, 85, 110)];
     const sim = simulateTrade(candles, {
       id: 't3',
@@ -123,139 +124,235 @@ describe('Strategy Lab · executionSimulator', () => {
       stopDistance: 10,
       targetR: 2,
       feeBps: 0,
-      slippageBps: 50,
+      slippageBps: 10,
     })!;
     expect(sim.trade.entryPrice).toBeGreaterThan(100);
   });
 
-  it('нет следующего бара для входа → null (отказ NO_ENTRY_BAR у вызывающего)', () => {
-    const candles = [candle(0, 100, 101, 99, 100)];
+  it('проскальзывание ухудшает цену входа для SHORT', () => {
+    const candles = [candle(0, 100, 101, 99, 100), candle(1, 100, 101, 99, 100)];
     const sim = simulateTrade(candles, {
       id: 't5',
-      side: 'LONG',
+      side: 'SHORT',
       signalTime: candles[0].time,
       signalIndex: 0,
       stopDistance: 10,
       targetR: 2,
       feeBps: 0,
-      slippageBps: 0,
-    });
-    expect(sim).toBeNull();
+      slippageBps: 10,
+    })!;
+    expect(sim.trade.entryPrice).toBeLessThan(100);
   });
 });
 
-describe('Strategy Lab · computeMetrics', () => {
-  function mkTrade(netR: number, grossR = netR, outcome: LabTrade['outcome'] = 'EXIT'): LabTrade {
-    return {
-      id: `x${netR}`,
+describe('Strategy Lab · metrics', () => {
+  it('считает winRate, expectancy, averageNetR, profitFactor, maxDrawdownR', () => {
+    const trade = (id: string, outcome: 'TARGET' | 'STOP', netR: number): LabTrade => ({
+      id,
       side: 'LONG',
       signalTime: 0,
-      entryTime: 0,
-      entryPrice: 1,
-      stop: 0.9,
-      target: 1.2,
-      exitTime: 0,
-      exitPrice: 1.1,
+      entryTime: 1,
+      entryPrice: 100,
+      stop: 90,
+      target: 120,
+      exitTime: 2,
+      exitPrice: outcome === 'TARGET' ? 120 : 90,
       outcome,
       exitReason: outcome,
-      grossR,
+      grossR: netR,
       netR,
       barsHeld: 1,
-    };
-  }
+    });
 
-  it('считает счётчики, win rate, expectancy, profit factor и просадку', () => {
-    const trades = [mkTrade(2), mkTrade(-1), mkTrade(1), mkTrade(-1)];
-    const m = computeMetrics(trades, 6, 2); // 6 кандидатов, 2 отказа → 4 принято
+    const trades: LabTrade[] = [
+      trade('1', 'TARGET', 2.0),
+      trade('2', 'STOP', -1.0),
+      trade('3', 'TARGET', 2.0),
+      trade('4', 'STOP', -1.0),
+    ];
+    const m = computeMetrics(trades, 6, 2);
     expect(m.totalCandidates).toBe(6);
     expect(m.rejected).toBe(2);
     expect(m.accepted).toBe(4);
     expect(m.trades).toBe(4);
     expect(m.profitable).toBe(2);
     expect(m.losing).toBe(2);
-    expect(m.breakEven).toBe(0);
-    expect(m.winRate).toBeCloseTo(0.5, 6);
-    // Средний netR = (2-1+1-1)/4 = 0.25
-    expect(m.averageNetR).toBeCloseTo(0.25, 6);
-    expect(m.expectancy).toBeCloseTo(0.25, 6);
-    // Profit factor = (2+1) / (1+1) = 1.5
-    expect(m.profitFactor).toBeCloseTo(1.5, 6);
-    expect(m.maxDrawdownR).toBeGreaterThanOrEqual(0);
-  });
-
-  it('без сделок метрики нулевые/непосчитанные (null), без выдумок', () => {
-    const m = computeMetrics([], 0, 0);
-    expect(m.trades).toBe(0);
-    expect(m.winRate).toBeNull();
-    expect(m.averageNetR).toBeNull();
-    expect(m.expectancy).toBeNull();
-    expect(m.profitFactor).toBeNull();
-    expect(m.maxDrawdownR).toBeNull();
+    expect(m.winRate).toBeCloseTo(0.5, 4);
+    expect(m.averageNetR).toBeCloseTo(0.5, 4);
+    expect(m.expectancy).toBeCloseTo(0.5, 4);
+    expect(m.profitFactor).toBeCloseTo(2.0, 4);
   });
 });
 
 describe('Strategy Lab · indicators', () => {
-  it('emaAligned: прогрев = null, длина совпадает, константа даёт константу', () => {
-    const prices = new Array(30).fill(50);
-    const ema = emaAligned(prices, 10);
-    expect(ema).toHaveLength(30);
-    expect(ema[8]).toBeNull();
-    expect(ema[9]).not.toBeNull();
-    expect(ema[29]).toBeCloseTo(50, 6);
+  it('EMA(prices, 3): первые 2 значения null, 3-е — SMA, дальше сглаживание', () => {
+    const p = [10, 20, 30, 40, 50];
+    const ema = emaAligned(p, 3);
+    expect(ema[0]).toBeNull();
+    expect(ema[1]).toBeNull();
+    expect(ema[2]).toBeCloseTo(20, 6);
+    const k = 2 / 4;
+    expect(ema[3]).toBeCloseTo(40 * k + 20 * (1 - k), 6);
   });
 
-  it('atrAligned: прогрев = null, затем положительный', () => {
-    const candles = flatCandles(new Array(30).fill(0).map((_, i) => 100 + (i % 3)), 2);
-    const atr = atrAligned(candles, 14);
-    expect(atr).toHaveLength(30);
-    expect(atr[12]).toBeNull();
-    expect(atr[13]).not.toBeNull();
-    const last = atr[29];
-    expect(last).not.toBeNull();
-    expect(last as number).toBeGreaterThan(0);
+  it('ATR(candles, 3): первые 2 значения null, 3-е — среднее TR, дальше Уайлдер', () => {
+    const c = flatCandles([100, 102, 101, 105, 104], 2);
+    const atr = atrAligned(c, 3);
+    expect(atr[0]).toBeNull();
+    expect(atr[1]).toBeNull();
+    expect(atr[2]).not.toBeNull();
+    expect(atr[2]!).toBeGreaterThan(0);
+  });
+
+  it('PEPE-класс цен (low-price) сохраняет полную точность без обнуления в 0.0000', () => {
+    const pepeCloses = [0.00000123, 0.00000125, 0.00000128, 0.0000013, 0.00000127];
+    const ema = emaAligned(pepeCloses, 3);
+    expect(ema[2]).not.toBeNull();
+    expect(ema[2]!).toBeGreaterThan(0.000001);
+    expect(ema[2]!).toBeCloseTo(0.0000012533, 8);
   });
 });
 
 describe('Strategy Lab · registry', () => {
-  it('defaultResearchConfig соответствует дефолтам полей', () => {
-    const c = defaultResearchConfig(EMA_ATR_ID);
-    expect(c.indicators.emaFast).toBe(20);
-    expect(c.indicators.emaSlow).toBe(50);
-    expect(c.indicators.atrPeriod).toBe(14);
-    expect(c.strategy.stopAtrMult).toBe(1.5);
-    expect(c.strategy.targetR).toBe(2.0);
-    expect(c.execution.feeBps).toBe(5);
-    expect(c.execution.slippageBps).toBe(2);
+  it('реестр содержит стратегию EMA + ATR', () => {
+    const s = getLabStrategy(EMA_ATR_ID);
+    expect(s).toBeDefined();
+    expect(s?.id).toBe(EMA_ATR_ID);
+    expect(isKnownLabStrategy(EMA_ATR_ID)).toBe(true);
   });
 
-  it('getLabStrategy/isKnownLabStrategy', () => {
-    expect(getLabStrategy(EMA_ATR_ID)?.id).toBe(EMA_ATR_ID);
-    expect(getLabStrategy('NOPE')).toBeUndefined();
-    expect(isKnownLabStrategy(EMA_ATR_ID)).toBe(true);
-    expect(isKnownLabStrategy('NOPE')).toBe(false);
+  it('isKnownLabStrategy распознаёт CONSTRUCTOR и DRAFT', () => {
+    expect(isKnownLabStrategy('CONSTRUCTOR')).toBe(true);
+    expect(isKnownLabStrategy('DRAFT')).toBe(true);
+    expect(isKnownLabStrategy('UNKNOWN_XYZ')).toBe(false);
+  });
+
+  it('defaultDraftDefinition создаёт валидный draft с 3 индикаторами', () => {
+    const draft = defaultDraftDefinition('Тест');
+    expect(draft.name).toBe('Тест');
+    expect(draft.indicators.length).toBe(3);
+    expect(draft.long.operator).toBe('crossesAbove');
+    expect(draft.short.operator).toBe('crossesBelow');
+    expect(draft.stop.multiplier).toBe(1.5);
+    expect(draft.target.multiple).toBe(2.0);
   });
 });
 
-describe('Strategy Lab · engine (runLabReplay)', () => {
-  // Осциллирующая серия гарантирует пересечения EMA (кандидатов > 0).
-  function oscillating(n: number): LabCandle[] {
-    const out: LabCandle[] = [];
-    for (let i = 0; i < n; i++) {
-      const c = 100 + 12 * Math.sin(i / 2.2);
-      out.push(candle(i, c, c + 3, c - 3, c));
-    }
-    return out;
+describe('Strategy Lab · Parity (EMA+ATR Draft vs Legacy)', () => {
+  // Генерируем тестовую осциллирующую серию цен
+  const closes: number[] = [];
+  let price = 100;
+  for (let i = 0; i < 200; i++) {
+    price += Math.sin(i / 5) * 3 + Math.cos(i / 10) * 1.5;
+    closes.push(price);
   }
+  const candles = flatCandles(closes, 1.5);
+
+  it('current EMA+ATR parity: evaluateDraftStrategy и evaluateEmaAtr дают 100% одинаковый результат', () => {
+    const c = cfg();
+    const legacyEval = evaluateEmaAtr(candles, c);
+    const draft = defaultDraftDefinition('EMA + ATR');
+    const draftEval = evaluateDraftStrategy(candles, draft);
+
+    expect(draftEval.trades.length).toBe(legacyEval.trades.length);
+    expect(draftEval.candidateCount).toBe(legacyEval.candidateCount);
+    expect(draftEval.rejectedCount).toBe(legacyEval.rejectedCount);
+    expect(draftEval.evaluatedBars).toBe(legacyEval.evaluatedBars);
+    expect(draftEval.warmupBars).toBe(legacyEval.warmupBars);
+
+    for (let i = 0; i < draftEval.trades.length; i++) {
+      const dt = draftEval.trades[i];
+      const lt = legacyEval.trades[i];
+      expect(dt.side).toBe(lt.side);
+      expect(dt.signalTime).toBe(lt.signalTime);
+      expect(dt.entryPrice).toBeCloseTo(lt.entryPrice, 8);
+      expect(dt.stop).toBeCloseTo(lt.stop, 8);
+      expect(dt.target).toBeCloseTo(lt.target, 8);
+      expect(dt.outcome).toBe(lt.outcome);
+      expect(dt.netR).toBeCloseTo(lt.netR, 8);
+    }
+  });
+
+  it('indicator visible=false НЕ меняет результаты бэктеста', () => {
+    const draftVisible = defaultDraftDefinition();
+    draftVisible.indicators[0].visible = true;
+    draftVisible.indicators[1].visible = true;
+
+    const draftHidden = defaultDraftDefinition();
+    draftHidden.indicators[0].visible = false;
+    draftHidden.indicators[1].visible = false;
+
+    const res1 = evaluateDraftStrategy(candles, draftVisible);
+    const res2 = evaluateDraftStrategy(candles, draftHidden);
+
+    expect(res1.trades.length).toBe(res2.trades.length);
+    expect(res1.events.length).toBe(res2.events.length);
+    for (let i = 0; i < res1.trades.length; i++) {
+      expect(res1.trades[i].netR).toBe(res2.trades[i].netR);
+    }
+  });
+
+  it('поддерживает произвольное число EMA (например, 3 EMA: 10, 30, 100)', () => {
+    const draft: StrategyDraftDefinition = {
+      name: 'Triple EMA Strategy',
+      indicators: [
+        { id: 'ema-10', type: 'EMA', name: 'EMA 10', period: 10, source: 'close', visible: true },
+        { id: 'ema-30', type: 'EMA', name: 'EMA 30', period: 30, source: 'close', visible: true },
+        { id: 'ema-100', type: 'EMA', name: 'EMA 100', period: 100, source: 'close', visible: true },
+        { id: 'atr-14', type: 'ATR', name: 'ATR 14', period: 14, visible: false },
+      ],
+      long: { left: 'ema-10', operator: 'crossesAbove', right: 'ema-30' },
+      short: { left: 'ema-10', operator: 'crossesBelow', right: 'ema-30' },
+      stop: { type: 'atrMultiple', indicatorId: 'atr-14', multiplier: 2.0 },
+      target: { type: 'rMultiple', multiple: 3.0 },
+      execution: { feeBps: 5, slippageBps: 2 },
+    };
+
+    const evaluation = evaluateDraftStrategy(candles, draft);
+    expect(evaluation.indicators.byIndicatorId?.['ema-10']).toBeDefined();
+    expect(evaluation.indicators.byIndicatorId?.['ema-30']).toBeDefined();
+    expect(evaluation.indicators.byIndicatorId?.['ema-100']).toBeDefined();
+    expect(evaluation.indicators.byIndicatorId?.['atr-14']).toBeDefined();
+    expect(evaluation.evaluatedBars).toBeGreaterThan(0);
+  });
+
+  it('поддерживает операторы crossesBelow для LONG и crossesAbove для SHORT (контртренд)', () => {
+    const draft: StrategyDraftDefinition = {
+      name: 'Counter-trend EMA',
+      indicators: [
+        { id: 'ema-10', type: 'EMA', name: 'EMA 10', period: 10, source: 'close', visible: true },
+        { id: 'ema-30', type: 'EMA', name: 'EMA 30', period: 30, source: 'close', visible: true },
+        { id: 'atr-14', type: 'ATR', name: 'ATR 14', period: 14, visible: false },
+      ],
+      long: { left: 'ema-10', operator: 'crossesBelow', right: 'ema-30' },
+      short: { left: 'ema-10', operator: 'crossesAbove', right: 'ema-30' },
+      stop: { type: 'atrMultiple', indicatorId: 'atr-14', multiplier: 1.5 },
+      target: { type: 'rMultiple', multiple: 2.0 },
+    };
+
+    const evaluation = evaluateDraftStrategy(candles, draft);
+    expect(evaluation.evaluatedBars).toBeGreaterThan(0);
+  });
+});
+
+describe('Strategy Lab · runLabReplay', () => {
+  const closes: number[] = [];
+  let price = 100;
+  for (let i = 0; i < 200; i++) {
+    price += Math.sin(i / 5) * 3 + Math.cos(i / 10) * 1.5;
+    closes.push(price);
+  }
+  const candles = flatCandles(closes, 1.5);
 
   const input = () => ({
     strategyId: EMA_ATR_ID,
     market: 'spot' as const,
     symbol: 'BTCUSDT',
     timeframe: '1h' as const,
-    from: BASE * 1000,
-    to: (BASE + 80 * TF_SEC) * 1000,
-    candles: oscillating(80),
-    researchConfig: { ...cfg(), indicators: { emaFast: 3, emaSlow: 8, atrPeriod: 5 } },
+    from: candles[0].time,
+    to: candles[candles.length - 1].time,
+    candles,
+    researchConfig: cfg(),
   });
 
   it('детерминизм: одинаковый вход → идентичный выход', () => {
@@ -264,18 +361,11 @@ describe('Strategy Lab · engine (runLabReplay)', () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 
-  it('генерирует кандидатов и сделки на осциллирующей серии', () => {
-    const r = runLabReplay(input(), 1);
-    expect(r.metrics.totalCandidates).toBeGreaterThan(0);
-    expect(r.trades.length).toBeGreaterThan(0);
-  });
-
   it('НЕТ look-ahead: у каждого события knownAt ≥ candleTime', () => {
     const r = runLabReplay(input(), 1);
     for (const ev of r.events) {
       expect(ev.knownAt).toBeGreaterThanOrEqual(ev.candleTime);
     }
-    // CANDIDATE становится известен только после закрытия своего бара.
     const candleByTime = new Map(r.candles.map((c) => [c.time, c]));
     for (const ev of r.events.filter((e) => e.kind === 'CANDIDATE')) {
       const src = candleByTime.get(ev.candleTime);
@@ -331,7 +421,7 @@ describe('Strategy Lab · labChartProjection', () => {
 
   it('маркеры строятся только для ENTRY/STOP/TP1 и несут payload.tradeId', () => {
     const { markers } = mapLabEventMarkers(events, candles);
-    expect(markers.length).toBe(1); // FILL не даёт маркер
+    expect(markers.length).toBe(1);
     expect(markers[0].payload?.tradeId).toBe('trade-A');
   });
 

@@ -2,14 +2,20 @@
  * CRYPTORA — Strategy Lab · клиент API (frontend, RESEARCH ONLY)
  * ---------------------------------------------------------------------------
  * Тонкая обёртка над admin-эндпоинтами /api/strategy-lab/*. Фронтенд НЕ считает
- * стратегическую математику — он только собирает researchConfig, отправляет
- * запрос и получает готовый результат сервера.
+ * стратегическую математику — он только собирает draft definition / config,
+ * отправляет запрос и получает готовый результат сервера.
  *
  * credentials: 'include' — session-cookie для requireAuth/requireAdmin.
  * Same-origin запросы (относительные пути) → dev-proxy /api → сервер :3000.
  */
 
-import type { LabReplayResult, LabMarket, LabTimeframe, ResearchConfig } from './types';
+import type {
+  LabReplayResult,
+  LabMarket,
+  LabTimeframe,
+  ResearchConfig,
+  StrategyDraftDefinition,
+} from './types';
 import type { LabStrategyMeta } from './registry';
 
 export interface StrategiesResponse {
@@ -18,13 +24,14 @@ export interface StrategiesResponse {
 }
 
 export interface ReplayRequestBody {
-  strategyId: string;
+  strategyId?: string;
+  strategyDefinition?: StrategyDraftDefinition;
   market: LabMarket;
   symbol: string;
   timeframe: LabTimeframe;
   from: number;
   to: number;
-  researchConfig: ResearchConfig;
+  researchConfig?: ResearchConfig;
 }
 
 export class LabApiError extends Error {

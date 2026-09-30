@@ -1,77 +1,45 @@
 /**
- * CRYPTORA — Strategy Lab (страница /strategy-lab)
+ * CRYPTORA — Strategy Lab (страница /strategy-lab, Phase 2A)
  * ---------------------------------------------------------------------------
- * RESEARCH ONLY, ADMIN ONLY. Изолированный исследовательский раздел для новых
- * стратегий с нуля. Не трогает production-стратегии (V2.8/V3.0/V3.3/V3.4),
- * сигналы, strategy_settings, scheduler и БД.
+ * ВИЗУАЛЬНЫЙ КОНСТРУКТОР СТРАТЕГИЙ (RESEARCH ONLY, ADMIN ONLY).
+ * Изолированный исследовательский раздел для создания стратегий из индикаторов.
+ * Не изменяет production-стратегии (V2.8/V3.0/V3.3/V3.4), сигналы, settings, scheduler и БД.
  *
- * Защита фронта (двухуровневая с бэком): страница закрыта существующим
- * useAuth().isAdmin. Прямой переход не-админа не показывает содержимое Lab; все
- * данные всё равно приходят из admin-only API /api/strategy-lab/* (сервер —
- * источник истины, скрытие кнопки не является защитой).
+ * Двухуровневая защита: клиентский guard (useAuth().isAdmin) + серверный (requireAuth, requireAdmin).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlaskConical, ShieldAlert, Activity } from 'lucide-react';
+import { FlaskConical, ShieldAlert, Activity, Info } from 'lucide-react';
 import { TerminalSection } from '@/components/layout/TerminalSection';
 import { useAuth } from '@/context/AuthContext';
-import {
-  LAB_STRATEGIES as STATIC_LAB_STRATEGIES,
-  getLabStrategy,
-  defaultResearchConfig,
-  type LabStrategyMeta,
-} from '@/services/strategyLab/registry';
-import type { LabReplayResult, LabTrade, ResearchConfig } from '@/services/strategyLab/types';
-import { fetchLabStrategies, runLabBacktest, LabApiError } from '@/services/strategyLab/labClient';
+import { defaultDraftDefinition } from '@/services/strategyLab/registry';
+import type {
+  LabReplayResult,
+  LabTrade,
+  StrategyDraftDefinition,
+} from '@/services/strategyLab/types';
+import { runLabBacktest, LabApiError } from '@/services/strategyLab/labClient';
 import { LabControls, type LabControlsState } from '@/components/strategyLab/LabControls';
-import { LabParamsPanel } from '@/components/strategyLab/LabParamsPanel';
+import { LabConstructor } from '@/components/strategyLab/LabConstructor';
 import { LabChart } from '@/components/strategyLab/LabChart';
 import { LabTester, type LabTab } from '@/components/strategyLab/LabTester';
 import { LabTutorialButton } from '@/components/strategyLab/LabTutorialButton';
 
-const CONFIG_STORAGE_PREFIX = 'cryptora.strategyLab.config.';
-
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
+
 function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
     d.getMinutes()
   )}`;
 }
 
-function loadStoredConfig(strategyId: string): ResearchConfig | null {
-  try {
-    const raw = localStorage.getItem(CONFIG_STORAGE_PREFIX + strategyId);
-    if (!raw) return null;
-    return JSON.parse(raw) as ResearchConfig;
-  } catch {
-    return null;
-  }
-}
-function storeConfig(strategyId: string, cfg: ResearchConfig): void {
-  try {
-    localStorage.setItem(CONFIG_STORAGE_PREFIX + strategyId, JSON.stringify(cfg));
-  } catch {
-    /* localStorage может быть недоступен — не критично */
-  }
-}
-
-/** Иммутабельно записать число по пути "group.key" в ResearchConfig. */
-function setByPath(cfg: ResearchConfig, path: string, value: number): ResearchConfig {
-  const [group, key] = path.split('.') as [keyof ResearchConfig, string];
-  return {
-    ...cfg,
-    [group]: { ...(cfg[group] as Record<string, number>), [key]: value },
-  };
-}
-
-const ResearchOnlyBanner: React.FC = () => (
-  <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
-    <ShieldAlert className="h-4 w-4 shrink-0" />
+const CompactResearchBadge: React.FC = () => (
+  <div className="inline-flex items-center gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
+    <Info className="h-3.5 w-3.5 text-amber-400 shrink-0" />
     <span>
-      <span className="font-bold">RESEARCH ONLY.</span> Лаборатория не изменяет production:
-      не трогает стратегии V2.8/V3.0/V3.3/V3.4, сигналы, настройки и планировщик.
+      <span className="font-bold text-amber-300">ИССЛЕДОВАНИЕ:</span> Не влияет на рабочие стратегии
     </span>
   </div>
 );
@@ -79,14 +47,10 @@ const ResearchOnlyBanner: React.FC = () => (
 export const StrategyLabPage: React.FC = () => {
   const { isAdmin, isLoading: authLoading } = useAuth();
 
-  const [strategies, setStrategies] = useState<LabStrategyMeta[]>([...STATIC_LAB_STRATEGIES]);
-  const firstStrategyId = strategies[0]?.id ?? '';
-
   const [controls, setControls] = useState<LabControlsState>(() => {
     const now = new Date();
     const from = new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000);
     return {
-      strategyId: firstStrategyId,
       market: 'spot',
       symbol: 'BTCUSDT',
       timeframe: '1h',
@@ -95,48 +59,16 @@ export const StrategyLabPage: React.FC = () => {
     };
   });
 
-  const [config, setConfig] = useState<ResearchConfig>(() => defaultResearchConfig(firstStrategyId));
+  const [definition, setDefinition] = useState<StrategyDraftDefinition>(() =>
+    defaultDraftDefinition('EMA 20/50 Cross + ATR Stop')
+  );
+
   const [result, setResult] = useState<LabReplayResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<LabTab>('overview');
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-
-  // Загрузка каталога исследовательских стратегий (admin-only API).
-  useEffect(() => {
-    if (!isAdmin) return;
-    let active = true;
-    const controller = new AbortController();
-    fetchLabStrategies(controller.signal)
-      .then((res) => {
-        if (!active || !res.strategies?.length) return;
-        setStrategies(res.strategies);
-        setControls((prev) => ({
-          ...prev,
-          strategyId: prev.strategyId || res.strategies[0].id,
-        }));
-      })
-      .catch(() => {
-        /* оставляем статический реестр как фолбэк для UI-каркаса */
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [isAdmin]);
-
-  // Смена стратегии → подгрузить сохранённый/дефолтный config.
-  useEffect(() => {
-    if (!controls.strategyId) return;
-    const stored = loadStoredConfig(controls.strategyId);
-    setConfig(stored ?? defaultResearchConfig(controls.strategyId));
-  }, [controls.strategyId]);
-
-  const currentStrategy = useMemo(
-    () => getLabStrategy(controls.strategyId) ?? strategies.find((s) => s.id === controls.strategyId) ?? null,
-    [controls.strategyId, strategies]
-  );
 
   const selectedTrade: LabTrade | null = useMemo(
     () => result?.trades.find((t) => t.id === selectedTradeId) ?? null,
@@ -150,22 +82,13 @@ export const StrategyLabPage: React.FC = () => {
     []
   );
 
-  const handleParamChange = useCallback(
-    (path: string, value: number) => {
-      setConfig((prev) => {
-        const next = setByPath(prev, path, value);
-        storeConfig(controls.strategyId, next);
-        return next;
-      });
-    },
-    [controls.strategyId]
-  );
-
-  const handleReset = useCallback(() => {
-    const fresh = defaultResearchConfig(controls.strategyId);
-    setConfig(fresh);
-    storeConfig(controls.strategyId, fresh);
-  }, [controls.strategyId]);
+  // Создать чистый draft новой стратегии
+  const handleNewStrategy = useCallback(() => {
+    setDefinition(defaultDraftDefinition('Новая стратегия'));
+    setResult(null);
+    setError(null);
+    setSelectedTradeId(null);
+  }, []);
 
   const handleRun = useCallback(async () => {
     setError(null);
@@ -176,11 +99,11 @@ export const StrategyLabPage: React.FC = () => {
       return;
     }
     if (!(fromMs < toMs)) {
-      setError('Дата «От» должна быть раньше «До».');
+      setError('Дата «От» должна быть строго раньше даты «До».');
       return;
     }
     if (!controls.symbol.trim()) {
-      setError('Укажите символ.');
+      setError('Выберите или укажите монету.');
       return;
     }
 
@@ -193,13 +116,12 @@ export const StrategyLabPage: React.FC = () => {
     try {
       const res = await runLabBacktest(
         {
-          strategyId: controls.strategyId,
+          strategyDefinition: definition,
           market: controls.market,
           symbol: controls.symbol.trim().toUpperCase(),
           timeframe: controls.timeframe,
           from: fromMs,
           to: toMs,
-          researchConfig: config,
         },
         controller.signal
       );
@@ -212,7 +134,7 @@ export const StrategyLabPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [controls, config]);
+  }, [controls, definition]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -242,39 +164,40 @@ export const StrategyLabPage: React.FC = () => {
       data-qa="strategy-lab-shell"
     >
       <TerminalSection
-        label="RESEARCH LAB"
-        title="Strategy Lab"
-        meta="research contour"
+        label="ЛАБОРАТОРИЯ"
+        title="Конструктор стратегий"
+        meta="исследование"
         className="strategy-lab-command-bar"
       >
+        {/* 1. Компактный Header */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-cyan-400" />
-            <div>
-              <h1 className="text-xl font-bold text-white">Лаборатория стратегий</h1>
-              <p className="text-[12px] text-slate-400">
-                Разработка новых исследовательских стратегий с нуля.
-              </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5 text-cyan-400" />
+              <div>
+                <h1 className="text-xl font-bold text-white">Лаборатория стратегий</h1>
+                <p className="text-[12px] text-slate-400">
+                  Визуальный конструктор и историческое тестирование стратегий.
+                </p>
+              </div>
             </div>
+            <CompactResearchBadge />
           </div>
           <LabTutorialButton />
         </div>
 
-        <div className="mb-4">
-          <ResearchOnlyBanner />
-        </div>
-
+        {/* 2. Основные действия и выбор монеты/таймфрейма */}
         <div className="mb-4">
           <LabControls
-            strategies={strategies}
             value={controls}
             onChange={handleControlChange}
+            onNewStrategy={handleNewStrategy}
             onRun={handleRun}
-            onReset={handleReset}
             loading={loading}
           />
         </div>
 
+        {/* Ошибки и примечания */}
         {error && (
           <div className="mb-4 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[13px] text-rose-200">
             {error}
@@ -287,28 +210,34 @@ export const StrategyLabPage: React.FC = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
-          <div className="min-w-0 space-y-4">
-            <LabChart
-              result={result}
-              selectedTrade={selectedTrade}
-              onSelectTrade={setSelectedTradeId}
+        {/* 3. ГРАФИК — ГЛАВНЫЙ ЭЛЕМЕНТ (находится ВЫШЕ настроек) */}
+        <div className="mb-4">
+          <LabChart
+            result={result}
+            selectedTrade={selectedTrade}
+            onSelectTrade={setSelectedTradeId}
+          />
+        </div>
+
+        {/* 4. Конструктор стратегии и Результаты бэктеста */}
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {/* Конструктор стратегии */}
+          <div className="min-w-0">
+            <LabConstructor
+              definition={definition}
+              onChange={setDefinition}
+              disabled={loading}
             />
+          </div>
+
+          {/* Результаты бэктеста */}
+          <div className="min-w-0">
             <LabTester
               result={result}
               tab={tab}
               onTabChange={setTab}
               selectedTradeId={selectedTradeId}
               onSelectTrade={setSelectedTradeId}
-            />
-          </div>
-
-          <div className="min-w-0">
-            <LabParamsPanel
-              strategy={currentStrategy}
-              config={config}
-              onChange={handleParamChange}
-              disabled={loading}
             />
           </div>
         </div>

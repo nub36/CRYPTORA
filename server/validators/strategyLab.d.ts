@@ -1,35 +1,37 @@
-/**
- * CRYPTORA — Strategy Lab Validators · Type Declarations (RESEARCH ONLY)
- * ---------------------------------------------------------------------------
- * Companion .d.ts for server/validators/strategyLab.js (mirrors the auth.d.ts
- * pattern) so TypeScript consumers/tests get types without importing the JS
- * implementation as `any`.
- */
-
 import { z } from 'zod';
+import {
+  indicatorSchema,
+  logicRuleSchema,
+  stopSchema,
+  targetSchema,
+  executionSchema,
+  strategyDefinitionSchema,
+  researchConfigSchema,
+  replayRequestSchema,
+} from './strategyLab.js';
 
-export declare const LAB_TIMEFRAMES: readonly ['1m', '5m', '15m', '1h', '4h', '1d'];
-export type LabTimeframe = (typeof LAB_TIMEFRAMES)[number];
+export const LAB_TIMEFRAMES: readonly string[];
+export const LAB_TF_MS: Readonly<Record<string, number>>;
+export const LAB_MAX_CANDLES: number;
 
-export declare const LAB_TF_MS: Readonly<Record<LabTimeframe, number>>;
-export declare const LAB_MAX_CANDLES: number;
+export {
+  indicatorSchema,
+  logicRuleSchema,
+  stopSchema,
+  targetSchema,
+  executionSchema,
+  strategyDefinitionSchema,
+  researchConfigSchema,
+  replayRequestSchema,
+};
 
-export interface LabResearchConfig {
-  indicators: { emaFast: number; emaSlow: number; atrPeriod: number };
-  strategy: { stopAtrMult: number; targetR: number };
-  execution: { feeBps: number; slippageBps: number };
-}
+export type IndicatorParsed = z.infer<typeof indicatorSchema>;
+export type LogicRuleParsed = z.infer<typeof logicRuleSchema>;
+export type StopParsed = z.infer<typeof stopSchema>;
+export type TargetParsed = z.infer<typeof targetSchema>;
+export type ExecutionParsed = z.infer<typeof executionSchema>;
+export type StrategyDefinitionParsed = z.infer<typeof strategyDefinitionSchema>;
+export type ResearchConfigParsed = z.infer<typeof researchConfigSchema>;
+export type ReplayRequestParsed = z.infer<typeof replayRequestSchema>;
 
-export interface LabReplayRequest {
-  strategyId: string;
-  market: 'spot' | 'futures';
-  symbol: string;
-  timeframe: LabTimeframe;
-  from: number;
-  to: number;
-  researchConfig: LabResearchConfig;
-}
-
-export declare const replayRequestSchema: z.ZodType<LabReplayRequest>;
-
-export declare function parseReplayRequest(body: unknown): LabReplayRequest;
+export function parseReplayRequest(body: unknown): ReplayRequestParsed;

@@ -29,16 +29,20 @@ export async function listStrategies() {
 
 /**
  * Выполнить replay. `parsed` — уже провалидированный объект из
- * validators/strategyLab.js (strategyId, market, symbol, timeframe, from(ms),
- * to(ms), researchConfig).
+ * validators/strategyLab.js (strategyId / strategyDefinition, market, symbol,
+ * timeframe, from(ms), to(ms), researchConfig).
  *
  * @param {{ fetchFn?: typeof fetch, nowMs?: number }} [options]
  */
 export async function runReplay(parsed, options = {}) {
   const core = await loadLabCore();
 
-  if (!core.isKnownLabStrategy(parsed.strategyId)) {
-    throw new LabRequestError(`Неизвестная стратегия: ${parsed.strategyId}`, 400, 'UNKNOWN_STRATEGY');
+  const strategyId = parsed.strategyDefinition
+    ? (parsed.strategyId || 'CONSTRUCTOR')
+    : parsed.strategyId;
+
+  if (strategyId && !parsed.strategyDefinition && !core.isKnownLabStrategy(strategyId)) {
+    throw new LabRequestError(`Неизвестная стратегия: ${strategyId}`, 400, 'UNKNOWN_STRATEGY');
   }
 
   const nowMs = options.nowMs ?? Date.now();
@@ -56,7 +60,8 @@ export async function runReplay(parsed, options = {}) {
 
   const result = core.runLabReplay(
     {
-      strategyId: parsed.strategyId,
+      strategyId,
+      strategyDefinition: parsed.strategyDefinition,
       market: parsed.market,
       symbol: parsed.symbol,
       timeframe: parsed.timeframe,
