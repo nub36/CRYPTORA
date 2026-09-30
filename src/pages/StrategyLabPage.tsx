@@ -18,7 +18,12 @@ import type {
   LabTrade,
   StrategyDraftDefinition,
 } from '@/services/strategyLab/types';
-import { runLabBacktest, LabApiError } from '@/services/strategyLab/labClient';
+import {
+  runLabBacktest,
+  fetchLabDataCoverage,
+  LabApiError,
+  type LabDataCoverage,
+} from '@/services/strategyLab/labClient';
 import { LabControls, type LabControlsState } from '@/components/strategyLab/LabControls';
 import { LabConstructor } from '@/components/strategyLab/LabConstructor';
 import { LabChart } from '@/components/strategyLab/LabChart';
@@ -66,6 +71,7 @@ export const StrategyLabPage: React.FC = () => {
   const [result, setResult] = useState<LabReplayResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coverage, setCoverage] = useState<LabDataCoverage | null>(null);
   const [tab, setTab] = useState<LabTab>('overview');
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -138,6 +144,22 @@ export const StrategyLabPage: React.FC = () => {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  useEffect(() => {
+    if (authLoading || !isAdmin) {
+      setCoverage(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchLabDataCoverage(controller.signal)
+      .then(setCoverage)
+      .catch((coverageError: unknown) => {
+        if ((coverageError as Error)?.name !== 'AbortError') {
+          setCoverage({ datasetAvailable: false });
+        }
+      });
+    return () => controller.abort();
+  }, [authLoading, isAdmin]);
+
   // ── Guard ────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
@@ -194,6 +216,7 @@ export const StrategyLabPage: React.FC = () => {
             onNewStrategy={handleNewStrategy}
             onRun={handleRun}
             loading={loading}
+            coverage={coverage}
           />
         </div>
 

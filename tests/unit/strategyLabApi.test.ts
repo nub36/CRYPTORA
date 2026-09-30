@@ -110,6 +110,11 @@ describe('Strategy Lab API · доступ (admin-only, двухуровнева
     expect(res.status).toBe(401);
   });
 
+  it('unauthenticated: GET /data-coverage → 401', async () => {
+    const res = await client.get('/api/strategy-lab/data-coverage');
+    expect(res.status).toBe(401);
+  });
+
   it('authenticated non-admin: GET /strategies → 403', async () => {
     await loginAs(USER_EMAIL);
     const res = await client.get('/api/strategy-lab/strategies');
@@ -119,6 +124,12 @@ describe('Strategy Lab API · доступ (admin-only, двухуровнева
   it('authenticated non-admin: POST /replay → 403 (до всякой сети)', async () => {
     await loginAs(USER_EMAIL);
     const res = await client.post('/api/strategy-lab/replay', validReplayBody());
+    expect(res.status).toBe(403);
+  });
+
+  it('authenticated non-admin: GET /data-coverage → 403', async () => {
+    await loginAs(USER_EMAIL);
+    const res = await client.get('/api/strategy-lab/data-coverage');
     expect(res.status).toBe(403);
   });
 
@@ -146,6 +157,21 @@ describe('Strategy Lab API · доступ (admin-only, двухуровнева
     }
   });
 
+  it('admin: GET /data-coverage → 200 metadata-only, missing archive is safe', async () => {
+    await loginAs(ADMIN_EMAIL);
+    const previousRoot = process.env.STRATEGY_LAB_DATA_ROOT;
+    process.env.STRATEGY_LAB_DATA_ROOT = `/tmp/cryptora-missing-coverage-${process.pid}`;
+    try {
+      const res = await client.get('/api/strategy-lab/data-coverage');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ datasetAvailable: false });
+      expect(res.headers.get('cache-control')).toContain('no-store');
+    } finally {
+      if (previousRoot === undefined) delete process.env.STRATEGY_LAB_DATA_ROOT;
+      else process.env.STRATEGY_LAB_DATA_ROOT = previousRoot;
+    }
+  });
+
   it('admin: POST /replay с битым телом → 400 (валидация, без Binance)', async () => {
     await loginAs(ADMIN_EMAIL);
     const res = await client.post('/api/strategy-lab/replay', { strategyId: 'EMA_ATR' });
@@ -168,6 +194,7 @@ describe('Strategy Lab · read-only изоляция (статическая п�
     'server/routes/strategyLab.js',
     'server/services/strategyLab/labService.js',
     'server/services/strategyLab/historicalCandles.js',
+    'server/services/strategyLab/localHistoricalCandles.js',
     'server/services/strategyLab/labCoreBundle.js',
     'server/services/strategyLab/labEntry.ts',
     'server/validators/strategyLab.js',

@@ -22,4 +22,10 @@ export {
   defaultResearchConfig,
   EMA_ATR_ID,
 } from '@/services/strategyLab/registry';
-export { LAB_TIMEFRAMES, LAB_TF_SECONDS, LAB_MAX_CANDLES } from '@/services/strategyLab/types';
+export {
+  LAB_TIMEFRAMES,
+  LAB_TF_SECONDS,
+  REST_MAX_CANDLES,
+  LOCAL_MAX_CANDLES,
+  LAB_MAX_CANDLES,
+} from '@/services/strategyLab/types';

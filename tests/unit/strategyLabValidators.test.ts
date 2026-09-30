@@ -11,7 +11,8 @@ import {
   parseReplayRequest,
   replayRequestSchema,
   strategyDefinitionSchema,
-  LAB_MAX_CANDLES,
+  REST_MAX_CANDLES,
+  LOCAL_MAX_CANDLES,
   LAB_TF_MS,
 } from '../../server/validators/strategyLab.js';
 
@@ -89,11 +90,14 @@ describe('Strategy Lab · replayRequestSchema & StrategyDraftDefinition', () => 
     expect(r.success).toBe(false);
   });
 
-  it('отклоняет диапазон, превышающий лимит свечей (5000)', () => {
-    const to = 1_700_000_000_000;
-    const from = to - (LAB_MAX_CANDLES + 500) * HOUR;
-    const r = replayRequestSchema.safeParse(validBody({ from, to }));
-    expect(r.success).toBe(false);
+  it('оставляет лимит источника сервису и не отклоняет локальный год 5m заранее', () => {
+    const from = Date.parse('2025-09-30T00:00:00.000Z');
+    const to = Date.parse('2026-09-30T00:00:00.000Z');
+    const r = replayRequestSchema.safeParse(validBody({ timeframe: '5m', from, to }));
+    expect(r.success).toBe(true);
+    expect((to - from) / LAB_TF_MS['5m']).toBe(105_120);
+    expect(REST_MAX_CANDLES).toBe(5000);
+    expect(LOCAL_MAX_CANDLES).toBe(120_000);
   });
 
   it('отклоняет некорректный символ и таймфрейм', () => {

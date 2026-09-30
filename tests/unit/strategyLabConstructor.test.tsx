@@ -206,6 +206,47 @@ describe('Strategy Lab · LabControls (верхние кнопки и подск
     const runBtn = screen.getByRole('button', { name: /Запустить бэктест/i });
     expect(runBtn).not.toBeDisabled();
   });
+
+  it('компактно показывает покрытие локального архива рядом с датами', () => {
+    render(
+      <LabControls
+        value={{ market: 'spot', symbol: 'BTCUSDT', timeframe: '1h', from: '', to: '' }}
+        onChange={vi.fn()}
+        onNewStrategy={vi.fn()}
+        onRun={vi.fn()}
+        loading={false}
+        coverage={{
+          datasetAvailable: true,
+          coverageFrom: '2025-09-30T00:00:00.000Z',
+          coverageTo: '2026-09-30T00:00:00.000Z',
+          markets: ['spot', 'futures'],
+          symbols: ['BTCUSDT'],
+          timeframes: ['1h'],
+          validSeries: 50,
+          totalSeries: 50,
+          datasetVersion: 'fixture',
+          manifestGeneratedAt: '2026-09-30T01:00:00.000Z',
+        }}
+      />
+    );
+    expect(screen.getByText('История:')).toBeInTheDocument();
+    expect(screen.getByText('30.09.2025 — 30.09.2026')).toBeInTheDocument();
+    expect(screen.getByText('Локальный архив')).toBeInTheDocument();
+  });
+
+  it('показывает недоступность локального архива', () => {
+    render(
+      <LabControls
+        value={{ market: 'spot', symbol: 'BTCUSDT', timeframe: '1h', from: '', to: '' }}
+        onChange={vi.fn()}
+        onNewStrategy={vi.fn()}
+        onRun={vi.fn()}
+        loading={false}
+        coverage={{ datasetAvailable: false }}
+      />
+    );
+    expect(screen.getByText('Локальный архив недоступен')).toBeInTheDocument();
+  });
 });
 
 describe('Strategy Lab · StrategyLabPage сквозной рендер', () => {
