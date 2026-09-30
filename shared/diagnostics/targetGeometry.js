@@ -179,7 +179,8 @@ export function analyzeSignalGeometry(input) {
     stop: isNum(stop) ? stop : null,
     tp1: isNum(tp1) ? tp1 : null,
     tp2: isNum(tp2) ? tp2 : null,
-    entryMid: null, zoneWidth: null, zoneWidthPct: null, zoneWidthInRisk: null,
+    entryMid: null, distPctTp1: null, distPctTp2: null, distPctStop: null,
+    zoneWidth: null, zoneWidthPct: null, zoneWidthInRisk: null,
     riskMid: null, riskNear: null, riskFar: null,
     reward1Mid: null, reward2Mid: null,
     r1Mid: null, r2Mid: null, r1Near: null, r2Near: null, r1Far: null, r2Far: null,
@@ -216,9 +217,19 @@ export function analyzeSignalGeometry(input) {
 
   const div = (reward, risk) => (risk > 0 ? reward / risk : null);
 
+  // Дистанции в ПРОЦЕНТАХ от середины зоны входа. Это не R: процент нужен,
+  // чтобы сравнивать инструменты с разной волатильностью «как на графике».
+  // Знак не используется: измеряется расстояние по ходу сделки, поэтому
+  // отрицательное значение = уровень по неверную сторону (и это уже поймано
+  // структурной проверкой выше).
+  const pctOf = (distance) => (entryMid !== 0 ? (distance / Math.abs(entryMid)) * 100 : null);
+
   const out = {
     ...base,
     entryMid,
+    distPctTp1: pctOf(rewardOf(entryMid, tp1)),
+    distPctTp2: pctOf(rewardOf(entryMid, tp2)),
+    distPctStop: pctOf(riskMid),
     zoneWidth: entryHigh - entryLow,
     zoneWidthPct: entryMid !== 0 ? ((entryHigh - entryLow) / Math.abs(entryMid)) * 100 : null,
     zoneWidthInRisk: riskMid > 0 ? (entryHigh - entryLow) / riskMid : null,
@@ -262,6 +273,9 @@ export function analyzeSignalBatch(rows) {
   const r2 = valid.map((r) => r.r2Mid).filter(isNum);
   const r1Far = valid.map((r) => r.r1Far).filter(isNum);
   const r2Far = valid.map((r) => r.r2Far).filter(isNum);
+  const dTp1 = valid.map((r) => r.distPctTp1).filter(isNum);
+  const dTp2 = valid.map((r) => r.distPctTp2).filter(isNum);
+  const dStop = valid.map((r) => r.distPctStop).filter(isNum);
 
   const counts = {};
   for (const code of [...STRUCTURAL_CODES, ...QUALITY_CODES]) counts[code] = 0;
@@ -278,6 +292,9 @@ export function analyzeSignalBatch(rows) {
     r2Mid: summarize(r2),
     r1Far: summarize(r1Far),
     r2Far: summarize(r2Far),
+    distPctTp1: summarize(dTp1),
+    distPctTp2: summarize(dTp2),
+    distPctStop: summarize(dStop),
     r1Shares: thresholdShares(r1),
     r2Shares: thresholdShares(r2),
     anomalyCounts: counts,
@@ -311,6 +328,9 @@ export function groupStats(results, keyOf) {
       structurallyValid: valid.length,
       r1: summarize(r1),
       r2: summarize(r2),
+      distPctTp1: summarize(valid.map((r) => r.distPctTp1).filter(isNum)),
+      distPctTp2: summarize(valid.map((r) => r.distPctTp2).filter(isNum)),
+      distPctStop: summarize(valid.map((r) => r.distPctStop).filter(isNum)),
       r1Shares: thresholdShares(r1),
       r2Shares: thresholdShares(r2),
     });

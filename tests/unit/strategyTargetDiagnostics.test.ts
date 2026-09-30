@@ -72,6 +72,40 @@ describe('R-расчёты SHORT', () => {
   });
 });
 
+describe('дистанции в % от середины зоны входа', () => {
+  it('LONG: % считаются по ходу сделки от entryMid', () => {
+    const r = analyzeSignalGeometry(LONG);      // mid = 105
+    expect(r.distPctTp1).toBeCloseTo((15 / 105) * 100, 10);
+    expect(r.distPctTp2).toBeCloseTo((35 / 105) * 100, 10);
+    expect(r.distPctStop).toBeCloseTo((15 / 105) * 100, 10);
+  });
+
+  it('SHORT: % положительны, когда уровни по правильную сторону', () => {
+    const r = analyzeSignalGeometry(SHORT);     // mid = 95
+    expect(r.distPctTp1).toBeCloseTo((15 / 95) * 100, 10);
+    expect(r.distPctTp2).toBeCloseTo((35 / 95) * 100, 10);
+    expect(r.distPctStop).toBeCloseTo((15 / 95) * 100, 10);
+  });
+
+  it('BTC SHORT со скрина: 0.11 % до TP1, 1.94 % до TP2, 0.85 % до стопа', () => {
+    const r = analyzeSignalGeometry({
+      id: 'btc-short', symbol: 'BTC/USDT', direction: 'SHORT', timeframe: '1h', strategyVersion: '3.3',
+      entryLow: 84154.2, entryHigh: 84245.9, stop: 84911.8, tp1: 84104.5, tp2: 82563.0,
+    });
+    expect(r.distPctTp1).toBeCloseTo(0.1135, 3);
+    expect(r.distPctTp2).toBeCloseTo(1.9442, 3);
+    expect(r.distPctStop).toBeCloseTo(0.8453, 3);
+  });
+
+  it('пакет и группы отдают сводки по %', () => {
+    const b = analyzeSignalBatch([LONG, SHORT]);
+    expect(b.distPctTp1.count).toBe(2);
+    expect(b.distPctStop.median).toBeGreaterThan(0);
+    const g = groupStats(b.results, (r) => String(r.direction));
+    expect(g.find((x) => x.key === 'LONG')?.distPctTp2.count).toBe(1);
+  });
+});
+
 describe('края зоны входа', () => {
   it('вырожденная зона (low = high) даёт одинаковые near/mid/far', () => {
     const r = analyzeSignalGeometry({ ...LONG, entryLow: 100, entryHigh: 100 });

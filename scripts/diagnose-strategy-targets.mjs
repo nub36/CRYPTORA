@@ -247,6 +247,11 @@ async function main() {
   printShares('R1 доли', batch.r1Shares, out);
   printShares('R2 доли', batch.r2Shares, out);
   out('');
+  out('  ДИСТАНЦИИ В % ОТ СЕРЕДИНЫ ЗОНЫ ВХОДА (не R):');
+  printSummaryTable('до TP1, %', batch.distPctTp1, out);
+  printSummaryTable('до TP2, %', batch.distPctTp2, out);
+  printSummaryTable('до стопа,%', batch.distPctStop, out);
+  out('');
 
   out('── 3. РАЗРЕЗЫ ────────────────────────────────────────────────────────');
   const cuts = [
@@ -265,6 +270,9 @@ async function main() {
         + `  R1 med=${f(row.r1.median, 3)} p25=${f(row.r1.p25, 3)} p75=${f(row.r1.p75, 3)}`
         + `  R2 med=${f(row.r2.median, 3)}`
         + `  R1<0.25=${pctText(row.r1Shares.below[0]?.pct ?? null)}`);
+      out(`      ${' '.repeat(14)} % до TP1 med/mean=${f(row.distPctTp1.median, 3)}/${f(row.distPctTp1.mean, 3)}`
+        + `  % до TP2 med/mean=${f(row.distPctTp2.median, 3)}/${f(row.distPctTp2.mean, 3)}`
+        + `  % до стопа med/mean=${f(row.distPctStop.median, 3)}/${f(row.distPctStop.mean, 3)}`);
     }
   }
   out('');
@@ -360,6 +368,7 @@ async function main() {
         structurallyBroken: batch.structurallyBroken,
       },
       r1Mid: batch.r1Mid, r2Mid: batch.r2Mid, r1Far: batch.r1Far, r2Far: batch.r2Far,
+      distPctTp1: batch.distPctTp1, distPctTp2: batch.distPctTp2, distPctStop: batch.distPctStop,
       r1Shares: batch.r1Shares, r2Shares: batch.r2Shares,
       anomalyCounts: batch.anomalyCounts,
       groups,

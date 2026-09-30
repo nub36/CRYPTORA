@@ -46,6 +46,12 @@ export interface GeometryResult {
   tp1: number | null;
   tp2: number | null;
   entryMid: number | null;
+  /** Дистанция до TP1 в % от середины зоны входа (по ходу сделки). */
+  distPctTp1: number | null;
+  /** Дистанция до TP2 в % от середины зоны входа. */
+  distPctTp2: number | null;
+  /** Дистанция до стопа в % от середины зоны входа. */
+  distPctStop: number | null;
   zoneWidth: number | null;
   zoneWidthPct: number | null;
   zoneWidthInRisk: number | null;
@@ -93,6 +99,9 @@ export interface BatchResult {
   r2Mid: Summary;
   r1Far: Summary;
   r2Far: Summary;
+  distPctTp1: Summary;
+  distPctTp2: Summary;
+  distPctStop: Summary;
   r1Shares: ThresholdShares;
   r2Shares: ThresholdShares;
   anomalyCounts: Record<string, number>;
@@ -105,6 +114,9 @@ export interface GroupStat {
   structurallyValid: number;
   r1: Summary;
   r2: Summary;
+  distPctTp1: Summary;
+  distPctTp2: Summary;
+  distPctStop: Summary;
   r1Shares: ThresholdShares;
   r2Shares: ThresholdShares;
 }
