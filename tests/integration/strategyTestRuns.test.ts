@@ -37,6 +37,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import pg from 'pg';
 import { startPgHarness, type PgHarness, type PgHarnessResult } from '../helpers/embeddedPgHarness';
 
 let result: PgHarnessResult;
@@ -68,6 +69,36 @@ function nextCandleTs(): Date {
   candleSeq += 1;
   // Уникальная пара (symbol, candle) не нужна: достаточно уникального ts.
   return new Date(Date.UTC(2026, 8, 1, 0, candleSeq, 0));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Пул до выполнения условия — детерминированные checkpoint'ы гонки: тест не
+ * «спит и надеется», а ждёт наблюдаемого состояния PostgreSQL (незавершённый
+ * лок конкретного запроса в pg_locks/pg_stat_activity).
+ */
+async function waitFor(cond: () => Promise<boolean>, timeoutMs = 10_000, stepMs = 100): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await cond()) return true;
+    await sleep(stepMs);
+  }
+  return false;
+}
+
+/** Есть ли ожидающий лок бэкенд, чей текущий запрос совпадает с паттерном? */
+async function someQueryWaitingOnLock(pattern: string): Promise<boolean> {
+  const rows = await h.q(
+    `SELECT COUNT(*)::int AS n
+       FROM pg_stat_activity a
+       JOIN pg_locks l ON l.pid = a.pid AND NOT l.granted
+      WHERE a.query ILIKE $1`,
+    [pattern]
+  );
+  return Number(rows[0]?.n ?? 0) >= 1;
 }
 
 /**
@@ -584,5 +615,166 @@ describe('Стратегия: тестовые периоды — статист
 
     const b = await stats(`?strategyId=${V3_0}&testRunId=${runBId}`);
     expect(b.totals.published).toBe(1);
+  });
+});
+
+/**
+ * Сериализация startRun ↔ insertSignal (race-аудит перед merge).
+ *
+ * ИНВАРИАНТ: после COMMIT нового Run B ни один сигнал, закоммиченный после
+ * этой границы (после успешного ответа startRun), не может получить членство
+ * в завершённом (COMPLETED) Run A. Границу держит пара строчных блокировок на
+ * ОДНОЙ строке strategy_settings: insertSignal — FOR KEY SHARE до чтения
+ * членства, startStrategyTestRun — FOR UPDATE до завершения старого периода.
+ *
+ * Оба теста ДЕТЕРМИНИРОВАННЫ: позиции участников фиксируются наблюдаемым
+ * состоянием PostgreSQL (незавершённый лок конкретного запроса), а не сном.
+ * Порядок пробуждения гарантирован самими блокировками, а не таймингом.
+ *
+ * Воспроизведение гонки без фикса (plain SELECT ACTIVE без KEY SHARE):
+ * T1 читает членство Run A → T2 стартует и коммитит Run B (ничего не ждёт) →
+ * T1 вставляет сигнал с test_run_id = COMPLETED Run A. Первый тест ловит
+ * именно это: пока T1 не закоммитил, startRun не имеет права завершиться.
+ */
+describe('Стратегия: сериализация startRun ↔ insertSignal (граница периода)', () => {
+  guard()('in-flight INSERT держит стратегию: startRun ждёт; сигнал до границы → старый Run, после ответа → новый', async () => {
+    const S = V3_3;
+    // Свежий Run A с нулём участников — состояние известно полностью.
+    const resA = await startRunHttp(S);
+    expect(resA.status, JSON.stringify(resA.body)).toBe(201);
+    const runAId = resA.body.newRunId as string;
+
+    // H: SHARE на таблицу signals — SELECT идут свободно, INSERT блокируется.
+    // T1 дойдёт до INSERT и замрёт на нём, УЖЕ держа FOR KEY SHARE на
+    // strategy_settings и УЖЕ прочитав членство (Run A).
+    const blocker = new pg.Client({ connectionString: h.url });
+    await blocker.connect();
+    let t1: Promise<any> | null = null;
+    let t2: Promise<any> | null = null;
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE signals IN SHARE MODE');
+
+      // T1: вставка сигнала, начатая ДО границы. Не await — заблокируется на INSERT.
+      t1 = makeSignal({ strategyId: S, symbol: 'RUNE/USDT' });
+      // Checkpoint: INSERT INTO signals ждёт лок ⇒ KEY SHARE взят, членство прочитано.
+      const t1AtInsert = await waitFor(() => someQueryWaitingOnLock('INSERT INTO signals%'));
+      expect(t1AtInsert, 'T1 обязан дойти до INSERT и заблокироваться на нём').toBe(true);
+
+      // T2: старт нового периода — обязан ЖДАТЬ (FOR UPDATE × KEY SHARE T1).
+      let t2Settled = false;
+      t2 = startRunHttp(S).then((r: any) => {
+        t2Settled = true;
+        return r;
+      });
+      // Время здесь не делает тест хрупким: в исправленной версии T2 физически
+      // не может завершиться, пока блокер держит signals и T1 держит KEY SHARE.
+      // Если фикс сломан (нет KEY SHARE), T2 успевает за это время — и тест красный.
+      await sleep(500);
+      expect(t2Settled, 'startRun обязан ждать in-flight INSERT сигнала (сериализация)').toBe(false);
+      const still = await h.q('SELECT status FROM strategy_test_runs WHERE id = $1', [runAId]);
+      expect(still[0].status, 'Run A ещё ACTIVE: T2 не закоммитил').toBe('ACTIVE');
+
+      // Отпускаем H: T1 INSERT + COMMIT (освобождает KEY SHARE) → только затем
+      // T2 завершает Run A и создаёт Run B. Граница проведена ПОСЛЕ коммита T1.
+      await blocker.query('COMMIT');
+
+      const s1 = await t1;
+      const resB = await t2;
+      expect(resB.status, JSON.stringify(resB.body)).toBe(201);
+      expect(resB.body.previousRunId).toBe(runAId);
+
+      // Сигнал ДО границы → старый Run (членство прочитано под KEY SHARE до старта).
+      expect(s1.testRunId).toBe(runAId);
+
+      // Граница: A COMPLETED, B ACTIVE, ровно один ACTIVE.
+      const runs = await h.q(
+        'SELECT id, status FROM strategy_test_runs WHERE strategy_id = $1 ORDER BY started_at',
+        [S]
+      );
+      const active = runs.filter((r: any) => r.status === 'ACTIVE');
+      expect(active).toHaveLength(1);
+      expect(active[0].id).toBe(resB.body.newRunId);
+      expect(runs.find((r: any) => r.id === runAId).status).toBe('COMPLETED');
+
+      // Сигнал ПОСЛЕ успешного ответа startRun → ТОЛЬКО новый Run.
+      const s2 = await makeSignal({ strategyId: S, symbol: 'ATOM/USDT' });
+      expect(s2.testRunId).toBe(resB.body.newRunId);
+
+      // ИНВАРИАНТ: в COMPLETED Run A нет сигналов, закоммиченных после границы.
+      // Единственный член A — s1, закоммиченный ДО старта T2 (по построению и по
+      // локу); всё, что пришло после ответа, — в B.
+      const membersA = await h.q('SELECT id FROM signals WHERE test_run_id = $1', [runAId]);
+      expect(membersA.map((r: any) => r.id)).toEqual([s1.id]);
+      const membersB = await h.q('SELECT id FROM signals WHERE test_run_id = $1', [
+        resB.body.newRunId,
+      ]);
+      expect(membersB.map((r: any) => r.id)).toEqual([s2.id]);
+    } finally {
+      // Блокер обязан уйти при любом исходе — иначе его транзакция заморозит файл.
+      try { await blocker.query('ROLLBACK'); } catch { /* транзакции уже нет */ }
+      try { await blocker.end(); } catch { /* соединение уже закрыто */ }
+      // Не оставляем висящих промисов при падении ассерта между запусками.
+      if (t1) await t1.catch(() => {});
+      if (t2) await t2.catch(() => {});
+    }
+  });
+
+  guard()('старт периода in-flight: сигнал, пришедший во время старта, ждёт границы и входит в НОВЫЙ Run', async () => {
+    const S = V3_4;
+    const activeBefore = await h.q(
+      `SELECT id FROM strategy_test_runs WHERE strategy_id = $1 AND status = 'ACTIVE'`,
+      [S]
+    );
+    expect(activeBefore).toHaveLength(1);
+    const runA2Id = activeBefore[0].id;
+
+    // H: FOR UPDATE на ACTIVE-строке периода — T2 возьмёт лок strategy_settings
+    // (FOR UPDATE) и замрёт на UPDATE этой строки, не закоммитив границу.
+    const blocker = new pg.Client({ connectionString: h.url });
+    await blocker.connect();
+    let t1: Promise<any> | null = null;
+    let t2: Promise<any> | null = null;
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query(
+        'SELECT id FROM strategy_test_runs WHERE strategy_id = $1 AND status = $2 FOR UPDATE',
+        [S, 'ACTIVE']
+      );
+
+      // T2: старт периода в полёте — держит FOR UPDATE на strategy_settings.
+      t2 = startRunHttp(S);
+      const t2AtUpdate = await waitFor(() => someQueryWaitingOnLock('UPDATE strategy_test_runs%'));
+      expect(t2AtUpdate, 'T2 обязан заблокироваться на UPDATE строки периода').toBe(true);
+
+      // T1: вставка сигнала приходит ВО ВРЕМЯ старта — обязана ждать KEY SHARE,
+      // а не читать членство до границы.
+      t1 = makeSignal({ strategyId: S, symbol: 'NEAR/USDT' });
+      const t1AtLock = await waitFor(() => someQueryWaitingOnLock('%FOR KEY SHARE%'));
+      expect(t1AtLock, 'вставка обязана ждать FOR KEY SHARE, пока старт держит FOR UPDATE').toBe(true);
+
+      // Отпускаем H: T2 завершает старый период, создаёт новый и КОММИТИТ →
+      // только затем вставка берёт KEY SHARE и читает членство (READ COMMITTED:
+      // снапшот нового statement) — это уже НОВЫЙ период.
+      await blocker.query('COMMIT');
+
+      const res2 = await t2;
+      expect(res2.status, JSON.stringify(res2.body)).toBe(201);
+      expect(res2.body.previousRunId).toBe(runA2Id);
+
+      const s = await t1;
+      expect(s.testRunId, 'сигнал, пришедший во время старта, входит в НОВЫЙ Run').toBe(
+        res2.body.newRunId
+      );
+      expect(s.testRunId).not.toBe(runA2Id);
+
+      const a2 = await h.q('SELECT status FROM strategy_test_runs WHERE id = $1', [runA2Id]);
+      expect(a2[0].status).toBe('COMPLETED');
+    } finally {
+      try { await blocker.query('ROLLBACK'); } catch { /* транзакции уже нет */ }
+      try { await blocker.end(); } catch { /* соединение уже закрыто */ }
+      if (t1) await t1.catch(() => {});
+      if (t2) await t2.catch(() => {});
+    }
   });
 });

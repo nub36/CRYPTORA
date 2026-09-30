@@ -376,10 +376,40 @@ export async function insertSignal(signal) {
      * в этой же транзакции. Нет периода → NULL: тестовые периоды НЕ являются
      * precondition работы сигналов, сигнал создаётся штатно.
      *
-     * Чтение без FOR UPDATE сознательно: членство фиксируется по состоянию на
-     * момент создания сигнала. Если период завершится микросекундой позже —
-     * сигнал всё равно член того периода, который был ACTIVE при его INSERT.
+     * ── СЕРИАЛИЗАЦИЯ СО СТАРТОМ ПЕРИОДА (race-фикс) ─────────────────────────
+     * До чтения членства берётся FOR KEY SHARE на строке strategy_settings —
+     * ТОЙ ЖЕ, которую `startStrategyTestRun` блокирует FOR UPDATE. Режим
+     * выбран как слабейший из конфликтующих с FOR UPDATE (матрица строчных
+     * блокировок PostgreSQL: KEY SHARE конфликтует ТОЛЬКО с FOR UPDATE):
+     *   • KEY SHARE ∥ KEY SHARE — параллельные вставки сигналов одной
+     *     стратегии НЕ сериализуются между собой (горячий путь скана свободен);
+     *   • KEY SHARE ∥ FOR NO KEY UPDATE — телеметрия strategy_settings
+     *     (recordScanResult / recordSignalEmitted / setStrategyEnabled —
+     *     обычные UPDATE) вставок сигналов НЕ ждёт;
+     *   • KEY SHARE × FOR UPDATE — старт нового периода ДОЖИДАЕТСЯ всех
+     *     in-flight вставок своей стратегии.
+     *
+     * ИНВАРИАНТ: сигнал получает test_run_id = Run A ⇔ его транзакция успела
+     * взять этот KEY SHARE ДО того, как startRun захватил FOR UPDATE. COMMIT
+     * вставки освобождает KEY SHARE ⇒ происходит СТРОГО ДО COMMIT старта ⇒
+     * НИ ОДИН сигнал, закоммиченный после успешного ответа startRun, не может
+     * оказаться членом завершённого (COMPLETED) старого Run. Обратная сторона:
+     * вставка, подождавшая FOR UPDATE, читает членство уже после COMMIT старта
+     * (READ COMMITTED берёт снапшот на каждый statement) и видит НОВЫЙ Run.
+     *
+     * Строки settings может не быть (стратегии сеются миграцией 006/014, но
+     * код не обязан на это рассчитывать): тогда лок не берётся, и поведение
+     * сводится к прежнему — членство по plain SELECT. У стратегии без строки
+     * settings периодов быть не может (CHECK миграции 015), так что гонка в
+     * этой конфигурации не возникает.
      */
+    await client.query(
+      'SELECT strategy_id FROM strategy_settings WHERE strategy_id = $1 FOR KEY SHARE',
+      [signal.strategyId]
+    );
+
+    // Членство читается ПОД KEY SHARE: пока вставка держит лок, старт периода
+    // не может завершить этот период и создать новый.
     const activeRun = await client.query(
       `SELECT id FROM strategy_test_runs
         WHERE strategy_id = $1 AND status = 'ACTIVE'
