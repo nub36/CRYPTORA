@@ -54,6 +54,7 @@ function serverSignal(overrides: Partial<SignalDto> = {}): SignalDto {
     hash: 'h'.repeat(64),
     previousHash: 'p'.repeat(64),
     outcomeHash: null,
+    testRunId: null,
     chainVersion: 2,
     provenanceStatus: 'VERIFIED',
     ...overrides,

@@ -19,14 +19,26 @@
  * строго отрицательного результата; ноль идёт своей строкой «В ноль», а
  * завершённая сделка без результата R — строкой «Без расчёта результата». Знаменатель
  * доли успешных — завершённые сделки с известным результатом.
+ *
+ * ФИЛЬТРЫ (тестовые периоды, миграция 015):
+ *  • Стратегия — «Все стратегии» или конкретная из каталога (/api/strategies).
+ *  • Период — «Все данные» | «До тестовых периодов» | периоды выбранной
+ *    стратегии («Текущий тестовый период» = ACTIVE, затем предыдущие Run).
+ *    Фильтр периода — это test_run_id на сервере (членство, назначенное при
+ *    создании сигнала), а НЕ created_at: только что начатый период честно
+ *    показывает нули, потому что в нём ещё нет сигналов-членов.
  */
 
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, BarChart3 } from 'lucide-react';
 import {
   fetchSignalStatistics,
+  fetchStrategies,
+  fetchStrategyTestRuns,
   type SignalStatisticsDto,
   type SignalStatisticsFilters,
+  type StrategyStateDto,
+  type StrategyTestRunDto,
 } from '@/services/strategyOps';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { formatSignedR } from '@/utils/signalText';
@@ -37,9 +49,16 @@ export interface SignalStatisticsPanelProps {
   pollMs?: number;
   /** Инъекция для тестов. */
   fetchStats?: typeof fetchSignalStatistics;
+  /** Инъекция для тестов: каталог стратегий. */
+  fetchStrategiesList?: typeof fetchStrategies;
+  /** Инъекция для тестов: периоды выбранной стратегии. */
+  fetchTestRuns?: typeof fetchStrategyTestRuns;
 }
 
 type Phase = 'loading' | 'ready' | 'error';
+
+/** Значение фильтра «Период»: спец-ключ или UUID периода. */
+type PeriodKey = 'all' | 'none' | string;
 
 /** Число или прочерк: null означает «нет данных», а не ноль. */
 function num(value: number | null | undefined): string {
@@ -58,18 +77,88 @@ function r(value: number | null | undefined): string {
   return formatSignedR(value);
 }
 
+/** Подпись периода для селектора: «Run от 30.09.2026, 14:30» (без секунд). */
+export function formatRunLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
   symbol = null,
   pollMs = 60_000,
   fetchStats = fetchSignalStatistics,
+  fetchStrategiesList = fetchStrategies,
+  fetchTestRuns = fetchStrategyTestRuns,
 }) => {
   const [stats, setStats] = useState<SignalStatisticsDto | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  // ── Фильтры: стратегия + тестовый период ────────────────────────────────
+  const [strategies, setStrategies] = useState<StrategyStateDto[] | null>(null);
+  const [strategyId, setStrategyId] = useState<string>('');
+  const [runs, setRuns] = useState<StrategyTestRunDto[]>([]);
+  const [periodKey, setPeriodKey] = useState<PeriodKey>('all');
+
+  // Каталог стратегий — один раз (публичный endpoint, тот же, что /strategies).
+  useEffect(() => {
+    let active = true;
+    fetchStrategiesList()
+      .then((list) => {
+        if (active) setStrategies(list);
+      })
+      .catch(() => {
+        // Каталог недоступен → остаются «Все стратегии»; статистика работает.
+      });
+    return () => {
+      active = false;
+    };
+  }, [fetchStrategiesList]);
+
+  // Периоды выбранной стратегии. «Все стратегии» периодов не имеют: период
+  // существует в рамках ОДНОЙ стратегии, «текущий период всех стратегий» —
+  // неосмысленный гибрид.
+  useEffect(() => {
+    let active = true;
+    if (!strategyId) {
+      setRuns([]);
+      return;
+    }
+    fetchTestRuns(strategyId)
+      .then((res) => {
+        if (active) setRuns(res.runs);
+      })
+      .catch(() => {
+        if (active) setRuns([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [strategyId, fetchTestRuns]);
+
+  const activeRun = runs.find((run) => run.status === 'ACTIVE') ?? null;
+  const completedRuns = runs.filter((run) => run.status !== 'ACTIVE');
+
+  /** Смена стратегии сбрасывает период: периоды привязаны к стратегии. */
+  const onStrategyChange = (next: string) => {
+    setStrategyId(next);
+    setPeriodKey('all');
+  };
+
   const load = React.useCallback(async () => {
-    const filters: SignalStatisticsFilters = symbol ? { symbol } : {};
+    const filters: SignalStatisticsFilters = {
+      ...(symbol ? { symbol } : {}),
+      ...(strategyId ? { strategyId } : {}),
+      ...(periodKey !== 'all' ? { testRunId: periodKey } : {}),
+    };
     try {
       const s = await fetchStats(filters);
       // Ответ без агрегатов — это «недоступно», а не «нули»: иначе сломанный
@@ -84,7 +173,7 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
       setError(e instanceof Error ? e.message : 'Статистика недоступна');
       setPhase('error');
     }
-  }, [symbol, fetchStats]);
+  }, [symbol, strategyId, periodKey, fetchStats]);
 
   useEffect(() => {
     void load();
@@ -115,6 +204,19 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
 
   const t = stats.totals;
   const hasTrades = t.completed > 0;
+  const selectedStrategy = strategies?.find((s) => s.strategyId === strategyId) ?? null;
+  const selectedRun =
+    periodKey === 'all' || periodKey === 'none' ? null : runs.find((run) => run.id === periodKey) ?? null;
+
+  const scopeText = [
+    symbol ? `инструмент ${symbol}` : 'все инструменты',
+    selectedStrategy ? `стратегия V${selectedStrategy.version}` : 'все стратегии',
+    selectedRun
+      ? `период ${selectedRun.status === 'ACTIVE' ? 'текущий' : ''} ${formatRunLabel(selectedRun.startedAt)}`
+      : periodKey === 'none'
+        ? 'период: до тестовых периодов'
+        : `период ${PERIOD_LABEL[stats.period]}`,
+  ].join(' · ');
 
   return (
     <div className="rounded border border-surface-border/60 bg-surface-elevated/40 p-3" data-qa="signals-statistics">
@@ -123,9 +225,53 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
           <BarChart3 className="h-4 w-4 text-brand-cyan" aria-hidden="true" />
           Статистика сигналов
         </div>
-        <span className="ui-helper">
-          {symbol ? `инструмент ${symbol}` : 'все инструменты'} · период {PERIOD_LABEL[stats.period]}
-        </span>
+        <span className="ui-helper" data-qa="signals-statistics-scope-text">{scopeText}</span>
+      </div>
+
+      {/* Фильтры: стратегия и тестовый период.
+          Оба фильтра — серверные: клиент не агрегирует и не «досчитывает». */}
+      <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2" data-qa="signals-statistics-filters">
+        <label className="flex min-w-0 items-center gap-2 text-xs">
+          <span className="ui-label shrink-0">Стратегия</span>
+          <select
+            value={strategyId}
+            onChange={(e) => onStrategyChange(e.target.value)}
+            data-qa="signals-stat-strategy-select"
+            aria-label="Фильтр статистики по стратегии"
+            className="min-w-0 flex-1 rounded border border-surface-border bg-surface-2 px-2 py-1 text-xs text-slate-200 focus:border-brand-cyan/60 focus:outline-none"
+          >
+            <option value="">Все стратегии</option>
+            {(strategies ?? []).map((s) => (
+              <option key={s.strategyId} value={s.strategyId}>
+                V{s.version}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-0 items-center gap-2 text-xs">
+          <span className="ui-label shrink-0">Период</span>
+          <select
+            value={periodKey}
+            onChange={(e) => setPeriodKey(e.target.value)}
+            data-qa="signals-stat-period-select"
+            aria-label="Фильтр статистики по тестовому периоду"
+            className="min-w-0 flex-1 rounded border border-surface-border bg-surface-2 px-2 py-1 text-xs text-slate-200 focus:border-brand-cyan/60 focus:outline-none"
+          >
+            <option value="all">Все данные</option>
+            <option value="none">До тестовых периодов</option>
+            {strategyId && activeRun && (
+              <option value={activeRun.id}>
+                Текущий тестовый период (с {formatRunLabel(activeRun.startedAt)})
+              </option>
+            )}
+            {strategyId &&
+              completedRuns.map((run) => (
+                <option key={run.id} value={run.id}>
+                  {formatRunLabel(run.startedAt)}
+                </option>
+              ))}
+          </select>
+        </label>
       </div>
 
       {/* Первый экран — человеческие счётчики, без R. */}
@@ -153,8 +299,9 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
 
       {t.published === 0 && (
         <p className="ui-helper mt-2">
-          Сохранённых сигналов пока нет. Пока ни одна стратегия не включена, сервер не публикует новые
-          сетапы — это нормальное состояние, а не сбой.
+          {periodKey !== 'all'
+            ? 'В выбранном периоде ещё нет сигналов. Статистика периода считается только по сигналам, созданным в нём: прежние сигналы остались в «Все данные».'
+            : 'Сохранённых сигналов пока нет. Пока ни одна стратегия не включена, сервер не публикует новые сетапы — это нормальное состояние, а не сбой.'}
         </p>
       )}
 
@@ -230,6 +377,7 @@ export const SignalStatisticsPanel: React.FC<SignalStatisticsPanelProps> = ({
             <p>{stats.definitions.unrated}</p>
             <p>{stats.definitions.avgGrossR}</p>
             <p>{stats.definitions.avgNetR}</p>
+            {stats.definitions.testRunId && <p>{stats.definitions.testRunId}</p>}
             <p>
               1R — первоначальный риск между ценой входа и стопом на момент публикации. Формулу считает
               сервер по закрытым свечам; интерфейс её не пересчитывает.

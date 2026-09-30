@@ -40,6 +40,7 @@
 
 import { query } from '../db/pool.js';
 import { PROVENANCE_VERIFIED } from './signalProvenance.js';
+import { isTestRunIdShape } from './strategyTestRuns.js';
 import {
   OPEN_SIGNAL_STATUSES,
   TRADE_CLOSED_STATUSES,
@@ -50,6 +51,13 @@ import {
 
 /** Периоды агрегации. Окно включительное слева: `created_at >= from`. */
 export const STATISTICS_PERIODS = Object.freeze(['all', '24h', '7d', '30d', '90d']);
+
+/**
+ * Спец-значение фильтра тестового периода: «до тестовых периодов».
+ * Только `test_run_id IS NULL` — исторические строки без членства.
+ * Обычные значения — UUID конкретного периода (membership, не даты).
+ */
+export const TEST_RUN_NONE = 'none';
 
 const PERIOD_MS = Object.freeze({
   '24h': 24 * 3_600_000,
@@ -189,8 +197,15 @@ function aggregateSelect(tradeIdx) {
 }
 
 /**
- * Общий конструктор WHERE: период, стратегия, инструмент, provenance — один код
- * на все разрезы.
+ * Общий конструктор WHERE: период, стратегия, инструмент, provenance, тестовый
+ * период — один код на все разрезы.
+ *
+ * TEST RUN (миграция 015). Фильтр периода — STRICTO по `signals.test_run_id`:
+ * авторитетное членство назначается при INSERT и не зависит от времени закрытия
+ * сигнала. `created_at >= run.started_at` фильтром НЕ является и не станет:
+ * сигнал, созданный в Run 1 и закрытый во время Run 2, обязан считаться в
+ * Run 1. Спец-значение `'none'` — «до тестовых периодов» (test_run_id IS NULL):
+ * исторические строки доступны честно, без смешивания с периодами.
  *
  * PROVENANCE (миграция 011). В знаменатель win rate / R и в сравнение стратегий
  * входят ТОЛЬКО строки с доказанным происхождением (`VERIFIED`). Причина не в
@@ -203,7 +218,7 @@ function aggregateSelect(tradeIdx) {
  * `includeUnverified: true` снимает фильтр — ТОЛЬКО дляaudit-счётчиков, где
  * вопрос в том, СКОЛЬКО строк исключено, а не каков их результат.
  */
-function buildFilter({ strategyId, symbol, period, nowMs, includeUnverified = false }) {
+function buildFilter({ strategyId, symbol, period, nowMs, testRunId, includeUnverified = false }) {
   const where = [];
   const params = [];
   const from = periodStart(period, nowMs);
@@ -223,6 +238,14 @@ function buildFilter({ strategyId, symbol, period, nowMs, includeUnverified = fa
     params.push(String(symbol).toUpperCase());
     where.push(`upper(symbol) = $${params.length}`);
   }
+  if (testRunId) {
+    if (testRunId === TEST_RUN_NONE) {
+      where.push('test_run_id IS NULL');
+    } else {
+      params.push(testRunId);
+      where.push(`test_run_id = $${params.length}`);
+    }
+  }
   return { clause: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 }
 
@@ -233,12 +256,18 @@ function buildFilter({ strategyId, symbol, period, nowMs, includeUnverified = fa
  * @param {string} [filters.strategyId]
  * @param {string} [filters.symbol]
  * @param {string} [filters.period] — all | 24h | 7d | 30d | 90d
+ * @param {string} [filters.testRunId] — UUID периода (authoritative membership)
+ *   или 'none' («до тестовых периодов», test_run_id IS NULL)
  * @param {number} [filters.nowMs] — инъекция времени (тесты)
  */
 export async function getSignalStatistics(filters = {}) {
   const period = STATISTICS_PERIODS.includes(filters.period) ? filters.period : 'all';
   const nowMs = Number.isFinite(filters.nowMs) ? filters.nowMs : Date.now();
-  const base = buildFilter({ ...filters, period, nowMs });
+  const testRunId =
+    filters.testRunId === TEST_RUN_NONE || isTestRunIdShape(filters.testRunId)
+      ? filters.testRunId
+      : undefined;
+  const base = buildFilter({ ...filters, period, nowMs, testRunId });
 
   // Список статусов завершённой сделки — ПОСЛЕДНИЙ параметр во всех запросах,
   // поэтому номер параметра одинаковый и «всего» не может разойтись с разрезом.
@@ -296,6 +325,7 @@ export async function getSignalStatistics(filters = {}) {
     filters: {
       strategyId: filters.strategyId ?? null,
       symbol: filters.symbol ?? null,
+      testRunId: testRunId ?? null,
     },
     /** Домены — из репозитория, а не из этого файла. */
     statuses: [...SIGNAL_STATUSES],
@@ -351,6 +381,8 @@ export async function getSignalStatistics(filters = {}) {
         'Строки в карантине не удалены и не изменены — они исключены из расчёта, потому что их результат принадлежит другой стратегии.',
       netRSum:
         'Сумма net R по завершённым сделкам с известным R. Сделки без R не дают вклада — это не ноль, а отсутствие значения.',
+      testRunId:
+        'Тестовый период: в разрез периода входят ТОЛЬКО сигналы, созданные в нём (членство зафиксировано при публикации). Исход, наступивший позже смены периода, остаётся в периоде создания сигнала. «До тестовых периодов» — сигналы, созданные вне периодов.',
     },
     source: 'server',
   };

@@ -8,6 +8,8 @@
  * PATCH /api/admin/users/:id/block   — Block user
  * PATCH /api/admin/users/:id/unblock — Unblock user
  * GET  /api/admin/system     — Read-only system info
+ * GET  /api/admin/strategy-test-runs — Тестовые периоды стратегии (текущий + история)
+ * POST /api/admin/strategy-test-runs — Начать новый тестовый период (атомарно)
  */
 
 import { Router } from 'express';
@@ -18,8 +20,13 @@ import { recordAudit } from '../services/audit.js';
 import {
   setStrategyEnabled,
   engineStatus,
+  getStrategyState,
 } from '../services/strategySettings.js';
 import { isKnownStrategyId } from '../services/strategyCatalog.js';
+import {
+  listStrategyTestRuns,
+  startStrategyTestRun,
+} from '../services/strategyTestRuns.js';
 import { schedulerStatus } from '../services/strategyEngine/strategyScheduler.js';
 import {
   getScanUniverseState,
@@ -314,6 +321,105 @@ router.patch('/strategies/:strategyId', async (req, res, next) => {
       enabled: updated.enabled,
       updatedAt: updated.updated_at,
       message: enabled ? 'Стратегия включена' : 'Стратегия выключена',
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Тестовые периоды стратегий (Admin → Тестирование стратегий)         */
+/* ------------------------------------------------------------------ */
+/*
+ * «Начать новый тестовый период» — административная операция, после которой
+ * статистика выбранной стратегии в Signals UI считается с нуля.
+ *
+ * ЧТО ЭТО: создание новой записи strategy_test_runs (+ завершение прежнего
+ * ACTIVE-периода той же транзакцией). Новые сигналы стратегии получают
+ * test_run_id нового периода; старые сигналы НЕ удаляются и НЕ изменяются.
+ *
+ * ЧТО ЭТО НЕ: это НЕ переключатель стратегии. enabled в strategy_settings
+ * не трогается (V3.4 с enabled=false остаётся выключенной), сигналы не
+ * очищаются, физического DELETE/TRUNCATE здесь нет и не будет.
+ *
+ * Защита — requireAdmin на уровне всего router'а (см. выше). Роль, прочитанная
+ * на фронте, защитой не является и здесь не используется.
+ */
+
+/**
+ * GET /api/admin/strategy-test-runs?strategyId=…
+ *
+ * Всё состояние раздела «Тестирование стратегий» для выбранной стратегии:
+ * включённость (для честного «Включена/Выключена» рядом с периодом),
+ * текущий ACTIVE-период и история периодов с числом сигналов-членов.
+ */
+router.get('/strategy-test-runs', async (req, res, next) => {
+  try {
+    const strategyId = typeof req.query.strategyId === 'string' ? req.query.strategyId : '';
+    if (!isKnownStrategyId(strategyId)) {
+      return res.status(404).json({
+        error: 'UNKNOWN_STRATEGY',
+        message: `Стратегия «${strategyId || '—'}» не существует. ID проверяется по каталогу кода.`,
+      });
+    }
+    const [state, runs] = await Promise.all([
+      getStrategyState(strategyId),
+      listStrategyTestRuns({ strategyId }),
+    ]);
+    res.json({
+      strategyId,
+      enabled: state?.enabled ?? false,
+      engineStatus: state?.status ?? 'OFF',
+      /** Текущий период: единственный ACTIVE (гарантия партиционального индекса). */
+      currentRun: runs.find((r) => r.status === 'ACTIVE') ?? null,
+      runs,
+      source: 'server',
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * POST /api/admin/strategy-test-runs
+ *
+ * Тело: { "strategyId": "V3_4_HTF_ZONE_MITIGATION_QUALITY" }
+ *
+ * Атомарный старт (одна транзакция PostgreSQL):
+ *   lock scope стратегии → COMPLETED прежнего ACTIVE-периода (ended_at = now()
+ *   транзакции) → новый ACTIVE-период → audit_log STRATEGY_TEST_RUN_STARTED.
+ *
+ * Конкурентные запросы не создают два ACTIVE-периода: прикладная блокировка
+ * строки strategy_settings сериализует старты, партициональный уникальный
+ * индекс — гарантия последней линии на уровне БД.
+ *
+ * Операция НЕ разрушительна: сигналы и результаты не удаляются, настройки
+ * стратегии не изменяются, включённость не меняется.
+ */
+router.post('/strategy-test-runs', async (req, res, next) => {
+  const { strategyId } = req.body ?? {};
+
+  // Не доверять strategy ID с клиента: проверка по закрытому каталогу кода.
+  if (!isKnownStrategyId(strategyId)) {
+    return res.status(404).json({
+      error: 'UNKNOWN_STRATEGY',
+      message: `Стратегия «${String(strategyId ?? '—')}» не существует. Четвёртую стратегию создать нельзя.`,
+    });
+  }
+
+  try {
+    const { run, previousRunId } = await startStrategyTestRun({
+      strategyId,
+      actorUserId: req.user.id,
+    });
+    res.status(201).json({
+      strategyId: run.strategyId,
+      newRunId: run.id,
+      startedAt: run.startedAt,
+      previousRunId,
+      /** Честный ответ: enabled не изменился этой операцией. */
+      strategyEnabledUnchanged: true,
+      message: 'Новый тестовый период начат. Статистика периода считается с нуля.',
     });
   } catch (e) {
     next(e);

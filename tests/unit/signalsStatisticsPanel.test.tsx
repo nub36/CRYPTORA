@@ -58,7 +58,7 @@ function dto(overrides: DtoOverrides = {}): SignalStatisticsDto {
   };
   return {
     period: 'all',
-    filters: { strategyId: null, symbol: null },
+    filters: { strategyId: null, symbol: null, testRunId: null },
     statuses: [],
     openStatuses: [],
     tradeClosedStatuses: [],

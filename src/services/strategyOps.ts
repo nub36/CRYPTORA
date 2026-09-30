@@ -144,6 +144,12 @@ export interface SignalDto {
    * попадают только `VERIFIED`.
    */
   provenanceStatus: SignalProvenanceStatus;
+  /**
+   * Тестовый период (миграция 015): членство назначено сервером в момент
+   * создания сигнала и неизменяемо. null — сигнал создан вне периода
+   * (вся история до появления периодов). Фронтенд никогда его не назначает.
+   */
+  testRunId: string | null;
 }
 
 /** Домен `signals.provenance_status` — тот же, что в CHECK-ограничении миграции 011. */
@@ -250,7 +256,7 @@ export interface SignalStatisticsAggregateDto {
 
 export interface SignalStatisticsDto {
   period: 'all' | '24h' | '7d' | '30d' | '90d';
-  filters: { strategyId: string | null; symbol: string | null };
+  filters: { strategyId: string | null; symbol: string | null; testRunId: string | null };
   statuses: SignalStatus[];
   openStatuses: SignalStatus[];
   tradeClosedStatuses: SignalStatus[];
@@ -267,6 +273,59 @@ export interface SignalStatisticsFilters {
   strategyId?: string;
   symbol?: string;
   period?: SignalStatisticsDto['period'];
+  /**
+   * Тестовый период: UUID периода (статистика ТОЛЬКО его сигналов-членов —
+   * фильтр по signals.test_run_id, не по created_at) или 'none'
+   * («до тестовых периодов», test_run_id IS NULL).
+   */
+  testRunId?: string;
+}
+
+/**
+ * Тестовый период стратегии (`strategy_test_runs`, миграция 015).
+ *
+ * Членство сигнала: назначается сервером в момент INSERT и неизменяемо.
+ * `endedAt === null && status === 'ACTIVE'` — период идёт, новые сигналы
+ * стратегии приписываются ему.
+ */
+export type StrategyTestRunStatus = 'ACTIVE' | 'COMPLETED';
+
+export interface StrategyTestRunDto {
+  id: string;
+  strategyId: string;
+  strategyVersion: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  status: StrategyTestRunStatus;
+  /** Число сигналов-членов (COUNT по test_run_id). */
+  signalCount: number;
+}
+
+/** Ответ GET /api/signals/test-runs. */
+export interface StrategyTestRunsDto {
+  strategyId: string;
+  runs: StrategyTestRunDto[];
+  statuses: StrategyTestRunStatus[];
+  source: 'server';
+}
+
+/** Ответ GET /api/admin/strategy-test-runs. */
+export interface AdminStrategyTestRunsDto {
+  strategyId: string;
+  enabled: boolean;
+  engineStatus: StrategyStatus;
+  currentRun: StrategyTestRunDto | null;
+  runs: StrategyTestRunDto[];
+  source: 'server';
+}
+
+/** Ответ POST /api/admin/strategy-test-runs. */
+export interface StartTestRunResultDto {
+  strategyId: string;
+  newRunId: string;
+  startedAt: string;
+  previousRunId: string | null;
+  message: string;
 }
 
 export class ApiError extends Error {
@@ -320,6 +379,8 @@ export async function fetchSignalMonitorState(init?: RequestInit): Promise<Signa
  * Серверная статистика по сохранённому жизненному циклу сигналов.
  *
  * Считается в SQL на сервере; клиент НЕ агрегирует ленту и не пересчитывает R.
+ * `testRunId` — фильтр по членству в тестовом периоде (signals.test_run_id),
+ * 'none' — «до тестовых периодов».
  */
 export async function fetchSignalStatistics(
   filters: SignalStatisticsFilters = {},
@@ -329,8 +390,46 @@ export async function fetchSignalStatistics(
   if (filters.strategyId) params.set('strategyId', filters.strategyId);
   if (filters.symbol) params.set('symbol', filters.symbol);
   if (filters.period) params.set('period', filters.period);
+  if (filters.testRunId) params.set('testRunId', filters.testRunId);
   const qs = params.toString();
   return request<SignalStatisticsDto>(`/api/signals/statistics${qs ? `?${qs}` : ''}`, init);
+}
+
+/**
+ * Тестовые периоды стратегии — публичное чтение (нужно фильтру статистики:
+ * «Текущий тестовый период» и предыдущие Run ссылаются на id периодов).
+ */
+export async function fetchStrategyTestRuns(
+  strategyId: string,
+  init?: RequestInit
+): Promise<StrategyTestRunsDto> {
+  const params = new URLSearchParams({ strategyId });
+  return request<StrategyTestRunsDto>(`/api/signals/test-runs?${params}`, init);
+}
+
+/**
+ * Состояние раздела «Тестирование стратегий» для админки. Только администратор:
+ * сервер проверяет requireAdmin, роль из AuthContext защитой не является.
+ */
+export async function fetchAdminStrategyTestRuns(
+  strategyId: string
+): Promise<AdminStrategyTestRunsDto> {
+  const params = new URLSearchParams({ strategyId });
+  return request<AdminStrategyTestRunsDto>(`/api/admin/strategy-test-runs?${params}`);
+}
+
+/**
+ * НАЧАТЬ НОВЫЙ ТЕСТОВЫЙ ПЕРИОД. Только администратор (requireAdmin на сервере).
+ *
+ * Операция не разрушительна: прежний период завершается, сигналы не удаляются,
+ * настройки и включённость стратегии не изменяются. Клиент НЕ передаёт run id —
+ * сервер назначает членство сигналам сам, в момент их создания.
+ */
+export async function startStrategyTestRun(strategyId: string): Promise<StartTestRunResultDto> {
+  return request('/api/admin/strategy-test-runs', {
+    method: 'POST',
+    body: JSON.stringify({ strategyId }),
+  });
 }
 
 export async function fetchStrategies(init?: RequestInit): Promise<StrategyStateDto[]> {

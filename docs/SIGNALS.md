@@ -287,6 +287,13 @@ Binance REST (публичные klines)
 `CREATE TABLE` / `CREATE INDEX` без потери данных, применяется обычным раннером (без
 `CREATE INDEX CONCURRENTLY`, который невозможен внутри одной транзакции `scripts/migrate.mjs`).
 
+**Миграция 015 (`015_strategy_test_runs`, аддитивная):** таблица `strategy_test_runs` (тестовые периоды
+стратегий, см. `docs/STRATEGY_OPERATIONS.md` §14) и колонка `signals.test_run_id` (членство сигнала в периоде).
+Членство назначает ТОЛЬКО сервер в момент INSERT сигнала, оно неизменяемо и НЕ входит в hash-payload публикации
+(цепочка не зависит от периодов). Исторические сигналы остаются `test_run_id = NULL` — backfill выдуманным Run ID
+не выполнялся; NULL-строки доступны в статистике через «Все данные» и `testRunId=none`. Миграция ничего не
+включает и не изменяет в `strategy_settings`.
+
 Ключ дедупликации — `UNIQUE (strategy_id, symbol, timeframe, signal_candle_ts)` из 007. Поскольку
 `signal_candle_ts` = `setupOpenTime`, повторный скан того же закрытого бара и рестарт процесса не создают дублей, а
 новый закрытый бар с новым сетапом — создаёт новую строку.
@@ -369,10 +376,11 @@ GET /api/signals?symbol=&strategy=&status=&open=&direction=&limit=&offset=
 Индекс `idx_signals_symbol_status_created` (009) обслуживает горячий путь будущего UI: выбранный инструмент +
 ограниченная лента последних сигналов с фильтром по состоянию.
 
-### 8.5.1. Контракты `GET /api/signals/statistics` и `GET /api/signals/monitor`
+### 8.5.1. Контракты `GET /api/signals/statistics`, `GET /api/signals/test-runs` и `GET /api/signals/monitor`
 
 ```
-GET /api/signals/statistics?period=all|24h|7d|30d|90d&strategy=&symbol=
+GET /api/signals/statistics?period=all|24h|7d|30d|90d&strategy=&symbol=&testRunId=<uuid|none>
+GET /api/signals/test-runs?strategyId=<id>
 GET /api/signals/monitor
 ```
 
@@ -382,6 +390,12 @@ GET /api/signals/monitor
   `fillRatePct`, `completionRatePct` + разрезы `byStrategy` / `bySymbol` + `definitions` (человеческие пояснения
   метрик). Доля успешных считается только по сделкам (`TRADE_CLOSED_STATUSES`): сигнал, не дождавшийся входа, в
   знаменатель не попадает. `null` означает «нет данных» и обязан отображаться как «—», а не «0 %».
+  **`testRunId` (миграция 015)** — тестовый период: UUID периода фильтрует **строго по членству**
+  (`signals.test_run_id = $1`), а НЕ по `created_at >= started_at` — сигнал, созданный в Run 1 и закрытый во
+  время Run 2, считается в Run 1. Спец-значение `none` — «до тестовых периодов» (`test_run_id IS NULL`).
+  Только что начатый период честно возвращает нули и `null`-агрегаты: в нём ещё нет сигналов-членов.
+* **`/test-runs`** — список тестовых периодов одной стратегии (`strategyId` обязателен): `id`, `startedAt`,
+  `endedAt`, `status` (`ACTIVE`/`COMPLETED`), `signalCount`. Нужен фильтру статистики в Signals UI; только чтение.
 * **`/monitor`** — телеметрия серверного монитора открытых сигналов: `running`, `cycles`, `inFlight`,
   `lastTickStartedAt`/`lastTickFinishedAt`/`lastTickDurationMs`, `lastError`, `consecutiveFailures`, `stale`,
   `lastSummary`. Эндпоинт **только читает**: ни один пользовательский маршрут не меняет состояние стратегий.

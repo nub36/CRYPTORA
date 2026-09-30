@@ -112,6 +112,7 @@ describe('migration inventory', () => {
   it('parses every migration and finds the expected tables', () => {
     const tables = new Set(columns.map((c) => c.table.toLowerCase()));
     // signal_monitor_state (010) and radar_events (012) are server monitor tables.
+    // strategy_test_runs (015) — тестовые периоды стратегий.
     expect([...tables].sort()).toEqual([
       'audit_log',
       'auth_identities',
@@ -122,6 +123,7 @@ describe('migration inventory', () => {
       'signal_monitor_state',
       'signals',
       'strategy_settings',
+      'strategy_test_runs',
       'user_preferences',
       'users',
     ]);
@@ -153,11 +155,16 @@ describe('migration inventory', () => {
       'idx_signals_strategy_status',
       'idx_signals_symbol',
       'idx_signals_symbol_status_created',
+      'idx_signals_test_run_id',
       'idx_strategy_settings_enabled',
+      'idx_strategy_test_runs_strategy_started',
       'idx_users_email_lower',
       'idx_users_email_unverified',
       'idx_users_is_active',
       'idx_users_role',
+      // 015: один ACTIVE тестовый период на стратегию — партициональный
+      // уникальный индекс (последняя линия защиты после прикладной блокировки).
+      'uq_strategy_test_runs_one_active',
     ]);
   });
 });

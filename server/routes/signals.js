@@ -36,7 +36,12 @@ import {
   MAX_SIGNALS_OFFSET,
 } from '../services/signalRepository.js';
 import { isKnownStrategyId, KNOWN_STRATEGY_IDS } from '../services/strategyCatalog.js';
-import { getSignalStatistics, STATISTICS_PERIODS } from '../services/signalStatistics.js';
+import { getSignalStatistics, STATISTICS_PERIODS, TEST_RUN_NONE } from '../services/signalStatistics.js';
+import {
+  isTestRunIdShape,
+  listStrategyTestRuns,
+  TEST_RUN_STATUSES,
+} from '../services/strategyTestRuns.js';
 import { signalMonitorStatus } from '../services/signalMonitor/signalMonitor.js';
 
 const router = Router();
@@ -190,6 +195,45 @@ router.get('/', async (req, res, next) => {
 });
 
 /**
+ * GET /api/signals/test-runs?strategyId=… — периоды тестирования стратегии.
+ *
+ * Публичное ЧТЕНИЕ: UI статистики предлагает варианты «Текущий тестовый
+ * период» и предыдущие периоды, а фильтр статистики — это
+ * `test_run_id = <run id>` (authoritative membership), поэтому клиенту нужны
+ * id периодов и их границы. Никаких параметров стратегий и секретов здесь нет:
+ * только идентичность периодов и число сигналов-членов.
+ *
+ * Стратегия обязательна: периоды существуют только в рамках одной стратегии,
+ * «все периоды всех стратегий» — неосмысленный список.
+ */
+router.get('/test-runs', async (req, res, next) => {
+  try {
+    const strategyId = typeof req.query.strategyId === 'string' ? req.query.strategyId : '';
+    if (!strategyId) {
+      return res.status(400).json({
+        error: 'MISSING_STRATEGY',
+        message: 'strategyId обязателен: тестовые периоды существуют в рамках одной стратегии.',
+      });
+    }
+    if (!isKnownStrategyId(strategyId)) {
+      return res.status(400).json({
+        error: 'INVALID_STRATEGY',
+        message: `strategyId must be one of: ${[...KNOWN_STRATEGY_IDS].join(', ')}`,
+      });
+    }
+    const runs = await listStrategyTestRuns({ strategyId });
+    res.json({
+      strategyId,
+      runs,
+      statuses: [...TEST_RUN_STATUSES],
+      source: 'server',
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
  * GET /api/signals/statistics — агрегаты по СОХРАНЁННОМУ жизненному циклу.
  *
  * Источник — таблица `signals` (PostgreSQL), не журнал браузера. Поэтому
@@ -197,7 +241,13 @@ router.get('/', async (req, res, next) => {
  * «Опубликовано» и «совершилась сделка» считаются раздельно: сигнал без входа
  * не попадает в знаменатель win rate (подробнее в `definitions` ответа).
  *
- * Query: `strategyId`, `symbol`, `period` (all|24h|7d|30d|90d).
+ * Query: `strategyId`, `symbol`, `period` (all|24h|7d|30d|90d),
+ * `testRunId` (UUID периода | 'none' = «до тестовых периодов»).
+ *
+ * TEST RUN: фильтр — РОВНО `signals.test_run_id = testRunId`, а не
+ * `created_at >= started_at`: членство назначается при INSERT сигнала и не
+ * пересчитывается. Поэтому сразу после старта нового периода его статистика —
+ * честные нули (0 сигналов-членов), а не «нуль, потому что мы что-то стёрли».
  */
 router.get('/statistics', async (req, res, next) => {
   try {
@@ -213,6 +263,18 @@ router.get('/statistics', async (req, res, next) => {
     if (!STATISTICS_PERIODS.includes(period)) {
       return res.status(400).json({ error: 'Unknown period', allowedPeriods: [...STATISTICS_PERIODS] });
     }
+    // Тестовый период: UUID или спец-значение 'none'. Неверная форма — 400,
+    // а не пустая статистика: «нет данных» и «неверный запрос» — разные ответы.
+    const testRunId =
+      typeof req.query.testRunId === 'string' && req.query.testRunId !== ''
+        ? req.query.testRunId
+        : undefined;
+    if (testRunId !== undefined && testRunId !== TEST_RUN_NONE && !isTestRunIdShape(testRunId)) {
+      return res.status(400).json({
+        error: 'Invalid testRunId',
+        message: "testRunId must be a test run UUID or 'none' (before test periods).",
+      });
+    }
     const symbol =
       typeof req.query.symbol === 'string' && req.query.symbol
         ? normalizeSymbolParam(req.query.symbol)
@@ -225,6 +287,7 @@ router.get('/statistics', async (req, res, next) => {
       strategyId: typeof req.query.strategyId === 'string' ? req.query.strategyId : undefined,
       symbol: symbol.value,
       period,
+      testRunId,
     });
     res.json(stats);
   } catch (e) {
