@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { ArchiveCandle, ArchiveDirection } from '@/services/strategyArchive/types';
-import { V33_CONSTANTS, manageTrade as manageV33 } from '@/services/strategyArchive/definitions/v3_3-htf-zone-mitigation/v33Core';
+import { V33_CONSTANTS, legFeeR, manageTrade as manageV33 } from '@/services/strategyArchive/definitions/v3_3-htf-zone-mitigation/v33Core';
 import { V30_CONSTANTS, manageTrade as manageV30 } from '@/services/strategyArchive/definitions/v3_0-htf-liquidation-trap/v30Core';
 import {
   traceTrade, verifyTracer, stateAt, runPolicy, metricsOf, overlapsOf, maxConcurrent,
@@ -380,6 +380,65 @@ describe('боевой режим: открытые позиции и допус
     expect(t.hitTp1).toBe(true);
     // 0.5 * (110-100)/10 зафиксировано + 0.5 * (111-100)/10 переоценка остатка
     expect(t.grossR).toBeCloseTo(0.5 + 0.55, 12);
+  });
+
+  it('открытая позиция разделяет realized и MTM, комиссия выхода не списана', () => {
+    const t = traceTrade({ ...LONG_TRADE, bars: OPEN_BARS, ...V33, allowOpen: true })!;
+    expect(t.open).toBe(true);
+    expect(t.openWeight).toBe(0.5);
+    // Зафиксирован только снятый TP1: 0.5 * (110-100)/10.
+    expect(t.realizedGrossR).toBeCloseTo(0.5, 12);
+    // Переоценка остатка: 0.5 * (111-100)/10. В realized не попадает.
+    expect(t.mtmR).toBeCloseTo(0.55, 12);
+    expect(t.realizedGrossR + t.mtmR).toBeCloseTo(t.grossR, 12);
+    expect(t.realizedNetR + t.mtmR).toBeCloseTo(t.netR, 12);
+    // Уплачены только вход (maker, вес 1) и нога TP1 (taker, вес 0.5).
+    const feeEntry = legFeeR(100, 1, V33_CONSTANTS.MAKER_BPS, 10);
+    const feeTp1 = legFeeR(110, 0.5, V33_CONSTANTS.TAKER_BPS, 10);
+    expect(t.realizedNetR).toBeCloseTo(0.5 - feeEntry - feeTp1, 12);
+  });
+
+  it('закрытая сделка не имеет MTM-компоненты', () => {
+    const t = traceTrade({ ...LONG_TRADE, bars: TP2_BARS, ...V33 })!;
+    expect(t.open).toBe(false);
+    expect(t.mtmR).toBe(0);
+    expect(t.openWeight).toBe(0);
+    expect(t.realizedNetR).toBeCloseTo(t.netR, 12);
+  });
+
+  it('metricsOf держит realized и MTM врозь, ожидание — только по закрытым', () => {
+    const openT: Trade = {
+      ...FIRST, id: 'OPEN', bars: OPEN_BARS,
+      base: traceTrade({ ...LONG_TRADE, bars: OPEN_BARS, ...V33, allowOpen: true })!,
+    };
+    const closedT: Trade = { ...FIRST, id: 'CLOSED' };
+    const m = metricsOf(runPolicy('A_BASELINE', [closedT, openT]));
+    expect(m.trades).toBe(2);
+    expect(m.closedTrades).toBe(1);
+    expect(m.openTrades).toBe(1);
+    // Открытая позиция не создаёт «ещё одну сделку» в ожидании.
+    expect(m.avgR).toBeCloseTo(m.closedNetR, 12);
+    expect(m.expectancy).toBeCloseTo(closedT.base.netR, 12);
+    // realized = закрытая сделка + снятый TP1 открытой; MTM отдельно.
+    expect(m.openRealizedR).toBeCloseTo(openT.base.realizedNetR, 12);
+    expect(m.netR).toBeCloseTo(closedT.base.netR + openT.base.realizedNetR, 12);
+    expect(m.openMtmR).toBeCloseTo(openT.base.mtmR, 12);
+    expect(m.totalMarkedR).toBeCloseTo(m.netR + m.openMtmR, 12);
+    // Ключевое: MTM не просочился в realized.
+    expect(m.netR).not.toBeCloseTo(m.totalMarkedR, 6);
+  });
+
+  it('под C открытая позиция закрывается встречным и становится realized', () => {
+    // Закрытие на баре 1 по цене открытия встречной сделки — это настоящий
+    // выход, поэтому MTM-компоненты быть не должно.
+    const t = traceTrade({
+      ...LONG_TRADE, bars: OPEN_BARS, ...V33, allowOpen: true,
+      closeAt: { bar: 1, price: 110 },
+    })!;
+    expect(t.exit).toBe('CLOSED_REMAINDER_ON_OPPOSITE');
+    expect(t.open).toBe(false);
+    expect(t.mtmR).toBe(0);
+    expect(t.realizedNetR).toBeCloseTo(t.netR, 12);
   });
 
   it('verifyTracer требует, чтобы ядро тоже считало такую позицию открытой', () => {

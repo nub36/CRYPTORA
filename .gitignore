@@ -19,3 +19,7 @@ e2e/.request-audit.json
 
 # Локальные артефакты диагностики (scripts/diagnose-charts.mjs --json и т.п.)
 .diagnostics/
+
+# Боевые дампы сигналов: содержат данные прода, в репозиторий не попадают.
+cryptora-conflicts*.json
+*-conflicts-prod.json

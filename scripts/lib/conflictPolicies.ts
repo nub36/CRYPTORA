@@ -34,8 +34,22 @@ export type ExitReason =
 
 export interface TraceResult {
   exit: ExitReason;
+  /** Суммарный «отмеченный» R: реализованное + переоценка открытого остатка. */
   grossR: number;
+  /** Суммарный «отмеченный» net R. Для open === true это НЕ результат сделки. */
   netR: number;
+  /** true — позиция не закрыта на конце окна; netR содержит MTM-компоненту. */
+  open: boolean;
+  /** Фактически зафиксированная часть (для открытой сделки — снятый TP1). */
+  realizedGrossR: number;
+  realizedNetR: number;
+  /**
+   * Переоценка ещё открытого остатка по close последнего бара. Комиссия выхода
+   * НЕ списана: выхода не было. Для закрытых сделок — 0.
+   */
+  mtmR: number;
+  /** Вес всё ещё открытого остатка (0 для закрытых, 0.5 после TP1, иначе 1). */
+  openWeight: number;
   barsHeld: number;
   hitTp1: boolean;
   hitTp2: boolean;
@@ -97,8 +111,29 @@ export function traceTrade(a: TraceArgs): TraceResult | null {
     const gross = realised + weight * rOf(exitPrice);
     const fee = legs.reduce((s, l) => s + legFeeR(l.price, l.weight, l.taker ? takerBps : makerBps, risk), 0);
     return {
-      exit, grossR: gross, netR: gross - fee, barsHeld: i + 1,
+      exit, grossR: gross, netR: gross - fee,
+      open: false, realizedGrossR: gross, realizedNetR: gross - fee, mtmR: 0, openWeight: 0,
+      barsHeld: i + 1,
       hitTp1, hitTp2: exit === 'TP2', tp1Bar, exitBar: i, exitPrice,
+    };
+  };
+
+  /**
+   * Позиция доживает до конца окна. Выхода НЕ было, поэтому закрывающая нога не
+   * добавляется и тейкерская комиссия на остаток не начисляется: списано только
+   * то, что реально уплачено (вход и, если был, снятый TP1).
+   */
+  const finishOpen = (i: number, close: number): TraceResult => {
+    const fee = legs.reduce((s, l) => s + legFeeR(l.price, l.weight, l.taker ? takerBps : makerBps, risk), 0);
+    const w = hitTp1 ? 0.5 : 1;
+    const mtm = w * rOf(close);
+    return {
+      exit: 'OPEN_AT_WINDOW_END',
+      grossR: realised + mtm, netR: realised - fee + mtm,
+      open: true,
+      realizedGrossR: realised, realizedNetR: realised - fee, mtmR: mtm, openWeight: w,
+      barsHeld: i + 1,
+      hitTp1, hitTp2: false, tp1Bar, exitBar: i, exitPrice: close,
     };
   };
 
@@ -149,7 +184,7 @@ export function traceTrade(a: TraceArgs): TraceResult | null {
     const lastIdx = Math.min(bars.length, timeoutBars) - 1;
     const lastBar = bars[lastIdx];
     if (!lastBar) return null;
-    return finish('OPEN_AT_WINDOW_END', lastBar.close, hitTp1 ? 0.5 : 1, lastIdx);
+    return finishOpen(lastIdx, lastBar.close);
   }
   return null;
 }
@@ -388,8 +423,24 @@ export function runPolicy(policy: PolicyId, all: Trade[]): PolicyRun {
 
 export interface Metrics {
   trades: number;
+  /**
+   * Σ netR по ЗАКРЫТЫМ сделкам + зафиксированные части ещё открытых. Не
+   * содержит переоценки открытых остатков.
+   */
   netR: number;
   grossR: number;
+  /** Сделок с настоящим исходом (open === false). */
+  closedTrades: number;
+  /** Σ netR только по закрытым сделкам — база для avgR/expectancy/winRate. */
+  closedNetR: number;
+  /** Позиций, живых на конце окна. */
+  openTrades: number;
+  /** Уже снятые части (TP1) по ещё открытым позициям — это реализованный R. */
+  openRealizedR: number;
+  /** Переоценка открытых остатков. НЕ реализованный результат. */
+  openMtmR: number;
+  /** netR + openMtmR. Отмеченный итог портфеля. */
+  totalMarkedR: number;
   avgR: number;
   expectancy: number;
   winRate: number;
@@ -459,15 +510,30 @@ export function maxConcurrent(applied: Applied[]): number {
 
 export function metricsOf(run: PolicyRun): Metrics {
   const A = run.applied;
-  const netR = A.reduce((s, a) => s + a.result.netR, 0);
-  const grossR = A.reduce((s, a) => s + a.result.grossR, 0);
-  const wins = A.filter((a) => a.result.netR > 0).length;
+  // Открытая позиция — не исход. Ожидание и win rate считаются только по
+  // сделкам, которые действительно завершились; снятый на открытой позиции TP1
+  // попадает в реализованный R портфеля, но не создаёт «ещё одну сделку».
+  const closed = A.filter((a) => !a.result.open);
+  const open = A.filter((a) => a.result.open);
+  const closedNetR = closed.reduce((s, a) => s + a.result.netR, 0);
+  const openRealizedR = open.reduce((s, a) => s + a.result.realizedNetR, 0);
+  const openMtmR = open.reduce((s, a) => s + a.result.mtmR, 0);
+  const netR = closedNetR + openRealizedR;
+  const grossR = closed.reduce((s, a) => s + a.result.grossR, 0)
+    + open.reduce((s, a) => s + a.result.realizedGrossR, 0);
+  const wins = closed.filter((a) => a.result.netR > 0).length;
   return {
     trades: A.length,
     netR, grossR,
-    avgR: A.length ? netR / A.length : 0,
-    expectancy: A.length ? netR / A.length : 0,
-    winRate: A.length ? wins / A.length : 0,
+    closedTrades: closed.length,
+    closedNetR,
+    openTrades: open.length,
+    openRealizedR,
+    openMtmR,
+    totalMarkedR: netR + openMtmR,
+    avgR: closed.length ? closedNetR / closed.length : 0,
+    expectancy: closed.length ? closedNetR / closed.length : 0,
+    winRate: closed.length ? wins / closed.length : 0,
     tp1: A.filter((a) => a.result.hitTp1).length,
     tp2: A.filter((a) => a.result.exit === 'TP2').length,
     sl: A.filter((a) => a.result.exit === 'SL').length,

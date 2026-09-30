@@ -274,7 +274,13 @@ for (const p of POLICIES) {
 
 const cols: [string, (m: Metrics) => string][] = [
   ['trades', (m) => String(m.trades)],
-  ['net R', (m) => f2(m.netR)],
+  ['закрыто', (m) => String(m.closedTrades)],
+  ['открыто', (m) => String(m.openTrades)],
+  // realized R = закрытые сделки + уже снятые части ещё открытых позиций.
+  // MTM держим отдельной колонкой: это не результат сделки.
+  ['realiz R', (m) => f2(m.netR)],
+  ['openMTM R', (m) => f2(m.openMtmR)],
+  ['marked R', (m) => f2(m.totalMarkedR)],
   ['avg R', (m) => f4(m.avgR)],
   ['expectancy', (m) => f4(m.expectancy)],
   ['win %', (m) => (m.winRate * 100).toFixed(1)],
@@ -298,11 +304,17 @@ for (const p of POLICIES) {
 }
 out('');
 const base = mets.get('A_BASELINE')!;
-out('Дельта к BASELINE (net R):');
+out('avg R / expectancy / win % считаются ТОЛЬКО по закрытым сделкам.');
+out('realiz R = закрытые сделки + уже снятые части ещё открытых позиций.');
+out('openMTM R = переоценка открытых остатков по close последнего бара, комиссия выхода не списана.');
+out('');
+out('Дельта к BASELINE:');
+const sg = (x: number) => (x >= 0 ? '+' : '') + f2(x);
 for (const p of POLICIES) {
   if (p === 'A_BASELINE') continue;
   const m = mets.get(p)!;
-  out(`  ${p.padEnd(28)} ${(m.netR - base.netR >= 0 ? '+' : '')}${f2(m.netR - base.netR)} R   (сделок ${m.trades - base.trades >= 0 ? '+' : ''}${m.trades - base.trades})`);
+  out(`  ${p.padEnd(28)} realized ${sg(m.netR - base.netR).padStart(9)} R · marked ${sg(m.totalMarkedR - base.totalMarkedR).padStart(9)} R`
+    + `   (сделок ${m.trades - base.trades >= 0 ? '+' : ''}${m.trades - base.trades}, открытых ${m.openTrades} vs ${base.openTrades})`);
 }
 
 /* ── 4a. Отдельная статистика по D ───────────────────────────────────── */
@@ -379,15 +391,25 @@ function explainCase(o: OverlapRec): void {
     const aFirst = r.applied.find((x) => x.trade.id === t.id);
     const aSecond = r.applied.find((x) => x.trade.id === u.id);
     const rejSecond = r.rejected.find((x) => x.id === u.id);
-    const parts: string[] = [];
-    if (aFirst) {
-      parts.push(`первая: ${aFirst.result.exit} net ${f4(aFirst.result.netR)}${aFirst.truncatedBy ? ' (обрезана встречной)' : ''}`);
-    } else parts.push('первая: не открыта');
-    if (aSecond) parts.push(`встречная: ${aSecond.result.exit} net ${f4(aSecond.result.netR)}`);
+    // Открытую ногу нельзя схлопывать в одно число: показываем
+    // зафиксированное и переоценку остатка раздельно.
+    const leg = (label: string, a: typeof aFirst): string => {
+      if (!a) return `${label}: не открыта`;
+      const r = a.result;
+      const tail = a.truncatedBy ? ' (обрезана встречной)' : '';
+      if (!r.open) return `${label}: ${r.exit} net ${f4(r.netR)}${tail}`;
+      return `${label}: ОТКРЫТА (остаток ${r.openWeight}) realized ${f4(r.realizedNetR)} + MTM ${f4(r.mtmR)}${tail}`;
+    };
+    const parts: string[] = [leg('первая', aFirst)];
+    if (aSecond) parts.push(leg('встречная', aSecond));
     else if (rejSecond) parts.push(`встречная: ОТКЛОНЕНА (${rejSecond.reason})`);
     else parts.push('встречная: не открыта');
-    const sum = (aFirst?.result.netR ?? 0) + (aSecond?.result.netR ?? 0);
-    out(`  ${p.padEnd(28)} ${parts.join(' · ')} → сумма ${f4(sum)} R`);
+    const realizedSum = (aFirst?.result.realizedNetR ?? 0) + (aSecond?.result.realizedNetR ?? 0);
+    const mtmSum = (aFirst?.result.mtmR ?? 0) + (aSecond?.result.mtmR ?? 0);
+    const tot = mtmSum === 0
+      ? `→ realized ${f4(realizedSum)} R`
+      : `→ realized ${f4(realizedSum)} R + MTM ${f4(mtmSum)} R = marked ${f4(realizedSum + mtmSum)} R`;
+    out(`  ${p.padEnd(28)} ${parts.join(' · ')} ${tot}`);
   }
 }
 
