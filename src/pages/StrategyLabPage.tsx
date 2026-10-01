@@ -38,6 +38,9 @@ import { LabTester, type LabTab } from '@/components/strategyLab/LabTester';
 import { LabTutorialButton } from '@/components/strategyLab/LabTutorialButton';
 import { LabAuthoringModeSwitch } from '@/components/strategyLab/LabAuthoringModeSwitch';
 import { LabBlockEditor } from '@/components/strategyLab/blocks/LabBlockEditor';
+import { LabCodeEditor } from '@/components/strategyLab/code/LabCodeEditor';
+import { EMA_TREND_CODE } from '@/services/strategyLab/code/templates';
+import { codeToGraph, graphToCode } from '@/services/strategyLab/code';
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -79,6 +82,8 @@ export const StrategyLabPage: React.FC = () => {
    * работать с `StrategyDraftDefinition`, блок-схема — со `StrategyGraph`.
    */
   const [authoringMode, setAuthoringMode] = useState<LabAuthoringMode>('blocks');
+  const [sourceCode, setSourceCode] = useState(EMA_TREND_CODE);
+  const [codeErrors, setCodeErrors] = useState<any[]>([]);
 
   const [definition, setDefinition] = useState<StrategyDraftDefinition>(() =>
     defaultDraftDefinition('EMA 20/50 Cross + ATR Stop')
@@ -100,6 +105,11 @@ export const StrategyLabPage: React.FC = () => {
   );
 
   const isBlocksMode = authoringMode === 'blocks';
+  const isCodeMode = authoringMode === 'code';
+  const handleCodeChange = (value: string) => { setSourceCode(value); };
+  const validateCode = () => { const r = codeToGraph(sourceCode); setCodeErrors(r.errors); return r; };
+  const showCodeAsBlocks = () => { const r = validateCode(); if (r.graph) { setGraph(r.graph); setAuthoringMode('blocks'); } };
+  const openBlocksAsCode = () => { try { setSourceCode(graphToCode(graph)); setCodeErrors([]); setAuthoringMode('code'); } catch (e) { setError(e instanceof Error ? e.message : 'Граф нельзя представить в режиме КОД.'); } };
 
   /* Тот же валидатор, что независимо исполняет сервер (§10). */
   const graphValidation = useMemo(() => validateStrategyGraph(graph), [graph]);
@@ -142,6 +152,7 @@ export const StrategyLabPage: React.FC = () => {
 
   const handleRun = useCallback(async () => {
     setError(null);
+    if (isCodeMode) { const checked = validateCode(); if (!checked.graph) { setError('Код содержит ошибки.'); return; } setGraph(checked.graph); }
     const fromMs = new Date(controls.from).getTime();
     const toMs = new Date(controls.to).getTime();
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
@@ -157,7 +168,7 @@ export const StrategyLabPage: React.FC = () => {
       return;
     }
 
-    if (isBlocksMode && !graphValidation.ok) {
+    if ((isBlocksMode || isCodeMode) && (!graphValidation.ok || codeErrors.length > 0)) {
       setError(
         `Блок-схема не готова: ${graphValidation.errors
           .slice(0, 2)
@@ -176,7 +187,7 @@ export const StrategyLabPage: React.FC = () => {
     try {
       const res = await runLabBacktest(
         {
-          ...(isBlocksMode ? { strategyGraph: graph } : { strategyDefinition: definition }),
+          ...(isBlocksMode || isCodeMode ? { strategyGraph: graph } : { strategyDefinition: definition }),
           market: controls.market,
           symbol: controls.symbol.trim().toUpperCase(),
           timeframe: controls.timeframe,
@@ -311,6 +322,10 @@ export const StrategyLabPage: React.FC = () => {
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {/* Редактор стратегии */}
           <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap gap-2">
+              {isCodeMode && <><button type="button" onClick={validateCode} className="rounded border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200">Проверить код</button><button type="button" onClick={showCodeAsBlocks} className="rounded border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200">Показать блоками</button><button type="button" onClick={handleRun} disabled={loading} className="rounded border border-emerald-400/30 px-3 py-2 text-xs text-emerald-200">Запустить бэктест</button></>}
+              {isBlocksMode && <button type="button" onClick={openBlocksAsCode} className="rounded border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200">Открыть как код</button>}
+            </div>
             {isBlocksMode ? (
               <LabBlockEditor
                 graph={graph}
@@ -318,6 +333,8 @@ export const StrategyLabPage: React.FC = () => {
                 validation={graphValidation}
                 disabled={loading}
               />
+            ) : isCodeMode ? (
+              <LabCodeEditor value={sourceCode} onChange={handleCodeChange} errors={codeErrors} disabled={loading} />
             ) : (
               <LabConstructor
                 definition={definition}
