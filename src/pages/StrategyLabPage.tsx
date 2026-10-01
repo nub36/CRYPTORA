@@ -66,6 +66,8 @@ const CompactResearchBadge: React.FC = () => (
 export const StrategyLabPage: React.FC = () => {
   const { isAdmin, isLoading: authLoading } = useAuth();
 
+  const [indicatorModalOpen, setIndicatorModalOpen] = useState(false);
+
   const [controls, setControls] = useState<LabControlsState>(() => {
     const now = new Date();
     const from = new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000);
@@ -355,16 +357,18 @@ export const StrategyLabPage: React.FC = () => {
           />
         </div>
 
-        {/* 4. ИНДИКАТОРЫ (слева) + КОД СТРАТЕГИИ (справа) */}
-        <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <LabIndicatorsPanel
-            name={draft.name}
-            indicators={draft.indicators}
-            onNameChange={handleNameChange}
-            onChange={handleIndicatorsChange}
-            disabled={loading}
-          />
-
+        {/* 4. Индикаторы редактируются в отдельном responsive modal; график выше остаётся смонтированным. */}
+        <div className="mb-4 flex items-center justify-between rounded border border-slate-700/70 bg-slate-900/40 p-3">
+          <div><h3 className="text-sm font-bold text-slate-200">Настройки индикаторов</h3><p className="text-xs text-slate-400">Изменения сохраняются в текущем черновике.</p></div>
+          <button type="button" onClick={() => setIndicatorModalOpen(true)} className="rounded bg-cyan-500/20 px-3 py-2 text-xs text-cyan-100">Настройки индикаторов</button>
+        </div>
+        {indicatorModalOpen && <div role="dialog" aria-modal="true" aria-labelledby="indicator-modal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6" onKeyDown={(e) => { if (e.key === 'Escape') setIndicatorModalOpen(false); }}>
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-slate-600 bg-slate-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-700 p-4"><h2 id="indicator-modal-title" className="text-base font-bold text-white">Настройки индикаторов</h2><button type="button" onClick={() => setIndicatorModalOpen(false)} className="rounded border border-slate-600 px-3 py-1 text-xs text-slate-200">Закрыть</button></div>
+            <div className="min-h-0 overflow-y-auto overflow-x-hidden p-4"><LabIndicatorsPanel name={draft.name} indicators={draft.indicators} onNameChange={handleNameChange} onChange={handleIndicatorsChange} disabled={loading} /></div>
+          </div>
+        </div>}
+        <div className="mb-4">
           <div className="min-w-0" data-qa="lab-code-section">
             <div className="mb-2 flex items-center gap-2">
               <Code2 className="h-4 w-4 text-cyan-400" />

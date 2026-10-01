@@ -99,6 +99,16 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
     ]);
   }, [indicators, onChange]);
 
+  const addRsi = useCallback(() => {
+    const n = indicators.filter((i) => i.type === 'RSI').length + 1;
+    onChange([...indicators, { id: `rsi-${n}-${indicators.length + 1}`, type: 'RSI', name: 'RSI 14', period: 14, source: 'close', visible: false }]);
+  }, [indicators, onChange]);
+
+  const addFractals = useCallback(() => {
+    const n = indicators.filter((i) => i.type === 'FRACTALS').length + 1;
+    onChange([...indicators, { id: `fractals-${n}-${indicators.length + 1}`, type: 'FRACTALS', name: 'Williams Fractals', period: 5, source: 'high', visible: true }]);
+  }, [indicators, onChange]);
+
   const addAtr = useCallback(() => {
     const n = indicators.filter((i) => i.type === 'ATR').length + 1;
     onChange([
@@ -176,6 +186,8 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
             >
               <Plus className="h-3.5 w-3.5" /> ATR
             </button>
+            <button type="button" onClick={addRsi} disabled={disabled} data-qa="lab-add-rsi" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200"><Plus className="h-3.5 w-3.5" /> RSI</button>
+            <button type="button" onClick={addFractals} disabled={disabled} data-qa="lab-add-fractals" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200"><Plus className="h-3.5 w-3.5" /> Фракталы</button>
           </div>
         </div>
 
@@ -248,7 +260,7 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
                     className={`w-full ${inputCls}`}
                   />
                 </div>
-                {indicator.type === 'EMA' && (
+                {(indicator.type === 'EMA' || indicator.type === 'RSI') && (
                   <div>
                     <label className="mb-1 block text-[11px] text-slate-400">Источник</label>
                     <select
@@ -275,7 +287,7 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
                 поэтому чекбокс показывается только там, где отображение
                 действительно поддержано — для EMA.
               */}
-              {indicator.type === 'EMA' ? (
+              {indicator.type === 'EMA' || indicator.type === 'FRACTALS' ? (
                 <label className="mt-2 flex items-center gap-2 text-[12px] text-slate-300">
                   <input
                     type="checkbox"
@@ -288,7 +300,7 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
                 </label>
               ) : (
                 <p className="mt-2 text-[11px] text-slate-500">
-                  ATR используется для расчёта стопа и не рисуется поверх цены.
+                  {indicator.type === 'RSI' ? 'RSI используется для расчёта и не рисуется на ценовой шкале.' : 'ATR используется для расчёта стопа и не рисуется поверх цены.'}
                 </p>
               )}
             </div>
