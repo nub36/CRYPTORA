@@ -58,7 +58,7 @@ const timestampMs = z
 
 export const indicatorSchema = z.object({
   id: z.string().min(1).max(64),
-  type: z.enum(['EMA', 'ATR']),
+  type: z.enum(['EMA', 'ATR', 'RSI', 'FRACTALS']),
   name: z.string().max(64).optional(),
   period: z.number().int().min(1).max(1000),
   source: z.enum(['close', 'open', 'high', 'low']).optional(),
@@ -263,7 +263,11 @@ export const CODE_MAX_SOURCE_LENGTH = 32 * 1024;
 
 export const strategyDraftSchema = z.object({
   name: z.string().min(1).max(100),
-  indicators: z.array(indicatorSchema).min(1).max(20),
+  indicators: z.array(indicatorSchema).min(1).max(20).superRefine((items, ctx) => {
+    items.forEach((item, index) => {
+      if (item.type === 'FRACTALS' && item.period !== 5) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, 'period'], message: 'Фракталы используют фиксированный период 5.' });
+    });
+  }),
   sourceCode: z.string().min(1).max(CODE_MAX_SOURCE_LENGTH),
   execution: executionSchema.optional(),
   apiVersion: z.literal(2),
