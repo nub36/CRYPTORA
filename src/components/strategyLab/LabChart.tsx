@@ -36,6 +36,7 @@ import {
   LAB_MARKERS_MAX,
   DEFAULT_LAB_MARKER_OVERLAYS,
   mapLabEventMarkers,
+  mapFractalMarkers,
   mapTradeLevels,
   type LabMarkerOverlays,
 } from '@/services/strategyLab/labChartProjection';
@@ -298,7 +299,7 @@ export const LabChart: React.FC<LabChartProps> = ({
         showMA={overlays.indicators}
         showVolume
         showBadges={false}
-        markers={markerProjection.markers}
+        markers={[...markerProjection.markers, ...(result ? mapFractalMarkers(result) : [])]}
         levelLines={levelLines}
         onMarkerClick={handleMarkerClick}
         resetViewToken={resetViewToken}

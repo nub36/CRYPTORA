@@ -274,3 +274,8 @@ export function mapTradeLevels(
   }
   return lines;
 }
+
+export function mapFractalMarkers(result: { candles: LabCandle[]; indicators: { indicatorsList?: Array<{ id: string; type: string; visible?: boolean }>; fractalEvents?: Array<{ indicatorId: string; kind: 'HIGH'|'LOW'; sourceCandleTime: number; sourceIndex: number; confirmationIndex: number; knownAt: number; price: number }>; } }): ChartMarker[] {
+  const times = new Set(result.candles.map((c) => c.time));
+  return (result.indicators.fractalEvents ?? []).filter((e) => result.indicators.indicatorsList?.some((i) => i.id === e.indicatorId && i.type === 'FRACTALS' && i.visible !== false) && times.has(e.sourceCandleTime)).map((e) => ({ id: `fractal-${e.indicatorId}-${e.kind}-${e.sourceIndex}`, time: e.sourceCandleTime, position: e.kind === 'HIGH' ? 'aboveBar' : 'belowBar', shape: e.kind === 'HIGH' ? 'arrowDown' : 'arrowUp', color: e.kind === 'HIGH' ? '#a78bfa' : '#38bdf8', size: 1, text: e.kind === 'HIGH' ? 'FH' : 'FL', payload: { indicatorId: e.indicatorId, sourceIndex: e.sourceIndex, confirmationIndex: e.confirmationIndex, knownAt: e.knownAt, price: e.price } }));
+}

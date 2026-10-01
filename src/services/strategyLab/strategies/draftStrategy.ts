@@ -58,6 +58,7 @@ export function evaluateDraftStrategy(
 ): DraftStrategyEvaluation {
   const n = candles.length;
   const indSeries: Record<string, (number | null)[]> = {};
+  const fractalEvents: NonNullable<LabIndicatorSeries['fractalEvents']> = [];
 
   // 1. Расчёт серий всех объявленных индикаторов
   for (const ind of definition.indicators) {
@@ -70,7 +71,7 @@ export function evaluateDraftStrategy(
       indSeries[ind.id] = rsiAligned(getPricesBySource(candles, ind.source), ind.period);
     } else if (ind.type === 'FRACTALS') {
       const events = confirmedFractals(candles); const series = new Array<number | null>(n).fill(null);
-      for (const event of events) if (event.kind === 'HIGH') series[event.confirmationIndex] = event.price;
+      for (const event of events) { fractalEvents.push({ indicatorId: ind.id, ...event }); if (event.kind === 'HIGH') series[event.confirmationIndex] = event.price; }
       indSeries[ind.id] = series;
     }
   }
@@ -90,6 +91,7 @@ export function evaluateDraftStrategy(
     atr: atrSeries,
     byIndicatorId: indSeries,
     indicatorsList: definition.indicators,
+    fractalEvents,
   };
 
   const events: LabEvent[] = [];
@@ -114,7 +116,7 @@ export function evaluateDraftStrategy(
       evaluatedBars += 1;
 
       const predicate = (condition: any, i: number): boolean => {
-        if (condition.kind === 'cross') {
+        if (condition.kind === 'cross' || !condition.kind) {
           const lp = indSeries[condition.left]?.[i - 1] ?? null, lc = indSeries[condition.left]?.[i] ?? null;
           const rp = indSeries[condition.right]?.[i - 1] ?? null, rc = indSeries[condition.right]?.[i] ?? null;
           return lp !== null && lc !== null && rp !== null && rc !== null && (condition.operator === 'crossesAbove' ? lp <= rp && lc > rc : lp >= rp && lc < rc);

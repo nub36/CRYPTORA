@@ -201,6 +201,7 @@ export interface LabIndicatorSeries {
   byIndicatorId?: Record<string, (number | null)[]>;
   /** Список определений индикаторов (с флагами visible/period/name). */
   indicatorsList?: IndicatorDefinition[];
+  fractalEvents?: Array<{ indicatorId: string; kind: 'HIGH' | 'LOW'; sourceIndex: number; sourceCandleTime: number; confirmationIndex: number; knownAt: number; price: number }>;
 }
 
 export interface LabMetrics {
