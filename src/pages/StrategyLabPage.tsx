@@ -42,6 +42,7 @@ import { LabChart } from '@/components/strategyLab/LabChart';
 import { LabTester, type LabTab } from '@/components/strategyLab/LabTester';
 import { LabTutorialButton } from '@/components/strategyLab/LabTutorialButton';
 import { LabCodeEditor } from '@/components/strategyLab/code/LabCodeEditor';
+import { createSavedStrategy, fetchSavedStrategies, updateSavedStrategy, type SavedStrategy } from '@/services/strategyLab/savedStrategies';
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -79,6 +80,10 @@ export const StrategyLabPage: React.FC = () => {
 
   /* ЕДИНСТВЕННАЯ модель стратегии в Lab (то, что будем сохранять в БД). */
   const [draft, setDraft] = useState<StrategyResearchDraft>(() => defaultResearchDraft());
+  const [savedStrategies, setSavedStrategies] = useState<SavedStrategy[]>([]);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string>(() => JSON.stringify(defaultResearchDraft()));
+  const [saveBusy, setSaveBusy] = useState(false);
   const [codeErrors, setCodeErrors] = useState<CodeError[]>([]);
   const [codeChecked, setCodeChecked] = useState(false);
 
@@ -94,6 +99,23 @@ export const StrategyLabPage: React.FC = () => {
     () => result?.trades.find((t) => t.id === selectedTradeId) ?? null,
     [result, selectedTradeId]
   );
+  const dirty = JSON.stringify(draft) !== savedSnapshot;
+  const confirmDiscard = useCallback(() => !dirty || window.confirm('Есть несохранённые изменения. Продолжить без сохранения?'), [dirty]);
+
+  useEffect(() => {
+    if (!isAdmin || authLoading) return;
+    const controller = new AbortController();
+    fetchSavedStrategies(controller.signal).then(setSavedStrategies).catch(() => setSavedStrategies([]));
+    return () => controller.abort();
+  }, [authLoading, isAdmin]);
+
+  useEffect(() => {
+    const handler = (event: BeforeUnloadEvent) => {
+      if (dirty) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
 
   /*
    * Компиляция «индикаторы + код» → каноническое определение. Это ЧИСТОЕ
@@ -132,13 +154,36 @@ export const StrategyLabPage: React.FC = () => {
   );
 
   const handleNewStrategy = useCallback(() => {
-    setDraft(defaultResearchDraft('Новая стратегия'));
-    setCodeErrors([]);
-    setCodeChecked(false);
-    setResult(null);
-    setError(null);
-    setSelectedTradeId(null);
-  }, []);
+    if (!confirmDiscard()) return;
+    const next = defaultResearchDraft('Новая стратегия');
+    setDraft(next);
+    setSavedId(null);
+    setSavedSnapshot(JSON.stringify(next));
+    setCodeErrors([]); setCodeChecked(false); setResult(null); setError(null); setSelectedTradeId(null);
+  }, [confirmDiscard]);
+
+  const loadSaved = useCallback((item: SavedStrategy) => {
+    if (!confirmDiscard()) return;
+    const next: StrategyResearchDraft = { name: item.name, indicators: item.indicators, sourceCode: item.sourceCode, execution: item.execution, apiVersion: item.apiVersion };
+    setDraft(next); setSavedId(item.id); setSavedSnapshot(JSON.stringify(next)); setCodeErrors([]); setCodeChecked(false); setResult(null); setError(null);
+  }, [confirmDiscard]);
+
+  const saveDraft = useCallback(async (asNew = false) => {
+    const name = asNew ? window.prompt('Название новой стратегии', draft.name) : draft.name;
+    if (name === null) return;
+    const payload = { ...draft, name: name.trim() };
+    if (!payload.name) { setError('Укажите название стратегии.'); return; }
+    const checked = compileResearchDraft(payload);
+    if (!checked.ok) { setCodeErrors(checked.errors); setCodeChecked(true); setError('Стратегия не прошла проверку.'); return; }
+    setSaveBusy(true); setError(null);
+    try {
+      const saved = asNew || !savedId ? await createSavedStrategy(payload) : await updateSavedStrategy(savedId, payload);
+      const next: StrategyResearchDraft = { name: saved.name, indicators: saved.indicators, sourceCode: saved.sourceCode, execution: saved.execution, apiVersion: saved.apiVersion };
+      setDraft(next); setSavedId(saved.id); setSavedSnapshot(JSON.stringify(next));
+      setSavedStrategies((items) => [saved, ...items.filter((item) => item.id !== saved.id)]);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Не удалось сохранить стратегию.'); }
+    finally { setSaveBusy(false); }
+  }, [draft, savedId]);
 
   const handleRun = useCallback(async () => {
     setError(null);
@@ -258,7 +303,24 @@ export const StrategyLabPage: React.FC = () => {
           <LabTutorialButton />
         </div>
 
-        {/* 2. Основные действия и выбор монеты/таймфрейма */}
+        {/* 2. Сохранённые research-стратегии */}
+        <div className="mb-4 rounded border border-slate-700/70 bg-slate-900/40 p-3">
+          <div className="mb-2 text-[11px] font-bold tracking-wider text-slate-400">СТРАТЕГИЯ</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={savedId ?? ''} onChange={(event) => { const item = savedStrategies.find((entry) => entry.id === event.target.value); if (item) loadSaved(item); }} className="min-w-0 max-w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-slate-200" aria-label="Мои стратегии">
+              <option value="">Мои стратегии</option>
+              {savedStrategies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <button type="button" onClick={handleNewStrategy} className="rounded border border-cyan-400/40 px-3 py-2 text-xs text-cyan-200">+ Новая</button>
+            <span className="text-xs text-amber-300">{dirty ? 'Есть несохранённые изменения' : 'Сохранено'}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <button type="button" disabled={saveBusy} onClick={() => saveDraft(false)} className="rounded bg-cyan-500/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-50">Сохранить</button>
+            <button type="button" disabled={saveBusy} onClick={() => saveDraft(true)} className="rounded border border-slate-600 px-3 py-2 text-xs text-slate-200 disabled:opacity-50">Сохранить как...</button>
+          </div>
+        </div>
+
+        {/* 3. Основные действия и выбор монеты/таймфрейма */}
         <div className="mb-4">
           <LabControls
             value={controls}

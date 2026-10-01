@@ -1,0 +1,109 @@
+// @vitest-environment node
+/** Focused HTTP/security coverage for Saved Strategy Lab V1. */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import argon2 from 'argon2';
+import { defaultResearchDraft } from '@/services/strategyLab/draft';
+import type { HttpClient } from '../helpers/httpHarness';
+
+process.env.LOGIN_RATE_LIMIT = '100000';
+process.env.API_RATE_LIMIT = '1000000';
+process.env.SESSION_STORE = 'memory';
+process.env.MAIL_TRANSPORT = 'json';
+
+const { createApp } = await import('../../server/app.js');
+const { __setPoolForTests } = await import('../../server/db/pool.js');
+const { MemoryDb } = await import('../helpers/memoryDb');
+const { listen } = await import('../helpers/httpHarness');
+
+const PASSWORD = 'correct horse battery staple';
+const A = '11111111-1111-4111-8111-111111111111';
+const B = '22222222-2222-4222-8222-222222222222';
+
+let db: InstanceType<typeof MemoryDb>;
+let close: () => Promise<void>;
+
+function draft(name = 'EMA Saved') {
+  return defaultResearchDraft(name);
+}
+
+async function seed(id: string, email: string, role: 'admin' | 'user') {
+  const now = new Date();
+  db.users.push({ id, email, display_name: email, password_hash: await argon2.hash(PASSWORD), role, is_active: true, email_verified: true, email_verified_at: now, created_at: now, updated_at: now, last_login_at: null });
+}
+
+async function login(client: HttpClient, email: string) {
+  const response = await client.post('/api/auth/login', { email, password: PASSWORD });
+  expect(response.status).toBe(200);
+}
+
+beforeEach(async () => {
+  db = new MemoryDb();
+  __setPoolForTests(db.asPool());
+  await seed(A, 'a@test.local', 'admin');
+  await seed(B, 'b@test.local', 'admin');
+  const harness = await listen(createApp({ sessionStore: 'memory' }));
+  close = harness.close;
+});
+
+afterEach(async () => { await close(); __setPoolForTests(null); });
+
+describe('Saved Strategy Lab HTTP security contract', () => {
+  it('requires auth and admin role', async () => {
+    const unauth = await listen(createApp({ sessionStore: 'memory' }));
+    expect((await unauth.client.get('/api/strategy-lab/saved-strategies')).status).toBe(401);
+    await unauth.close();
+
+    const nonAdmin = await listen(createApp({ sessionStore: 'memory' }));
+    await login(nonAdmin.client, 'a@test.local');
+    // Temporarily model a non-admin account through a separate user.
+    db.users.find((u) => u.id === A)!.role = 'user';
+    expect((await nonAdmin.client.get('/api/strategy-lab/saved-strategies')).status).toBe(403);
+    await nonAdmin.close();
+    db.users.find((u) => u.id === A)!.role = 'admin';
+  });
+
+  it('binds create/list/update to authenticated owner and ignores owner injection', async () => {
+    const a = await listen(createApp({ sessionStore: 'memory' }));
+    await login(a.client, 'a@test.local');
+    const created = await a.client.post('/api/strategy-lab/saved-strategies', { ...draft(), ownerId: B, owner_id: B });
+    expect(created.status).toBe(201);
+    const id = (created.body as { strategy: { id: string } }).strategy.id;
+    expect(db.savedStrategies[0].owner_id).toBe(A);
+    expect(((await a.client.get('/api/strategy-lab/saved-strategies')).body as { strategies: unknown[] }).strategies).toHaveLength(1);
+
+    const b = await listen(createApp({ sessionStore: 'memory' }));
+    await login(b.client, 'b@test.local');
+    expect(((await b.client.get('/api/strategy-lab/saved-strategies')).body as { strategies: unknown[] }).strategies).toHaveLength(0);
+    const foreign = await b.client.request('PUT', `/api/strategy-lab/saved-strategies/${id}`, { body: { ...draft('Foreign'), ownerId: B } });
+    expect(foreign.status).toBe(404);
+    expect(db.savedStrategies[0].name).toBe('EMA Saved');
+    await a.close(); await b.close();
+  });
+
+  it('rejects malformed UUID safely and rejects invalid DSL before INSERT/UPDATE', async () => {
+    const client = await listen(createApp({ sessionStore: 'memory' }));
+    await login(client.client, 'a@test.local');
+    const before = db.executed.length;
+    const malformed = await client.client.request('PUT', '/api/strategy-lab/saved-strategies/not-a-uuid', { body: draft() });
+    expect(malformed.status).toBe(404);
+    expect(db.executed.slice(before).some((sql) => /strategy_lab_saved_strategies/i.test(sql))).toBe(false);
+
+    const invalid = draft();
+    invalid.sourceCode = 'LONG(UNKNOWN_REFERENCE);';
+    const rejected = await client.client.post('/api/strategy-lab/saved-strategies', invalid);
+    expect(rejected.status).toBe(400);
+    expect(db.savedStrategies).toHaveLength(0);
+    expect(db.executed.some((sql) => /INSERT INTO strategy_lab_saved_strategies/i.test(sql))).toBe(false);
+    await client.close();
+  });
+
+  it('keeps the existing catalog route separate from saved rows', async () => {
+    const client = await listen(createApp({ sessionStore: 'memory' }));
+    await login(client.client, 'a@test.local');
+    const catalog = await client.client.get('/api/strategy-lab/strategies');
+    expect(catalog.status).toBe(200);
+    expect((catalog.body as { researchOnly: boolean }).researchOnly).toBe(true);
+    expect((catalog.body as { strategies: unknown[] }).strategies).toBeInstanceOf(Array);
+    await client.close();
+  });
+});

@@ -65,6 +65,16 @@ export interface TokenRow {
   attempts: number;
 }
 
+export interface SavedStrategyRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  payload: Record<string, unknown>;
+  api_version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface AuthIdentityRow {
   id: string;
   user_id: string;
@@ -107,6 +117,7 @@ export class MemoryDb {
   audit: AuditRow[] = [];
   tokens: TokenRow[] = [];
   identities: AuthIdentityRow[] = [];
+  savedStrategies: SavedStrategyRow[] = [];
   sessions: Array<{ sess: { userId?: string } }> = [];
 
   /** Every statement executed, for assertions. */
@@ -115,6 +126,7 @@ export class MemoryDb {
   reset(): void {
     this.users = [];
     this.identities = [];
+    this.savedStrategies = [];
     this.audit = [];
     this.tokens = [];
     this.sessions = [];
@@ -496,6 +508,25 @@ export class MemoryDb {
         .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
         .slice(offset, offset + limit);
       return { rows, rowCount: rows.length };
+    }
+
+    /* ── Strategy Lab saved research drafts ─────────────────────────── */
+    if (/^SELECT id, name, payload, api_version, created_at, updated_at FROM strategy_lab_saved_strategies WHERE owner_id = \$1/i.test(sql)) {
+      const owner = str(p[0]);
+      const rows = this.savedStrategies.filter((row) => row.owner_id === owner).sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+      return { rows, rowCount: rows.length };
+    }
+    if (/^INSERT INTO strategy_lab_saved_strategies/i.test(sql)) {
+      const now = new Date();
+      const row: SavedStrategyRow = { id: nextId(), owner_id: str(p[0]), name: str(p[1]), payload: JSON.parse(str(p[2])), api_version: Number(p[3]), created_at: now, updated_at: now };
+      this.savedStrategies.push(row);
+      return { rows: [row], rowCount: 1 };
+    }
+    if (/^UPDATE strategy_lab_saved_strategies SET name = \$1, payload = \$2::jsonb, api_version = \$3, updated_at = now\(\) WHERE id = \$4 AND owner_id = \$5/i.test(sql)) {
+      const row = this.savedStrategies.find((candidate) => candidate.id === str(p[3]) && candidate.owner_id === str(p[4]));
+      if (!row) return { rows: [], rowCount: 0 };
+      row.name = str(p[0]); row.payload = JSON.parse(str(p[1])); row.api_version = Number(p[2]); row.updated_at = new Date();
+      return { rows: [row], rowCount: 1 };
     }
 
     /* ── audit service: paginated read with optional filters ────────── */
