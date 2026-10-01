@@ -118,14 +118,35 @@ export async function selectHistoricalCandles(parsed, options = {}) {
  */
 export async function runReplay(parsed, options = {}) {
   /*
-   * Блок-схема проверяется НЕЗАВИСИМО от фронтенда и ДО загрузки свечей: клиент
-   * не является источником истины, а невалидный граф не должен тянуть данные.
-   * Используется ТОТ ЖЕ общий семантический валидатор, что и в UI.
+   * Стратегия проверяется НЕЗАВИСИМО от фронтенда и ДО загрузки свечей: клиент
+   * не является источником истины, а невалидная стратегия не должна тянуть
+   * данные. Используются ТЕ ЖЕ компилятор кода и валидатор, что и в UI.
    *
-   * Ядро подгружается заранее ТОЛЬКО ради графа: для остальных запросов порядок
+   * Ядро подгружается заранее ТОЛЬКО ради этого: для остальных запросов порядок
    * «сначала дешёвые проверки диапазона, потом ядро» сохраняется без изменений.
    */
   let core = options.core ?? null;
+
+  /*
+   * CODE-FIRST: черновик (индикаторы + код) компилируется СЕРВЕРОМ до загрузки
+   * свечей. Клиент не является источником истины: код разбирается тем же
+   * безопасным лексером/парсером, ссылки на индикаторы, типы, стоп и цель
+   * проверяются здесь заново. Никакого eval / new Function / VM.
+   */
+  let draftDefinition = null;
+  if (parsed.strategyDraft) {
+    core = core ?? (await loadLabCore());
+    const compiled = core.compileResearchDraft(parsed.strategyDraft);
+    if (!compiled.ok || !compiled.definition) {
+      throw new LabRequestError(
+        `Код стратегии некорректен: ${core.formatCodeErrors(compiled.errors)}`,
+        400,
+        'INVALID_STRATEGY_CODE'
+      );
+    }
+    draftDefinition = compiled.definition;
+  }
+
   if (parsed.strategyGraph) {
     core = core ?? (await loadLabCore());
     const validation = core.validateStrategyGraph(parsed.strategyGraph);
@@ -141,7 +162,9 @@ export async function runReplay(parsed, options = {}) {
   const historical = await selectHistoricalCandles(parsed, options);
   core = core ?? (await loadLabCore());
 
-  const strategyId = parsed.strategyGraph
+  const strategyId = draftDefinition
+    ? (parsed.strategyId || core.CODE_DRAFT_ID)
+    : parsed.strategyGraph
     ? (parsed.strategyId || core.BLOCK_GRAPH_ID)
     : parsed.strategyDefinition
       ? (parsed.strategyId || 'CONSTRUCTOR')
@@ -149,6 +172,7 @@ export async function runReplay(parsed, options = {}) {
 
   if (
     strategyId &&
+    !draftDefinition &&
     !parsed.strategyDefinition &&
     !parsed.strategyGraph &&
     !core.isKnownLabStrategy(strategyId)
@@ -160,7 +184,7 @@ export async function runReplay(parsed, options = {}) {
   const result = core.runLabReplay(
     {
       strategyId,
-      strategyDefinition: parsed.strategyDefinition,
+      strategyDefinition: draftDefinition ?? parsed.strategyDefinition,
       strategyGraph: parsed.strategyGraph,
       market: parsed.market,
       symbol: parsed.symbol,

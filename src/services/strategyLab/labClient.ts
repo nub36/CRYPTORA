@@ -18,6 +18,7 @@ import type {
 } from './types';
 import type { LabStrategyMeta } from './registry';
 import type { StrategyGraph } from './graph/types';
+import type { StrategyResearchDraft } from './draft/types';
 
 export interface StrategiesResponse {
   strategies: LabStrategyMeta[];
@@ -42,7 +43,12 @@ export type LabDataCoverage =
 export interface ReplayRequestBody {
   strategyId?: string;
   strategyDefinition?: StrategyDraftDefinition;
-  /** Режим «БЛОК-СХЕМА»: сервер сам валидирует и компилирует граф (§18). */
+  /**
+   * CODE-FIRST: индикаторы + код стратегии. Сервер НЕЗАВИСИМО разбирает код,
+   * проверяет ссылки на индикаторы и компилирует черновик сам (§14).
+   */
+  strategyDraft?: StrategyResearchDraft;
+  /** Внутреннее IR-представление (не пользовательская функция). */
   strategyGraph?: StrategyGraph;
   market: LabMarket;
   symbol: string;

@@ -26,8 +26,23 @@ jobs:
       - name: Start baseline server
         shell: bash
         run: |
+          set -euo pipefail
           git worktree add --detach /tmp/cryptora-before origin/main
-          ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/cryptora-before/node_modules
+          # Базовая ревизия обязана ставить СВОИ зависимости по СВОЕМУ lockfile.
+          # Раньше сюда симлинкался node_modules кандидата: как только наборы
+          # зависимостей расходились (например, PR удаляет пакет, который ещё
+          # используется в main), baseline-сервер падал на неразрешённом импорте,
+          # и «до/после» скриншоты не снимались вовсе.
+          # Если lockfile'ы побайтово совпадают — переиспользуем уже установленный
+          # node_modules кандидата (быстро и безопасно), иначе честный npm ci.
+          if cmp -s "$GITHUB_WORKSPACE/package-lock.json" /tmp/cryptora-before/package-lock.json \
+             && cmp -s "$GITHUB_WORKSPACE/package.json" /tmp/cryptora-before/package.json; then
+            echo "Lockfiles identical — reusing candidate node_modules for baseline."
+            ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/cryptora-before/node_modules
+          else
+            echo "Lockfiles differ — installing baseline dependencies with npm ci."
+            (cd /tmp/cryptora-before && npm ci)
+          fi
           (cd /tmp/cryptora-before && npm run dev -- --port 5174 > /tmp/cryptora-before.log 2>&1 & echo $! > /tmp/cryptora-before.pid)
           for i in {1..60}; do curl -fsS http://127.0.0.1:5174/ >/dev/null && break; sleep 1; done
       - name: Start candidate server

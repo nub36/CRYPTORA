@@ -15,8 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { runLabReplay } from '@/services/strategyLab/engine';
-import { codeToGraph } from '@/services/strategyLab/code/toGraph';
-import { EMA_TREND_CODE } from '@/services/strategyLab/code/templates';
+import { compileResearchDraft, defaultResearchDraft } from '@/services/strategyLab/draft';
 import { defaultDraftDefinition, BLOCK_GRAPH_ID } from '@/services/strategyLab/registry';
 import { mapLabEventMarkers, mapTradeLevels } from '@/services/strategyLab/labChartProjection';
 import {
@@ -385,16 +384,33 @@ describe('Strategy Lab · паритет «граф ↔ Draft»', () => {
     1
   );
 
-  it('CODE-1: Simple Constructor, Block Graph and Code Graph produce identical official results', () => {
-    const parsed = codeToGraph(EMA_TREND_CODE);
-    expect(parsed.graph).toBeTruthy();
-    const codeResult = runLabReplay(graphInput(parsed.graph!, candles), 1);
-    expect(graphResult.trades).toEqual(codeResult.trades);
-    expect(graphResult.rejections).toEqual(codeResult.rejections);
-    expect(graphResult.events).toEqual(codeResult.events);
-    expect(graphResult.metrics).toEqual(codeResult.metrics);
-    expect(graphResult.trades.map(t => ({entry:t.entryPrice, stop:t.stop, target:t.target, outcome:t.outcome, grossR:t.grossR, netR:t.netR, barsHeld:t.barsHeld})))
-      .toEqual(draftResult.trades.map(t => ({entry:t.entryPrice, stop:t.stop, target:t.target, outcome:t.outcome, grossR:t.grossR, netR:t.netR, barsHeld:t.barsHeld})));
+
+  /** CODE-FIRST путь: индикаторы + код → каноническое определение → движок. */
+  const codeFirstResult = (() => {
+    const compiled = compileResearchDraft(defaultResearchDraft(EMA_TREND_TEMPLATE_NAME));
+    if (!compiled.definition) throw new Error(compiled.errors[0]?.message ?? 'compile failed');
+    return runLabReplay(
+      {
+        strategyDefinition: compiled.definition,
+        market: 'spot',
+        symbol: 'BTCUSDT',
+        timeframe: '1h',
+        from: candles[0].time,
+        to: candles[candles.length - 1].closeTime,
+        candles,
+      },
+      1
+    );
+  })();
+
+  it('J. legacy-определение по умолчанию == code-first черновик (индикаторы + код)', () => {
+    expect(codeFirstResult.trades).toEqual(draftResult.trades);
+    expect(codeFirstResult.rejections).toEqual(draftResult.rejections);
+    expect(codeFirstResult.events).toEqual(draftResult.events);
+    expect(codeFirstResult.metrics).toEqual(draftResult.metrics);
+    // Внутреннее графовое IR даёт тот же официальный результат.
+    expect(graphResult.trades.map((t) => ({ entry: t.entryPrice, stop: t.stop, target: t.target, outcome: t.outcome, grossR: t.grossR, netR: t.netR, barsHeld: t.barsHeld })))
+      .toEqual(codeFirstResult.trades.map((t) => ({ entry: t.entryPrice, stop: t.stop, target: t.target, outcome: t.outcome, grossR: t.grossR, netR: t.netR, barsHeld: t.barsHeld })));
   });
 
   it('набор данных даёт реальные сделки (тест не пустой)', () => {
@@ -440,11 +456,20 @@ describe('Strategy Lab · паритет «граф ↔ Draft»', () => {
     }
   });
 
-  it('CODE-1: no look-ahead and knownAt invariants hold on Code Mode graph path', () => {
-    const parsed = codeToGraph(EMA_TREND_CODE);
-    const full = runLabReplay(graphInput(parsed.graph!, candles), 1);
+  it('K. no look-ahead и инварианты knownAt на code-first пути', () => {
+    const compiled = compileResearchDraft(defaultResearchDraft(EMA_TREND_TEMPLATE_NAME));
+    const base = (cs: typeof candles) => ({
+      strategyDefinition: compiled.definition!,
+      market: 'spot' as const,
+      symbol: 'BTCUSDT',
+      timeframe: '1h' as const,
+      from: cs[0].time,
+      to: cs[cs.length - 1].closeTime,
+      candles: cs,
+    });
+    const full = runLabReplay(base(candles), 1);
     const cut = 240;
-    const partial = runLabReplay(graphInput(parsed.graph!, candles.slice(0, cut)), 1);
+    const partial = runLabReplay(base(candles.slice(0, cut)), 1);
     const horizon = candles[cut - 1].closeTime;
     expect(partial.events.filter(e => e.kind === 'CANDIDATE' && e.knownAt <= horizon).map(e => `${e.candleTime}:${e.side}:${e.price}`))
       .toEqual(full.events.filter(e => e.kind === 'CANDIDATE' && e.knownAt <= horizon).map(e => `${e.candleTime}:${e.side}:${e.price}`));
@@ -454,8 +479,19 @@ describe('Strategy Lab · паритет «граф ↔ Draft»', () => {
   it('N. точность цен PEPE-масштаба сохраняется без округления', () => {
     const micro = makeCandles(400, 0.00000012);
     const viaGraph = runLabReplay(graphInput(createEmaTrendTemplate(), micro), 1);
-    const parsedCode = codeToGraph(EMA_TREND_CODE);
-    const viaCode = runLabReplay(graphInput(parsedCode.graph!, micro), 1);
+    const compiledMicro = compileResearchDraft(defaultResearchDraft(EMA_TREND_TEMPLATE_NAME));
+    const viaCode = runLabReplay(
+      {
+        strategyDefinition: compiledMicro.definition!,
+        market: 'spot',
+        symbol: 'PEPEUSDT',
+        timeframe: '1h',
+        from: micro[0].time,
+        to: micro[micro.length - 1].closeTime,
+        candles: micro,
+      },
+      1
+    );
     const viaDraft = runLabReplay(
       {
         strategyDefinition: defaultDraftDefinition(EMA_TREND_TEMPLATE_NAME),
