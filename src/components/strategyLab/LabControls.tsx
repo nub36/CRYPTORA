@@ -30,7 +30,7 @@ interface LabControlsProps {
   onRun: () => void;
   loading: boolean;
   coverage?: LabDataCoverage | null;
-  /** Бэктест заблокирован извне (например, блок-схема не прошла валидацию). */
+  /** Бэктест заблокирован извне (например, код стратегии не прошёл проверку). */
   runDisabled?: boolean;
 }
 
@@ -173,7 +173,7 @@ export const LabControls: React.FC<LabControlsProps> = ({
             type="button"
             onClick={onRun}
             disabled={loading || runDisabled}
-            title={runDisabled ? 'Исправьте ошибки блок-схемы, чтобы запустить бэктест' : undefined}
+            title={runDisabled ? 'Исправьте ошибки кода стратегии, чтобы запустить бэктест' : undefined}
             data-lab-tutorial="run-backtest"
             className="flex items-center gap-2 rounded-md border border-cyan-500/50 bg-cyan-500/20 px-4 py-2 text-[13px] font-bold text-cyan-200 hover:bg-cyan-500/30 active:scale-[0.98] transition-transform shadow-lg shadow-cyan-500/10 disabled:opacity-60"
           >

@@ -1,30 +1,35 @@
 /**
- * CRYPTORA — Strategy Lab (страница /strategy-lab, Phase 2A)
+ * CRYPTORA — Strategy Lab (страница /strategy-lab, CODE-FIRST)
  * ---------------------------------------------------------------------------
- * ВИЗУАЛЬНЫЙ КОНСТРУКТОР СТРАТЕГИЙ (RESEARCH ONLY, ADMIN ONLY).
- * Изолированный исследовательский раздел для создания стратегий из индикаторов.
- * Не изменяет production-стратегии (V2.8/V3.0/V3.3/V3.4), сигналы, settings, scheduler и БД.
+ * ИССЛЕДОВАТЕЛЬСКАЯ ЛАБОРАТОРИЯ СТРАТЕГИЙ (RESEARCH ONLY, ADMIN ONLY).
  *
- * Двухуровневая защита: клиентский guard (useAuth().isAdmin) + серверный (requireAuth, requireAdmin).
+ * Блок-редактор (БЛОК-СХЕМА) и ПРОСТОЙ КОНСТРУКТОР удалены по результатам UX-
+ * тестирования. Остался ОДИН сценарий авторинга, без выбора режима:
+ *
+ *   ИНДИКАТОРЫ + КОД СТРАТЕГИИ → серверный бэктест.
+ *
+ * Фронтенд НЕ считает официальные решения стратегии: он собирает
+ * `StrategyResearchDraft` (name, indicators, sourceCode, execution, apiVersion),
+ * локально проверяет код тем же безопасным парсером (для мгновенной подсказки)
+ * и отправляет черновик серверу, который независимо разбирает код, проверяет
+ * ссылки на индикаторы и исполняет существующий движок Lab.
+ *
+ * Двухуровневая защита: клиентский guard (useAuth().isAdmin) + серверный
+ * (requireAuth, requireAdmin).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlaskConical, ShieldAlert, Activity, Info } from 'lucide-react';
+import { FlaskConical, ShieldAlert, Activity, Info, Code2 } from 'lucide-react';
 import { TerminalSection } from '@/components/layout/TerminalSection';
 import { useAuth } from '@/context/AuthContext';
-import { defaultDraftDefinition } from '@/services/strategyLab/registry';
-import { createEmaTrendTemplate } from '@/services/strategyLab/graph/templates';
-import { validateStrategyGraph } from '@/services/strategyLab/graph/validate';
-import { compileGraphToDraftDefinition } from '@/services/strategyLab/graph/compile';
-import type {
-  LabAuthoringMode,
-  StrategyGraph,
-} from '@/services/strategyLab/graph/types';
-import type {
-  LabReplayResult,
-  LabTrade,
-  StrategyDraftDefinition,
-} from '@/services/strategyLab/types';
+import {
+  compileResearchDraft,
+  defaultResearchDraft,
+  type StrategyResearchDraft,
+} from '@/services/strategyLab/draft';
+import type { CodeError } from '@/services/strategyLab/code';
+import type { IndicatorDefinition } from '@/services/strategyLab/types';
+import type { LabReplayResult, LabTrade } from '@/services/strategyLab/types';
 import {
   runLabBacktest,
   fetchLabDataCoverage,
@@ -32,15 +37,11 @@ import {
   type LabDataCoverage,
 } from '@/services/strategyLab/labClient';
 import { LabControls, type LabControlsState } from '@/components/strategyLab/LabControls';
-import { LabConstructor } from '@/components/strategyLab/LabConstructor';
+import { LabIndicatorsPanel } from '@/components/strategyLab/LabIndicatorsPanel';
 import { LabChart } from '@/components/strategyLab/LabChart';
 import { LabTester, type LabTab } from '@/components/strategyLab/LabTester';
 import { LabTutorialButton } from '@/components/strategyLab/LabTutorialButton';
-import { LabAuthoringModeSwitch } from '@/components/strategyLab/LabAuthoringModeSwitch';
-import { LabBlockEditor } from '@/components/strategyLab/blocks/LabBlockEditor';
 import { LabCodeEditor } from '@/components/strategyLab/code/LabCodeEditor';
-import { EMA_TREND_CODE } from '@/services/strategyLab/code/templates';
-import { codeToGraph, graphToCode } from '@/services/strategyLab/code';
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -76,20 +77,10 @@ export const StrategyLabPage: React.FC = () => {
     };
   });
 
-  /*
-   * §23: у каждого режима СВОЙ черновик. Переключение режима не
-   * переинтерпретирует стратегию молча — простой конструктор продолжает
-   * работать с `StrategyDraftDefinition`, блок-схема — со `StrategyGraph`.
-   */
-  const [authoringMode, setAuthoringMode] = useState<LabAuthoringMode>('blocks');
-  const [sourceCode, setSourceCode] = useState(EMA_TREND_CODE);
-  const [codeErrors, setCodeErrors] = useState<any[]>([]);
-
-  const [definition, setDefinition] = useState<StrategyDraftDefinition>(() =>
-    defaultDraftDefinition('EMA 20/50 Cross + ATR Stop')
-  );
-
-  const [graph, setGraph] = useState<StrategyGraph>(() => createEmaTrendTemplate());
+  /* ЕДИНСТВЕННАЯ модель стратегии в Lab (то, что будем сохранять в БД). */
+  const [draft, setDraft] = useState<StrategyResearchDraft>(() => defaultResearchDraft());
+  const [codeErrors, setCodeErrors] = useState<CodeError[]>([]);
+  const [codeChecked, setCodeChecked] = useState(false);
 
   const [result, setResult] = useState<LabReplayResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -104,32 +95,34 @@ export const StrategyLabPage: React.FC = () => {
     [result, selectedTradeId]
   );
 
-  const isBlocksMode = authoringMode === 'blocks';
-  const isCodeMode = authoringMode === 'code';
-  const handleCodeChange = (value: string) => { setSourceCode(value); };
-  const validateCode = () => { const r = codeToGraph(sourceCode); setCodeErrors(r.errors); return r; };
-  const showCodeAsBlocks = () => { const r = validateCode(); if (r.graph) { setGraph(r.graph); setAuthoringMode('blocks'); } };
-  const openBlocksAsCode = () => { try { setSourceCode(graphToCode(graph)); setCodeErrors([]); setAuthoringMode('code'); } catch (e) { setError(e instanceof Error ? e.message : 'Граф нельзя представить в режиме КОД.'); } };
-
-  /* Тот же валидатор, что независимо исполняет сервер (§10). */
-  const graphValidation = useMemo(() => validateStrategyGraph(graph), [graph]);
-
   /*
-   * Компиляция графа в декларативное определение — ЧИСТОЕ преобразование
-   * данных, нужное только инспектору сделок (подписи условий). Стратегическая
-   * математика в React по-прежнему НЕ считается: бэктест компилирует граф на
-   * сервере и возвращает готовый результат.
+   * Компиляция «индикаторы + код» → каноническое определение. Это ЧИСТОЕ
+   * преобразование данных: нужно только подписям инспектора сделок и локальной
+   * подсказке об ошибках. Официальный бэктест считает сервер.
    */
-  const blockInspectorDefinition = useMemo(() => {
-    if (!isBlocksMode || !graphValidation.ok) return null;
-    try {
-      return compileGraphToDraftDefinition(graph);
-    } catch {
-      return null;
-    }
-  }, [graph, graphValidation.ok, isBlocksMode]);
+  const compiled = useMemo(() => compileResearchDraft(draft), [draft]);
+  const chartDefinition = compiled.ok ? compiled.definition ?? null : null;
 
-  const chartDefinition = isBlocksMode ? blockInspectorDefinition : definition;
+  const handleNameChange = useCallback((name: string) => {
+    setDraft((prev) => ({ ...prev, name }));
+  }, []);
+
+  const handleIndicatorsChange = useCallback((indicators: IndicatorDefinition[]) => {
+    setDraft((prev) => ({ ...prev, indicators }));
+    setCodeChecked(false);
+  }, []);
+
+  const handleCodeChange = useCallback((sourceCode: string) => {
+    setDraft((prev) => ({ ...prev, sourceCode }));
+    setCodeChecked(false);
+  }, []);
+
+  const validateCode = useCallback(() => {
+    const check = compileResearchDraft(draft);
+    setCodeErrors(check.errors);
+    setCodeChecked(true);
+    return check;
+  }, [draft]);
 
   const handleControlChange = useCallback(
     <K extends keyof LabControlsState>(key: K, v: LabControlsState[K]) => {
@@ -138,21 +131,23 @@ export const StrategyLabPage: React.FC = () => {
     []
   );
 
-  // Создать чистый черновик новой стратегии в АКТИВНОМ режиме
   const handleNewStrategy = useCallback(() => {
-    if (authoringMode === 'blocks') {
-      setGraph(createEmaTrendTemplate());
-    } else {
-      setDefinition(defaultDraftDefinition('Новая стратегия'));
-    }
+    setDraft(defaultResearchDraft('Новая стратегия'));
+    setCodeErrors([]);
+    setCodeChecked(false);
     setResult(null);
     setError(null);
     setSelectedTradeId(null);
-  }, [authoringMode]);
+  }, []);
 
   const handleRun = useCallback(async () => {
     setError(null);
-    if (isCodeMode) { const checked = validateCode(); if (!checked.graph) { setError('Код содержит ошибки.'); return; } setGraph(checked.graph); }
+    const checked = validateCode();
+    if (!checked.ok) {
+      setError('Код содержит ошибки. Исправьте их и повторите запуск.');
+      return;
+    }
+
     const fromMs = new Date(controls.from).getTime();
     const toMs = new Date(controls.to).getTime();
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
@@ -168,16 +163,6 @@ export const StrategyLabPage: React.FC = () => {
       return;
     }
 
-    if ((isBlocksMode || isCodeMode) && (!graphValidation.ok || codeErrors.length > 0)) {
-      setError(
-        `Блок-схема не готова: ${graphValidation.errors
-          .slice(0, 2)
-          .map((e) => e.message)
-          .join(' ')}`
-      );
-      return;
-    }
-
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -187,7 +172,7 @@ export const StrategyLabPage: React.FC = () => {
     try {
       const res = await runLabBacktest(
         {
-          ...(isBlocksMode || isCodeMode ? { strategyGraph: graph } : { strategyDefinition: definition }),
+          strategyDraft: draft,
           market: controls.market,
           symbol: controls.symbol.trim().toUpperCase(),
           timeframe: controls.timeframe,
@@ -205,7 +190,7 @@ export const StrategyLabPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [controls, definition, graph, graphValidation, isBlocksMode]);
+  }, [controls, draft, validateCode]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -252,7 +237,7 @@ export const StrategyLabPage: React.FC = () => {
     >
       <TerminalSection
         label="ЛАБОРАТОРИЯ"
-        title="Конструктор стратегий"
+        title="Индикаторы и код стратегии"
         meta="исследование"
         className="strategy-lab-command-bar"
       >
@@ -264,7 +249,7 @@ export const StrategyLabPage: React.FC = () => {
               <div>
                 <h1 className="text-xl font-bold text-white">Лаборатория стратегий</h1>
                 <p className="text-[12px] text-slate-400">
-                  Визуальный конструктор и историческое тестирование стратегий.
+                  Индикаторы, код стратегии и историческое тестирование.
                 </p>
               </div>
             </div>
@@ -273,16 +258,7 @@ export const StrategyLabPage: React.FC = () => {
           <LabTutorialButton />
         </div>
 
-        {/* 2. Режим авторинга: блок-схема / простой конструктор / код */}
-        <div className="mb-3">
-          <LabAuthoringModeSwitch
-            mode={authoringMode}
-            onChange={setAuthoringMode}
-            disabled={loading}
-          />
-        </div>
-
-        {/* 3. Основные действия и выбор монеты/таймфрейма */}
+        {/* 2. Основные действия и выбор монеты/таймфрейма */}
         <div className="mb-4">
           <LabControls
             value={controls}
@@ -291,7 +267,6 @@ export const StrategyLabPage: React.FC = () => {
             onRun={handleRun}
             loading={loading}
             coverage={coverage}
-            runDisabled={isBlocksMode && !graphValidation.ok}
           />
         </div>
 
@@ -308,7 +283,7 @@ export const StrategyLabPage: React.FC = () => {
           </div>
         )}
 
-        {/* 4. ГРАФИК — ГЛАВНЫЙ ЭЛЕМЕНТ (находится ВЫШЕ настроек) */}
+        {/* 3. ГРАФИК — ГЛАВНЫЙ ЭЛЕМЕНТ */}
         <div className="mb-4">
           <LabChart
             result={result}
@@ -318,42 +293,52 @@ export const StrategyLabPage: React.FC = () => {
           />
         </div>
 
-        {/* 5. Редактор стратегии (по режиму) и Результаты бэктеста */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {/* Редактор стратегии */}
-          <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap gap-2">
-              {isCodeMode && <><button type="button" onClick={validateCode} className="rounded border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200">Проверить код</button><button type="button" onClick={showCodeAsBlocks} className="rounded border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200">Показать блоками</button><button type="button" onClick={handleRun} disabled={loading} className="rounded border border-emerald-400/30 px-3 py-2 text-xs text-emerald-200">Запустить бэктест</button></>}
-              {isBlocksMode && <button type="button" onClick={openBlocksAsCode} className="rounded border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200">Открыть как код</button>}
-            </div>
-            {isBlocksMode ? (
-              <LabBlockEditor
-                graph={graph}
-                onChange={setGraph}
-                validation={graphValidation}
-                disabled={loading}
-              />
-            ) : isCodeMode ? (
-              <LabCodeEditor value={sourceCode} onChange={handleCodeChange} errors={codeErrors} disabled={loading} />
-            ) : (
-              <LabConstructor
-                definition={definition}
-                onChange={setDefinition}
-                disabled={loading}
-              />
-            )}
-          </div>
+        {/* 4. ИНДИКАТОРЫ (слева) + КОД СТРАТЕГИИ (справа) */}
+        <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <LabIndicatorsPanel
+            name={draft.name}
+            indicators={draft.indicators}
+            onNameChange={handleNameChange}
+            onChange={handleIndicatorsChange}
+            disabled={loading}
+          />
 
-          {/* Результаты бэктеста */}
-          <div className="min-w-0">
-            <LabTester
-              result={result}
-              tab={tab}
-              onTabChange={setTab}
-              selectedTradeId={selectedTradeId}
-              onSelectTrade={setSelectedTradeId}
+          <div className="min-w-0" data-qa="lab-code-section">
+            <div className="mb-2 flex items-center gap-2">
+              <Code2 className="h-4 w-4 text-cyan-400" />
+              <h3 className="text-[12px] font-bold tracking-wider text-slate-200">
+                КОД СТРАТЕГИИ
+              </h3>
+            </div>
+            <div className="mb-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={validateCode}
+                data-qa="lab-check-code"
+                className="rounded border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200"
+              >
+                Проверить код
+              </button>
+            </div>
+            <LabCodeEditor
+              value={draft.sourceCode}
+              onChange={handleCodeChange}
+              errors={codeErrors}
+              showStatus={codeChecked}
+              disabled={loading}
             />
           </div>
+        </div>
+
+        {/* 5. ОБЗОР / СДЕЛКИ / ОТКАЗЫ */}
+        <div className="min-w-0">
+          <LabTester
+            result={result}
+            tab={tab}
+            onTabChange={setTab}
+            selectedTradeId={selectedTradeId}
+            onSelectTrade={setSelectedTradeId}
+          />
         </div>
       </TerminalSection>
     </div>

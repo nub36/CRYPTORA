@@ -6,6 +6,7 @@ import {
   targetSchema,
   executionSchema,
   strategyDefinitionSchema,
+  strategyDraftSchema,
   researchConfigSchema,
   replayRequestSchema,
 } from './strategyLab.js';
@@ -24,6 +25,7 @@ export {
   targetSchema,
   executionSchema,
   strategyDefinitionSchema,
+  strategyDraftSchema,
   researchConfigSchema,
   replayRequestSchema,
 };
@@ -33,6 +35,7 @@ export type LogicRuleParsed = z.infer<typeof logicRuleSchema>;
 export type StopParsed = z.infer<typeof stopSchema>;
 export type TargetParsed = z.infer<typeof targetSchema>;
 export type ExecutionParsed = z.infer<typeof executionSchema>;
+export type StrategyDraftParsed = z.infer<typeof strategyDraftSchema>;
 export type StrategyDefinitionParsed = z.infer<typeof strategyDefinitionSchema>;
 export type ResearchConfigParsed = z.infer<typeof researchConfigSchema>;
 export type ReplayRequestParsed = z.infer<typeof replayRequestSchema>;

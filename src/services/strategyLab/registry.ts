@@ -35,8 +35,11 @@ export interface LabStrategyMeta {
 
 export const EMA_ATR_ID = 'EMA_ATR';
 
-/** Идентификатор реплея, собранного в режиме «БЛОК-СХЕМА» (BLOCKS-1). */
+/** Идентификатор реплея внутреннего графового IR (не пользовательский режим). */
 export const BLOCK_GRAPH_ID = 'BLOCK_GRAPH';
+
+/** Идентификатор реплея code-first черновика (индикаторы + код). */
+export const CODE_DRAFT_ID = 'CODE_DRAFT';
 
 const EMA_ATR: LabStrategyMeta = {
   id: EMA_ATR_ID,

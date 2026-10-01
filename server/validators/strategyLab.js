@@ -249,6 +249,26 @@ export const strategyGraphSchema = z.object({
   execution: executionSchema.optional(),
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CODE-FIRST черновик (индикаторы + код стратегии)
+// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * Здесь проверяется только ФОРМА запроса и жёсткие лимиты. Семантика кода
+ * (разбор, ссылки на индикаторы, типы индикаторов, стоп/цель) проверяется ОБЩИМ
+ * компилятором Lab-ядра — `core.compileResearchDraft` в labService.js. Второй
+ * реализации правил языка нет.
+ */
+
+export const CODE_MAX_SOURCE_LENGTH = 32 * 1024;
+
+export const strategyDraftSchema = z.object({
+  name: z.string().min(1).max(100),
+  indicators: z.array(indicatorSchema).min(1).max(20),
+  sourceCode: z.string().min(1).max(CODE_MAX_SOURCE_LENGTH),
+  execution: executionSchema.optional(),
+  apiVersion: z.literal(2),
+});
+
 // Legacy Phase 1A схема
 export const researchConfigSchema = z
   .object({
@@ -281,6 +301,7 @@ export const replayRequestSchema = z
     strategyId: z.string().min(1).max(64).optional(),
     strategyDefinition: strategyDefinitionSchema.optional(),
     strategyGraph: strategyGraphSchema.optional(),
+    strategyDraft: strategyDraftSchema.optional(),
     market: z.enum(['spot', 'futures']),
     symbol: z
       .string()
@@ -292,11 +313,19 @@ export const replayRequestSchema = z
     researchConfig: researchConfigSchema.optional(),
   })
   .superRefine((req, ctx) => {
-    if (!req.strategyDefinition && !req.researchConfig && !req.strategyGraph) {
+    if (!req.strategyDefinition && !req.researchConfig && !req.strategyGraph && !req.strategyDraft) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['strategyDefinition'],
-        message: 'Необходимо передать `strategyGraph`, `strategyDefinition` или `researchConfig`',
+        path: ['strategyDraft'],
+        message:
+          'Необходимо передать `strategyDraft`, `strategyGraph`, `strategyDefinition` или `researchConfig`',
+      });
+    }
+    if (req.strategyDraft && (req.strategyDefinition || req.strategyGraph)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['strategyDraft'],
+        message: 'Нельзя одновременно передавать `strategyDraft` и другое определение стратегии',
       });
     }
     if (req.strategyGraph && req.strategyDefinition) {

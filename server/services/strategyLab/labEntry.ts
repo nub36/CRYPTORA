@@ -39,7 +39,20 @@ export {
 export { createEmaTrendTemplate } from '@/services/strategyLab/graph/templates';
 export { BLOCK_REGISTRY, listBlocksByCategory } from '@/services/strategyLab/graph/registry';
 export { GRAPH_LIMITS, GRAPH_SCHEMA_VERSION } from '@/services/strategyLab/graph/types';
-export { BLOCK_GRAPH_ID } from '@/services/strategyLab/registry';
+export { BLOCK_GRAPH_ID, CODE_DRAFT_ID } from '@/services/strategyLab/registry';
+/*
+ * CODE-FIRST: сервер НЕЗАВИСИМО разбирает код стратегии и проверяет ссылки на
+ * индикаторы тем же компилятором, что и UI (§14). Никакого eval/new Function.
+ */
+export {
+  compileResearchDraft,
+  formatCodeErrors,
+  defaultResearchDraft,
+  buildIndicatorBindings,
+  indicatorIdentifier,
+  RESEARCH_DRAFT_API_VERSION,
+} from '@/services/strategyLab/draft';
+export { DEFAULT_STRATEGY_CODE, CODE_API_VERSION } from '@/services/strategyLab/code/templates';
 export {
   LAB_TIMEFRAMES,
   LAB_TF_SECONDS,
