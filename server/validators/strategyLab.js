@@ -203,6 +203,52 @@ export const strategyDefinitionSchema = z
     }
   });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Схема блок-схемы (BLOCKS-1): ТОЛЬКО форма данных
+// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * Здесь проверяется исключительно СХЕМА (типы, лимиты, стабильность ID).
+ * Семантика графа (типы портов, циклы, обязательные входы, поддерживаемая
+ * компилятором структура) проверяется ОБЩИМ валидатором из Lab-ядра —
+ * `core.validateStrategyGraph` в labService.js. Второй реализации правил нет.
+ */
+
+export const GRAPH_MAX_NODES = 64;
+export const GRAPH_MAX_EDGES = 128;
+
+const GRAPH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const graphId = z.string().regex(GRAPH_ID_RE, { message: 'Некорректный идентификатор в блок-схеме' });
+
+export const graphNodeSchema = z.object({
+  id: graphId,
+  type: z.string().min(1).max(64),
+  position: z.object({
+    x: z.number().finite().min(-1_000_000).max(1_000_000),
+    y: z.number().finite().min(-1_000_000).max(1_000_000),
+  }),
+  params: z.record(z.string().max(64), z.number().finite()),
+});
+
+export const graphEndpointSchema = z.object({
+  nodeId: graphId,
+  port: z.string().min(1).max(64),
+});
+
+export const graphEdgeSchema = z.object({
+  id: graphId,
+  from: graphEndpointSchema,
+  to: graphEndpointSchema,
+});
+
+export const strategyGraphSchema = z.object({
+  schemaVersion: z.literal(1),
+  name: z.string().min(1).max(100),
+  authoringMode: z.literal('blocks'),
+  nodes: z.array(graphNodeSchema).min(1).max(GRAPH_MAX_NODES),
+  edges: z.array(graphEdgeSchema).max(GRAPH_MAX_EDGES),
+  execution: executionSchema.optional(),
+});
+
 // Legacy Phase 1A схема
 export const researchConfigSchema = z
   .object({
@@ -234,6 +280,7 @@ export const replayRequestSchema = z
   .object({
     strategyId: z.string().min(1).max(64).optional(),
     strategyDefinition: strategyDefinitionSchema.optional(),
+    strategyGraph: strategyGraphSchema.optional(),
     market: z.enum(['spot', 'futures']),
     symbol: z
       .string()
@@ -245,11 +292,18 @@ export const replayRequestSchema = z
     researchConfig: researchConfigSchema.optional(),
   })
   .superRefine((req, ctx) => {
-    if (!req.strategyDefinition && !req.researchConfig) {
+    if (!req.strategyDefinition && !req.researchConfig && !req.strategyGraph) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['strategyDefinition'],
-        message: 'Необходимо передать `strategyDefinition` или `researchConfig`',
+        message: 'Необходимо передать `strategyGraph`, `strategyDefinition` или `researchConfig`',
+      });
+    }
+    if (req.strategyGraph && req.strategyDefinition) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['strategyGraph'],
+        message: 'Нельзя одновременно передавать `strategyGraph` и `strategyDefinition`',
       });
     }
     if (!(req.from < req.to)) {

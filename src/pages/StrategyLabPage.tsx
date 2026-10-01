@@ -13,6 +13,13 @@ import { FlaskConical, ShieldAlert, Activity, Info } from 'lucide-react';
 import { TerminalSection } from '@/components/layout/TerminalSection';
 import { useAuth } from '@/context/AuthContext';
 import { defaultDraftDefinition } from '@/services/strategyLab/registry';
+import { createEmaTrendTemplate } from '@/services/strategyLab/graph/templates';
+import { validateStrategyGraph } from '@/services/strategyLab/graph/validate';
+import { compileGraphToDraftDefinition } from '@/services/strategyLab/graph/compile';
+import type {
+  LabAuthoringMode,
+  StrategyGraph,
+} from '@/services/strategyLab/graph/types';
 import type {
   LabReplayResult,
   LabTrade,
@@ -29,6 +36,8 @@ import { LabConstructor } from '@/components/strategyLab/LabConstructor';
 import { LabChart } from '@/components/strategyLab/LabChart';
 import { LabTester, type LabTab } from '@/components/strategyLab/LabTester';
 import { LabTutorialButton } from '@/components/strategyLab/LabTutorialButton';
+import { LabAuthoringModeSwitch } from '@/components/strategyLab/LabAuthoringModeSwitch';
+import { LabBlockEditor } from '@/components/strategyLab/blocks/LabBlockEditor';
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -64,9 +73,18 @@ export const StrategyLabPage: React.FC = () => {
     };
   });
 
+  /*
+   * §23: у каждого режима СВОЙ черновик. Переключение режима не
+   * переинтерпретирует стратегию молча — простой конструктор продолжает
+   * работать с `StrategyDraftDefinition`, блок-схема — со `StrategyGraph`.
+   */
+  const [authoringMode, setAuthoringMode] = useState<LabAuthoringMode>('blocks');
+
   const [definition, setDefinition] = useState<StrategyDraftDefinition>(() =>
     defaultDraftDefinition('EMA 20/50 Cross + ATR Stop')
   );
+
+  const [graph, setGraph] = useState<StrategyGraph>(() => createEmaTrendTemplate());
 
   const [result, setResult] = useState<LabReplayResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,6 +99,28 @@ export const StrategyLabPage: React.FC = () => {
     [result, selectedTradeId]
   );
 
+  const isBlocksMode = authoringMode === 'blocks';
+
+  /* Тот же валидатор, что независимо исполняет сервер (§10). */
+  const graphValidation = useMemo(() => validateStrategyGraph(graph), [graph]);
+
+  /*
+   * Компиляция графа в декларативное определение — ЧИСТОЕ преобразование
+   * данных, нужное только инспектору сделок (подписи условий). Стратегическая
+   * математика в React по-прежнему НЕ считается: бэктест компилирует граф на
+   * сервере и возвращает готовый результат.
+   */
+  const blockInspectorDefinition = useMemo(() => {
+    if (!isBlocksMode || !graphValidation.ok) return null;
+    try {
+      return compileGraphToDraftDefinition(graph);
+    } catch {
+      return null;
+    }
+  }, [graph, graphValidation.ok, isBlocksMode]);
+
+  const chartDefinition = isBlocksMode ? blockInspectorDefinition : definition;
+
   const handleControlChange = useCallback(
     <K extends keyof LabControlsState>(key: K, v: LabControlsState[K]) => {
       setControls((prev) => ({ ...prev, [key]: v }));
@@ -88,13 +128,17 @@ export const StrategyLabPage: React.FC = () => {
     []
   );
 
-  // Создать чистый draft новой стратегии
+  // Создать чистый черновик новой стратегии в АКТИВНОМ режиме
   const handleNewStrategy = useCallback(() => {
-    setDefinition(defaultDraftDefinition('Новая стратегия'));
+    if (authoringMode === 'blocks') {
+      setGraph(createEmaTrendTemplate());
+    } else {
+      setDefinition(defaultDraftDefinition('Новая стратегия'));
+    }
     setResult(null);
     setError(null);
     setSelectedTradeId(null);
-  }, []);
+  }, [authoringMode]);
 
   const handleRun = useCallback(async () => {
     setError(null);
@@ -113,6 +157,16 @@ export const StrategyLabPage: React.FC = () => {
       return;
     }
 
+    if (isBlocksMode && !graphValidation.ok) {
+      setError(
+        `Блок-схема не готова: ${graphValidation.errors
+          .slice(0, 2)
+          .map((e) => e.message)
+          .join(' ')}`
+      );
+      return;
+    }
+
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -122,7 +176,7 @@ export const StrategyLabPage: React.FC = () => {
     try {
       const res = await runLabBacktest(
         {
-          strategyDefinition: definition,
+          ...(isBlocksMode ? { strategyGraph: graph } : { strategyDefinition: definition }),
           market: controls.market,
           symbol: controls.symbol.trim().toUpperCase(),
           timeframe: controls.timeframe,
@@ -140,7 +194,7 @@ export const StrategyLabPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [controls, definition]);
+  }, [controls, definition, graph, graphValidation, isBlocksMode]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -208,7 +262,16 @@ export const StrategyLabPage: React.FC = () => {
           <LabTutorialButton />
         </div>
 
-        {/* 2. Основные действия и выбор монеты/таймфрейма */}
+        {/* 2. Режим авторинга: блок-схема / простой конструктор / код */}
+        <div className="mb-3">
+          <LabAuthoringModeSwitch
+            mode={authoringMode}
+            onChange={setAuthoringMode}
+            disabled={loading}
+          />
+        </div>
+
+        {/* 3. Основные действия и выбор монеты/таймфрейма */}
         <div className="mb-4">
           <LabControls
             value={controls}
@@ -217,6 +280,7 @@ export const StrategyLabPage: React.FC = () => {
             onRun={handleRun}
             loading={loading}
             coverage={coverage}
+            runDisabled={isBlocksMode && !graphValidation.ok}
           />
         </div>
 
@@ -233,25 +297,34 @@ export const StrategyLabPage: React.FC = () => {
           </div>
         )}
 
-        {/* 3. ГРАФИК — ГЛАВНЫЙ ЭЛЕМЕНТ (находится ВЫШЕ настроек) */}
+        {/* 4. ГРАФИК — ГЛАВНЫЙ ЭЛЕМЕНТ (находится ВЫШЕ настроек) */}
         <div className="mb-4">
           <LabChart
             result={result}
             selectedTrade={selectedTrade}
             onSelectTrade={setSelectedTradeId}
-            definition={definition}
+            definition={chartDefinition}
           />
         </div>
 
-        {/* 4. Конструктор стратегии и Результаты бэктеста */}
+        {/* 5. Редактор стратегии (по режиму) и Результаты бэктеста */}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {/* Конструктор стратегии */}
+          {/* Редактор стратегии */}
           <div className="min-w-0">
-            <LabConstructor
-              definition={definition}
-              onChange={setDefinition}
-              disabled={loading}
-            />
+            {isBlocksMode ? (
+              <LabBlockEditor
+                graph={graph}
+                onChange={setGraph}
+                validation={graphValidation}
+                disabled={loading}
+              />
+            ) : (
+              <LabConstructor
+                definition={definition}
+                onChange={setDefinition}
+                disabled={loading}
+              />
+            )}
           </div>
 
           {/* Результаты бэктеста */}

@@ -301,6 +301,13 @@ describe('Strategy Lab · StrategyLabPage сквозной рендер', () => 
       </MemoryRouter>
     );
 
+    /*
+     * BLOCKS-1: у страницы появился выбор режима авторинга, и по умолчанию
+     * открыта БЛОК-СХЕМА. Этот тест про ПРОСТОЙ КОНСТРУКТОР — переключаемся в
+     * него явно; его поведение не изменилось.
+     */
+    fireEvent.click(document.querySelector('[data-qa="lab-authoring-mode-simple"]') as Element);
+
     const nameInput = screen.getByLabelText('Название стратегии') as HTMLInputElement;
     fireEvent.change(nameInput, { target: { value: 'Моя кастомная стратегия' } });
     expect(nameInput.value).toBe('Моя кастомная стратегия');

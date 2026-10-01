@@ -14,7 +14,8 @@ import { evaluateEmaAtr } from './strategies/emaAtr';
 import { evaluateDraftStrategy } from './strategies/draftStrategy';
 import { computeMetrics } from './metrics';
 import { SAME_BAR_RULE } from './executionSimulator';
-import { EMA_ATR_ID, getLabStrategy } from './registry';
+import { BLOCK_GRAPH_ID, EMA_ATR_ID, getLabStrategy } from './registry';
+import { compileGraphToDraftDefinition } from './graph/compile';
 import type { LabReplayInput, LabReplayResult } from './types';
 
 export class UnknownLabStrategyError extends Error {
@@ -32,7 +33,17 @@ export function runLabReplay(input: LabReplayInput, nowMs = Date.now()): LabRepl
   let strategyId: string;
   let strategyName: string;
 
-  if (input.strategyDefinition) {
+  if (input.strategyGraph) {
+    /*
+     * Блок-схема компилируется в существующее декларативное определение ОДИН
+     * раз за реплей (§11, §28): дальше работает тот же evaluateDraftStrategy,
+     * поэтому побарового интерпретатора графа нет и паритет сохраняется.
+     */
+    const compiled = compileGraphToDraftDefinition(input.strategyGraph);
+    strategyId = input.strategyId || BLOCK_GRAPH_ID;
+    strategyName = compiled.name || 'Блок-схема';
+    evaluation = evaluateDraftStrategy(candles, compiled);
+  } else if (input.strategyDefinition) {
     strategyId = input.strategyId || 'CONSTRUCTOR';
     strategyName = input.strategyDefinition.name || 'Конструктор стратегий';
     evaluation = evaluateDraftStrategy(candles, input.strategyDefinition);
