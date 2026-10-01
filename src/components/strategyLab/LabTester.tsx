@@ -101,6 +101,9 @@ function Trades({
             return (
               <tr
                 key={t.id}
+                data-qa="lab-trade-row"
+                data-trade-id={t.id}
+                aria-selected={selected}
                 onClick={() => onSelectTrade(selected ? null : t.id)}
                 className={`cursor-pointer border-t border-white/[0.05] hover:bg-white/[0.05] transition-colors ${
                   selected ? 'bg-cyan-500/15' : ''

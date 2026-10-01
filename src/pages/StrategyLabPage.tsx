@@ -239,6 +239,7 @@ export const StrategyLabPage: React.FC = () => {
             result={result}
             selectedTrade={selectedTrade}
             onSelectTrade={setSelectedTradeId}
+            definition={definition}
           />
         </div>
 

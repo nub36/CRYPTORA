@@ -419,9 +419,10 @@ describe('Strategy Lab · labChartProjection', () => {
     },
   ];
 
-  it('маркеры строятся только для ENTRY/STOP/TP1 и несут payload.tradeId', () => {
+  it('маркеры строятся для FILL (не ENTRY-дубля) и несут payload.tradeId', () => {
     const { markers } = mapLabEventMarkers(events, candles);
     expect(markers.length).toBe(1);
+    expect(markers[0].payload?.kind).toBe('FILL');
     expect(markers[0].payload?.tradeId).toBe('trade-A');
   });
 
