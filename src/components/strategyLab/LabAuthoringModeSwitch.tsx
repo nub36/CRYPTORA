@@ -44,8 +44,8 @@ export const LAB_AUTHORING_MODE_OPTIONS: readonly LabAuthoringModeOption[] = Obj
     mode: 'code',
     label: 'КОД',
     icon: Code2,
-    available: false,
-    hint: 'Текстовый режим появится позже.',
+    available: true,
+    hint: 'Ограниченный декларативный язык стратегии.',
   },
 ]);
 

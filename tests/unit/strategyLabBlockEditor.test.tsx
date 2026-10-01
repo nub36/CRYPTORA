@@ -290,12 +290,13 @@ describe('Strategy Lab · режимы авторинга', () => {
     expect(screen.getByDisplayValue('EMA Trend')).toBeTruthy();
   });
 
-  it('режим «КОД» объявлен, но недоступен в этом релизе', () => {
+  it('режим «КОД» видим, включён и открывает редактор стартового кода', () => {
     render(<StrategyLabPage />);
-    const codeTab = document.querySelector(
-      '[data-qa="lab-authoring-mode-code"]'
-    ) as HTMLButtonElement;
+    const codeTab = document.querySelector('[data-qa="lab-authoring-mode-code"]') as HTMLButtonElement;
     expect(codeTab.textContent).toContain('КОД');
-    expect(codeTab.disabled).toBe(true);
+    expect(codeTab.disabled).toBe(false);
+    fireEvent.click(codeTab);
+    expect(screen.getByDisplayValue(/strategy\("EMA Trend"/)).toBeTruthy();
+    expect(screen.getByLabelText('Код стратегии')).toBeTruthy();
   });
 });
