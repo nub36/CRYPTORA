@@ -15,6 +15,32 @@
  * No look-ahead: значение под индексом i зависит только от баров ≤ i.
  */
 
+/** Wilder RSI по источнику цен. Значения выровнены по свечам; прогрев null. */
+export function rsiAligned(prices: number[], period: number): (number | null)[] {
+  const out: (number | null)[] = new Array(prices.length).fill(null);
+  if (period <= 0 || prices.length <= period) return out;
+  let gain = 0; let loss = 0;
+  for (let i = 1; i <= period; i += 1) { const change = prices[i] - prices[i - 1]; if (change > 0) gain += change; else loss -= change; }
+  let avgGain = gain / period; let avgLoss = loss / period;
+  const value = () => avgLoss === 0 ? (avgGain === 0 ? 50 : 100) : avgGain === 0 ? 0 : 100 - 100 / (1 + avgGain / avgLoss);
+  out[period] = value();
+  for (let i = period + 1; i < prices.length; i += 1) { const change = prices[i] - prices[i - 1]; avgGain = (avgGain * (period - 1) + Math.max(change, 0)) / period; avgLoss = (avgLoss * (period - 1) + Math.max(-change, 0)) / period; out[i] = value(); }
+  return out;
+}
+
+export interface ConfirmedFractalEvent { kind: 'HIGH' | 'LOW'; sourceIndex: number; sourceCandleTime: number; confirmationIndex: number; knownAt: number; price: number; }
+
+/** Williams 5-bar fractals. Events are exposed only at confirmation index i+2. */
+export function confirmedFractals(candles: ReadonlyArray<{ high: number; low: number; time: number; closeTime: number }>): ConfirmedFractalEvent[] {
+  const events: ConfirmedFractalEvent[] = [];
+  for (let i = 2; i < candles.length - 2; i += 1) {
+    const c = candles[i];
+    if (c.high > candles[i - 1].high && c.high > candles[i - 2].high && c.high > candles[i + 1].high && c.high > candles[i + 2].high) events.push({ kind: 'HIGH', sourceIndex: i, sourceCandleTime: c.time, confirmationIndex: i + 2, knownAt: candles[i + 2].closeTime, price: c.high });
+    if (c.low < candles[i - 1].low && c.low < candles[i - 2].low && c.low < candles[i + 1].low && c.low < candles[i + 2].low) events.push({ kind: 'LOW', sourceIndex: i, sourceCandleTime: c.time, confirmationIndex: i + 2, knownAt: candles[i + 2].closeTime, price: c.low });
+  }
+  return events;
+}
+
 /** EMA по массиву цен. result[i] использует только prices[0..i]. */
 export function emaAligned(prices: number[], period: number): (number | null)[] {
   const out: (number | null)[] = new Array(prices.length).fill(null);

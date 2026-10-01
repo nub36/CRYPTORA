@@ -1,7 +1,7 @@
 import { lex } from './lexer';
 import type { Expr, ParseResult, Statement } from './types';
 /* Грамматика v2: индикаторы объявляются в UI, вызовов EMA()/ATR() в коде нет. */
-const calls = new Set(['crossesAbove','crossesBelow','multiply','R']);
+const calls = new Set(['crossesAbove','crossesBelow','above','below','fractalHigh','fractalLow','multiply','R']);
 const legacyIndicatorCalls = new Set(['EMA','ATR']);
 const actions = new Set(['LONG','SHORT','STOP','TAKE_PROFIT']);
 export function parse(source: string): ParseResult {

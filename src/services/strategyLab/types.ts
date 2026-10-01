@@ -60,7 +60,7 @@ export interface LabCandle {
 // Конструктор стратегий (Phase 2A: Декларативный Draft Definition)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IndicatorType = 'EMA' | 'ATR';
+export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS';
 export type IndicatorSource = 'close' | 'open' | 'high' | 'low';
 
 export interface IndicatorDefinition {
