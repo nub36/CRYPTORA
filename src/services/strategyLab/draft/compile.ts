@@ -101,24 +101,34 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
     return e.value;
   };
 
-  const expectType = (indicator: IndicatorDefinition, type: 'EMA' | 'ATR', role: string): void => {
+  const expectType = (indicator: IndicatorDefinition, type: IndicatorDefinition['type'], role: string): void => {
     if (indicator.type !== type) {
       fail(`${role}: индикатор «${indicator.name || indicator.id}» имеет тип ${indicator.type}, ожидается ${type}.`);
     }
   };
 
-  const crossRule = (expr: Expr, role: string): LogicRule => {
+  const conditionRule = (expr: Expr, role: string): LogicRule => {
     const e = resolveExpr(expr);
-    if (e.kind !== 'call' || (e.callee !== 'crossesAbove' && e.callee !== 'crossesBelow')) {
-      fail(`${role}: ожидается crossesAbove(...) или crossesBelow(...).`);
+    if (e.kind !== 'call') fail(`${role}: ожидается условие стратегии.`);
+    if (e.callee === 'crossesAbove' || e.callee === 'crossesBelow') {
+      if (e.args.length !== 2) fail(`${role}: функция принимает два индикатора.`);
+      const left = indicatorOf(e.args[0], role); const right = indicatorOf(e.args[1], role);
+      expectType(left, 'EMA', role); expectType(right, 'EMA', role);
+      return { kind: 'cross', left: left.id, operator: e.callee, right: right.id };
     }
-    if (e.args.length !== 2) fail(`${role}: функция «${e.callee}» принимает ровно два индикатора.`);
-    const left = indicatorOf(e.args[0], role);
-    const right = indicatorOf(e.args[1], role);
-    expectType(left, 'EMA', role);
-    expectType(right, 'EMA', role);
-    if (left.id === right.id) fail(`${role}: нельзя сравнивать индикатор сам с собой.`);
-    return { left: left.id, operator: e.callee, right: right.id };
+    if (e.callee === 'above' || e.callee === 'below') {
+      if (e.args.length !== 2) fail(`${role}: функция принимает индикатор и порог.`);
+      const ind = indicatorOf(e.args[0], role); const threshold = numberOf(e.args[1], role);
+      if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) fail(`${role}: порог должен быть от 0 до 100.`);
+      expectType(ind, 'RSI', role);
+      return { kind: 'threshold', left: ind.id, right: ind.id, indicatorId: ind.id, operator: e.callee, threshold };
+    }
+    if (e.callee === 'fractalHigh' || e.callee === 'fractalLow') {
+      if (e.args.length !== 1) fail(`${role}: функция принимает один индикатор.`);
+      const ind = indicatorOf(e.args[0], role); expectType(ind, 'FRACTALS', role);
+      return { kind: 'fractal', left: ind.id, right: ind.id, indicatorId: ind.id, operator: e.callee };
+    }
+    fail(`${role}: неизвестное условие.`);
   };
 
   let long: LogicRule | null = null;
@@ -139,11 +149,11 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       switch (statement.action) {
         case 'LONG':
           if (long) fail('LONG(...) можно объявить только один раз.');
-          long = crossRule(statement.expression, 'LONG');
+          long = conditionRule(statement.expression, 'LONG');
           break;
         case 'SHORT':
           if (short) fail('SHORT(...) можно объявить только один раз.');
-          short = crossRule(statement.expression, 'SHORT');
+          short = conditionRule(statement.expression, 'SHORT');
           break;
         case 'STOP': {
           if (stop) fail('STOP(...) можно объявить только один раз.');
@@ -194,7 +204,7 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
    * результат не зависел от порядка правок в UI.
    */
   const orderedIds: string[] = [];
-  for (const id of [long.left, long.right, short.left, short.right, stop.indicatorId]) {
+  for (const id of [long, short, stop.indicatorId].flatMap((x: any) => typeof x === 'string' ? [x] : x.kind === 'cross' ? [x.left, x.right] : [x.indicatorId])) {
     if (!orderedIds.includes(id)) orderedIds.push(id);
   }
   const byId = new Map(draft.indicators.map((i) => [i.id, i]));
@@ -211,9 +221,10 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
         }
       : {
           id: ind.id,
-          type: 'ATR' as const,
-          name: ind.name || `ATR ${ind.period}`,
+          type: ind.type,
+          name: ind.name || `${ind.type} ${ind.period}`,
           period: ind.period,
+          source: ind.source ?? 'close',
           visible: ind.visible ?? false,
         };
   });

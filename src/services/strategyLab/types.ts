@@ -74,11 +74,11 @@ export interface IndicatorDefinition {
 
 export type LogicOperator = 'crossesAbove' | 'crossesBelow';
 
-export interface LogicRule {
-  left: string; // ID индикатора
-  operator: LogicOperator;
-  right: string; // ID индикатора
-}
+export type CrossCondition = { kind?: 'cross'; left: string; operator: LogicOperator; right: string };
+export type ThresholdCondition = { kind: 'threshold'; left: string; right: string; indicatorId: string; operator: 'above' | 'below'; threshold: number };
+export type FractalCondition = { kind: 'fractal'; left: string; right: string; indicatorId: string; operator: 'fractalHigh' | 'fractalLow' };
+export type StrategyCondition = CrossCondition | ThresholdCondition | FractalCondition;
+export type LogicRule = StrategyCondition;
 
 export interface StopDefinition {
   type: 'atrMultiple';

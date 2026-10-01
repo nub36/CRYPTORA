@@ -14,7 +14,7 @@
  *   • Полный детерминизм и точный паритет с базовой стратегией EMA + ATR.
  */
 
-import { emaAligned, atrAligned } from '../indicators';
+import { emaAligned, atrAligned, rsiAligned, confirmedFractals } from '../indicators';
 import { simulateTrade } from '../executionSimulator';
 import type {
   LabCandle,
@@ -66,12 +66,18 @@ export function evaluateDraftStrategy(
       indSeries[ind.id] = emaAligned(prices, ind.period);
     } else if (ind.type === 'ATR') {
       indSeries[ind.id] = atrAligned(candles, ind.period);
+    } else if (ind.type === 'RSI') {
+      indSeries[ind.id] = rsiAligned(getPricesBySource(candles, ind.source), ind.period);
+    } else if (ind.type === 'FRACTALS') {
+      const events = confirmedFractals(candles); const series = new Array<number | null>(n).fill(null);
+      for (const event of events) if (event.kind === 'HIGH') series[event.confirmationIndex] = event.price;
+      indSeries[ind.id] = series;
     }
   }
 
   // Определение ключевых серий для совместимости с LabIndicatorSeries
-  const longLeftId = definition.long.left;
-  const longRightId = definition.long.right;
+  const longLeftId = definition.long.kind === 'cross' ? definition.long.left : '';
+  const longRightId = definition.long.kind === 'cross' ? definition.long.right : '';
   const stopIndId = definition.stop.indicatorId;
 
   const emaFastSeries = indSeries[longLeftId] || indSeries['ema-fast'] || new Array(n).fill(null);
@@ -91,26 +97,10 @@ export function evaluateDraftStrategy(
   const rejections: LabRejection[] = [];
 
   // Индикаторы, необходимые для оценки правил и стопа
-  const requiredIds = [
-    definition.long.left,
-    definition.long.right,
-    definition.short.left,
-    definition.short.right,
-    definition.stop.indicatorId,
-  ];
-
-  // Первый бар, где все необходимые индикаторы готовы на i и i-1
+  const idsOf = (c: any): string[] => c.kind === 'cross' ? [c.left, c.right] : [c.indicatorId];
+  const requiredIds = [...idsOf(definition.long), ...idsOf(definition.short), definition.stop.indicatorId];
   let firstEvaluable = -1;
-  for (let i = 1; i < n; i++) {
-    const allReady = requiredIds.every((id) => {
-      const s = indSeries[id];
-      return s && s[i] !== null && s[i - 1] !== null;
-    });
-    if (allReady) {
-      firstEvaluable = i;
-      break;
-    }
-  }
+  for (let i = 1; i < n; i++) if (requiredIds.every((id) => indSeries[id]?.[i] !== null && indSeries[id]?.[i - 1] !== null)) { firstEvaluable = i; break; }
 
   let candidateCount = 0;
   let rejectedCount = 0;
@@ -123,45 +113,18 @@ export function evaluateDraftStrategy(
     for (let i = firstEvaluable; i < n; i++) {
       evaluatedBars += 1;
 
-      // Оценка LONG правила
-      const longLeftPrev = indSeries[definition.long.left]?.[i - 1] ?? null;
-      const longLeftCur = indSeries[definition.long.left]?.[i] ?? null;
-      const longRightPrev = indSeries[definition.long.right]?.[i - 1] ?? null;
-      const longRightCur = indSeries[definition.long.right]?.[i] ?? null;
-
-      let longTriggered = false;
-      if (
-        longLeftPrev !== null &&
-        longLeftCur !== null &&
-        longRightPrev !== null &&
-        longRightCur !== null
-      ) {
-        if (definition.long.operator === 'crossesAbove') {
-          longTriggered = longLeftPrev <= longRightPrev && longLeftCur > longRightCur;
-        } else if (definition.long.operator === 'crossesBelow') {
-          longTriggered = longLeftPrev >= longRightPrev && longLeftCur < longRightCur;
+      const predicate = (condition: any, i: number): boolean => {
+        if (condition.kind === 'cross') {
+          const lp = indSeries[condition.left]?.[i - 1] ?? null, lc = indSeries[condition.left]?.[i] ?? null;
+          const rp = indSeries[condition.right]?.[i - 1] ?? null, rc = indSeries[condition.right]?.[i] ?? null;
+          return lp !== null && lc !== null && rp !== null && rc !== null && (condition.operator === 'crossesAbove' ? lp <= rp && lc > rc : lp >= rp && lc < rc);
         }
-      }
-
-      // Оценка SHORT правила
-      const shortLeftPrev = indSeries[definition.short.left]?.[i - 1] ?? null;
-      const shortLeftCur = indSeries[definition.short.left]?.[i] ?? null;
-      const shortRightPrev = indSeries[definition.short.right]?.[i - 1] ?? null;
-      const shortRightCur = indSeries[definition.short.right]?.[i] ?? null;
-
-      let shortTriggered = false;
-      if (
-        shortLeftPrev !== null &&
-        shortLeftCur !== null &&
-        shortRightPrev !== null &&
-        shortRightCur !== null
-      ) {
-        if (definition.short.operator === 'crossesBelow') {
-          shortTriggered = shortLeftPrev >= shortRightPrev && shortLeftCur < shortRightCur;
-        } else if (definition.short.operator === 'crossesAbove') {
-          shortTriggered = shortLeftPrev <= shortRightPrev && shortLeftCur > shortRightCur;
-        }
-      }
+        if (condition.kind === 'threshold') { const v = indSeries[condition.indicatorId]?.[i] ?? null; return v !== null && (condition.operator === 'above' ? v > condition.threshold : v < condition.threshold); }
+        if (condition.kind === 'fractal') { const events = confirmedFractals(candles); return events.some((e) => e.confirmationIndex === i && e.kind === (condition.operator === 'fractalHigh' ? 'HIGH' : 'LOW')); }
+        return false;
+      };
+      const longTriggered = predicate(definition.long, i);
+      const shortTriggered = predicate(definition.short, i);
 
       let side: LabSide | null = null;
       if (longTriggered && !shortTriggered) side = 'LONG';
@@ -181,11 +144,11 @@ export function evaluateDraftStrategy(
       };
 
       if (side === 'LONG') {
-        diagnostics.emaFast = longLeftCur;
-        diagnostics.emaSlow = longRightCur;
+        diagnostics.emaFast = indSeries[longLeftId]?.[i] ?? null;
+        diagnostics.emaSlow = indSeries[longRightId]?.[i] ?? null;
       } else {
-        diagnostics.emaFast = shortLeftCur;
-        diagnostics.emaSlow = shortRightCur;
+        diagnostics.emaFast = definition.short.kind === 'cross' ? indSeries[definition.short.left]?.[i] ?? null : null;
+        diagnostics.emaSlow = definition.short.kind === 'cross' ? indSeries[definition.short.right]?.[i] ?? null : null;
       }
 
       const reject = (reason: string) => {
