@@ -17,6 +17,7 @@ import type {
   StrategyDraftDefinition,
 } from './types';
 import type { LabStrategyMeta } from './registry';
+import type { StrategyGraph } from './graph/types';
 
 export interface StrategiesResponse {
   strategies: LabStrategyMeta[];
@@ -41,6 +42,8 @@ export type LabDataCoverage =
 export interface ReplayRequestBody {
   strategyId?: string;
   strategyDefinition?: StrategyDraftDefinition;
+  /** Режим «БЛОК-СХЕМА»: сервер сам валидирует и компилирует граф (§18). */
+  strategyGraph?: StrategyGraph;
   market: LabMarket;
   symbol: string;
   timeframe: LabTimeframe;

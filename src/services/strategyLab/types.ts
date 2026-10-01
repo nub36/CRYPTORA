@@ -15,6 +15,8 @@
  * lightweight-charts). Так фронтенд отдаёт свечи в CandleChart без конвертации.
  */
 
+import type { StrategyGraph } from './graph/types';
+
 /** Таймфреймы, разрешённые в Lab (собственный список; НЕ production `Timeframe`). */
 export const LAB_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'] as const;
 export type LabTimeframe = (typeof LAB_TIMEFRAMES)[number];
@@ -265,6 +267,12 @@ export interface LabReplayResult {
 export interface LabReplayInput {
   strategyId?: string;
   strategyDefinition?: StrategyDraftDefinition;
+  /**
+   * Блок-схема (режим «БЛОК-СХЕМА»). Движок компилирует её в
+   * `StrategyDraftDefinition` ОДИН раз за реплей и дальше исполняет тот же
+   * существующий код — второго движка стратегий не существует.
+   */
+  strategyGraph?: StrategyGraph;
   market: LabMarket;
   symbol: string;
   timeframe: LabTimeframe;

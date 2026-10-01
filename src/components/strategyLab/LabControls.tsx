@@ -30,6 +30,8 @@ interface LabControlsProps {
   onRun: () => void;
   loading: boolean;
   coverage?: LabDataCoverage | null;
+  /** Бэктест заблокирован извне (например, блок-схема не прошла валидацию). */
+  runDisabled?: boolean;
 }
 
 const fieldCls =
@@ -59,6 +61,7 @@ export const LabControls: React.FC<LabControlsProps> = ({
   onRun,
   loading,
   coverage = null,
+  runDisabled = false,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [availableAssets, setAvailableAssets] = useState<{ symbol: string; name: string }[]>([]);
@@ -169,7 +172,8 @@ export const LabControls: React.FC<LabControlsProps> = ({
           <button
             type="button"
             onClick={onRun}
-            disabled={loading}
+            disabled={loading || runDisabled}
+            title={runDisabled ? 'Исправьте ошибки блок-схемы, чтобы запустить бэктест' : undefined}
             data-lab-tutorial="run-backtest"
             className="flex items-center gap-2 rounded-md border border-cyan-500/50 bg-cyan-500/20 px-4 py-2 text-[13px] font-bold text-cyan-200 hover:bg-cyan-500/30 active:scale-[0.98] transition-transform shadow-lg shadow-cyan-500/10 disabled:opacity-60"
           >

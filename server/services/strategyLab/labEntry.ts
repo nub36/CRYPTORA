@@ -22,6 +22,24 @@ export {
   defaultResearchConfig,
   EMA_ATR_ID,
 } from '@/services/strategyLab/registry';
+/*
+ * Блок-схема (BLOCKS-1): сервер использует ТОТ ЖЕ семантический валидатор и
+ * компилятор, что и фронтенд (§10). Второй реализации правил графа нет.
+ */
+export {
+  validateStrategyGraph,
+  formatGraphErrors,
+  canConnect,
+  listCompatibleInputs,
+} from '@/services/strategyLab/graph/validate';
+export {
+  compileGraphToDraftDefinition,
+  GraphCompileError,
+} from '@/services/strategyLab/graph/compile';
+export { createEmaTrendTemplate } from '@/services/strategyLab/graph/templates';
+export { BLOCK_REGISTRY, listBlocksByCategory } from '@/services/strategyLab/graph/registry';
+export { GRAPH_LIMITS, GRAPH_SCHEMA_VERSION } from '@/services/strategyLab/graph/types';
+export { BLOCK_GRAPH_ID } from '@/services/strategyLab/registry';
 export {
   LAB_TIMEFRAMES,
   LAB_TF_SECONDS,

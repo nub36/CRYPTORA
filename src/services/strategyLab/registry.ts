@@ -35,6 +35,9 @@ export interface LabStrategyMeta {
 
 export const EMA_ATR_ID = 'EMA_ATR';
 
+/** Идентификатор реплея, собранного в режиме «БЛОК-СХЕМА» (BLOCKS-1). */
+export const BLOCK_GRAPH_ID = 'BLOCK_GRAPH';
+
 const EMA_ATR: LabStrategyMeta = {
   id: EMA_ATR_ID,
   name: 'EMA + ATR',
@@ -145,7 +148,7 @@ export function getLabStrategy(id: string): LabStrategyMeta | undefined {
 }
 
 export function isKnownLabStrategy(id: string): boolean {
-  if (id === 'CONSTRUCTOR' || id === 'DRAFT') return true;
+  if (id === 'CONSTRUCTOR' || id === 'DRAFT' || id === BLOCK_GRAPH_ID) return true;
   return LAB_STRATEGIES.some((s) => s.id === id);
 }
 

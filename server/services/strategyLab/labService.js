@@ -117,14 +117,42 @@ export async function selectHistoricalCandles(parsed, options = {}) {
  * source-specific limit happen before loading/executing the calculation core.
  */
 export async function runReplay(parsed, options = {}) {
+  /*
+   * Блок-схема проверяется НЕЗАВИСИМО от фронтенда и ДО загрузки свечей: клиент
+   * не является источником истины, а невалидный граф не должен тянуть данные.
+   * Используется ТОТ ЖЕ общий семантический валидатор, что и в UI.
+   *
+   * Ядро подгружается заранее ТОЛЬКО ради графа: для остальных запросов порядок
+   * «сначала дешёвые проверки диапазона, потом ядро» сохраняется без изменений.
+   */
+  let core = options.core ?? null;
+  if (parsed.strategyGraph) {
+    core = core ?? (await loadLabCore());
+    const validation = core.validateStrategyGraph(parsed.strategyGraph);
+    if (!validation.ok) {
+      throw new LabRequestError(
+        `Блок-схема некорректна: ${core.formatGraphErrors(validation.errors)}`,
+        400,
+        'INVALID_STRATEGY_GRAPH'
+      );
+    }
+  }
+
   const historical = await selectHistoricalCandles(parsed, options);
-  const core = options.core ?? (await loadLabCore());
+  core = core ?? (await loadLabCore());
 
-  const strategyId = parsed.strategyDefinition
-    ? (parsed.strategyId || 'CONSTRUCTOR')
-    : parsed.strategyId;
+  const strategyId = parsed.strategyGraph
+    ? (parsed.strategyId || core.BLOCK_GRAPH_ID)
+    : parsed.strategyDefinition
+      ? (parsed.strategyId || 'CONSTRUCTOR')
+      : parsed.strategyId;
 
-  if (strategyId && !parsed.strategyDefinition && !core.isKnownLabStrategy(strategyId)) {
+  if (
+    strategyId &&
+    !parsed.strategyDefinition &&
+    !parsed.strategyGraph &&
+    !core.isKnownLabStrategy(strategyId)
+  ) {
     throw new LabRequestError(`Неизвестная стратегия: ${strategyId}`, 400, 'UNKNOWN_STRATEGY');
   }
 
@@ -133,6 +161,7 @@ export async function runReplay(parsed, options = {}) {
     {
       strategyId,
       strategyDefinition: parsed.strategyDefinition,
+      strategyGraph: parsed.strategyGraph,
       market: parsed.market,
       symbol: parsed.symbol,
       timeframe: parsed.timeframe,
