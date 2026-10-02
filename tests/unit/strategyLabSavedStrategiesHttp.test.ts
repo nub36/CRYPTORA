@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import argon2 from 'argon2';
 import { defaultResearchDraft } from '@/services/strategyLab/draft';
+import { indicatorIdentifier } from '@/services/strategyLab/draft/identifiers';
 import type { HttpClient } from '../helpers/httpHarness';
 
 process.env.LOGIN_RATE_LIMIT = '100000';
@@ -94,6 +95,70 @@ describe('Saved Strategy Lab HTTP security contract', () => {
     expect(rejected.status).toBe(400);
     expect(db.savedStrategies).toHaveLength(0);
     expect(db.executed.some((sql) => /INSERT INTO strategy_lab_saved_strategies/i.test(sql))).toBe(false);
+    await client.close();
+  });
+
+  it('performs no INSERT or UPDATE when saved-strategy validation fails', async () => {
+    const client = await listen(createApp({ sessionStore: 'memory' }));
+    await login(client.client, 'a@test.local');
+
+    const invalidCreate = {
+      ...draft('Invalid create'),
+      indicators: [
+        { id: 'rsi-main', type: 'RSI', name: 'RSI', period: 14, source: 'close' },
+        { id: 'atr-main', type: 'ATR', name: 'ATR', period: 14 },
+      ],
+      sourceCode: 'strategy("Invalid create", () => { LONG(below(RSI_MAIN, 101)); SHORT(above(RSI_MAIN, 70)); STOP(ATR_MAIN); TAKE_PROFIT(R(1)); });',
+    };
+    const createStart = db.executed.length;
+    expect((await client.client.post('/api/strategy-lab/saved-strategies', invalidCreate)).status).toBe(400);
+    expect(db.executed.slice(createStart).some((sql) => /INSERT\s+INTO\s+strategy_lab_saved_strategies/i.test(sql))).toBe(false);
+
+    const created = await client.client.post('/api/strategy-lab/saved-strategies', draft('Valid before update'));
+    expect(created.status).toBe(201);
+    const id = (created.body as { strategy: { id: string } }).strategy.id;
+    const invalidUpdate = {
+      ...draft('Invalid update'),
+      indicators: [...draft().indicators, { id: 'fractal-main', type: 'FRACTALS', name: 'Fractals', period: 7 }],
+    };
+    const updateStart = db.executed.length;
+    expect((await client.client.request('PUT', `/api/strategy-lab/saved-strategies/${id}`, { body: invalidUpdate })).status).toBe(400);
+    expect(db.executed.slice(updateStart).some((sql) => /UPDATE\s+strategy_lab_saved_strategies/i.test(sql))).toBe(false);
+    expect(db.savedStrategies[0].name).toBe('Valid before update');
+    await client.close();
+  });
+
+  it('renames RSI display text while preserving its stable ID and code identifier', async () => {
+    const client = await listen(createApp({ sessionStore: 'memory' }));
+    await login(client.client, 'a@test.local');
+    const rsiDraft = {
+      name: 'Stable RSI ID',
+      apiVersion: 2,
+      indicators: [
+        { id: 'rsi-main', type: 'RSI', name: 'RSI 14', period: 14, source: 'close', visible: false },
+        { id: 'atr-main', type: 'ATR', name: 'ATR', period: 14, visible: false },
+      ],
+      sourceCode: 'strategy("Stable RSI ID", () => { LONG(below(RSI_MAIN, 30)); SHORT(above(RSI_MAIN, 70)); STOP(ATR_MAIN); TAKE_PROFIT(R(1)); });',
+      execution: { feeBps: 5, slippageBps: 2 },
+    };
+    const created = await client.client.post('/api/strategy-lab/saved-strategies', rsiDraft);
+    expect(created.status).toBe(201);
+    const id = (created.body as { strategy: { id: string } }).strategy.id;
+
+    const renamed = {
+      ...rsiDraft,
+      indicators: rsiDraft.indicators.map((indicator) =>
+        indicator.id === 'rsi-main' ? { ...indicator, name: 'Мой RSI' } : indicator
+      ),
+    };
+    expect((await client.client.request('PUT', `/api/strategy-lab/saved-strategies/${id}`, { body: renamed })).status).toBe(200);
+    const listed = await client.client.get('/api/strategy-lab/saved-strategies');
+    const saved = (listed.body as { strategies: Array<{ indicators: Array<{ id: string; name: string }> }> }).strategies[0];
+    const rsi = saved.indicators.find((indicator) => indicator.id === 'rsi-main')!;
+    expect(rsi.name).toBe('Мой RSI');
+    expect(rsi.id).toBe('rsi-main');
+    expect(indicatorIdentifier(rsi.id)).toBe('RSI_MAIN');
+    expect((listed.body as any).strategies[0].sourceCode).toContain('RSI_MAIN');
     await client.close();
   });
 

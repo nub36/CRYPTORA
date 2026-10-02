@@ -66,6 +66,7 @@ const ADMIN_ID = '11111111-1111-1111-1111-111111111111';
 const ADMIN_EMAIL = 'replay-admin@cryptora.test';
 const PASSWORD = 'correct horse battery staple';
 
+let db: InstanceType<typeof MemoryDb>;
 let client: HttpClient;
 let close: () => Promise<void>;
 
@@ -80,8 +81,23 @@ function replayBody(strategyDraft: unknown) {
   };
 }
 
+function allIndicatorsDraft() {
+  return {
+    name: 'All indicator capabilities',
+    apiVersion: 2 as const,
+    indicators: [
+      { id: 'ema-fast', type: 'EMA' as const, name: 'EMA Fast', period: 20, source: 'close' as const, visible: true },
+      { id: 'atr-main', type: 'ATR' as const, name: 'ATR Main', period: 14, visible: false },
+      { id: 'rsi-main', type: 'RSI' as const, name: 'RSI 14', period: 14, source: 'close' as const, visible: false },
+      { id: 'fractal-main', type: 'FRACTALS' as const, name: 'Fractals', period: 5, visible: true },
+    ],
+    sourceCode: 'strategy("All indicator capabilities", () => { LONG(below(RSI_MAIN, 30)); SHORT(fractalHigh(FRACTAL_MAIN)); STOP(multiply(ATR_MAIN, 1.5)); TAKE_PROFIT(R(2)); });',
+    execution: { feeBps: 5, slippageBps: 2 },
+  };
+}
+
 beforeAll(async () => {
-  const db = new MemoryDb();
+  db = new MemoryDb();
   __setPoolForTests(db.asPool());
   db.users.push({
     id: ADMIN_ID,
@@ -147,6 +163,56 @@ describe('Strategy Lab replay · deterministic real HTTP path', () => {
     expect(rsi).toHaveLength(STRATEGY_LAB_FIXTURE_BARS);
     expect(rsi.slice(0, 14)).toEqual(new Array(14).fill(null));
     expect(rsi.slice(14).some((value) => value !== null)).toBe(true);
+  });
+
+  it('accepts the exact same all-indicator draft for save and replay', async () => {
+    const sameDraft = allIndicatorsDraft();
+    const saved = await client.post('/api/strategy-lab/saved-strategies', sameDraft);
+    expect(saved.status).toBe(201);
+    expect((saved.body as any).strategy).toMatchObject({
+      name: sameDraft.name,
+      indicators: sameDraft.indicators,
+      sourceCode: sameDraft.sourceCode,
+      apiVersion: sameDraft.apiVersion,
+    });
+
+    const replayed = await client.post('/api/strategy-lab/replay', replayBody(sameDraft));
+    expect(replayed.status).toBe(200);
+    expect((replayed.body as any).meta).toMatchObject({ strategyId: 'CODE_DRAFT', researchOnly: true });
+    expect(db.savedStrategies).toHaveLength(1);
+  });
+
+  it('rejects an unknown RSI identifier through replay HTTP validation', async () => {
+    const draft = allIndicatorsDraft();
+    draft.sourceCode = draft.sourceCode.replace('RSI_MAIN', 'RSI_UNKNOWN');
+    const response = await client.post('/api/strategy-lab/replay', replayBody(draft));
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ code: 'INVALID_STRATEGY_CODE' });
+  });
+
+  it('rejects fractalHigh applied to EMA through replay HTTP validation', async () => {
+    const draft = allIndicatorsDraft();
+    draft.sourceCode = draft.sourceCode.replace('fractalHigh(FRACTAL_MAIN)', 'fractalHigh(EMA_FAST)');
+    const response = await client.post('/api/strategy-lab/replay', replayBody(draft));
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ code: 'INVALID_STRATEGY_CODE' });
+  });
+
+  it('rejects RSI threshold 101 through replay HTTP validation', async () => {
+    const draft = allIndicatorsDraft();
+    draft.sourceCode = draft.sourceCode.replace('below(RSI_MAIN, 30)', 'below(RSI_MAIN, 101)');
+    const response = await client.post('/api/strategy-lab/replay', replayBody(draft));
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ code: 'INVALID_STRATEGY_CODE' });
+  });
+
+  it('rejects FRACTALS period 7 through request schema validation', async () => {
+    const draft = allIndicatorsDraft();
+    draft.indicators = draft.indicators.map((indicator) =>
+      indicator.id === 'fractal-main' ? { ...indicator, period: 7 } : indicator
+    );
+    const response = await client.post('/api/strategy-lab/replay', replayBody(draft));
+    expect(response.status).toBe(400);
   });
 
   it('confirms a LOW Fractal at i+2 and fills only at i+3', async () => {
