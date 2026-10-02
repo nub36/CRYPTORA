@@ -115,6 +115,9 @@ export function compileGraphToDraftDefinition(graph: StrategyGraph): StrategyDra
    * порядку массива узлов и тем более не по координатам. Поэтому результат
    * компиляции не зависит ни от раскладки на холсте, ни от истории правок.
    */
+  if ((long.kind && long.kind !== 'cross') || (short.kind && short.kind !== 'cross')) {
+    throw new GraphCompileError([internal('блок-схема поддерживает только EMA-пересечения')]);
+  }
   const orderedIds: string[] = [];
   for (const id of [long.left, long.right, short.left, short.right, atrNodeId]) {
     if (!orderedIds.includes(id)) orderedIds.push(id);

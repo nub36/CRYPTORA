@@ -162,6 +162,37 @@ describe('Saved Strategy Lab HTTP security contract', () => {
     await client.close();
   });
 
+  it('round-trips Order Block settings and keeps its stable code identifier after display-name rename', async () => {
+    const client = await listen(createApp({ sessionStore: 'memory' }));
+    await login(client.client, 'a@test.local');
+    const payload = {
+      name: 'Saved Order Block', apiVersion: 2,
+      indicators: [
+        { id: 'atr-main', type: 'ATR', name: 'ATR Main', period: 14, visible: false },
+        { id: 'order-block-main', type: 'ORDER_BLOCK', name: 'Order Block', lookback: 5, displacementMultiplier: 1, atrIndicatorId: 'atr-main', visible: true },
+      ],
+      sourceCode: 'strategy("Saved Order Block", () => { LONG(bullishOrderBlock(ORDER_BLOCK_MAIN)); SHORT(bearishOrderBlock(ORDER_BLOCK_MAIN)); STOP(ATR_MAIN); TAKE_PROFIT(R(1)); });',
+      execution: { feeBps: 5, slippageBps: 2 },
+    };
+    const created = await client.client.post('/api/strategy-lab/saved-strategies', payload);
+    expect(created.status).toBe(201);
+    const id = (created.body as { strategy: { id: string } }).strategy.id;
+    const renamed = { ...payload, indicators: payload.indicators.map((indicator) => indicator.id === 'order-block-main' ? { ...indicator, name: 'Моя зона' } : indicator) };
+    expect((await client.client.request('PUT', `/api/strategy-lab/saved-strategies/${id}`, { body: renamed })).status).toBe(200);
+    const listed = await client.client.get('/api/strategy-lab/saved-strategies');
+    const orderBlock = (listed.body as any).strategies[0].indicators.find((indicator: any) => indicator.id === 'order-block-main');
+    expect(orderBlock).toMatchObject({ id: 'order-block-main', type: 'ORDER_BLOCK', name: 'Моя зона', lookback: 5, displacementMultiplier: 1, atrIndicatorId: 'atr-main', visible: true });
+    expect(indicatorIdentifier(orderBlock.id)).toBe('ORDER_BLOCK_MAIN');
+
+    const invalidReference = { ...payload, indicators: [payload.indicators[0], { ...payload.indicators[1], atrIndicatorId: 'missing' }] };
+    const before = db.savedStrategies.length;
+    expect((await client.client.post('/api/strategy-lab/saved-strategies', invalidReference)).status).toBe(400);
+    expect(db.savedStrategies).toHaveLength(before);
+    const wrongType = { ...payload, indicators: [{ id: 'ema-main', type: 'EMA', name: 'EMA', period: 20, source: 'close' }, { ...payload.indicators[1], atrIndicatorId: 'ema-main' }] };
+    expect((await client.client.post('/api/strategy-lab/saved-strategies', wrongType)).status).toBe(400);
+    await client.close();
+  });
+
   it('round-trips RSI and Fractals through the real HTTP persistence route', async () => {
     const client = await listen(createApp({ sessionStore: 'memory' }));
     await login(client.client, 'a@test.local');

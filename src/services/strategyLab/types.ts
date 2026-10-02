@@ -60,24 +60,47 @@ export interface LabCandle {
 // Конструктор стратегий (Phase 2A: Декларативный Draft Definition)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS';
+export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS' | 'ORDER_BLOCK';
 export type IndicatorSource = 'close' | 'open' | 'high' | 'low';
 
-export interface IndicatorDefinition {
+/** Existing period-based indicators retain their v2 draft shape unchanged. */
+export interface PeriodIndicatorDefinition {
   id: string;
-  type: IndicatorType;
+  type: 'EMA' | 'ATR' | 'RSI' | 'FRACTALS';
   name?: string;
   period: number;
   source?: IndicatorSource;
   visible?: boolean;
 }
 
+/**
+ * Lab-only Order Block V1 settings. The referenced ATR is an internal stable
+ * indicator id, never a display name and never an implicit first ATR.
+ */
+export interface OrderBlockIndicatorDefinition {
+  id: string;
+  type: 'ORDER_BLOCK';
+  name?: string;
+  lookback: number;
+  displacementMultiplier: number;
+  atrIndicatorId: string;
+  visible?: boolean;
+}
+
+export type IndicatorDefinition = PeriodIndicatorDefinition | OrderBlockIndicatorDefinition;
+
 export type LogicOperator = 'crossesAbove' | 'crossesBelow';
 
 export type CrossCondition = { kind?: 'cross'; left: string; operator: LogicOperator; right: string };
 export type ThresholdCondition = { kind: 'threshold'; left: string; right: string; indicatorId: string; operator: 'above' | 'below'; threshold: number };
 export type FractalCondition = { kind: 'fractal'; left: string; right: string; indicatorId: string; operator: 'fractalHigh' | 'fractalLow' };
-export type StrategyCondition = CrossCondition | ThresholdCondition | FractalCondition;
+/** Discrete event: true only on the closed candle that confirms a new Order Block. */
+export type OrderBlockCondition = {
+  kind: 'orderBlock';
+  indicatorId: string;
+  operator: 'bullishOrderBlock' | 'bearishOrderBlock';
+};
+export type StrategyCondition = CrossCondition | ThresholdCondition | FractalCondition | OrderBlockCondition;
 export type LogicRule = StrategyCondition;
 
 export interface StopDefinition {
@@ -204,6 +227,33 @@ export interface LabIndicatorSeries {
   fractalEvents?: Array<{ indicatorId: string; kind: 'HIGH' | 'LOW'; sourceIndex: number; sourceCandleTime: number; confirmationIndex: number; knownAt: number; price: number }>;
 }
 
+export type OrderBlockDirection = 'BULLISH' | 'BEARISH';
+export type OrderBlockState = 'ACTIVE' | 'MITIGATED' | 'INVALIDATED';
+
+/**
+ * Confirmed Order Block zone. It is Strategy Lab data only, independent from
+ * production signals/events. `state` is the final replay status; lifecycle
+ * timestamps preserve a prior mitigation even after terminal invalidation.
+ */
+export interface LabOrderBlock {
+  id: string;
+  indicatorId: string;
+  direction: OrderBlockDirection;
+  sourceIndex: number;
+  sourceCandleTime: number;
+  confirmationIndex: number;
+  confirmationCandleTime: number;
+  knownAt: number;
+  low: number;
+  high: number;
+  state: OrderBlockState;
+  mitigationIndex?: number;
+  mitigatedAt?: number;
+  invalidationIndex?: number;
+  invalidationCandleTime?: number;
+  invalidatedAt?: number;
+}
+
 export interface LabMetrics {
   totalCandidates: number;
   accepted: number;
@@ -258,6 +308,8 @@ export interface LabReplayResult {
   meta: LabReplayMeta;
   candles: LabCandle[];
   indicators: LabIndicatorSeries;
+  /** Confirmed Lab-only Order Block zones; always emitted (empty when none exist). */
+  orderBlocks: LabOrderBlock[];
   events: LabEvent[];
   trades: LabTrade[];
   rejections: LabRejection[];

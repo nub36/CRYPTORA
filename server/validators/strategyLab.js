@@ -56,7 +56,7 @@ const timestampMs = z
 // Схема для Конструктора (Phase 2A Draft Definition)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const indicatorSchema = z.object({
+const periodIndicatorSchema = z.object({
   id: z.string().min(1).max(64),
   type: z.enum(['EMA', 'ATR', 'RSI', 'FRACTALS']),
   name: z.string().max(64).optional(),
@@ -64,6 +64,22 @@ export const indicatorSchema = z.object({
   source: z.enum(['close', 'open', 'high', 'low']).optional(),
   visible: z.boolean().optional(),
 });
+
+const orderBlockIndicatorSchema = z.object({
+  id: z.string().min(1).max(64),
+  type: z.literal('ORDER_BLOCK'),
+  name: z.string().max(64).optional(),
+  lookback: z.number().int().min(1).max(20),
+  displacementMultiplier: z.number().finite().min(0.1).max(10),
+  atrIndicatorId: z.string().min(1).max(64),
+  visible: z.boolean().optional(),
+});
+
+/** Additive v2 indicator union: existing period indicators retain their shape. */
+export const indicatorSchema = z.discriminatedUnion('type', [
+  periodIndicatorSchema,
+  orderBlockIndicatorSchema,
+]);
 
 export const logicRuleSchema = z.object({
   left: z.string().min(1).max(64),
@@ -264,8 +280,21 @@ export const CODE_MAX_SOURCE_LENGTH = 32 * 1024;
 export const strategyDraftSchema = z.object({
   name: z.string().min(1).max(100),
   indicators: z.array(indicatorSchema).min(1).max(20).superRefine((items, ctx) => {
+    const byId = new Map(items.map((item) => [item.id, item]));
     items.forEach((item, index) => {
-      if (item.type === 'FRACTALS' && item.period !== 5) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, 'period'], message: 'Фракталы используют фиксированный период 5.' });
+      if (item.type === 'FRACTALS' && item.period !== 5) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, 'period'], message: 'Фракталы используют фиксированный период 5.' });
+      }
+      if (item.type === 'ORDER_BLOCK') {
+        const atr = byId.get(item.atrIndicatorId);
+        if (!atr || atr.type !== 'ATR') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, 'atrIndicatorId'],
+            message: 'ATR для Order Block должен ссылаться на настроенный индикатор ATR.',
+          });
+        }
+      }
     });
   }),
   sourceCode: z.string().min(1).max(CODE_MAX_SOURCE_LENGTH),

@@ -82,11 +82,15 @@ describe('F/G/H. индикаторы ↔ код', () => {
 
   it('F. код использует периоды из настроек индикаторов (без дублирования)', () => {
     const draft = defaultResearchDraft();
-    draft.indicators[0].period = 7;
-    draft.indicators[2].period = 21;
+    const emaFast = draft.indicators.find((indicator) => indicator.id === 'ema-fast' && indicator.type === 'EMA') as { period: number };
+    const atrMain = draft.indicators.find((indicator) => indicator.id === 'atr-main' && indicator.type === 'ATR') as { period: number };
+    emaFast.period = 7;
+    atrMain.period = 21;
     const compiled = compileResearchDraft(draft);
-    expect(compiled.definition?.indicators.find((i) => i.id === 'ema-fast')?.period).toBe(7);
-    expect(compiled.definition?.indicators.find((i) => i.id === 'atr-main')?.period).toBe(21);
+    const compiledEma = compiled.definition?.indicators.find((i) => i.id === 'ema-fast' && i.type === 'EMA') as { period?: number } | undefined;
+    const compiledAtr = compiled.definition?.indicators.find((i) => i.id === 'atr-main' && i.type === 'ATR') as { period?: number } | undefined;
+    expect(compiledEma?.period).toBe(7);
+    expect(compiledAtr?.period).toBe(21);
   });
 
   it('идентификаторы генерируются безопасно и детерминированно', () => {

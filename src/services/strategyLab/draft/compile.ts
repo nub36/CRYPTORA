@@ -58,8 +58,28 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       errors.push({ ...AT_START, message: `Дублирующийся идентификатор индикатора: ${ind.id}.` });
     }
     seenIds.add(ind.id);
-    if (!Number.isFinite(ind.period) || ind.period < 1) {
+    if (ind.type === 'ORDER_BLOCK') {
+      if (!Number.isInteger(ind.lookback) || ind.lookback < 1 || ind.lookback > 20) {
+        errors.push({ ...AT_START, message: `Order Block «${ind.name || ind.id}»: Lookback должен быть целым числом от 1 до 20.` });
+      }
+      if (!Number.isFinite(ind.displacementMultiplier) || ind.displacementMultiplier < 0.1 || ind.displacementMultiplier > 10) {
+        errors.push({ ...AT_START, message: `Order Block «${ind.name || ind.id}»: Displacement ATR должен быть от 0.1 до 10.` });
+      }
+      if (!ind.atrIndicatorId) {
+        errors.push({ ...AT_START, message: `Order Block «${ind.name || ind.id}»: выберите ATR для импульса.` });
+      }
+    } else if (!Number.isFinite(ind.period) || ind.period < 1) {
       errors.push({ ...AT_START, message: `Индикатор «${ind.name || ind.id}»: период должен быть целым числом ≥ 1.` });
+    }
+  }
+  if (errors.length) return { ok: false, errors };
+
+  const byDraftId = new Map(draft.indicators.map((ind) => [ind.id, ind]));
+  for (const ind of draft.indicators) {
+    if (ind.type !== 'ORDER_BLOCK') continue;
+    const atr = byDraftId.get(ind.atrIndicatorId);
+    if (!atr || atr.type !== 'ATR') {
+      errors.push({ ...AT_START, message: `Order Block «${ind.name || ind.id}»: ATR для импульса должен ссылаться на настроенный индикатор ATR.` });
     }
   }
   if (errors.length) return { ok: false, errors };
@@ -127,6 +147,11 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       if (e.args.length !== 1) fail(`${role}: функция принимает один индикатор.`);
       const ind = indicatorOf(e.args[0], role); expectType(ind, 'FRACTALS', role);
       return { kind: 'fractal', left: ind.id, right: ind.id, indicatorId: ind.id, operator: e.callee };
+    }
+    if (e.callee === 'bullishOrderBlock' || e.callee === 'bearishOrderBlock') {
+      if (e.args.length !== 1) fail(`${role}: функция принимает один индикатор Order Block.`);
+      const ind = indicatorOf(e.args[0], role); expectType(ind, 'ORDER_BLOCK', role);
+      return { kind: 'orderBlock', indicatorId: ind.id, operator: e.callee };
     }
     fail(`${role}: неизвестное условие.`);
   };
@@ -204,12 +229,36 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
    * результат не зависел от порядка правок в UI.
    */
   const orderedIds: string[] = [];
-  for (const id of [long, short, stop.indicatorId].flatMap((x: any) => typeof x === 'string' ? [x] : x.kind === 'cross' ? [x.left, x.right] : [x.indicatorId])) {
-    if (!orderedIds.includes(id)) orderedIds.push(id);
-  }
   const byId = new Map(draft.indicators.map((i) => [i.id, i]));
+  const addIndicatorWithDependencies = (id: string) => {
+    if (orderedIds.includes(id)) return;
+    const ind = byId.get(id)!;
+    orderedIds.push(id);
+    // The referenced ATR is an explicit mathematical dependency of the Order
+    // Block and must survive canonical indicator pruning even when STOP() uses
+    // another ATR indicator.
+    if (ind.type === 'ORDER_BLOCK') addIndicatorWithDependencies(ind.atrIndicatorId);
+  };
+  const conditionIds = (condition: LogicRule): string[] => {
+    if ('left' in condition && 'right' in condition) return [condition.left, condition.right];
+    return [condition.indicatorId];
+  };
+  for (const id of [...conditionIds(long), ...conditionIds(short), stop.indicatorId]) {
+    addIndicatorWithDependencies(id);
+  }
   const indicators: IndicatorDefinition[] = orderedIds.map((id) => {
     const ind = byId.get(id)!;
+    if (ind.type === 'ORDER_BLOCK') {
+      return {
+        id: ind.id,
+        type: 'ORDER_BLOCK' as const,
+        name: ind.name || 'Order Block',
+        lookback: ind.lookback,
+        displacementMultiplier: ind.displacementMultiplier,
+        atrIndicatorId: ind.atrIndicatorId,
+        visible: ind.visible ?? true,
+      };
+    }
     return ind.type === 'EMA'
       ? {
           id: ind.id,

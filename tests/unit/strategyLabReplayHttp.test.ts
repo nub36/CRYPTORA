@@ -289,6 +289,58 @@ describe('Strategy Lab replay · deterministic real HTTP path', () => {
       ]));
   });
 
+  it('confirms an Order Block only at j close and fills directly at open(j+1)', async () => {
+    const source = 30;
+    const confirmation = source + 1;
+    const fill = confirmation + 1;
+    const candles = Array.from({ length: 48 }, (_, index) => {
+      const time = Math.floor(STRATEGY_LAB_FIXTURE_FROM_MS / 1000) + index * 3600;
+      const open = 100 + index * 0.1;
+      return { time, closeTime: time + 3599, open, high: open + 0.3, low: open - 0.2, close: open + 0.1, volume: 1_000 + index };
+    });
+    candles[source] = { ...candles[source], open: 110, high: 110, low: 108.8, close: 109 };
+    candles[confirmation] = { ...candles[confirmation], open: 109, high: 115, low: 109, close: 115 };
+    candles[fill] = { ...candles[fill], open: 116, high: 116.4, low: 115.8, close: 116.1 };
+    acquisitionSpies.read.mockResolvedValueOnce({
+      covered: true,
+      candles,
+      meta: {
+        datasetVersion: 'deterministic-order-block-fixture-v1',
+        manifestGeneratedAt: '2025-01-15T00:00:00.000Z',
+        coverageFrom: new Date(STRATEGY_LAB_FIXTURE_FROM_MS).toISOString(),
+        coverageTo: new Date(FRACTAL_FIXTURE_TO_MS).toISOString(),
+        seriesSha256: 'c'.repeat(64),
+      },
+    });
+    const draft = {
+      name: 'Order Block HTTP replay',
+      apiVersion: 2 as const,
+      indicators: [
+        { id: 'atr-main', type: 'ATR' as const, name: 'ATR Main', period: 14, visible: false },
+        { id: 'order-block-main', type: 'ORDER_BLOCK' as const, name: 'Order Block', lookback: 5, displacementMultiplier: 1, atrIndicatorId: 'atr-main', visible: true },
+      ],
+      sourceCode: 'strategy("Order Block HTTP replay", () => { LONG(bullishOrderBlock(ORDER_BLOCK_MAIN)); SHORT(bearishOrderBlock(ORDER_BLOCK_MAIN)); STOP(multiply(ATR_MAIN, 0.1)); TAKE_PROFIT(R(1)); });',
+      execution: { feeBps: 0, slippageBps: 0 },
+    };
+    const response = await client.post('/api/strategy-lab/replay', { ...replayBody(draft), to: FRACTAL_FIXTURE_TO_MS });
+    expect(response.status).toBe(200);
+    const result = response.body as any;
+    const block = result.orderBlocks.find((candidate: any) => candidate.indicatorId === 'order-block-main' && candidate.direction === 'BULLISH');
+    expect(block).toMatchObject({
+      sourceIndex: source,
+      sourceCandleTime: candles[source].time,
+      confirmationIndex: confirmation,
+      confirmationCandleTime: candles[confirmation].time,
+      knownAt: candles[confirmation].closeTime,
+      low: candles[source].low,
+      high: candles[source].high,
+    });
+    const trade = result.trades.find((candidate: any) => candidate.side === 'LONG' && candidate.signalTime === candles[confirmation].time);
+    expect(trade).toMatchObject({ entryTime: candles[fill].time, entryPrice: candles[fill].open });
+    expect(result.events.some((candidate: any) => candidate.kind === 'CANDIDATE' && candidate.candleTime < candles[confirmation].time)).toBe(false);
+    expect(result.events.some((candidate: any) => (candidate.kind === 'ENTRY' || candidate.kind === 'FILL') && candidate.candleTime === candles[confirmation].time)).toBe(false);
+  });
+
   it('uses only the mocked local candle acquisition boundary', () => {
     expect(acquisitionSpies.inspect).toHaveBeenCalled();
     expect(acquisitionSpies.read).toHaveBeenCalled();

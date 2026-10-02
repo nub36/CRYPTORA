@@ -176,6 +176,7 @@ function makeResult(n: number, generatedAt = 1): LabReplayResult {
       byIndicatorId: { 'ema-fast': nulls, 'ema-slow': nulls, atr: nulls },
       indicatorsList: DEFINITION.indicators,
     },
+    orderBlocks: [],
     events: [],
     trades: [] as LabTrade[],
     rejections: [],

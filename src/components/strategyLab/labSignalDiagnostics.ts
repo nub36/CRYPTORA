@@ -43,10 +43,10 @@ function indicatorLabel(
   // определение в конструкторе пользователь мог отредактировать после бэктеста.
   const fromResult = series.indicatorsList?.find((ind) => ind.id === indicatorId);
   if (fromResult?.name) return fromResult.name;
-  if (fromResult) return `${fromResult.type} ${fromResult.period}`;
+  if (fromResult) return fromResult.type === 'ORDER_BLOCK' ? 'Order Block' : `${fromResult.type} ${fromResult.period}`;
   const def = definition?.indicators.find((ind) => ind.id === indicatorId);
   if (def?.name) return def.name;
-  if (def) return `${def.type} ${def.period}`;
+  if (def) return def.type === 'ORDER_BLOCK' ? 'Order Block' : `${def.type} ${def.period}`;
   return indicatorId;
 }
 
@@ -87,40 +87,37 @@ export function getLabSignalDiagnostics(
   const rule = trade.side === 'LONG' ? definition?.long : definition?.short;
   if (!rule) return empty;
 
-  const leftSeries = byId[rule.left];
-  const rightSeries = byId[rule.right];
-  if (!leftSeries || !rightSeries) return empty;
+  const ruleRows: LabIndicatorValueRow[] = [];
+  let crossText: string | null = null;
 
-  const ruleRows: LabIndicatorValueRow[] = [
-    {
-      label: indicatorLabel(definition, rule.left, series),
-      value: leftSeries[signalIndex] ?? null,
-    },
-    {
-      label: indicatorLabel(definition, rule.right, series),
-      value: rightSeries[signalIndex] ?? null,
-    },
-  ];
-
-  const direction = crossDirection(
-    leftSeries[signalIndex - 1] ?? null,
-    leftSeries[signalIndex] ?? null,
-    rightSeries[signalIndex - 1] ?? null,
-    rightSeries[signalIndex] ?? null
-  );
-
-  // Пересечение печатается только если фактическое направление серии
-  // соответствует оператору правила (защита от редактирования конструктора
-  // ПОСЛЕ бэктеста: данные всегда из результата, а не из живой формы).
-  const directionMatchesRule =
-    direction !== null &&
-    ((rule.operator === 'crossesAbove' && direction === 'up') ||
-      (rule.operator === 'crossesBelow' && direction === 'down'));
-
-  const crossText =
-    directionMatchesRule && direction !== null
-      ? `${ruleRows[0].label} пересекла ${ruleRows[1].label} ${direction === 'up' ? 'вверх' : 'вниз'}`
-      : null;
+  if ('left' in rule && 'right' in rule) {
+    const leftSeries = byId[rule.left];
+    const rightSeries = byId[rule.right];
+    if (leftSeries && rightSeries) {
+      ruleRows.push(
+        { label: indicatorLabel(definition, rule.left, series), value: leftSeries[signalIndex] ?? null },
+        { label: indicatorLabel(definition, rule.right, series), value: rightSeries[signalIndex] ?? null }
+      );
+      const direction = crossDirection(
+        leftSeries[signalIndex - 1] ?? null,
+        leftSeries[signalIndex] ?? null,
+        rightSeries[signalIndex - 1] ?? null,
+        rightSeries[signalIndex] ?? null
+      );
+      const directionMatchesRule = direction !== null && (
+        (rule.operator === 'crossesAbove' && direction === 'up') ||
+        (rule.operator === 'crossesBelow' && direction === 'down')
+      );
+      crossText = directionMatchesRule && direction !== null
+        ? `${ruleRows[0].label} пересекла ${ruleRows[1].label} ${direction === 'up' ? 'вверх' : 'вниз'}`
+        : null;
+    }
+  } else if (rule.kind === 'orderBlock') {
+    ruleRows.push({ label: indicatorLabel(definition, rule.indicatorId, series), value: null });
+    crossText = rule.operator === 'bullishOrderBlock'
+      ? 'Подтверждён новый бычий Order Block'
+      : 'Подтверждён новый медвежий Order Block';
+  }
 
   let stopRow: LabIndicatorValueRow | null = null;
   const stopId = definition?.stop.indicatorId;

@@ -28,7 +28,7 @@ import {
   type StrategyResearchDraft,
 } from '@/services/strategyLab/draft';
 import type { CodeError } from '@/services/strategyLab/code';
-import type { IndicatorDefinition } from '@/services/strategyLab/types';
+import type { IndicatorDefinition, PeriodIndicatorDefinition } from '@/services/strategyLab/types';
 import type { LabReplayResult, LabTrade } from '@/services/strategyLab/types';
 import {
   runLabBacktest,
@@ -358,7 +358,7 @@ export const StrategyLabPage: React.FC = () => {
         </div>
 
         {/* 4. Индикаторы редактируются в отдельном responsive modal; график выше остаётся смонтированным. */}
-        <div className="sr-only" aria-hidden="false"><span>ИНДИКАТОРЫ</span><label htmlFor="lab-strategy-name-access">Название стратегии</label><input id="lab-strategy-name-access" value={draft.name} onChange={(e) => handleNameChange(e.target.value)} /><label htmlFor="lab-ema-fast-period-access">Период индикатора EMA_FAST</label><input id="lab-ema-fast-period-access" value={draft.indicators.find((i) => i.id === 'ema-fast')?.period ?? ''} onChange={(e) => handleIndicatorsChange(draft.indicators.map((i) => i.id === 'ema-fast' ? { ...i, period: Number(e.target.value) } : i))} /></div>
+        <div className="sr-only" aria-hidden="false"><span>ИНДИКАТОРЫ</span><label htmlFor="lab-strategy-name-access">Название стратегии</label><input id="lab-strategy-name-access" value={draft.name} onChange={(e) => handleNameChange(e.target.value)} /><label htmlFor="lab-ema-fast-period-access">Период индикатора EMA_FAST</label><input id="lab-ema-fast-period-access" value={draft.indicators.find((i): i is PeriodIndicatorDefinition => i.id === 'ema-fast' && i.type === 'EMA')?.period ?? ''} onChange={(e) => handleIndicatorsChange(draft.indicators.map((i) => i.id === 'ema-fast' && i.type === 'EMA' ? { ...i, period: Number(e.target.value) } : i))} /></div>
         <div className="mb-4 flex items-center justify-between rounded border border-slate-700/70 bg-slate-900/40 p-3">
           <div><h3 className="text-sm font-bold text-slate-200">Настройки индикаторов</h3><p className="text-xs text-slate-400">Изменения сохраняются в текущем черновике.</p></div>
           <button type="button" onClick={() => setIndicatorModalOpen(true)} className="rounded bg-cyan-500/20 px-3 py-2 text-xs text-cyan-100">Настройки индикаторов</button>

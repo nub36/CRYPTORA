@@ -38,6 +38,21 @@ export interface ChartMarker {
 /** Стиль линии уровня (соответствует LineStyle lightweight-charts). */
 export type ChartLevelLineStyle = 'solid' | 'dashed' | 'dotted' | 'largeDashed' | 'sparseDotted';
 
+/** A generic finite price/time rectangle rendered behind the primary price series. */
+export interface ChartPriceZone {
+  id: string;
+  /** Unix-second open time of the first visible candle in the zone. */
+  fromTime: number;
+  /** Unix-second open time of the final visible candle in the zone. */
+  toTime: number;
+  low: number;
+  high: number;
+  fillColor: string;
+  borderColor: string;
+  /** Presentation state, intentionally independent from any strategy domain. */
+  state?: 'ACTIVE' | 'MITIGATED' | 'INVALIDATED';
+}
+
 export interface ChartLevelLine {
   /** Стабильный идентификатор: по нему линии заменяются при смене сигнала. */
   id: string;

@@ -15,6 +15,7 @@
  */
 
 import { emaAligned, atrAligned, rsiAligned, confirmedFractals } from '../indicators';
+import { evaluateOrderBlocks, orderBlockConfirmationKey } from '../orderBlocks';
 import { simulateTrade } from '../executionSimulator';
 import type {
   LabCandle,
@@ -24,7 +25,9 @@ import type {
   LabSide,
   LabTrade,
   StrategyDraftDefinition,
-  IndicatorDefinition,
+  IndicatorSource,
+  OrderBlockIndicatorDefinition,
+  LabOrderBlock,
 } from '../types';
 
 export interface DraftStrategyEvaluation {
@@ -36,9 +39,11 @@ export interface DraftStrategyEvaluation {
   evaluatedBars: number;
   candidateCount: number;
   rejectedCount: number;
+  /** Confirmed Lab-only Order Block zones, including historical invalidated zones. */
+  orderBlocks: LabOrderBlock[];
 }
 
-function getPricesBySource(candles: LabCandle[], source?: IndicatorDefinition['source']): number[] {
+function getPricesBySource(candles: LabCandle[], source?: IndicatorSource): number[] {
   switch (source) {
     case 'open':
       return candles.map((c) => c.open);
@@ -76,6 +81,14 @@ export function evaluateDraftStrategy(
     }
   }
 
+  // Order Blocks are discrete zones, not numeric chart series. Their referenced
+  // ATR series has already been calculated above because the canonical compiler
+  // retains it as an explicit dependency.
+  const orderBlockDefinitions = definition.indicators.filter(
+    (ind): ind is OrderBlockIndicatorDefinition => ind.type === 'ORDER_BLOCK'
+  );
+  const orderBlockEvaluation = evaluateOrderBlocks(candles, orderBlockDefinitions, indSeries);
+
   // Определение ключевых серий для совместимости с LabIndicatorSeries
   const longLeftId = definition.long.kind === 'cross' ? definition.long.left : '';
   const longRightId = definition.long.kind === 'cross' ? definition.long.right : '';
@@ -103,7 +116,7 @@ export function evaluateDraftStrategy(
   // series. Requiring a non-null series value here would prevent their
   // confirmation bars from ever reaching the predicate evaluator.
   const idsOf = (c: any): string[] =>
-    c.kind === 'cross' ? [c.left, c.right] : c.kind === 'fractal' ? [] : [c.indicatorId];
+    c.kind === 'cross' ? [c.left, c.right] : c.kind === 'fractal' || c.kind === 'orderBlock' ? [] : [c.indicatorId];
   const requiredIds = [...idsOf(definition.long), ...idsOf(definition.short), definition.stop.indicatorId];
   let firstEvaluable = -1;
   for (let i = 1; i < n; i++) if (requiredIds.every((id) => indSeries[id]?.[i] !== null && indSeries[id]?.[i - 1] !== null)) { firstEvaluable = i; break; }
@@ -127,6 +140,12 @@ export function evaluateDraftStrategy(
         }
         if (condition.kind === 'threshold') { const v = indSeries[condition.indicatorId]?.[i] ?? null; return v !== null && (condition.operator === 'above' ? v > condition.threshold : v < condition.threshold); }
         if (condition.kind === 'fractal') { const events = confirmedFractals(candles); return events.some((e) => e.confirmationIndex === i && e.kind === (condition.operator === 'fractalHigh' ? 'HIGH' : 'LOW')); }
+        if (condition.kind === 'orderBlock') {
+          const direction = condition.operator === 'bullishOrderBlock' ? 'BULLISH' : 'BEARISH';
+          return orderBlockEvaluation.confirmationsByIndex
+            .get(i)
+            ?.has(orderBlockConfirmationKey(condition.indicatorId, direction)) ?? false;
+        }
         return false;
       };
       const longTriggered = predicate(definition.long, i);
@@ -302,5 +321,6 @@ export function evaluateDraftStrategy(
     evaluatedBars,
     candidateCount,
     rejectedCount,
+    orderBlocks: orderBlockEvaluation.orderBlocks,
   };
 }
