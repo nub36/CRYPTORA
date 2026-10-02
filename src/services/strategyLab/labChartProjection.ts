@@ -31,8 +31,8 @@
  * поэтому события движка НЕ хронологичны — сортируем здесь (устойчиво).
  */
 
-import type { ChartLevelLine, ChartMarker } from '@/types/chart';
-import type { LabCandle, LabEvent, LabTrade } from './types';
+import type { ChartLevelLine, ChartMarker, ChartPriceSegment, ChartPriceZone } from '@/types/chart';
+import type { LabCandle, LabEvent, LabFairValueGap, LabMarketStructureEvent, LabOrderBlock, LabTrade } from './types';
 
 /**
  * Presentation-лимит числа маркеров (§13): плотный поток не должен топить
@@ -273,4 +273,197 @@ export function mapTradeLevels(
     });
   }
   return lines;
+}
+
+export function mapFractalMarkers(result: { candles: LabCandle[]; indicators: { indicatorsList?: Array<{ id: string; type: string; visible?: boolean }>; fractalEvents?: Array<{ indicatorId: string; kind: 'HIGH'|'LOW'; sourceCandleTime: number; sourceIndex: number; confirmationIndex: number; knownAt: number; price: number }>; } }): ChartMarker[] {
+  const times = new Set(result.candles.map((c) => c.time));
+  return (result.indicators.fractalEvents ?? []).filter((e) => result.indicators.indicatorsList?.some((i) => i.id === e.indicatorId && i.type === 'FRACTALS' && i.visible !== false) && times.has(e.sourceCandleTime)).map((e) => ({ id: `fractal-${e.indicatorId}-${e.kind}-${e.sourceIndex}`, time: e.sourceCandleTime, position: e.kind === 'HIGH' ? 'aboveBar' : 'belowBar', shape: e.kind === 'HIGH' ? 'arrowDown' : 'arrowUp', color: e.kind === 'HIGH' ? '#a78bfa' : '#38bdf8', size: 1, text: e.kind === 'HIGH' ? 'FH' : 'FL', payload: { indicatorId: e.indicatorId, sourceIndex: e.sourceIndex, confirmationIndex: e.confirmationIndex, knownAt: e.knownAt, price: e.price } }));
+}
+
+const ORDER_BLOCK_COLORS = {
+  BULLISH: { fill: 'rgba(20, 184, 166, 0.14)', border: 'rgba(45, 212, 191, 0.58)' },
+  BEARISH: { fill: 'rgba(244, 63, 94, 0.13)', border: 'rgba(251, 113, 133, 0.58)' },
+} as const;
+
+/**
+ * Lab domain zones → library-agnostic CandleChart rectangles. Visual start is
+ * deliberately the source candle; `knownAt` remains in the result model and is
+ * never substituted as an x coordinate.
+ */
+export function mapOrderBlockZones(result: {
+  candles: LabCandle[];
+  orderBlocks?: LabOrderBlock[];
+  indicators: { indicatorsList?: Array<{ id: string; type: string; visible?: boolean }> };
+}): ChartPriceZone[] {
+  const latestTime = result.candles.at(-1)?.time;
+  if (latestTime === undefined) return [];
+  const knownTimes = new Set(result.candles.map((candle) => candle.time));
+
+  return (result.orderBlocks ?? [])
+    .filter((block) =>
+      result.indicators.indicatorsList?.some(
+        (indicator) => indicator.id === block.indicatorId && indicator.type === 'ORDER_BLOCK' && indicator.visible !== false
+      )
+    )
+    .flatMap((block) => {
+      const toTime = block.state === 'INVALIDATED'
+        ? block.invalidationCandleTime
+        : latestTime;
+      if (!knownTimes.has(block.sourceCandleTime) || toTime === undefined || !knownTimes.has(toTime)) return [];
+      const palette = ORDER_BLOCK_COLORS[block.direction];
+      const mitigated = block.state === 'MITIGATED';
+      const invalidated = block.state === 'INVALIDATED';
+      return [{
+        id: block.id,
+        fromTime: block.sourceCandleTime,
+        toTime,
+        low: block.low,
+        high: block.high,
+        fillColor: mitigated || invalidated ? palette.fill.replace(/0\.1[34]\)/, invalidated ? '0.055)' : '0.085)') : palette.fill,
+        borderColor: invalidated ? palette.border.replace(/0\.58\)/, '0.38)') : palette.border,
+        state: block.state,
+      } satisfies ChartPriceZone];
+    })
+    .sort((a, b) => a.fromTime - b.fromTime || a.id.localeCompare(b.id));
+}
+
+
+/** Deliberately subtler than Order Blocks: FVG zones are context, not levels. */
+const FVG_COLORS = {
+  BULLISH: { fill: 'rgba(20, 184, 166, 0.09)', border: 'rgba(45, 212, 191, 0.38)' },
+  BEARISH: { fill: 'rgba(244, 63, 94, 0.08)', border: 'rgba(251, 113, 133, 0.38)' },
+} as const;
+
+/**
+ * Fair Value Gap zones → generic CandleChart rectangles. The zone visually
+ * starts at candle A (`firstCandleTime`); ACTIVE/PARTIALLY_FILLED zones extend
+ * to the latest replay candle, FILLED zones stop at `fillCandleTime`.
+ * Projection is gated purely by indicator `visible`; it never reruns the
+ * strategy, and `knownAt` is never substituted as an x coordinate.
+ */
+export function mapFvgZones(result: {
+  candles: LabCandle[];
+  fairValueGaps?: LabFairValueGap[];
+  indicators: { indicatorsList?: Array<{ id: string; type: string; visible?: boolean }> };
+}): ChartPriceZone[] {
+  const latestTime = result.candles.at(-1)?.time;
+  if (latestTime === undefined) return [];
+  const knownTimes = new Set(result.candles.map((candle) => candle.time));
+
+  return (result.fairValueGaps ?? [])
+    .filter((zone) =>
+      result.indicators.indicatorsList?.some(
+        (indicator) => indicator.id === zone.indicatorId && indicator.type === 'FVG' && indicator.visible !== false
+      )
+    )
+    .flatMap((zone) => {
+      const toTime = zone.state === 'FILLED' ? zone.fillCandleTime : latestTime;
+      if (!knownTimes.has(zone.firstCandleTime) || toTime === undefined || !knownTimes.has(toTime)) return [];
+      const palette = FVG_COLORS[zone.direction];
+      const filled = zone.state === 'FILLED';
+      return [{
+        id: zone.id,
+        fromTime: zone.firstCandleTime,
+        toTime,
+        low: zone.low,
+        high: zone.high,
+        fillColor: filled ? palette.fill.replace(/0\.0[89]\)/, '0.04)') : palette.fill,
+        borderColor: filled ? palette.border.replace(/0\.38\)/, '0.22)') : palette.border,
+        state: zone.state,
+      } satisfies ChartPriceZone];
+    })
+    .sort((a, b) => a.fromTime - b.fromTime || a.id.localeCompare(b.id));
+}
+
+const MARKET_STRUCTURE_COLORS = {
+  swingHigh: 'rgba(148, 163, 184, 0.82)',
+  swingLow: 'rgba(148, 163, 184, 0.82)',
+  bullish: 'rgba(45, 212, 191, 0.82)',
+  bearish: 'rgba(251, 113, 133, 0.82)',
+} as const;
+
+export interface MarketStructureProjection {
+  markers: ChartMarker[];
+  priceSegments: ChartPriceSegment[];
+}
+
+/**
+ * Pure Market Structure V1 chart projection. It intentionally reads the
+ * immutable replay output only and gates rendering by `visible`; no structure
+ * state, events, trades, or metrics are recalculated here.
+ */
+export function mapMarketStructureProjection(result: {
+  candles: LabCandle[];
+  marketStructureEvents?: LabMarketStructureEvent[];
+  indicators: { indicatorsList?: Array<{ id: string; type: string; visible?: boolean }> };
+}): MarketStructureProjection {
+  const visibleIds = new Set(
+    (result.indicators.indicatorsList ?? [])
+      .filter((indicator) => indicator.type === 'MARKET_STRUCTURE' && indicator.visible !== false)
+      .map((indicator) => indicator.id)
+  );
+  const candleTimes = new Set(result.candles.map((candle) => candle.time));
+  const markers: ChartMarker[] = [];
+  const priceSegments: ChartPriceSegment[] = [];
+
+  for (const event of result.marketStructureEvents ?? []) {
+    if (!visibleIds.has(event.indicatorId)) continue;
+    if (!('breakIndex' in event)) {
+      if (!candleTimes.has(event.sourceCandleTime)) continue;
+      const high = event.kind === 'SWING_HIGH';
+      markers.push({
+        id: `marker-${event.id}`,
+        time: event.sourceCandleTime,
+        position: high ? 'aboveBar' : 'belowBar',
+        shape: high ? 'arrowDown' : 'arrowUp',
+        color: high ? MARKET_STRUCTURE_COLORS.swingHigh : MARKET_STRUCTURE_COLORS.swingLow,
+        text: high ? 'SH' : 'SL',
+        size: 1,
+        payload: {
+          kind: event.kind,
+          indicatorId: event.indicatorId,
+          sourceIndex: event.sourceIndex,
+          confirmationIndex: event.confirmationIndex,
+          knownAt: event.knownAt,
+          price: event.price,
+        },
+      });
+      continue;
+    }
+
+    if (!candleTimes.has(event.brokenSwingSourceCandleTime) || !candleTimes.has(event.breakCandleTime)) continue;
+    const bullish = event.kind === 'BULLISH_BOS' || event.kind === 'BULLISH_CHOCH';
+    const choch = event.kind === 'BULLISH_CHOCH' || event.kind === 'BEARISH_CHOCH';
+    const color = bullish ? MARKET_STRUCTURE_COLORS.bullish : MARKET_STRUCTURE_COLORS.bearish;
+    priceSegments.push({
+      id: `segment-${event.id}`,
+      fromTime: event.brokenSwingSourceCandleTime,
+      toTime: event.breakCandleTime,
+      price: event.level,
+      color,
+      style: choch ? 'dashed' : 'solid',
+      lineWidth: 1,
+    });
+    markers.push({
+      id: `marker-${event.id}`,
+      time: event.breakCandleTime,
+      position: bullish ? 'belowBar' : 'aboveBar',
+      shape: bullish ? 'arrowUp' : 'arrowDown',
+      color,
+      text: choch ? 'CHoCH' : 'BOS',
+      size: 1,
+      payload: {
+        kind: event.kind,
+        indicatorId: event.indicatorId,
+        knownAt: event.knownAt,
+        level: event.level,
+        brokenSwingId: event.brokenSwingId,
+      },
+    });
+  }
+
+  return {
+    markers: sortMarkersByTime(markers),
+    priceSegments: priceSegments.sort((a, b) => a.fromTime - b.fromTime || a.id.localeCompare(b.id)),
+  };
 }

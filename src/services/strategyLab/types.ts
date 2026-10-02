@@ -60,25 +60,117 @@ export interface LabCandle {
 // Конструктор стратегий (Phase 2A: Декларативный Draft Definition)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IndicatorType = 'EMA' | 'ATR';
+export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS' | 'ORDER_BLOCK' | 'MARKET_STRUCTURE' | 'FVG';
 export type IndicatorSource = 'close' | 'open' | 'high' | 'low';
 
-export interface IndicatorDefinition {
+/** Existing period-based indicators retain their v2 draft shape unchanged. */
+export interface PeriodIndicatorDefinition {
   id: string;
-  type: IndicatorType;
+  type: 'EMA' | 'ATR' | 'RSI' | 'FRACTALS';
   name?: string;
   period: number;
   source?: IndicatorSource;
   visible?: boolean;
 }
 
+/**
+ * Lab-only Order Block V1 settings. The referenced ATR is an internal stable
+ * indicator id, never a display name and never an implicit first ATR.
+ */
+export interface OrderBlockIndicatorDefinition {
+  id: string;
+  type: 'ORDER_BLOCK';
+  name?: string;
+  lookback: number;
+  displacementMultiplier: number;
+  atrIndicatorId: string;
+  visible?: boolean;
+}
+
+/** Independent confirmed-pivot Market Structure V1 configuration. */
+export interface MarketStructureIndicatorDefinition {
+  id: string;
+  type: 'MARKET_STRUCTURE';
+  name?: string;
+  leftBars: number;
+  rightBars: number;
+  visible?: boolean;
+}
+
+/**
+ * Fair Value Gap V1 has NO calculation parameters: the three-candle geometry is
+ * fixed. Only identity, display name and chart visibility are configurable.
+ */
+export interface FvgIndicatorDefinition {
+  id: string;
+  type: 'FVG';
+  name?: string;
+  visible?: boolean;
+}
+
+export type IndicatorDefinition =
+  | PeriodIndicatorDefinition
+  | OrderBlockIndicatorDefinition
+  | MarketStructureIndicatorDefinition
+  | FvgIndicatorDefinition;
+
 export type LogicOperator = 'crossesAbove' | 'crossesBelow';
 
-export interface LogicRule {
-  left: string; // ID индикатора
-  operator: LogicOperator;
-  right: string; // ID индикатора
-}
+export type CrossCondition = { kind?: 'cross'; left: string; operator: LogicOperator; right: string };
+export type ThresholdCondition = { kind: 'threshold'; left: string; right: string; indicatorId: string; operator: 'above' | 'below'; threshold: number };
+export type FractalCondition = { kind: 'fractal'; left: string; right: string; indicatorId: string; operator: 'fractalHigh' | 'fractalLow' };
+/** Order Block creation, zone-presence, and first-retest predicates. */
+export type OrderBlockCondition = {
+  kind: 'orderBlock';
+  indicatorId: string;
+  operator:
+    | 'bullishOrderBlock'
+    | 'bearishOrderBlock'
+    | 'insideBullishOrderBlock'
+    | 'insideBearishOrderBlock'
+    | 'bullishOrderBlockRetest'
+    | 'bearishOrderBlockRetest';
+};
+/** FVG creation, zone-presence (inside) and first-retest predicates. */
+export type FvgCondition = {
+  kind: 'fvg';
+  indicatorId: string;
+  operator:
+    | 'bullishFvg'
+    | 'bearishFvg'
+    | 'insideBullishFvg'
+    | 'insideBearishFvg'
+    | 'bullishFvgRetest'
+    | 'bearishFvgRetest';
+};
+/** Discrete confirmed Market Structure events; there are no persistent state predicates in V1. */
+export type MarketStructureCondition = {
+  kind: 'marketStructure';
+  indicatorId: string;
+  operator:
+    | 'swingHigh'
+    | 'swingLow'
+    | 'bullishBOS'
+    | 'bearishBOS'
+    | 'bullishCHoCH'
+    | 'bearishCHoCH';
+};
+
+/** Recursive safe boolean composition; arbitrary expressions remain unsupported. */
+export type AllCondition = { kind: 'all'; conditions: StrategyCondition[] };
+export type AnyCondition = { kind: 'any'; conditions: StrategyCondition[] };
+export type NotCondition = { kind: 'not'; condition: StrategyCondition };
+export type LogicalCondition = AllCondition | AnyCondition | NotCondition;
+
+export type StrategyCondition =
+  | CrossCondition
+  | ThresholdCondition
+  | FractalCondition
+  | OrderBlockCondition
+  | FvgCondition
+  | MarketStructureCondition
+  | LogicalCondition;
+export type LogicRule = StrategyCondition;
 
 export interface StopDefinition {
   type: 'atrMultiple';
@@ -201,7 +293,108 @@ export interface LabIndicatorSeries {
   byIndicatorId?: Record<string, (number | null)[]>;
   /** Список определений индикаторов (с флагами visible/period/name). */
   indicatorsList?: IndicatorDefinition[];
+  fractalEvents?: Array<{ indicatorId: string; kind: 'HIGH' | 'LOW'; sourceIndex: number; sourceCandleTime: number; confirmationIndex: number; knownAt: number; price: number }>;
 }
+
+export type OrderBlockDirection = 'BULLISH' | 'BEARISH';
+export type OrderBlockState = 'ACTIVE' | 'MITIGATED' | 'INVALIDATED';
+
+/**
+ * Confirmed Order Block zone. It is Strategy Lab data only, independent from
+ * production signals/events. `state` is the final replay status; lifecycle
+ * timestamps preserve a prior mitigation even after terminal invalidation.
+ */
+export interface LabOrderBlock {
+  id: string;
+  indicatorId: string;
+  direction: OrderBlockDirection;
+  sourceIndex: number;
+  sourceCandleTime: number;
+  confirmationIndex: number;
+  confirmationCandleTime: number;
+  knownAt: number;
+  low: number;
+  high: number;
+  state: OrderBlockState;
+  mitigationIndex?: number;
+  mitigatedAt?: number;
+  invalidationIndex?: number;
+  invalidationCandleTime?: number;
+  invalidatedAt?: number;
+}
+
+export type FvgDirection = 'BULLISH' | 'BEARISH';
+export type FvgState = 'ACTIVE' | 'PARTIALLY_FILLED' | 'FILLED';
+
+/**
+ * Confirmed Fair Value Gap zone (RESEARCH ONLY). The three-candle pattern is
+ * A = C−2 (first), B = C−1 (middle, defines no bounds) and C (confirmation).
+ * The zone exists only after close(C); lifecycle begins on C+1. `FILLED` is
+ * terminal; first-touch metadata survives a later full fill.
+ */
+export interface LabFairValueGap {
+  id: string;
+  indicatorId: string;
+  direction: FvgDirection;
+  /** Index/time of candle A (C−2) — the visual start of the zone. */
+  firstIndex: number;
+  firstCandleTime: number;
+  /** Index/time of candle B (C−1). It never defines zone bounds. */
+  middleIndex: number;
+  middleCandleTime: number;
+  confirmationIndex: number;
+  confirmationCandleTime: number;
+  /** closeTime(C): the gap is not usable at A, B or open(C). */
+  knownAt: number;
+  low: number;
+  high: number;
+  state: FvgState;
+  firstTouchIndex?: number;
+  firstTouchCandleTime?: number;
+  firstTouchedAt?: number;
+  fillIndex?: number;
+  fillCandleTime?: number;
+  filledAt?: number;
+}
+
+export type LabMarketStructureState = 'NEUTRAL' | 'BULLISH' | 'BEARISH';
+export type LabMarketStructureEventKind =
+  | 'SWING_HIGH'
+  | 'SWING_LOW'
+  | 'BULLISH_BOS'
+  | 'BEARISH_BOS'
+  | 'BULLISH_CHOCH'
+  | 'BEARISH_CHOCH';
+
+/** Immutable confirmed Swing metadata or a close-confirmed structural break. */
+export type LabMarketStructureEvent =
+  | {
+      id: string;
+      indicatorId: string;
+      kind: 'SWING_HIGH' | 'SWING_LOW';
+      sourceIndex: number;
+      sourceCandleTime: number;
+      confirmationIndex: number;
+      confirmationCandleTime: number;
+      knownAt: number;
+      price: number;
+    }
+  | {
+      id: string;
+      indicatorId: string;
+      kind: Exclude<LabMarketStructureEventKind, 'SWING_HIGH' | 'SWING_LOW'>;
+      breakIndex: number;
+      breakCandleTime: number;
+      knownAt: number;
+      breakClose: number;
+      level: number;
+      brokenSwingId: string;
+      brokenSwingKind: 'SWING_HIGH' | 'SWING_LOW';
+      brokenSwingSourceIndex: number;
+      brokenSwingSourceCandleTime: number;
+      previousState: LabMarketStructureState;
+      newState: LabMarketStructureState;
+    };
 
 export interface LabMetrics {
   totalCandidates: number;
@@ -257,6 +450,12 @@ export interface LabReplayResult {
   meta: LabReplayMeta;
   candles: LabCandle[];
   indicators: LabIndicatorSeries;
+  /** Confirmed Lab-only Order Block zones; always emitted (empty when none exist). */
+  orderBlocks: LabOrderBlock[];
+  /** Confirmed Fair Value Gap zones; always emitted (empty when none exist). */
+  fairValueGaps: LabFairValueGap[];
+  /** Complete chronological Market Structure V1 events; independent of chart visibility. */
+  marketStructureEvents: LabMarketStructureEvent[];
   events: LabEvent[];
   trades: LabTrade[];
   rejections: LabRejection[];

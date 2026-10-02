@@ -14,7 +14,10 @@
  *   • Полный детерминизм и точный паритет с базовой стратегией EMA + ATR.
  */
 
-import { emaAligned, atrAligned } from '../indicators';
+import { emaAligned, atrAligned, rsiAligned, confirmedFractals } from '../indicators';
+import { evaluateOrderBlocks, orderBlockConfirmationKey } from '../orderBlocks';
+import { evaluateFairValueGaps, fvgConfirmationKey } from '../fairValueGaps';
+import { evaluateMarketStructure, marketStructureEventKey } from '../marketStructure';
 import { simulateTrade } from '../executionSimulator';
 import type {
   LabCandle,
@@ -24,7 +27,14 @@ import type {
   LabSide,
   LabTrade,
   StrategyDraftDefinition,
-  IndicatorDefinition,
+  IndicatorSource,
+  OrderBlockIndicatorDefinition,
+  MarketStructureIndicatorDefinition,
+  FvgIndicatorDefinition,
+  LabOrderBlock,
+  LabFairValueGap,
+  LabMarketStructureEvent,
+  StrategyCondition,
 } from '../types';
 
 export interface DraftStrategyEvaluation {
@@ -36,9 +46,15 @@ export interface DraftStrategyEvaluation {
   evaluatedBars: number;
   candidateCount: number;
   rejectedCount: number;
+  /** Confirmed Lab-only Order Block zones, including historical invalidated zones. */
+  orderBlocks: LabOrderBlock[];
+  /** Confirmed Fair Value Gap zones, including historical filled zones. */
+  fairValueGaps: LabFairValueGap[];
+  /** Complete Market Structure V1 chronology, independent from chart visibility. */
+  marketStructureEvents: LabMarketStructureEvent[];
 }
 
-function getPricesBySource(candles: LabCandle[], source?: IndicatorDefinition['source']): number[] {
+function getPricesBySource(candles: LabCandle[], source?: IndicatorSource): number[] {
   switch (source) {
     case 'open':
       return candles.map((c) => c.open);
@@ -58,6 +74,8 @@ export function evaluateDraftStrategy(
 ): DraftStrategyEvaluation {
   const n = candles.length;
   const indSeries: Record<string, (number | null)[]> = {};
+  const fractalEvents: NonNullable<LabIndicatorSeries['fractalEvents']> = [];
+  const confirmedFractalKeys = new Set<string>();
 
   // 1. Расчёт серий всех объявленных индикаторов
   for (const ind of definition.indicators) {
@@ -66,12 +84,39 @@ export function evaluateDraftStrategy(
       indSeries[ind.id] = emaAligned(prices, ind.period);
     } else if (ind.type === 'ATR') {
       indSeries[ind.id] = atrAligned(candles, ind.period);
+    } else if (ind.type === 'RSI') {
+      indSeries[ind.id] = rsiAligned(getPricesBySource(candles, ind.source), ind.period);
+    } else if (ind.type === 'FRACTALS') {
+      const events = confirmedFractals(candles); const series = new Array<number | null>(n).fill(null);
+      for (const event of events) {
+        fractalEvents.push({ indicatorId: ind.id, ...event });
+        confirmedFractalKeys.add(`${ind.id}:${event.confirmationIndex}:${event.kind}`);
+        if (event.kind === 'HIGH') series[event.confirmationIndex] = event.price;
+      }
+      indSeries[ind.id] = series;
     }
   }
 
+  // Order Blocks are discrete zones, not numeric chart series. Their referenced
+  // ATR series has already been calculated above because the canonical compiler
+  // retains it as an explicit dependency.
+  const orderBlockDefinitions = definition.indicators.filter(
+    (ind): ind is OrderBlockIndicatorDefinition => ind.type === 'ORDER_BLOCK'
+  );
+  const orderBlockEvaluation = evaluateOrderBlocks(candles, orderBlockDefinitions, indSeries);
+  // Fair Value Gaps are parameterless discrete zones: pure candle geometry.
+  const fvgDefinitions = definition.indicators.filter(
+    (ind): ind is FvgIndicatorDefinition => ind.type === 'FVG'
+  );
+  const fvgEvaluation = evaluateFairValueGaps(candles, fvgDefinitions);
+  const marketStructureDefinitions = definition.indicators.filter(
+    (ind): ind is MarketStructureIndicatorDefinition => ind.type === 'MARKET_STRUCTURE'
+  );
+  const marketStructureEvaluation = evaluateMarketStructure(candles, marketStructureDefinitions);
+
   // Определение ключевых серий для совместимости с LabIndicatorSeries
-  const longLeftId = definition.long.left;
-  const longRightId = definition.long.right;
+  const longLeftId = definition.long.kind === 'cross' ? definition.long.left : '';
+  const longRightId = definition.long.kind === 'cross' ? definition.long.right : '';
   const stopIndId = definition.stop.indicatorId;
 
   const emaFastSeries = indSeries[longLeftId] || indSeries['ema-fast'] || new Array(n).fill(null);
@@ -84,6 +129,7 @@ export function evaluateDraftStrategy(
     atr: atrSeries,
     byIndicatorId: indSeries,
     indicatorsList: definition.indicators,
+    fractalEvents,
   };
 
   const events: LabEvent[] = [];
@@ -91,26 +137,31 @@ export function evaluateDraftStrategy(
   const rejections: LabRejection[] = [];
 
   // Индикаторы, необходимые для оценки правил и стопа
+  // Fractal predicates are discrete confirmed events, not continuous numeric
+  // series. Requiring a non-null series value here would prevent their
+  // confirmation bars from ever reaching the predicate evaluator.
+  const idsRequiredToStart = (condition: StrategyCondition): string[] => {
+    if (condition.kind === 'all') return condition.conditions.flatMap(idsRequiredToStart);
+    if (condition.kind === 'any') {
+      // An OR can be decided by a ready discrete branch (for example a new OB)
+      // even while another branch is still warming up. Only dependencies common
+      // to every branch are required before chronological evaluation begins.
+      const [first, ...rest] = condition.conditions.map((child) => new Set(idsRequiredToStart(child)));
+      return [...first].filter((id) => rest.every((ids) => ids.has(id)));
+    }
+    // A missing child must not make not(child) trade during warm-up.
+    if (condition.kind === 'not') return idsRequiredToStart(condition.condition);
+    if (condition.kind === 'cross' || !condition.kind) return [condition.left, condition.right];
+    if (condition.kind === 'threshold') return [condition.indicatorId];
+    return [];
+  };
   const requiredIds = [
-    definition.long.left,
-    definition.long.right,
-    definition.short.left,
-    definition.short.right,
+    ...idsRequiredToStart(definition.long),
+    ...idsRequiredToStart(definition.short),
     definition.stop.indicatorId,
   ];
-
-  // Первый бар, где все необходимые индикаторы готовы на i и i-1
   let firstEvaluable = -1;
-  for (let i = 1; i < n; i++) {
-    const allReady = requiredIds.every((id) => {
-      const s = indSeries[id];
-      return s && s[i] !== null && s[i - 1] !== null;
-    });
-    if (allReady) {
-      firstEvaluable = i;
-      break;
-    }
-  }
+  for (let i = 1; i < n; i++) if (requiredIds.every((id) => indSeries[id]?.[i] !== null && indSeries[id]?.[i - 1] !== null)) { firstEvaluable = i; break; }
 
   let candidateCount = 0;
   let rejectedCount = 0;
@@ -123,45 +174,64 @@ export function evaluateDraftStrategy(
     for (let i = firstEvaluable; i < n; i++) {
       evaluatedBars += 1;
 
-      // Оценка LONG правила
-      const longLeftPrev = indSeries[definition.long.left]?.[i - 1] ?? null;
-      const longLeftCur = indSeries[definition.long.left]?.[i] ?? null;
-      const longRightPrev = indSeries[definition.long.right]?.[i - 1] ?? null;
-      const longRightCur = indSeries[definition.long.right]?.[i] ?? null;
-
-      let longTriggered = false;
-      if (
-        longLeftPrev !== null &&
-        longLeftCur !== null &&
-        longRightPrev !== null &&
-        longRightCur !== null
-      ) {
-        if (definition.long.operator === 'crossesAbove') {
-          longTriggered = longLeftPrev <= longRightPrev && longLeftCur > longRightCur;
-        } else if (definition.long.operator === 'crossesBelow') {
-          longTriggered = longLeftPrev >= longRightPrev && longLeftCur < longRightCur;
+      const predicate = (condition: StrategyCondition, index: number): boolean => {
+        if (condition.kind === 'all') return condition.conditions.every((child) => predicate(child, index));
+        if (condition.kind === 'any') return condition.conditions.some((child) => predicate(child, index));
+        if (condition.kind === 'not') return !predicate(condition.condition, index);
+        if (condition.kind === 'cross' || !condition.kind) {
+          const lp = indSeries[condition.left]?.[index - 1] ?? null, lc = indSeries[condition.left]?.[index] ?? null;
+          const rp = indSeries[condition.right]?.[index - 1] ?? null, rc = indSeries[condition.right]?.[index] ?? null;
+          return lp !== null && lc !== null && rp !== null && rc !== null && (condition.operator === 'crossesAbove' ? lp <= rp && lc > rc : lp >= rp && lc < rc);
         }
-      }
-
-      // Оценка SHORT правила
-      const shortLeftPrev = indSeries[definition.short.left]?.[i - 1] ?? null;
-      const shortLeftCur = indSeries[definition.short.left]?.[i] ?? null;
-      const shortRightPrev = indSeries[definition.short.right]?.[i - 1] ?? null;
-      const shortRightCur = indSeries[definition.short.right]?.[i] ?? null;
-
-      let shortTriggered = false;
-      if (
-        shortLeftPrev !== null &&
-        shortLeftCur !== null &&
-        shortRightPrev !== null &&
-        shortRightCur !== null
-      ) {
-        if (definition.short.operator === 'crossesBelow') {
-          shortTriggered = shortLeftPrev >= shortRightPrev && shortLeftCur < shortRightCur;
-        } else if (definition.short.operator === 'crossesAbove') {
-          shortTriggered = shortLeftPrev <= shortRightPrev && shortLeftCur > shortRightCur;
+        if (condition.kind === 'threshold') {
+          const value = indSeries[condition.indicatorId]?.[index] ?? null;
+          return value !== null && (condition.operator === 'above' ? value > condition.threshold : value < condition.threshold);
         }
-      }
+        if (condition.kind === 'fractal') {
+          const kind = condition.operator === 'fractalHigh' ? 'HIGH' : 'LOW';
+          return confirmedFractalKeys.has(`${condition.indicatorId}:${index}:${kind}`);
+        }
+        if (condition.kind === 'marketStructure') {
+          const kind = condition.operator === 'swingHigh' ? 'SWING_HIGH'
+            : condition.operator === 'swingLow' ? 'SWING_LOW'
+            : condition.operator === 'bullishBOS' ? 'BULLISH_BOS'
+            : condition.operator === 'bearishBOS' ? 'BEARISH_BOS'
+            : condition.operator === 'bullishCHoCH' ? 'BULLISH_CHOCH'
+            : 'BEARISH_CHOCH';
+          return marketStructureEvaluation.eventsByIndex.get(index)?.has(
+            marketStructureEventKey(condition.indicatorId, kind)
+          ) ?? false;
+        }
+        if (condition.kind === 'fvg') {
+          const direction = condition.operator.toLowerCase().includes('bullish')
+            ? 'BULLISH'
+            : 'BEARISH';
+          const key = fvgConfirmationKey(condition.indicatorId, direction);
+          if (condition.operator === 'bullishFvg' || condition.operator === 'bearishFvg') {
+            return fvgEvaluation.confirmationsByIndex.get(index)?.has(key) ?? false;
+          }
+          if (condition.operator === 'insideBullishFvg' || condition.operator === 'insideBearishFvg') {
+            return fvgEvaluation.insideByIndex.get(index)?.has(key) ?? false;
+          }
+          return fvgEvaluation.retestsByIndex.get(index)?.has(key) ?? false;
+        }
+        if (condition.kind === 'orderBlock') {
+          const direction = condition.operator.toLowerCase().includes('bullish')
+            ? 'BULLISH'
+            : 'BEARISH';
+          const key = orderBlockConfirmationKey(condition.indicatorId, direction);
+          if (condition.operator === 'bullishOrderBlock' || condition.operator === 'bearishOrderBlock') {
+            return orderBlockEvaluation.confirmationsByIndex.get(index)?.has(key) ?? false;
+          }
+          if (condition.operator === 'insideBullishOrderBlock' || condition.operator === 'insideBearishOrderBlock') {
+            return orderBlockEvaluation.insideByIndex.get(index)?.has(key) ?? false;
+          }
+          return orderBlockEvaluation.retestsByIndex.get(index)?.has(key) ?? false;
+        }
+        return false;
+      };
+      const longTriggered = predicate(definition.long, i);
+      const shortTriggered = predicate(definition.short, i);
 
       let side: LabSide | null = null;
       if (longTriggered && !shortTriggered) side = 'LONG';
@@ -181,11 +251,11 @@ export function evaluateDraftStrategy(
       };
 
       if (side === 'LONG') {
-        diagnostics.emaFast = longLeftCur;
-        diagnostics.emaSlow = longRightCur;
+        diagnostics.emaFast = indSeries[longLeftId]?.[i] ?? null;
+        diagnostics.emaSlow = indSeries[longRightId]?.[i] ?? null;
       } else {
-        diagnostics.emaFast = shortLeftCur;
-        diagnostics.emaSlow = shortRightCur;
+        diagnostics.emaFast = definition.short.kind === 'cross' ? indSeries[definition.short.left]?.[i] ?? null : null;
+        diagnostics.emaSlow = definition.short.kind === 'cross' ? indSeries[definition.short.right]?.[i] ?? null : null;
       }
 
       const reject = (reason: string) => {
@@ -333,5 +403,8 @@ export function evaluateDraftStrategy(
     evaluatedBars,
     candidateCount,
     rejectedCount,
+    orderBlocks: orderBlockEvaluation.orderBlocks,
+    fairValueGaps: fvgEvaluation.fairValueGaps,
+    marketStructureEvents: marketStructureEvaluation.marketStructureEvents,
   };
 }

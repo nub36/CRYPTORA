@@ -22,11 +22,62 @@ import {
   getLocalDatasetCoverage,
   LocalHistoricalError,
 } from '../services/strategyLab/localHistoricalCandles.js';
+import {
+  listSavedStrategies,
+  createSavedStrategy,
+  updateSavedStrategy,
+  validateSavedDraft,
+  SavedStrategyValidationError,
+} from '../services/strategyLab/savedStrategies.js';
 
 const router = Router();
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Весь исследовательский контур — только для администраторов.
 router.use(requireAuth, requireAdmin);
+
+/* GET /api/strategy-lab/saved-strategies — current admin's own research drafts. */
+router.get('/saved-strategies', async (req, res, next) => {
+  try {
+    const strategies = await listSavedStrategies(req.user.id);
+    res.set('Cache-Control', 'no-store');
+    res.json({ strategies });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/* POST /api/strategy-lab/saved-strategies */
+router.post('/saved-strategies', async (req, res, next) => {
+  try {
+    const draft = await validateSavedDraft(req.body ?? {});
+    const strategy = await createSavedStrategy(req.user.id, draft);
+    res.status(201).set('Cache-Control', 'no-store').json({ strategy });
+  } catch (e) {
+    if (e instanceof SavedStrategyValidationError) {
+      return res.status(400).json({ error: e.message, code: 'INVALID_SAVED_STRATEGY' });
+    }
+    next(e);
+  }
+});
+
+/* PUT /api/strategy-lab/saved-strategies/:id */
+router.put('/saved-strategies/:id', async (req, res, next) => {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: 'Стратегия не найдена', code: 'SAVED_STRATEGY_NOT_FOUND' });
+  }
+  try {
+    const draft = await validateSavedDraft(req.body ?? {});
+    const strategy = await updateSavedStrategy(req.user.id, req.params.id, draft);
+    if (!strategy) return res.status(404).json({ error: 'Стратегия не найдена', code: 'SAVED_STRATEGY_NOT_FOUND' });
+    res.set('Cache-Control', 'no-store').json({ strategy });
+  } catch (e) {
+    if (e instanceof SavedStrategyValidationError) {
+      return res.status(400).json({ error: e.message, code: 'INVALID_SAVED_STRATEGY' });
+    }
+    next(e);
+  }
+});
 
 /* GET /api/strategy-lab/strategies */
 router.get('/strategies', async (_req, res, next) => {

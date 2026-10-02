@@ -342,8 +342,8 @@ describe('Strategy Lab · компиляция блок-схемы в Draft', ()
     graph.nodes.find((n) => n.id === 'stop-multiplier')!.params.value = 2.5;
     graph.nodes.find((n) => n.id === 'target-value')!.params.value = 3;
     const definition = compileGraphToDraftDefinition(graph);
-    expect(definition.indicators.find((i) => i.id === 'ema-fast')?.period).toBe(9);
-    expect(definition.indicators.find((i) => i.id === 'atr')?.period).toBe(21);
+    expect((definition.indicators.find((i) => i.id === 'ema-fast' && i.type === 'EMA') as { period?: number } | undefined)?.period).toBe(9);
+    expect((definition.indicators.find((i) => i.id === 'atr' && i.type === 'ATR') as { period?: number } | undefined)?.period).toBe(21);
     expect(definition.stop.multiplier).toBe(2.5);
     expect(definition.target.multiple).toBe(3);
   });

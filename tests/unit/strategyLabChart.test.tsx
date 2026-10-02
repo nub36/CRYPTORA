@@ -227,6 +227,7 @@ const TEST_DEFINITION: StrategyDraftDefinition = {
 
 /** Полный LabReplayResult с синтетическими сделками (контроль значений). */
 function makeResult(overrides: Partial<LabReplayResult> = {}): LabReplayResult {
+  const { orderBlocks = [], marketStructureEvents = [], ...rest } = overrides;
   const n = CANDLES.length;
   const emaFast: (number | null)[] = new Array(n).fill(null);
   const emaSlow: (number | null)[] = new Array(n).fill(null);
@@ -267,6 +268,9 @@ function makeResult(overrides: Partial<LabReplayResult> = {}): LabReplayResult {
       byIndicatorId: { 'ema-fast': emaFast, 'ema-slow': emaSlow, atr },
       indicatorsList: TEST_DEFINITION.indicators,
     },
+    orderBlocks,
+    fairValueGaps: [],
+    marketStructureEvents,
     events: synthEvents(),
     trades: [tradeLong, tradeShort, tradeEod],
     rejections: [],
@@ -285,7 +289,7 @@ function makeResult(overrides: Partial<LabReplayResult> = {}): LabReplayResult {
       profitFactor: 3,
       maxDrawdownR: 1.02,
     },
-    ...overrides,
+    ...rest,
   };
 }
 

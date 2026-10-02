@@ -31,11 +31,16 @@ import type {
   LabTimeframe,
   LabTrade,
   StrategyDraftDefinition,
+  PeriodIndicatorDefinition,
 } from '@/services/strategyLab/types';
 import {
   LAB_MARKERS_MAX,
   DEFAULT_LAB_MARKER_OVERLAYS,
   mapLabEventMarkers,
+  mapFractalMarkers,
+  mapFvgZones,
+  mapMarketStructureProjection,
+  mapOrderBlockZones,
   mapTradeLevels,
   type LabMarkerOverlays,
 } from '@/services/strategyLab/labChartProjection';
@@ -133,7 +138,9 @@ export const LabChart: React.FC<LabChartProps> = ({
     const byId = result.indicators.byIndicatorId;
 
     if (defs && byId) {
-      const visibleEmas = defs.filter((ind) => ind.type === 'EMA' && ind.visible !== false);
+      const visibleEmas = defs.filter(
+        (ind): ind is PeriodIndicatorDefinition & { type: 'EMA' } => ind.type === 'EMA' && ind.visible !== false
+      );
       const sma20 = visibleEmas[0] ? toAligned(byId[visibleEmas[0].id]) : undefined;
       const sma50 = visibleEmas[1] ? toAligned(byId[visibleEmas[1].id]) : undefined;
       const sma200 = visibleEmas[2] ? toAligned(byId[visibleEmas[2].id]) : undefined;
@@ -174,6 +181,27 @@ export const LabChart: React.FC<LabChartProps> = ({
         : { markers: [], skipped: 0 },
     [result, selectedTrade, overlays]
   );
+
+  // Order Block and FVG zones are derived solely from the immutable replay
+  // result and per-indicator visibility. Their projection never reruns the
+  // strategy. FVG rectangles are appended after Order Blocks so the stronger
+  // OB styling stays on top of the subtler FVG fill.
+  const priceZones = useMemo(
+    () => (result ? [...mapFvgZones(result), ...mapOrderBlockZones(result)] : []),
+    [result]
+  );
+  const marketStructureProjection = useMemo(
+    () => (result ? mapMarketStructureProjection(result) : { markers: [], priceSegments: [] }),
+    [result]
+  );
+
+  const chartMarkers = useMemo(() => {
+    if (!result) return [];
+    return [...markerProjection.markers, ...mapFractalMarkers(result), ...marketStructureProjection.markers]
+      .map((marker, index) => ({ marker, index }))
+      .sort((a, b) => a.marker.time - b.marker.time || a.index - b.index)
+      .map(({ marker }) => marker);
+  }, [result, markerProjection.markers, marketStructureProjection.markers]);
 
   // Детальные уровни — только для выбранной сделки (§6), с учётом оверлеев.
   const levelLines = useMemo(
@@ -298,7 +326,9 @@ export const LabChart: React.FC<LabChartProps> = ({
         showMA={overlays.indicators}
         showVolume
         showBadges={false}
-        markers={markerProjection.markers}
+        markers={chartMarkers}
+        priceZones={priceZones}
+        priceSegments={marketStructureProjection.priceSegments}
         levelLines={levelLines}
         onMarkerClick={handleMarkerClick}
         resetViewToken={resetViewToken}

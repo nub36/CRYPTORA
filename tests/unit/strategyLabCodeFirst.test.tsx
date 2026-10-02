@@ -363,6 +363,7 @@ describe('A/B. Strategy Lab · code-first страница', () => {
       target: { value: '123' },
     });
 
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(screen.getByRole('button', { name: /Создать стратегию/i }));
 
     expect(nameInput.value).toBe('Новая стратегия');
