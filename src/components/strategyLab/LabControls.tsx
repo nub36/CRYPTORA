@@ -1,12 +1,18 @@
 /**
- * CRYPTORA — Strategy Lab · Верхние действия и контролы рынка (Phase 2A)
+ * CRYPTORA — Strategy Lab · Контролы рынка и запуск бэктеста
  * ---------------------------------------------------------------------------
- * Кнопки [Создать стратегию], [Сохранить стратегию], [Мои стратегии], [Запустить бэктест].
- * Выбор рынка (Spot / Futures), монеты через SymbolPickerModal, таймфрейма и дат.
+ * Кнопка [Запустить бэктест] и выбор рынка (Spot / Futures), монеты через
+ * SymbolPickerModal, таймфрейма и дат.
+ *
+ * ЕДИНЫЙ workflow сохранения живёт в верхней панели «СТРАТЕГИЯ» StrategyLabPage
+ * (селектор «Мои стратегии», «+ Новая», «Сохранить», «Сохранить как...»).
+ * Старые отключённые кнопки-заглушки [Создать стратегию]/[Сохранить стратегию]/
+ * [Мои стратегии] удалены: они дублировали реальный workflow и на мобильном
+ * сбивали пользователя с пути к настройкам индикаторов.
  */
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { Play, PlusCircle, Save, FolderOpen, Loader2, ChevronDown } from 'lucide-react';
+import { Play, Loader2, ChevronDown } from 'lucide-react';
 import type { LabMarket, LabTimeframe } from '@/services/strategyLab/types';
 import { LAB_TIMEFRAMES } from '@/services/strategyLab/types';
 import type { LabDataCoverage } from '@/services/strategyLab/labClient';
@@ -26,7 +32,6 @@ export interface LabControlsState {
 interface LabControlsProps {
   value: LabControlsState;
   onChange: <K extends keyof LabControlsState>(key: K, v: LabControlsState[K]) => void;
-  onNewStrategy: () => void;
   onRun: () => void;
   loading: boolean;
   coverage?: LabDataCoverage | null;
@@ -57,7 +62,6 @@ function formatDisplayPair(symbol: string): string {
 export const LabControls: React.FC<LabControlsProps> = ({
   value,
   onChange,
-  onNewStrategy,
   onRun,
   loading,
   coverage = null,
@@ -133,41 +137,8 @@ export const LabControls: React.FC<LabControlsProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* ── 1. Верхние кнопки действий ────────────────────────────────────── */}
+      {/* ── 1. Запуск бэктеста (единственное действие уровня контролов) ──── */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onNewStrategy}
-          disabled={loading}
-          data-lab-tutorial="create-strategy"
-          className="flex items-center gap-1.5 rounded-md border border-white/[0.12] bg-surface-2 px-3 py-2 text-[13px] font-semibold text-white hover:bg-surface-elevated active:scale-[0.98] transition-transform disabled:opacity-50"
-        >
-          <PlusCircle className="h-4 w-4 text-cyan-400" />
-          <span>Создать стратегию</span>
-        </button>
-
-        <button
-          type="button"
-          disabled
-          data-lab-tutorial="save-strategy"
-          title="Сохранение будет подключено следующим этапом"
-          className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-surface-2/40 px-3 py-2 text-[13px] font-medium text-slate-500 cursor-not-allowed opacity-60"
-        >
-          <Save className="h-4 w-4" />
-          <span>Сохранить стратегию</span>
-        </button>
-
-        <button
-          type="button"
-          disabled
-          data-lab-tutorial="my-strategies"
-          title="Мои стратегии будут подключены следующим этапом"
-          className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-surface-2/40 px-3 py-2 text-[13px] font-medium text-slate-500 cursor-not-allowed opacity-60"
-        >
-          <FolderOpen className="h-4 w-4" />
-          <span>Мои стратегии</span>
-        </button>
-
         <div className="ml-auto">
           <button
             type="button"

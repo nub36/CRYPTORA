@@ -233,7 +233,7 @@ describe('Strategy Lab · ИНДИКАТОРЫ (единственный ист�
 });
 
 describe('Strategy Lab · LabControls (верхние кнопки и подсказки)', () => {
-  it('кнопки Сохранить и Мои стратегии заблокированы с понятными русскими подсказками', () => {
+  it('легаси-кнопки-заглушки удалены: остался только [Запустить бэктест]', () => {
     render(
       <LabControls
         value={{
@@ -244,22 +244,16 @@ describe('Strategy Lab · LabControls (верхние кнопки и подск
           to: '2024-01-05T00:00',
         }}
         onChange={vi.fn()}
-        onNewStrategy={vi.fn()}
         onRun={vi.fn()}
         loading={false}
       />
     );
 
-    const saveBtn = screen.getByRole('button', { name: /Сохранить стратегию/i });
-    expect(saveBtn).toBeDisabled();
-    expect(saveBtn).toHaveAttribute('title', 'Сохранение будет подключено следующим этапом');
-
-    const myStrategiesBtn = screen.getByRole('button', { name: /Мои стратегии/i });
-    expect(myStrategiesBtn).toBeDisabled();
-    expect(myStrategiesBtn).toHaveAttribute('title', 'Мои стратегии будут подключены следующим этапом');
-
-    const createBtn = screen.getByRole('button', { name: /Создать стратегию/i });
-    expect(createBtn).not.toBeDisabled();
+    // Единственный workflow сохранения живёт в панели «СТРАТЕГИЯ» страницы:
+    // отключённые дубликаты из старого этапа не должны возвращаться.
+    expect(screen.queryByRole('button', { name: /Сохранить стратегию/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Мои стратегии/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Создать стратегию/i })).toBeNull();
 
     const runBtn = screen.getByRole('button', { name: /Запустить бэктест/i });
     expect(runBtn).not.toBeDisabled();
@@ -270,7 +264,6 @@ describe('Strategy Lab · LabControls (верхние кнопки и подск
       <LabControls
         value={{ market: 'spot', symbol: 'BTCUSDT', timeframe: '1h', from: '', to: '' }}
         onChange={vi.fn()}
-        onNewStrategy={vi.fn()}
         onRun={vi.fn()}
         loading={false}
         coverage={{
@@ -297,7 +290,6 @@ describe('Strategy Lab · LabControls (верхние кнопки и подск
       <LabControls
         value={{ market: 'spot', symbol: 'BTCUSDT', timeframe: '1h', from: '', to: '' }}
         onChange={vi.fn()}
-        onNewStrategy={vi.fn()}
         onRun={vi.fn()}
         loading={false}
         coverage={{ datasetAvailable: false }}
@@ -353,7 +345,7 @@ describe('A/B. Strategy Lab · code-first страница', () => {
     expect(screen.getByText(/Строка \d+, столбец \d+/)).toBeInTheDocument();
   });
 
-  it('4. [Создать стратегию] сбрасывает индикаторы И код без устаревших остатков', () => {
+  it('4. [+ Новая] сбрасывает индикаторы И код без устаревших остатков', () => {
     renderPage();
     const nameInput = screen.getByLabelText('Название стратегии') as HTMLInputElement;
     fireEvent.change(nameInput, { target: { value: 'Моя кастомная стратегия' } });
@@ -364,7 +356,7 @@ describe('A/B. Strategy Lab · code-first страница', () => {
     });
 
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    fireEvent.click(screen.getByRole('button', { name: /Создать стратегию/i }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Новая' }));
 
     expect(nameInput.value).toBe('Новая стратегия');
     const resetEditor = screen.getByLabelText('Код стратегии') as HTMLTextAreaElement;
@@ -380,10 +372,16 @@ describe('A/B. Strategy Lab · code-first страница', () => {
     expect(screen.getByText(/Запустите бэктест, чтобы построить график/i)).toBeInTheDocument();
   });
 
-  it('4b. сохранение честно не реализовано: кнопки заблокированы с пояснением', () => {
+  it('4b. ЕДИНЫЙ workflow сохранения: реальные кнопки есть, легаси-заглушки удалены', () => {
     renderPage();
-    const save = screen.getByRole('button', { name: /Сохранить стратегию/i });
-    expect(save).toBeDisabled();
-    expect(save).toHaveAttribute('title', 'Сохранение будет подключено следующим этапом');
+    // Реальный workflow Saved Strategies V1 в панели «СТРАТЕГИЯ».
+    expect(screen.getByRole('button', { name: 'Сохранить' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Сохранить как...' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: '+ Новая' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Мои стратегии' })).toBeInTheDocument();
+    // Легаси-заглушки старого этапа не рендерятся.
+    expect(screen.queryByRole('button', { name: /Сохранить стратегию/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Создать стратегию/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Мои стратегии$/i })).toBeNull();
   });
 });
