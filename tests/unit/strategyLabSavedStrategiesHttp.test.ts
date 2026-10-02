@@ -97,6 +97,22 @@ describe('Saved Strategy Lab HTTP security contract', () => {
     await client.close();
   });
 
+  it('round-trips RSI and Fractals through the real HTTP persistence route', async () => {
+    const client = await listen(createApp({ sessionStore: 'memory' }));
+    await login(client.client, 'a@test.local');
+    const payload = { ...draft('Indicator round trip'), indicators: [...draft().indicators, { id: 'rsi-main', type: 'RSI', name: 'RSI', period: 14, source: 'close', visible: false }, { id: 'fractals-main', type: 'FRACTALS', name: 'Fractals', period: 5, visible: true }] };
+    const created = await client.client.post('/api/strategy-lab/saved-strategies', payload);
+    expect(created.status).toBe(201);
+    const listed = await client.client.get('/api/strategy-lab/saved-strategies');
+    expect(listed.status).toBe(200);
+    const saved = (listed.body as { strategies: Array<{ indicators: Array<Record<string, unknown>> }> }).strategies[0];
+    expect(saved.indicators).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'rsi-main', type: 'RSI', name: 'RSI', period: 14, source: 'close' }),
+      expect.objectContaining({ id: 'fractals-main', type: 'FRACTALS', period: 5, visible: true }),
+    ]));
+    await client.close();
+  });
+
   it('keeps the existing catalog route separate from saved rows', async () => {
     const client = await listen(createApp({ sessionStore: 'memory' }));
     await login(client.client, 'a@test.local');

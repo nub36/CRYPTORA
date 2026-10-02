@@ -47,6 +47,16 @@ describe('Strategy Lab final RSI and Fractals acceptance', () => {
     expect(result.events.some((e) => e.candleTime === candles[5].time)).toBe(false);
   });
 
+  it('projects HIGH Fractals above the source candle, not confirmation', () => {
+    const highCandles = candles.map((c, i) => i === 5 ? { ...c, high: 140 } : i === 3 || i === 4 || i === 6 || i === 7 ? { ...c, high: 120 } : c);
+    const highDef = { ...definition, indicators: definition.indicators.map((x) => x.id === 'fractal-main' ? { ...x, visible: true } : x), long: { kind: 'fractal' as const, left: 'fractal-main', right: 'fractal-main', indicatorId: 'fractal-main', operator: 'fractalHigh' as const } };
+    const result = evaluateDraftStrategy(highCandles, highDef);
+    const event = result.indicators.fractalEvents?.find((e) => e.kind === 'HIGH' && e.sourceIndex === 5)!;
+    const markers = mapFractalMarkers({ ...result, candles: highCandles });
+    expect(markers).toEqual(expect.arrayContaining([expect.objectContaining({ time: event.sourceCandleTime, position: 'aboveBar' })]));
+    expect(event.sourceCandleTime).not.toBe(event.knownAt);
+  });
+
   it('keeps Fractal chart markers on the source candle and filters visibility', () => {
     const result = evaluateDraftStrategy(candles, definition);
     const on = mapFractalMarkers({ ...result, candles });
