@@ -231,8 +231,8 @@ describe('Strategy Lab · registry', () => {
     const draft = defaultDraftDefinition('Тест');
     expect(draft.name).toBe('Тест');
     expect(draft.indicators.length).toBe(3);
-    expect(draft.long.operator).toBe('crossesAbove');
-    expect(draft.short.operator).toBe('crossesBelow');
+    expect(draft.long.kind === 'cross' || !draft.long.kind ? draft.long.operator : null).toBe('crossesAbove');
+    expect(draft.short.kind === 'cross' || !draft.short.kind ? draft.short.operator : null).toBe('crossesBelow');
     expect(draft.stop.multiplier).toBe(1.5);
     expect(draft.target.multiple).toBe(2.0);
   });

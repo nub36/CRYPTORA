@@ -16,8 +16,12 @@ import type {
 export interface OrderBlockEvaluation {
   /** All confirmed zones, retained after invalidation for chart/history output. */
   orderBlocks: LabOrderBlock[];
-  /** Discrete confirmation events addressed by [closed candle index]. */
+  /** Discrete creation events addressed by [closed candle index]. */
   confirmationsByIndex: Map<number, Set<string>>;
+  /** Current-close membership of zones that were already confirmed before this candle. */
+  insideByIndex: Map<number, Set<string>>;
+  /** First post-confirmation range overlaps, recorded before same-candle invalidation. */
+  retestsByIndex: Map<number, Set<string>>;
 }
 
 export function orderBlockConfirmationKey(
@@ -101,21 +105,42 @@ export function evaluateOrderBlocks(
 ): OrderBlockEvaluation {
   const orderBlocks: LabOrderBlock[] = [];
   const confirmationsByIndex = new Map<number, Set<string>>();
+  const insideByIndex = new Map<number, Set<string>>();
+  const retestsByIndex = new Map<number, Set<string>>();
   const active: LabOrderBlock[] = [];
 
   for (let confirmationIndex = 0; confirmationIndex < candles.length; confirmationIndex += 1) {
     const confirmation = candles[confirmationIndex];
 
-    // Invalidated zones no longer participate in later lifecycle checks.
+    // Process prior zones before current-candle detection. This makes a zone
+    // confirmed at j unavailable to inside/retest predicates on j itself.
+    const retestKeys = new Set<string>();
     let nextActive = 0;
     for (let activeIndex = 0; activeIndex < active.length; activeIndex += 1) {
       const block = active[activeIndex];
-      if (!advanceLifecycle(block, confirmation, confirmationIndex)) {
+      const wasUnmitigated = block.mitigationIndex === undefined;
+      const invalidated = advanceLifecycle(block, confirmation, confirmationIndex);
+      if (wasUnmitigated && block.mitigationIndex === confirmationIndex) {
+        retestKeys.add(orderBlockConfirmationKey(block.indicatorId, block.direction));
+      }
+      if (!invalidated) {
         active[nextActive] = block;
         nextActive += 1;
       }
     }
     active.length = nextActive;
+    if (retestKeys.size > 0) retestsByIndex.set(confirmationIndex, retestKeys);
+
+    // The active collection now represents zones still valid at close(k). A
+    // zone invalidated on k was removed above; a close beyond its boundary also
+    // cannot satisfy this inclusive close-inside test.
+    const insideKeys = new Set<string>();
+    for (const block of active) {
+      if (confirmation.close >= block.low && confirmation.close <= block.high) {
+        insideKeys.add(orderBlockConfirmationKey(block.indicatorId, block.direction));
+      }
+    }
+    if (insideKeys.size > 0) insideByIndex.set(confirmationIndex, insideKeys);
 
     for (const definition of definitions) {
       const atr = indicatorSeries[definition.atrIndicatorId]?.[confirmationIndex] ?? null;
@@ -164,5 +189,5 @@ export function evaluateOrderBlocks(
     }
   }
 
-  return { orderBlocks, confirmationsByIndex };
+  return { orderBlocks, confirmationsByIndex, insideByIndex, retestsByIndex };
 }

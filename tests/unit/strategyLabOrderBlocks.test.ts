@@ -3,9 +3,10 @@ import type {
   LabCandle,
   LabOrderBlock,
   OrderBlockIndicatorDefinition,
+  StrategyDraftDefinition,
 } from '@/services/strategyLab/types';
 import { compileResearchDraft } from '@/services/strategyLab/draft/compile';
-import { evaluateOrderBlocks } from '@/services/strategyLab/orderBlocks';
+import { evaluateOrderBlocks, orderBlockConfirmationKey } from '@/services/strategyLab/orderBlocks';
 import { evaluateDraftStrategy } from '@/services/strategyLab/strategies/draftStrategy';
 import { mapOrderBlockZones } from '@/services/strategyLab/labChartProjection';
 import { PriceZonesPrimitive } from '@/components/common/chart/PriceZonesPrimitive';
@@ -178,6 +179,27 @@ describe('Strategy Lab Order Block V1', () => {
     expect(result.trades[0]).toMatchObject({ signalTime: candles[1].time, entryTime: candles[2].time, entryPrice: candles[2].open });
   });
 
+  it('makes a retest observable only after its close and fills at the next bar open', () => {
+    const draft = obDraft();
+    draft.sourceCode = draft.sourceCode
+      .replace('bullishOrderBlock(ORDER_BLOCK_MAIN)', 'bullishOrderBlockRetest(ORDER_BLOCK_MAIN)')
+      .replace('bearishOrderBlock(ORDER_BLOCK_MAIN)', 'bearishOrderBlockRetest(ORDER_BLOCK_MAIN)');
+    const definition = compileResearchDraft(draft).definition!;
+    const candles = [
+      candle(0, 100, 100, 90, 95),
+      candle(1, 95, 102, 95, 102), // bullish confirmation
+      candle(2, 103, 104, 102, 103), // no retest
+      candle(3, 103, 104, 100, 101), // first later range overlap
+      candle(4, 105, 106, 104, 105), // earliest fill
+    ];
+    const result = evaluateDraftStrategy(candles, definition);
+    const candidate = result.events.find((event) => event.kind === 'CANDIDATE');
+    const fill = result.events.find((event) => event.kind === 'FILL');
+    expect(candidate).toMatchObject({ candleTime: candles[3].time, knownAt: candles[3].closeTime, side: 'LONG' });
+    expect(fill).toMatchObject({ candleTime: candles[4].time, price: candles[4].open, side: 'LONG' });
+    expect(result.events.some((event) => (event.kind === 'ENTRY' || event.kind === 'FILL') && event.candleTime === candles[3].time)).toBe(false);
+  });
+
   it('keeps detection, lifecycle, and trades invariant when only chart visibility changes', () => {
     const shownDefinition = compileResearchDraft(obDraft(true)).definition!;
     const hiddenDefinition = compileResearchDraft(obDraft(false)).definition!;
@@ -186,6 +208,24 @@ describe('Strategy Lab Order Block V1', () => {
     expect(hidden.orderBlocks).toEqual(shown.orderBlocks);
     expect(hidden.events).toEqual(shown.events);
     expect(hidden.trades).toEqual(shown.trades);
+  });
+
+  it('keeps inside/retest predicates and outcomes invariant when Order Block visibility changes', () => {
+    const shownDraft = obDraft(true);
+    shownDraft.sourceCode = shownDraft.sourceCode
+      .replace('bullishOrderBlock(ORDER_BLOCK_MAIN)', 'bullishOrderBlockRetest(ORDER_BLOCK_MAIN)')
+      .replace('bearishOrderBlock(ORDER_BLOCK_MAIN)', 'bearishOrderBlockRetest(ORDER_BLOCK_MAIN)');
+    const hiddenDraft = { ...shownDraft, indicators: shownDraft.indicators.map((indicator) => indicator.type === 'ORDER_BLOCK' ? { ...indicator, visible: false } : indicator) };
+    const candles = [
+      candle(0, 100, 100, 90, 95), candle(1, 95, 102, 95, 102),
+      candle(2, 103, 104, 102, 103), candle(3, 103, 104, 100, 101), candle(4, 105, 106, 104, 105),
+    ];
+    const shown = evaluateDraftStrategy(candles, compileResearchDraft(shownDraft).definition!);
+    const hidden = evaluateDraftStrategy(candles, compileResearchDraft(hiddenDraft).definition!);
+    expect(hidden.orderBlocks).toEqual(shown.orderBlocks);
+    expect(hidden.events).toEqual(shown.events);
+    expect(hidden.trades).toEqual(shown.trades);
+    expect(hidden.candidateCount).toBe(shown.candidateCount);
   });
 
   it('projects finite zones at source time and ends active versus invalidated zones correctly', () => {
@@ -225,6 +265,111 @@ describe('Strategy Lab Order Block V1', () => {
     primitive.detached();
   });
 
+  it('evaluates inside predicates only after confirmation, inclusively by close, and never by wick alone', () => {
+    const candles = [
+      candle(0, 10, 12, 8, 9), // bullish source zone [8, 12]
+      candle(1, 9, 15, 9, 15), // confirmation
+      candle(2, 13, 14, 11, 12), // close exactly zone.high
+      candle(3, 13, 14, 11, 13), // wick overlaps, close outside
+      candle(4, 9, 10, 7, 8), // close exactly zone.low, but invalidates only if < 8
+      candle(5, 8, 9, 7, 7), // invalidated
+    ];
+    const result = evaluate(candles, ob(), [1, 6, 1, 1, 1, 1]);
+    const bullishKey = orderBlockConfirmationKey('order-block-main', 'BULLISH');
+    expect(result.insideByIndex.get(1)?.has(bullishKey) ?? false).toBe(false);
+    expect(result.insideByIndex.get(2)?.has(bullishKey)).toBe(true);
+    expect(result.insideByIndex.get(3)?.has(bullishKey) ?? false).toBe(false);
+    expect(result.insideByIndex.get(4)?.has(bullishKey)).toBe(true);
+    expect(result.insideByIndex.get(5)?.has(bullishKey) ?? false).toBe(false);
+    expect(result.orderBlocks[0]).toMatchObject({ state: 'INVALIDATED', invalidationIndex: 5 });
+  });
+
+  it('mirrors close-inside behavior for bearish zones and accepts any matching active zone', () => {
+    const bearish = evaluate([
+      candle(0, 9, 12, 8, 11), // bullish source [8, 12]
+      candle(1, 11, 11, 4, 4), // bearish confirmation
+      candle(2, 5, 12, 4, 12), // close at high boundary
+      candle(3, 7, 9, 5, 7), // wick overlaps, close outside
+      candle(4, 11, 13, 10, 13), // bearish invalidation
+    ], ob(), [1, 7, 1, 1, 1]);
+    const bearishKey = orderBlockConfirmationKey('order-block-main', 'BEARISH');
+    expect(bearish.insideByIndex.get(1)?.has(bearishKey) ?? false).toBe(false);
+    expect(bearish.insideByIndex.get(2)?.has(bearishKey)).toBe(true);
+    expect(bearish.insideByIndex.get(3)?.has(bearishKey) ?? false).toBe(false);
+    expect(bearish.insideByIndex.get(4)?.has(bearishKey) ?? false).toBe(false);
+    expect(bearish.orderBlocks[0]).toMatchObject({ state: 'INVALIDATED', invalidationIndex: 4 });
+
+    const twoZones = evaluate([
+      candle(0, 10, 12, 8, 9),
+      candle(1, 9, 15, 9, 15), // first bullish zone [8, 12]
+      candle(2, 20, 20, 18, 19),
+      candle(3, 19, 24, 19, 24), // second bullish zone [18, 20]
+      candle(4, 21, 22, 18, 19), // only inside second zone
+    ], ob(), [1, 6, 1, 5, 1]);
+    const bullishKey = orderBlockConfirmationKey('order-block-main', 'BULLISH');
+    expect(twoZones.orderBlocks.filter((block) => block.direction === 'BULLISH')).toHaveLength(2);
+    expect(twoZones.insideByIndex.get(4)?.has(bullishKey)).toBe(true);
+  });
+
+  it('emits a retest only for the first later overlap and preserves overlap-before-invalidation order', () => {
+    const candles = [
+      candle(0, 10, 12, 8, 9),
+      candle(1, 9, 15, 9, 15), // confirmation
+      candle(2, 16, 17, 15, 16), // no overlap
+      candle(3, 14, 14, 11, 13), // first overlap
+      candle(4, 13, 14, 11, 13), // subsequent overlap
+      candle(5, 9, 10, 7, 7), // overlap plus invalidation
+      candle(6, 8, 9, 7, 8), // terminal zone never retests again
+    ];
+    const result = evaluate(candles, ob(), [1, 6, 1, 1, 1, 1, 1]);
+    const bullishKey = orderBlockConfirmationKey('order-block-main', 'BULLISH');
+    expect(result.retestsByIndex.get(1)?.has(bullishKey) ?? false).toBe(false);
+    expect(result.retestsByIndex.get(3)?.has(bullishKey)).toBe(true);
+    expect(result.retestsByIndex.get(4)?.has(bullishKey) ?? false).toBe(false);
+    expect(result.retestsByIndex.get(5)?.has(bullishKey) ?? false).toBe(false);
+    expect(result.retestsByIndex.get(6)?.has(bullishKey) ?? false).toBe(false);
+    expect(result.orderBlocks[0]).toMatchObject({ mitigationIndex: 3, invalidationIndex: 5, state: 'INVALIDATED' });
+
+    const sameCandle = evaluate([
+      candle(0, 10, 12, 8, 9),
+      candle(1, 9, 15, 9, 15),
+      candle(2, 9, 10, 7, 7), // first overlap and bullish invalidation
+    ], ob(), [1, 6, 1]);
+    expect(sameCandle.retestsByIndex.get(2)?.has(bullishKey)).toBe(true);
+    expect(sameCandle.orderBlocks[0]).toMatchObject({ mitigationIndex: 2, invalidationIndex: 2, state: 'INVALIDATED' });
+  });
+
+  it('emits bearish retest events using the mirrored zone direction', () => {
+    const candles = [
+      candle(0, 9, 12, 8, 11), // bullish source
+      candle(1, 11, 11, 4, 4), // bearish confirmation; zone [8, 12]
+      candle(2, 7, 9, 3, 7), // first later overlap
+      candle(3, 7, 9, 4, 7), // another overlap, no second event
+    ];
+    const result = evaluate(candles, ob(), [1, 7, 1, 1]);
+    const bearishKey = orderBlockConfirmationKey('order-block-main', 'BEARISH');
+    expect(result.retestsByIndex.get(1)?.has(bearishKey) ?? false).toBe(false);
+    expect(result.retestsByIndex.get(2)?.has(bearishKey)).toBe(true);
+    expect(result.retestsByIndex.get(3)?.has(bearishKey) ?? false).toBe(false);
+    expect(result.orderBlocks[0]).toMatchObject({ direction: 'BEARISH', mitigationIndex: 2, state: 'MITIGATED' });
+  });
+
+  it('allows an independently confirmed second zone to emit its own later retest', () => {
+    const candles = [
+      candle(0, 10, 12, 8, 9),
+      candle(1, 9, 15, 9, 15), // zone 1: [8, 12]
+      candle(2, 9, 9, 7, 8), // retests zone 1 while becoming source for zone 2
+      candle(3, 14, 20, 14, 20), // zone 2: [7, 9]
+      candle(4, 13, 13, 10, 11), // neither zone has a new first overlap
+      candle(5, 9, 9, 7, 8), // independently retests zone 2
+    ];
+    const result = evaluate(candles, ob(), [1, 6, 1, 6, 1, 1]);
+    const bullishKey = orderBlockConfirmationKey('order-block-main', 'BULLISH');
+    expect(result.retestsByIndex.get(2)?.has(bullishKey)).toBe(true);
+    expect(result.retestsByIndex.get(5)?.has(bullishKey)).toBe(true);
+    expect(result.orderBlocks.filter((block) => block.direction === 'BULLISH').map((block) => block.mitigationIndex)).toEqual([2, 5]);
+  });
+
   it('remains deterministic and practical on 105,120 candles with a clear active-zone collection', () => {
     const count = 105_120;
     const candles: LabCandle[] = [];
@@ -259,11 +404,31 @@ describe('Strategy Lab Order Block V1', () => {
     }
     const started = performance.now();
     const first = evaluate(candles, ob({ displacementMultiplier: 1.5 }), atr);
-    const elapsedMs = performance.now() - started;
     const second = evaluate(candles, ob({ displacementMultiplier: 1.5 }), atr);
+    const interactionDefinition: StrategyDraftDefinition = {
+      name: 'Interaction performance',
+      indicators: [
+        { id: 'atr-main', type: 'ATR', name: 'ATR', period: 1, visible: false },
+        { ...ob({ atrIndicatorId: 'atr-main', displacementMultiplier: 1.5 }) },
+      ],
+      long: {
+        kind: 'all',
+        conditions: [
+          { kind: 'orderBlock', indicatorId: 'order-block-main', operator: 'bullishOrderBlockRetest' },
+          { kind: 'not', condition: { kind: 'orderBlock', indicatorId: 'order-block-main', operator: 'bearishOrderBlockRetest' } },
+        ],
+      },
+      short: { kind: 'orderBlock', indicatorId: 'order-block-main', operator: 'bearishOrderBlockRetest' },
+      stop: { type: 'atrMultiple', indicatorId: 'atr-main', multiplier: 0.1 },
+      target: { type: 'rMultiple', multiple: 1 },
+      execution: { feeBps: 0, slippageBps: 0 },
+    };
+    const interaction = evaluateDraftStrategy(candles, interactionDefinition);
+    const elapsedMs = performance.now() - started;
     expect(first.orderBlocks.map((block) => block.id)).toEqual(second.orderBlocks.map((block) => block.id));
     expect(first.orderBlocks.length).toBeGreaterThan(0);
-    // Broad CI-safe guard: detects an explosive regression without a micro-benchmark.
+    expect(interaction.evaluatedBars).toBeGreaterThan(100_000);
+    // Broad CI-safe guard: detects an explosive replay-history scan in logical OB interactions.
     expect(elapsedMs).toBeLessThan(15_000);
   });
 });

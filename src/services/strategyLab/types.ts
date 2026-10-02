@@ -94,13 +94,31 @@ export type LogicOperator = 'crossesAbove' | 'crossesBelow';
 export type CrossCondition = { kind?: 'cross'; left: string; operator: LogicOperator; right: string };
 export type ThresholdCondition = { kind: 'threshold'; left: string; right: string; indicatorId: string; operator: 'above' | 'below'; threshold: number };
 export type FractalCondition = { kind: 'fractal'; left: string; right: string; indicatorId: string; operator: 'fractalHigh' | 'fractalLow' };
-/** Discrete event: true only on the closed candle that confirms a new Order Block. */
+/** Order Block creation, zone-presence, and first-retest predicates. */
 export type OrderBlockCondition = {
   kind: 'orderBlock';
   indicatorId: string;
-  operator: 'bullishOrderBlock' | 'bearishOrderBlock';
+  operator:
+    | 'bullishOrderBlock'
+    | 'bearishOrderBlock'
+    | 'insideBullishOrderBlock'
+    | 'insideBearishOrderBlock'
+    | 'bullishOrderBlockRetest'
+    | 'bearishOrderBlockRetest';
 };
-export type StrategyCondition = CrossCondition | ThresholdCondition | FractalCondition | OrderBlockCondition;
+
+/** Recursive safe boolean composition; arbitrary expressions remain unsupported. */
+export type AllCondition = { kind: 'all'; conditions: StrategyCondition[] };
+export type AnyCondition = { kind: 'any'; conditions: StrategyCondition[] };
+export type NotCondition = { kind: 'not'; condition: StrategyCondition };
+export type LogicalCondition = AllCondition | AnyCondition | NotCondition;
+
+export type StrategyCondition =
+  | CrossCondition
+  | ThresholdCondition
+  | FractalCondition
+  | OrderBlockCondition
+  | LogicalCondition;
 export type LogicRule = StrategyCondition;
 
 export interface StopDefinition {

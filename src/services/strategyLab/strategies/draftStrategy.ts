@@ -28,6 +28,7 @@ import type {
   IndicatorSource,
   OrderBlockIndicatorDefinition,
   LabOrderBlock,
+  StrategyCondition,
 } from '../types';
 
 export interface DraftStrategyEvaluation {
@@ -64,6 +65,7 @@ export function evaluateDraftStrategy(
   const n = candles.length;
   const indSeries: Record<string, (number | null)[]> = {};
   const fractalEvents: NonNullable<LabIndicatorSeries['fractalEvents']> = [];
+  const confirmedFractalKeys = new Set<string>();
 
   // 1. Расчёт серий всех объявленных индикаторов
   for (const ind of definition.indicators) {
@@ -76,7 +78,11 @@ export function evaluateDraftStrategy(
       indSeries[ind.id] = rsiAligned(getPricesBySource(candles, ind.source), ind.period);
     } else if (ind.type === 'FRACTALS') {
       const events = confirmedFractals(candles); const series = new Array<number | null>(n).fill(null);
-      for (const event of events) { fractalEvents.push({ indicatorId: ind.id, ...event }); if (event.kind === 'HIGH') series[event.confirmationIndex] = event.price; }
+      for (const event of events) {
+        fractalEvents.push({ indicatorId: ind.id, ...event });
+        confirmedFractalKeys.add(`${ind.id}:${event.confirmationIndex}:${event.kind}`);
+        if (event.kind === 'HIGH') series[event.confirmationIndex] = event.price;
+      }
       indSeries[ind.id] = series;
     }
   }
@@ -115,9 +121,26 @@ export function evaluateDraftStrategy(
   // Fractal predicates are discrete confirmed events, not continuous numeric
   // series. Requiring a non-null series value here would prevent their
   // confirmation bars from ever reaching the predicate evaluator.
-  const idsOf = (c: any): string[] =>
-    c.kind === 'cross' ? [c.left, c.right] : c.kind === 'fractal' || c.kind === 'orderBlock' ? [] : [c.indicatorId];
-  const requiredIds = [...idsOf(definition.long), ...idsOf(definition.short), definition.stop.indicatorId];
+  const idsRequiredToStart = (condition: StrategyCondition): string[] => {
+    if (condition.kind === 'all') return condition.conditions.flatMap(idsRequiredToStart);
+    if (condition.kind === 'any') {
+      // An OR can be decided by a ready discrete branch (for example a new OB)
+      // even while another branch is still warming up. Only dependencies common
+      // to every branch are required before chronological evaluation begins.
+      const [first, ...rest] = condition.conditions.map((child) => new Set(idsRequiredToStart(child)));
+      return [...first].filter((id) => rest.every((ids) => ids.has(id)));
+    }
+    // A missing child must not make not(child) trade during warm-up.
+    if (condition.kind === 'not') return idsRequiredToStart(condition.condition);
+    if (condition.kind === 'cross' || !condition.kind) return [condition.left, condition.right];
+    if (condition.kind === 'threshold') return [condition.indicatorId];
+    return [];
+  };
+  const requiredIds = [
+    ...idsRequiredToStart(definition.long),
+    ...idsRequiredToStart(definition.short),
+    definition.stop.indicatorId,
+  ];
   let firstEvaluable = -1;
   for (let i = 1; i < n; i++) if (requiredIds.every((id) => indSeries[id]?.[i] !== null && indSeries[id]?.[i - 1] !== null)) { firstEvaluable = i; break; }
 
@@ -132,19 +155,35 @@ export function evaluateDraftStrategy(
     for (let i = firstEvaluable; i < n; i++) {
       evaluatedBars += 1;
 
-      const predicate = (condition: any, i: number): boolean => {
+      const predicate = (condition: StrategyCondition, index: number): boolean => {
+        if (condition.kind === 'all') return condition.conditions.every((child) => predicate(child, index));
+        if (condition.kind === 'any') return condition.conditions.some((child) => predicate(child, index));
+        if (condition.kind === 'not') return !predicate(condition.condition, index);
         if (condition.kind === 'cross' || !condition.kind) {
-          const lp = indSeries[condition.left]?.[i - 1] ?? null, lc = indSeries[condition.left]?.[i] ?? null;
-          const rp = indSeries[condition.right]?.[i - 1] ?? null, rc = indSeries[condition.right]?.[i] ?? null;
+          const lp = indSeries[condition.left]?.[index - 1] ?? null, lc = indSeries[condition.left]?.[index] ?? null;
+          const rp = indSeries[condition.right]?.[index - 1] ?? null, rc = indSeries[condition.right]?.[index] ?? null;
           return lp !== null && lc !== null && rp !== null && rc !== null && (condition.operator === 'crossesAbove' ? lp <= rp && lc > rc : lp >= rp && lc < rc);
         }
-        if (condition.kind === 'threshold') { const v = indSeries[condition.indicatorId]?.[i] ?? null; return v !== null && (condition.operator === 'above' ? v > condition.threshold : v < condition.threshold); }
-        if (condition.kind === 'fractal') { const events = confirmedFractals(candles); return events.some((e) => e.confirmationIndex === i && e.kind === (condition.operator === 'fractalHigh' ? 'HIGH' : 'LOW')); }
+        if (condition.kind === 'threshold') {
+          const value = indSeries[condition.indicatorId]?.[index] ?? null;
+          return value !== null && (condition.operator === 'above' ? value > condition.threshold : value < condition.threshold);
+        }
+        if (condition.kind === 'fractal') {
+          const kind = condition.operator === 'fractalHigh' ? 'HIGH' : 'LOW';
+          return confirmedFractalKeys.has(`${condition.indicatorId}:${index}:${kind}`);
+        }
         if (condition.kind === 'orderBlock') {
-          const direction = condition.operator === 'bullishOrderBlock' ? 'BULLISH' : 'BEARISH';
-          return orderBlockEvaluation.confirmationsByIndex
-            .get(i)
-            ?.has(orderBlockConfirmationKey(condition.indicatorId, direction)) ?? false;
+          const direction = condition.operator.toLowerCase().includes('bullish')
+            ? 'BULLISH'
+            : 'BEARISH';
+          const key = orderBlockConfirmationKey(condition.indicatorId, direction);
+          if (condition.operator === 'bullishOrderBlock' || condition.operator === 'bearishOrderBlock') {
+            return orderBlockEvaluation.confirmationsByIndex.get(index)?.has(key) ?? false;
+          }
+          if (condition.operator === 'insideBullishOrderBlock' || condition.operator === 'insideBearishOrderBlock') {
+            return orderBlockEvaluation.insideByIndex.get(index)?.has(key) ?? false;
+          }
+          return orderBlockEvaluation.retestsByIndex.get(index)?.has(key) ?? false;
         }
         return false;
       };

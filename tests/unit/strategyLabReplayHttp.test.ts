@@ -6,6 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import argon2 from 'argon2';
+import type { LabCandle } from '@/services/strategyLab/types';
 import type { HttpClient } from '../helpers/httpHarness';
 import {
   deterministicStrategyLabCandles,
@@ -79,6 +80,53 @@ function replayBody(strategyDraft: unknown) {
     to: STRATEGY_LAB_FIXTURE_TO_MS,
     strategyDraft,
   };
+}
+
+function orderBlockRetestCandles() {
+  const source = 30;
+  const confirmation = source + 1;
+  const retest = source + 4;
+  const fill = retest + 1;
+  const candles = Array.from({ length: 48 }, (_, index) => {
+    const time = Math.floor(STRATEGY_LAB_FIXTURE_FROM_MS / 1000) + index * 3600;
+    const open = 100 + index * 0.1;
+    return { time, closeTime: time + 3599, open, high: open + 0.3, low: open - 0.2, close: open + 0.1, volume: 1_000 + index };
+  });
+  candles[source] = { ...candles[source], open: 110, high: 110, low: 108.8, close: 109 };
+  candles[confirmation] = { ...candles[confirmation], open: 109, high: 115, low: 109, close: 115 };
+  candles[source + 2] = { ...candles[source + 2], open: 116, high: 116.4, low: 115.8, close: 116.1 };
+  candles[source + 3] = { ...candles[source + 3], open: 117, high: 117.4, low: 116.8, close: 117.1 };
+  candles[retest] = { ...candles[retest], open: 112, high: 116, low: 109, close: 109.5 };
+  candles[fill] = { ...candles[fill], open: 111, high: 111.4, low: 110.8, close: 111.1 };
+  return { candles, source, confirmation, retest, fill };
+}
+
+function orderBlockRetestDraft(longCondition = 'bullishOrderBlockRetest(ORDER_BLOCK_MAIN)') {
+  return {
+    name: 'Order Block retest HTTP replay',
+    apiVersion: 2 as const,
+    indicators: [
+      { id: 'atr-main', type: 'ATR' as const, name: 'ATR Main', period: 14, visible: false },
+      { id: 'rsi-main', type: 'RSI' as const, name: 'RSI Main', period: 14, source: 'close' as const, visible: false },
+      { id: 'order-block-main', type: 'ORDER_BLOCK' as const, name: 'Order Block', lookback: 5, displacementMultiplier: 1, atrIndicatorId: 'atr-main', visible: true },
+    ],
+    sourceCode: `strategy("Order Block retest HTTP replay", () => { LONG(${longCondition}); SHORT(bearishOrderBlockRetest(ORDER_BLOCK_MAIN)); STOP(multiply(ATR_MAIN, 0.1)); TAKE_PROFIT(R(1)); });`,
+    execution: { feeBps: 0, slippageBps: 0 },
+  };
+}
+
+function mockOrderBlockRetestFixture(candles: LabCandle[]) {
+  acquisitionSpies.read.mockResolvedValueOnce({
+    covered: true,
+    candles,
+    meta: {
+      datasetVersion: 'deterministic-order-block-retest-fixture-v1',
+      manifestGeneratedAt: '2025-01-15T00:00:00.000Z',
+      coverageFrom: new Date(STRATEGY_LAB_FIXTURE_FROM_MS).toISOString(),
+      coverageTo: new Date(FRACTAL_FIXTURE_TO_MS).toISOString(),
+      seriesSha256: 'd'.repeat(64),
+    },
+  });
 }
 
 function allIndicatorsDraft() {
@@ -339,6 +387,58 @@ describe('Strategy Lab replay · deterministic real HTTP path', () => {
     expect(trade).toMatchObject({ entryTime: candles[fill].time, entryPrice: candles[fill].open });
     expect(result.events.some((candidate: any) => candidate.kind === 'CANDIDATE' && candidate.candleTime < candles[confirmation].time)).toBe(false);
     expect(result.events.some((candidate: any) => (candidate.kind === 'ENTRY' || candidate.kind === 'FILL') && candidate.candleTime === candles[confirmation].time)).toBe(false);
+  });
+
+  it('proves retest no-look-ahead through the official server replay and fills only at open(k+1)', async () => {
+    const { candles, source, confirmation, retest, fill } = orderBlockRetestCandles();
+    mockOrderBlockRetestFixture(candles);
+    const response = await client.post('/api/strategy-lab/replay', {
+      ...replayBody(orderBlockRetestDraft()),
+      to: FRACTAL_FIXTURE_TO_MS,
+    });
+    expect(response.status).toBe(200);
+
+    const result = response.body as any;
+    const block = result.orderBlocks.find((candidate: any) => candidate.direction === 'BULLISH');
+    expect(block).toMatchObject({ sourceIndex: source, confirmationIndex: confirmation, mitigationIndex: retest });
+    expect(result.events.some((event: any) => event.kind === 'CANDIDATE' && event.candleTime === candles[confirmation].time)).toBe(false);
+    expect(result.trades.some((trade: any) => trade.signalTime < candles[retest].time)).toBe(false);
+    expect(result.events.some((event: any) => (event.kind === 'ENTRY' || event.kind === 'FILL') && event.candleTime === candles[retest].time)).toBe(false);
+
+    const trade = result.trades.find((candidate: any) => candidate.side === 'LONG' && candidate.signalTime === candles[retest].time);
+    expect(trade).toMatchObject({ entryTime: candles[fill].time, entryPrice: candles[fill].open });
+    expect(result.events.find((event: any) => event.kind === 'CANDIDATE' && event.candleTime === candles[retest].time))
+      .toMatchObject({ knownAt: candles[retest].closeTime, side: 'LONG' });
+  });
+
+  it('executes recursively composed retest and RSI conditions through the official replay path', async () => {
+    const fixture = orderBlockRetestCandles();
+    mockOrderBlockRetestFixture(fixture.candles);
+    const matching = orderBlockRetestDraft('all(bullishOrderBlockRetest(ORDER_BLOCK_MAIN), below(RSI_MAIN, 100))');
+    const saved = await client.post('/api/strategy-lab/saved-strategies', matching);
+    expect(saved.status).toBe(201);
+    expect((saved.body as any).strategy.sourceCode).toBe(matching.sourceCode);
+    const listed = await client.get('/api/strategy-lab/saved-strategies');
+    const loaded = (listed.body as any).strategies.find((strategy: any) => strategy.sourceCode === matching.sourceCode);
+    expect(loaded).toBeDefined();
+    const loadedDraft = {
+      name: loaded.name,
+      indicators: loaded.indicators,
+      sourceCode: loaded.sourceCode,
+      execution: loaded.execution,
+      apiVersion: loaded.apiVersion,
+    };
+    const accepted = await client.post('/api/strategy-lab/replay', { ...replayBody(loadedDraft), to: FRACTAL_FIXTURE_TO_MS });
+    expect(accepted.status).toBe(200);
+    const acceptedResult = accepted.body as any;
+    expect(acceptedResult.indicators.byIndicatorId['rsi-main'][fixture.retest]).toBeLessThan(100);
+    expect(acceptedResult.trades.some((trade: any) => trade.side === 'LONG' && trade.signalTime === fixture.candles[fixture.retest].time)).toBe(true);
+
+    mockOrderBlockRetestFixture(fixture.candles);
+    const blocked = orderBlockRetestDraft('all(bullishOrderBlockRetest(ORDER_BLOCK_MAIN), below(RSI_MAIN, 0))');
+    const rejected = await client.post('/api/strategy-lab/replay', { ...replayBody(blocked), to: FRACTAL_FIXTURE_TO_MS });
+    expect(rejected.status).toBe(200);
+    expect((rejected.body as any).trades.some((trade: any) => trade.side === 'LONG')).toBe(false);
   });
 
   it('uses only the mocked local candle acquisition boundary', () => {

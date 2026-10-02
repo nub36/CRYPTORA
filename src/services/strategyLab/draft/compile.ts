@@ -32,6 +32,10 @@ export interface DraftCompileResult {
   errors: CodeError[];
 }
 
+/** Bounded recursive condition language: safe for server compilation and replay. */
+export const MAX_CONDITION_DEPTH = 8;
+export const MAX_CONDITION_NODES = 64;
+
 /** Позиция недоступна в AST (минимальный AST v1) — отчитываемся по строке 1. */
 const AT_START = { line: 1, column: 1 };
 
@@ -127,9 +131,29 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
     }
   };
 
-  const conditionRule = (expr: Expr, role: string): LogicRule => {
+  const conditionRule = (expr: Expr, role: string, depth = 1, nodeCount: { value: number } = { value: 0 }): LogicRule => {
+    if (depth > MAX_CONDITION_DEPTH) {
+      fail(`${role}: превышена максимальная глубина условий (${MAX_CONDITION_DEPTH}).`);
+    }
+    nodeCount.value += 1;
+    if (nodeCount.value > MAX_CONDITION_NODES) {
+      fail(`${role}: превышено максимальное число условий (${MAX_CONDITION_NODES}).`);
+    }
+
     const e = resolveExpr(expr);
     if (e.kind !== 'call') fail(`${role}: ожидается условие стратегии.`);
+
+    if (e.callee === 'all' || e.callee === 'any') {
+      if (e.args.length < 2) fail(`${role}: ${e.callee} принимает не менее двух условий.`);
+      return {
+        kind: e.callee,
+        conditions: e.args.map((child) => conditionRule(child, role, depth + 1, nodeCount)),
+      };
+    }
+    if (e.callee === 'not') {
+      if (e.args.length !== 1) fail(`${role}: not принимает ровно одно условие.`);
+      return { kind: 'not', condition: conditionRule(e.args[0], role, depth + 1, nodeCount) };
+    }
     if (e.callee === 'crossesAbove' || e.callee === 'crossesBelow') {
       if (e.args.length !== 2) fail(`${role}: функция принимает два индикатора.`);
       const left = indicatorOf(e.args[0], role); const right = indicatorOf(e.args[1], role);
@@ -148,7 +172,14 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       const ind = indicatorOf(e.args[0], role); expectType(ind, 'FRACTALS', role);
       return { kind: 'fractal', left: ind.id, right: ind.id, indicatorId: ind.id, operator: e.callee };
     }
-    if (e.callee === 'bullishOrderBlock' || e.callee === 'bearishOrderBlock') {
+    if (
+      e.callee === 'bullishOrderBlock' ||
+      e.callee === 'bearishOrderBlock' ||
+      e.callee === 'insideBullishOrderBlock' ||
+      e.callee === 'insideBearishOrderBlock' ||
+      e.callee === 'bullishOrderBlockRetest' ||
+      e.callee === 'bearishOrderBlockRetest'
+    ) {
       if (e.args.length !== 1) fail(`${role}: функция принимает один индикатор Order Block.`);
       const ind = indicatorOf(e.args[0], role); expectType(ind, 'ORDER_BLOCK', role);
       return { kind: 'orderBlock', indicatorId: ind.id, operator: e.callee };
@@ -240,6 +271,10 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
     if (ind.type === 'ORDER_BLOCK') addIndicatorWithDependencies(ind.atrIndicatorId);
   };
   const conditionIds = (condition: LogicRule): string[] => {
+    if (condition.kind === 'all' || condition.kind === 'any') {
+      return condition.conditions.flatMap(conditionIds);
+    }
+    if (condition.kind === 'not') return conditionIds(condition.condition);
     if ('left' in condition && 'right' in condition) return [condition.left, condition.right];
     return [condition.indicatorId];
   };
