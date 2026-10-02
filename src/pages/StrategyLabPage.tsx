@@ -55,6 +55,34 @@ function toLocalInput(d: Date): string {
   )}`;
 }
 
+/**
+ * Компактная подпись индикатора для read-only сводки в верхней панели.
+ * Это НЕ редактор: редактирование — только в модале «Настройки индикаторов».
+ */
+function indicatorSummaryLabel(indicator: IndicatorDefinition): string {
+  switch (indicator.type) {
+    case 'EMA':
+      return `EMA ${indicator.period}`;
+    case 'ATR':
+      return `ATR ${indicator.period}`;
+    case 'RSI':
+      return `RSI ${indicator.period}`;
+    case 'FRACTALS':
+      return 'Фракталы';
+    case 'ORDER_BLOCK':
+      return 'Order Block';
+    case 'MARKET_STRUCTURE':
+      return 'Market Structure';
+    case 'FVG':
+      return 'FVG';
+    default: {
+      // Исчерпывающая проверка: новый IndicatorType обязан получить подпись.
+      const exhaustive: never = indicator;
+      return String((exhaustive as { type?: unknown })?.type ?? '');
+    }
+  }
+}
+
 const CompactResearchBadge: React.FC = () => (
   <div className="inline-flex items-center gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
     <Info className="h-3.5 w-3.5 text-amber-400 shrink-0" />
@@ -304,7 +332,6 @@ export const StrategyLabPage: React.FC = () => {
             <CompactResearchBadge />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <LabHelp />
             <LabTutorialButton />
           </div>
         </div>
@@ -320,18 +347,33 @@ export const StrategyLabPage: React.FC = () => {
             <button type="button" onClick={handleNewStrategy} className="rounded border border-cyan-400/40 px-3 py-2 text-xs text-cyan-200">+ Новая</button>
             <span className="text-xs text-amber-300">{dirty ? 'Есть несохранённые изменения' : 'Сохранено'}</span>
           </div>
-          <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" disabled={saveBusy} onClick={() => saveDraft(false)} className="rounded bg-cyan-500/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-50">Сохранить</button>
             <button type="button" disabled={saveBusy} onClick={() => saveDraft(true)} className="rounded border border-slate-600 px-3 py-2 text-xs text-slate-200 disabled:opacity-50">Сохранить как...</button>
+            {/* Мгновенные действия: настройки индикаторов и помощь доступны сразу,
+                без прокрутки мимо контролов рынка, графика и кода (mobile UX). */}
+            <button
+              type="button"
+              onClick={() => setIndicatorModalOpen(true)}
+              data-qa="lab-open-indicators"
+              className="rounded bg-cyan-500/20 px-3 py-2 text-xs font-semibold text-cyan-100"
+            >
+              Настройки индикаторов
+            </button>
+            <LabHelp />
+          </div>
+          {/* Read-only сводка текущих индикаторов черновика. НЕ редактор. */}
+          <div className="mt-2 min-w-0 text-[11px] leading-5 text-slate-400" data-qa="lab-indicator-summary">
+            <span className="font-bold tracking-wider text-slate-500">ИНДИКАТОРЫ: </span>
+            <span className="break-words">{draft.indicators.map(indicatorSummaryLabel).join(' · ') || '—'}</span>
           </div>
         </div>
 
-        {/* 3. Основные действия и выбор монеты/таймфрейма */}
+        {/* 3. Контролы рынка/дат и запуск бэктеста */}
         <div className="mb-4">
           <LabControls
             value={controls}
             onChange={handleControlChange}
-            onNewStrategy={handleNewStrategy}
             onRun={handleRun}
             loading={loading}
             coverage={coverage}
@@ -363,10 +405,8 @@ export const StrategyLabPage: React.FC = () => {
 
         {/* 4. Индикаторы редактируются в отдельном responsive modal; график выше остаётся смонтированным. */}
         <div className="sr-only" aria-hidden="false"><span>ИНДИКАТОРЫ</span><label htmlFor="lab-strategy-name-access">Название стратегии</label><input id="lab-strategy-name-access" value={draft.name} onChange={(e) => handleNameChange(e.target.value)} /><label htmlFor="lab-ema-fast-period-access">Период индикатора EMA_FAST</label><input id="lab-ema-fast-period-access" value={draft.indicators.find((i): i is PeriodIndicatorDefinition => i.id === 'ema-fast' && i.type === 'EMA')?.period ?? ''} onChange={(e) => handleIndicatorsChange(draft.indicators.map((i) => i.id === 'ema-fast' && i.type === 'EMA' ? { ...i, period: Number(e.target.value) } : i))} /></div>
-        <div className="mb-4 flex items-center justify-between rounded border border-slate-700/70 bg-slate-900/40 p-3">
-          <div><h3 className="text-sm font-bold text-slate-200">Настройки индикаторов</h3><p className="text-xs text-slate-400">Изменения сохраняются в текущем черновике.</p></div>
-          <button type="button" onClick={() => setIndicatorModalOpen(true)} className="rounded bg-cyan-500/20 px-3 py-2 text-xs text-cyan-100">Настройки индикаторов</button>
-        </div>
+        {/* Модал запускается кнопкой «Настройки индикаторов» в верхней панели
+            «СТРАТЕГИЯ»: отдельной нижней секции-обёртки больше нет (mobile UX). */}
         {indicatorModalOpen && <div role="dialog" aria-modal="true" aria-labelledby="indicator-modal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-6" onKeyDown={(e) => { if (e.key === 'Escape') setIndicatorModalOpen(false); }}>
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-slate-600 bg-slate-950 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-700 p-4"><h2 id="indicator-modal-title" className="text-base font-bold text-white">Настройки индикаторов</h2><button type="button" onClick={() => setIndicatorModalOpen(false)} className="rounded border border-slate-600 px-3 py-1 text-xs text-slate-200">Закрыть</button></div>
