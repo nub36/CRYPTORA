@@ -9,9 +9,15 @@ import argon2 from 'argon2';
 import type { HttpClient } from '../helpers/httpHarness';
 import {
   deterministicStrategyLabCandles,
+  deterministicFractalCandles,
   STRATEGY_LAB_FIXTURE_BARS,
   STRATEGY_LAB_FIXTURE_FROM_MS,
   STRATEGY_LAB_FIXTURE_TO_MS,
+  FRACTAL_FIXTURE_BARS,
+  FRACTAL_FIXTURE_TO_MS,
+  FRACTAL_CENTER_INDEX,
+  FRACTAL_CONFIRMATION_INDEX,
+  FRACTAL_FILL_INDEX,
 } from '../helpers/strategyLabCandles';
 
 process.env.LOGIN_RATE_LIMIT = '100000';
@@ -141,6 +147,80 @@ describe('Strategy Lab replay · deterministic real HTTP path', () => {
     expect(rsi).toHaveLength(STRATEGY_LAB_FIXTURE_BARS);
     expect(rsi.slice(0, 14)).toEqual(new Array(14).fill(null));
     expect(rsi.slice(14).some((value) => value !== null)).toBe(true);
+  });
+
+  it('confirms a LOW Fractal at i+2 and fills only at i+3', async () => {
+    const candles = deterministicFractalCandles();
+    acquisitionSpies.read.mockResolvedValueOnce({
+      covered: true,
+      candles,
+      meta: {
+        datasetVersion: 'deterministic-fractal-fixture-v1',
+        manifestGeneratedAt: '2025-01-15T00:00:00.000Z',
+        coverageFrom: new Date(STRATEGY_LAB_FIXTURE_FROM_MS).toISOString(),
+        coverageTo: new Date(FRACTAL_FIXTURE_TO_MS).toISOString(),
+        seriesSha256: 'b'.repeat(64),
+      },
+    });
+
+    const draft = {
+      name: 'Confirmed Fractal HTTP replay',
+      apiVersion: 2 as const,
+      indicators: [
+        { id: 'fractal-main', type: 'FRACTALS' as const, name: 'Fractals', period: 5, visible: true },
+        { id: 'atr-main', type: 'ATR' as const, name: 'ATR Main', period: 14, visible: false },
+      ],
+      sourceCode: 'strategy("Confirmed Fractal HTTP replay", () => { LONG(fractalLow(FRACTAL_MAIN)); SHORT(fractalHigh(FRACTAL_MAIN)); STOP(multiply(ATR_MAIN, 0.1)); TAKE_PROFIT(R(1)); });',
+      execution: { feeBps: 0, slippageBps: 0 },
+    };
+
+    const response = await client.post('/api/strategy-lab/replay', {
+      ...replayBody(draft),
+      to: FRACTAL_FIXTURE_TO_MS,
+    });
+    expect(response.status).toBe(200);
+
+    const result = response.body as any;
+    expect(result.candles).toHaveLength(FRACTAL_FIXTURE_BARS);
+    const event = result.indicators.fractalEvents.find(
+      (candidate: any) =>
+        candidate.indicatorId === 'fractal-main' &&
+        candidate.kind === 'LOW' &&
+        candidate.sourceIndex === FRACTAL_CENTER_INDEX
+    );
+    expect(event).toEqual({
+      indicatorId: 'fractal-main',
+      kind: 'LOW',
+      sourceIndex: FRACTAL_CENTER_INDEX,
+      sourceCandleTime: candles[FRACTAL_CENTER_INDEX].time,
+      confirmationIndex: FRACTAL_CONFIRMATION_INDEX,
+      knownAt: candles[FRACTAL_CONFIRMATION_INDEX].closeTime,
+      price: candles[FRACTAL_CENTER_INDEX].low,
+    });
+    expect(event.knownAt).toBeGreaterThan(event.sourceCandleTime);
+    expect(result.indicators.fractalEvents.filter((candidate: any) => candidate.kind === 'LOW'))
+      .toHaveLength(1);
+    expect(result.indicators.fractalEvents.some((candidate: any) => candidate.kind === 'HIGH'))
+      .toBe(false);
+
+    const trade = result.trades.find(
+      (candidate: any) => candidate.side === 'LONG' && candidate.signalTime === candles[FRACTAL_CONFIRMATION_INDEX].time
+    );
+    expect(trade).toBeDefined();
+    expect(trade.entryTime).toBe(candles[FRACTAL_FILL_INDEX].time);
+    expect(trade.entryPrice).toBe(candles[FRACTAL_FILL_INDEX].open);
+
+    const fills = result.events.filter(
+      (candidate: any) => candidate.kind === 'ENTRY' || candidate.kind === 'FILL'
+    );
+    expect(fills.some((candidate: any) => candidate.candleTime === candles[FRACTAL_CENTER_INDEX].time)).toBe(false);
+    expect(fills.some((candidate: any) => candidate.candleTime === candles[FRACTAL_CENTER_INDEX + 1].time)).toBe(false);
+    expect(fills.some((candidate: any) => candidate.candleTime === candles[FRACTAL_CONFIRMATION_INDEX].time)).toBe(false);
+    expect(fills.filter((candidate: any) => candidate.candleTime === candles[FRACTAL_FILL_INDEX].time))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'ENTRY', side: 'LONG' }),
+        expect.objectContaining({ kind: 'FILL', side: 'LONG', price: candles[FRACTAL_FILL_INDEX].open }),
+      ]));
   });
 
   it('uses only the mocked local candle acquisition boundary', () => {

@@ -99,7 +99,11 @@ export function evaluateDraftStrategy(
   const rejections: LabRejection[] = [];
 
   // Индикаторы, необходимые для оценки правил и стопа
-  const idsOf = (c: any): string[] => c.kind === 'cross' ? [c.left, c.right] : [c.indicatorId];
+  // Fractal predicates are discrete confirmed events, not continuous numeric
+  // series. Requiring a non-null series value here would prevent their
+  // confirmation bars from ever reaching the predicate evaluator.
+  const idsOf = (c: any): string[] =>
+    c.kind === 'cross' ? [c.left, c.right] : c.kind === 'fractal' ? [] : [c.indicatorId];
   const requiredIds = [...idsOf(definition.long), ...idsOf(definition.short), definition.stop.indicatorId];
   let firstEvaluable = -1;
   for (let i = 1; i < n; i++) if (requiredIds.every((id) => indSeries[id]?.[i] !== null && indSeries[id]?.[i - 1] !== null)) { firstEvaluable = i; break; }
