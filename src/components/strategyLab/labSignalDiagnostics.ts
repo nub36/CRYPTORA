@@ -46,6 +46,7 @@ function indicatorLabel(
   if (fromResult) {
     if (fromResult.type === 'ORDER_BLOCK') return 'Order Block';
     if (fromResult.type === 'MARKET_STRUCTURE') return 'Market Structure';
+    if (fromResult.type === 'FVG') return 'Fair Value Gap';
     return `${fromResult.type} ${fromResult.period}`;
   }
   const def = definition?.indicators.find((ind) => ind.id === indicatorId);
@@ -53,6 +54,7 @@ function indicatorLabel(
   if (def) {
     if (def.type === 'ORDER_BLOCK') return 'Order Block';
     if (def.type === 'MARKET_STRUCTURE') return 'Market Structure';
+    if (def.type === 'FVG') return 'Fair Value Gap';
     return `${def.type} ${def.period}`;
   }
   return indicatorId;

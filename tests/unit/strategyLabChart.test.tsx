@@ -269,6 +269,7 @@ function makeResult(overrides: Partial<LabReplayResult> = {}): LabReplayResult {
       indicatorsList: TEST_DEFINITION.indicators,
     },
     orderBlocks,
+    fairValueGaps: [],
     marketStructureEvents,
     events: synthEvents(),
     trades: [tradeLong, tradeShort, tradeEod],

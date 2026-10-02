@@ -75,6 +75,22 @@ const orderBlockIndicatorSchema = z.object({
   visible: z.boolean().optional(),
 });
 
+/**
+ * Fair Value Gap V1 is STRICT (§FVG wire contract): the indicator has NO
+ * calculation parameters, so the canonical shape is exactly
+ * { id, type: 'FVG', name?, visible? }. `.strict()` makes invented settings
+ * (period, source, ATR references, …) a 400 REJECTION instead of a silent
+ * Zod strip — an invalid Saved Strategy must never reach the DB.
+ */
+const fvgIndicatorSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    type: z.literal('FVG'),
+    name: z.string().max(64).optional(),
+    visible: z.boolean().optional(),
+  })
+  .strict();
+
 const marketStructureIndicatorSchema = z.object({
   id: z.string().min(1).max(64),
   type: z.literal('MARKET_STRUCTURE'),
@@ -89,6 +105,7 @@ export const indicatorSchema = z.discriminatedUnion('type', [
   periodIndicatorSchema,
   orderBlockIndicatorSchema,
   marketStructureIndicatorSchema,
+  fvgIndicatorSchema,
 ]);
 
 export const logicRuleSchema = z.object({

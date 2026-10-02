@@ -38,6 +38,7 @@ import {
   DEFAULT_LAB_MARKER_OVERLAYS,
   mapLabEventMarkers,
   mapFractalMarkers,
+  mapFvgZones,
   mapMarketStructureProjection,
   mapOrderBlockZones,
   mapTradeLevels,
@@ -181,10 +182,12 @@ export const LabChart: React.FC<LabChartProps> = ({
     [result, selectedTrade, overlays]
   );
 
-  // Order Block zones are derived solely from the immutable replay result and
-  // per-indicator visibility. Their projection never reruns the strategy.
+  // Order Block and FVG zones are derived solely from the immutable replay
+  // result and per-indicator visibility. Their projection never reruns the
+  // strategy. FVG rectangles are appended after Order Blocks so the stronger
+  // OB styling stays on top of the subtler FVG fill.
   const priceZones = useMemo(
-    () => (result ? mapOrderBlockZones(result) : []),
+    () => (result ? [...mapFvgZones(result), ...mapOrderBlockZones(result)] : []),
     [result]
   );
   const marketStructureProjection = useMemo(

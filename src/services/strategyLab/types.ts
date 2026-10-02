@@ -60,7 +60,7 @@ export interface LabCandle {
 // Конструктор стратегий (Phase 2A: Декларативный Draft Definition)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS' | 'ORDER_BLOCK' | 'MARKET_STRUCTURE';
+export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS' | 'ORDER_BLOCK' | 'MARKET_STRUCTURE' | 'FVG';
 export type IndicatorSource = 'close' | 'open' | 'high' | 'low';
 
 /** Existing period-based indicators retain their v2 draft shape unchanged. */
@@ -97,7 +97,22 @@ export interface MarketStructureIndicatorDefinition {
   visible?: boolean;
 }
 
-export type IndicatorDefinition = PeriodIndicatorDefinition | OrderBlockIndicatorDefinition | MarketStructureIndicatorDefinition;
+/**
+ * Fair Value Gap V1 has NO calculation parameters: the three-candle geometry is
+ * fixed. Only identity, display name and chart visibility are configurable.
+ */
+export interface FvgIndicatorDefinition {
+  id: string;
+  type: 'FVG';
+  name?: string;
+  visible?: boolean;
+}
+
+export type IndicatorDefinition =
+  | PeriodIndicatorDefinition
+  | OrderBlockIndicatorDefinition
+  | MarketStructureIndicatorDefinition
+  | FvgIndicatorDefinition;
 
 export type LogicOperator = 'crossesAbove' | 'crossesBelow';
 
@@ -115,6 +130,18 @@ export type OrderBlockCondition = {
     | 'insideBearishOrderBlock'
     | 'bullishOrderBlockRetest'
     | 'bearishOrderBlockRetest';
+};
+/** FVG creation, zone-presence (inside) and first-retest predicates. */
+export type FvgCondition = {
+  kind: 'fvg';
+  indicatorId: string;
+  operator:
+    | 'bullishFvg'
+    | 'bearishFvg'
+    | 'insideBullishFvg'
+    | 'insideBearishFvg'
+    | 'bullishFvgRetest'
+    | 'bearishFvgRetest';
 };
 /** Discrete confirmed Market Structure events; there are no persistent state predicates in V1. */
 export type MarketStructureCondition = {
@@ -140,6 +167,7 @@ export type StrategyCondition =
   | ThresholdCondition
   | FractalCondition
   | OrderBlockCondition
+  | FvgCondition
   | MarketStructureCondition
   | LogicalCondition;
 export type LogicRule = StrategyCondition;
@@ -295,6 +323,40 @@ export interface LabOrderBlock {
   invalidatedAt?: number;
 }
 
+export type FvgDirection = 'BULLISH' | 'BEARISH';
+export type FvgState = 'ACTIVE' | 'PARTIALLY_FILLED' | 'FILLED';
+
+/**
+ * Confirmed Fair Value Gap zone (RESEARCH ONLY). The three-candle pattern is
+ * A = C−2 (first), B = C−1 (middle, defines no bounds) and C (confirmation).
+ * The zone exists only after close(C); lifecycle begins on C+1. `FILLED` is
+ * terminal; first-touch metadata survives a later full fill.
+ */
+export interface LabFairValueGap {
+  id: string;
+  indicatorId: string;
+  direction: FvgDirection;
+  /** Index/time of candle A (C−2) — the visual start of the zone. */
+  firstIndex: number;
+  firstCandleTime: number;
+  /** Index/time of candle B (C−1). It never defines zone bounds. */
+  middleIndex: number;
+  middleCandleTime: number;
+  confirmationIndex: number;
+  confirmationCandleTime: number;
+  /** closeTime(C): the gap is not usable at A, B or open(C). */
+  knownAt: number;
+  low: number;
+  high: number;
+  state: FvgState;
+  firstTouchIndex?: number;
+  firstTouchCandleTime?: number;
+  firstTouchedAt?: number;
+  fillIndex?: number;
+  fillCandleTime?: number;
+  filledAt?: number;
+}
+
 export type LabMarketStructureState = 'NEUTRAL' | 'BULLISH' | 'BEARISH';
 export type LabMarketStructureEventKind =
   | 'SWING_HIGH'
@@ -390,6 +452,8 @@ export interface LabReplayResult {
   indicators: LabIndicatorSeries;
   /** Confirmed Lab-only Order Block zones; always emitted (empty when none exist). */
   orderBlocks: LabOrderBlock[];
+  /** Confirmed Fair Value Gap zones; always emitted (empty when none exist). */
+  fairValueGaps: LabFairValueGap[];
   /** Complete chronological Market Structure V1 events; independent of chart visibility. */
   marketStructureEvents: LabMarketStructureEvent[];
   events: LabEvent[];

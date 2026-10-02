@@ -72,6 +72,8 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       if (!ind.atrIndicatorId) {
         errors.push({ ...AT_START, message: `Order Block «${ind.name || ind.id}»: выберите ATR для импульса.` });
       }
+    } else if (ind.type === 'FVG') {
+      // Fair Value Gap V1 is parameterless: identity/name/visibility only.
     } else if (ind.type === 'MARKET_STRUCTURE') {
       if (!Number.isInteger(ind.leftBars) || ind.leftBars < 1 || ind.leftBars > 10) {
         errors.push({ ...AT_START, message: `Market Structure «${ind.name || ind.id}»: левые свечи должны быть целым числом от 1 до 10.` });
@@ -192,6 +194,18 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       return { kind: 'marketStructure', indicatorId: ind.id, operator: e.callee };
     }
     if (
+      e.callee === 'bullishFvg' ||
+      e.callee === 'bearishFvg' ||
+      e.callee === 'insideBullishFvg' ||
+      e.callee === 'insideBearishFvg' ||
+      e.callee === 'bullishFvgRetest' ||
+      e.callee === 'bearishFvgRetest'
+    ) {
+      if (e.args.length !== 1) fail(`${role}: функция принимает один индикатор Fair Value Gap.`);
+      const ind = indicatorOf(e.args[0], role); expectType(ind, 'FVG', role);
+      return { kind: 'fvg', indicatorId: ind.id, operator: e.callee };
+    }
+    if (
       e.callee === 'bullishOrderBlock' ||
       e.callee === 'bearishOrderBlock' ||
       e.callee === 'insideBullishOrderBlock' ||
@@ -310,6 +324,14 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
         lookback: ind.lookback,
         displacementMultiplier: ind.displacementMultiplier,
         atrIndicatorId: ind.atrIndicatorId,
+        visible: ind.visible ?? true,
+      };
+    }
+    if (ind.type === 'FVG') {
+      return {
+        id: ind.id,
+        type: 'FVG' as const,
+        name: ind.name || 'Fair Value Gap',
         visible: ind.visible ?? true,
       };
     }

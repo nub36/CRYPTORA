@@ -49,8 +49,12 @@ export interface ChartPriceZone {
   high: number;
   fillColor: string;
   borderColor: string;
-  /** Presentation state, intentionally independent from any strategy domain. */
-  state?: 'ACTIVE' | 'MITIGATED' | 'INVALIDATED';
+  /**
+   * Opaque presentation label (e.g. a zone lifecycle state). CandleChart never
+   * interprets it: callers from any domain (Order Blocks, FVG, …) may attach
+   * their own vocabulary purely for inspection/testing.
+   */
+  state?: string;
 }
 
 /** Generic finite horizontal segment rendered in chart coordinates. */

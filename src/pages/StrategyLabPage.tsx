@@ -41,6 +41,7 @@ import { LabIndicatorsPanel } from '@/components/strategyLab/LabIndicatorsPanel'
 import { LabChart } from '@/components/strategyLab/LabChart';
 import { LabTester, type LabTab } from '@/components/strategyLab/LabTester';
 import { LabTutorialButton } from '@/components/strategyLab/LabTutorialButton';
+import { LabHelp } from '@/components/strategyLab/help/LabHelp';
 import { LabCodeEditor } from '@/components/strategyLab/code/LabCodeEditor';
 import { createSavedStrategy, fetchSavedStrategies, updateSavedStrategy, type SavedStrategy } from '@/services/strategyLab/savedStrategies';
 
@@ -302,7 +303,10 @@ export const StrategyLabPage: React.FC = () => {
             </div>
             <CompactResearchBadge />
           </div>
-          <LabTutorialButton />
+          <div className="flex flex-wrap items-center gap-2">
+            <LabHelp />
+            <LabTutorialButton />
+          </div>
         </div>
 
         {/* 2. Сохранённые research-стратегии */}

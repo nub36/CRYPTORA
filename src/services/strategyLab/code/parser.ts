@@ -7,6 +7,9 @@ const calls = new Set([
   'bullishOrderBlock', 'bearishOrderBlock',
   'insideBullishOrderBlock', 'insideBearishOrderBlock',
   'bullishOrderBlockRetest', 'bearishOrderBlockRetest',
+  'bullishFvg', 'bearishFvg',
+  'insideBullishFvg', 'insideBearishFvg',
+  'bullishFvgRetest', 'bearishFvgRetest',
   'swingHigh', 'swingLow', 'bullishBOS', 'bearishBOS', 'bullishCHoCH', 'bearishCHoCH',
   'all', 'any', 'not', 'multiply', 'R',
 ]);

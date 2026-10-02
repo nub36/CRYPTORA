@@ -16,6 +16,7 @@
 
 import { emaAligned, atrAligned, rsiAligned, confirmedFractals } from '../indicators';
 import { evaluateOrderBlocks, orderBlockConfirmationKey } from '../orderBlocks';
+import { evaluateFairValueGaps, fvgConfirmationKey } from '../fairValueGaps';
 import { evaluateMarketStructure, marketStructureEventKey } from '../marketStructure';
 import { simulateTrade } from '../executionSimulator';
 import type {
@@ -29,7 +30,9 @@ import type {
   IndicatorSource,
   OrderBlockIndicatorDefinition,
   MarketStructureIndicatorDefinition,
+  FvgIndicatorDefinition,
   LabOrderBlock,
+  LabFairValueGap,
   LabMarketStructureEvent,
   StrategyCondition,
 } from '../types';
@@ -45,6 +48,8 @@ export interface DraftStrategyEvaluation {
   rejectedCount: number;
   /** Confirmed Lab-only Order Block zones, including historical invalidated zones. */
   orderBlocks: LabOrderBlock[];
+  /** Confirmed Fair Value Gap zones, including historical filled zones. */
+  fairValueGaps: LabFairValueGap[];
   /** Complete Market Structure V1 chronology, independent from chart visibility. */
   marketStructureEvents: LabMarketStructureEvent[];
 }
@@ -99,6 +104,11 @@ export function evaluateDraftStrategy(
     (ind): ind is OrderBlockIndicatorDefinition => ind.type === 'ORDER_BLOCK'
   );
   const orderBlockEvaluation = evaluateOrderBlocks(candles, orderBlockDefinitions, indSeries);
+  // Fair Value Gaps are parameterless discrete zones: pure candle geometry.
+  const fvgDefinitions = definition.indicators.filter(
+    (ind): ind is FvgIndicatorDefinition => ind.type === 'FVG'
+  );
+  const fvgEvaluation = evaluateFairValueGaps(candles, fvgDefinitions);
   const marketStructureDefinitions = definition.indicators.filter(
     (ind): ind is MarketStructureIndicatorDefinition => ind.type === 'MARKET_STRUCTURE'
   );
@@ -191,6 +201,19 @@ export function evaluateDraftStrategy(
           return marketStructureEvaluation.eventsByIndex.get(index)?.has(
             marketStructureEventKey(condition.indicatorId, kind)
           ) ?? false;
+        }
+        if (condition.kind === 'fvg') {
+          const direction = condition.operator.toLowerCase().includes('bullish')
+            ? 'BULLISH'
+            : 'BEARISH';
+          const key = fvgConfirmationKey(condition.indicatorId, direction);
+          if (condition.operator === 'bullishFvg' || condition.operator === 'bearishFvg') {
+            return fvgEvaluation.confirmationsByIndex.get(index)?.has(key) ?? false;
+          }
+          if (condition.operator === 'insideBullishFvg' || condition.operator === 'insideBearishFvg') {
+            return fvgEvaluation.insideByIndex.get(index)?.has(key) ?? false;
+          }
+          return fvgEvaluation.retestsByIndex.get(index)?.has(key) ?? false;
         }
         if (condition.kind === 'orderBlock') {
           const direction = condition.operator.toLowerCase().includes('bullish')
@@ -381,6 +404,7 @@ export function evaluateDraftStrategy(
     candidateCount,
     rejectedCount,
     orderBlocks: orderBlockEvaluation.orderBlocks,
+    fairValueGaps: fvgEvaluation.fairValueGaps,
     marketStructureEvents: marketStructureEvaluation.marketStructureEvents,
   };
 }

@@ -13,6 +13,7 @@ import type {
   IndicatorSource,
   OrderBlockIndicatorDefinition,
   MarketStructureIndicatorDefinition,
+  FvgIndicatorDefinition,
 } from '@/services/strategyLab/types';
 import { buildIndicatorBindings } from '@/services/strategyLab/draft/identifiers';
 import { LabNumericInput } from './LabNumericInput';
@@ -39,6 +40,8 @@ const isOrderBlock = (indicator: IndicatorDefinition): indicator is OrderBlockIn
   indicator.type === 'ORDER_BLOCK';
 const isMarketStructure = (indicator: IndicatorDefinition): indicator is MarketStructureIndicatorDefinition =>
   indicator.type === 'MARKET_STRUCTURE';
+const isFvg = (indicator: IndicatorDefinition): indicator is FvgIndicatorDefinition =>
+  indicator.type === 'FVG';
 
 export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
   name,
@@ -130,6 +133,19 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
     ]);
   }, [indicators, onChange]);
 
+  const addFvg = useCallback(() => {
+    const n = indicators.filter(isFvg).length + 1;
+    onChange([
+      ...indicators,
+      {
+        id: n === 1 ? 'fvg-main' : `fvg-${n}`,
+        type: 'FVG',
+        name: n === 1 ? 'Fair Value Gap' : `Fair Value Gap ${n}`,
+        visible: true,
+      },
+    ]);
+  }, [indicators, onChange]);
+
   const addOrderBlock = useCallback(() => {
     const firstAtr = indicators.find((indicator) => indicator.type === 'ATR');
     if (!firstAtr) return;
@@ -198,6 +214,7 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
             <button type="button" onClick={addRsi} disabled={disabled} data-qa="lab-add-rsi" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> RSI</button>
             <button type="button" onClick={addFractals} disabled={disabled} data-qa="lab-add-fractals" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Фракталы</button>
             <button type="button" onClick={addMarketStructure} disabled={disabled} data-qa="lab-add-market-structure" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Market Structure</button>
+            <button type="button" onClick={addFvg} disabled={disabled} data-qa="lab-add-fvg" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Fair Value Gap</button>
             <button
               type="button"
               onClick={addOrderBlock}
@@ -221,7 +238,7 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
             return (
               <div key={indicator.id} data-qa="lab-indicator-row" className="rounded-md border border-white/[.07] bg-surface-2/60 p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[11px] font-bold text-cyan-300">{indicator.type === 'ORDER_BLOCK' ? 'ORDER BLOCK' : indicator.type === 'MARKET_STRUCTURE' ? 'MARKET STRUCTURE' : indicator.type}</span>
+                  <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[11px] font-bold text-cyan-300">{indicator.type === 'ORDER_BLOCK' ? 'ORDER BLOCK' : indicator.type === 'MARKET_STRUCTURE' ? 'MARKET STRUCTURE' : indicator.type === 'FVG' ? 'FAIR VALUE GAP' : indicator.type}</span>
                   <span className="text-[11px] text-slate-400">Код:</span>
                   <button type="button" onClick={() => copyIdentifier(identifier)} data-qa="lab-indicator-identifier" aria-label={`Копировать идентификатор ${identifier}`} title="Нажмите, чтобы скопировать идентификатор для кода стратегии" className="inline-flex items-center gap-1 rounded bg-slate-900 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300 hover:bg-slate-800">
                     <code>{identifier}</code>
@@ -239,6 +256,15 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
                       <div><label className="mb-1 block text-[11px] text-slate-400" title="Сколько предыдущих свечей проверять для поиска последней противоположной свечи.">Lookback</label><LabNumericInput value={indicator.lookback} onChange={(lookback) => update(indicator.id, { lookback } as Partial<IndicatorDefinition>)} min={1} max={20} integer disabled={disabled} aria-label={`Lookback индикатора ${identifier}`} className={`w-full ${inputCls}`} /></div>
                       <div><label className="mb-1 block text-[11px] text-slate-400" title="Тело свечи подтверждения должно быть не меньше указанной доли ATR.">Displacement ATR</label><LabNumericInput value={indicator.displacementMultiplier} onChange={(displacementMultiplier) => update(indicator.id, { displacementMultiplier } as Partial<IndicatorDefinition>)} min={0.1} max={10} step={0.1} disabled={disabled} aria-label={`Displacement ATR индикатора ${identifier}`} className={`w-full ${inputCls}`} /></div>
                       <div><label className="mb-1 block text-[11px] text-slate-400" title="Этот ATR используется для оценки силы импульса Order Block.">ATR для импульса</label><select value={indicator.atrIndicatorId} onChange={(event) => update(indicator.id, { atrIndicatorId: event.target.value } as Partial<IndicatorDefinition>)} disabled={disabled} aria-label={`ATR для импульса ${identifier}`} className={`w-full ${inputCls}`}>{atrBindings.map((binding) => <option key={binding.indicator.id} value={binding.indicator.id}>{binding.indicator.name || 'ATR'} — {binding.identifier}</option>)}</select></div>
+                    </div>
+                    <label className="mt-2 flex items-center gap-2 text-[12px] text-slate-300"><input type="checkbox" checked={indicator.visible ?? false} onChange={(event) => update(indicator.id, { visible: event.target.checked })} disabled={disabled} aria-label={`Показывать на графике ${identifier}`} />Показывать на графике</label>
+                    <p className="mt-1 text-[11px] text-slate-500">Скрывает зоны только на графике. Расчёт стратегии не меняется.</p>
+                  </>
+                ) : isFvg(indicator) ? (
+                  <>
+                    <p className="mb-3 text-[11px] text-slate-400">Fair Value Gap — трёхсвечный разрыв: бычий, когда low свечи C выше high свечи A; медвежий — зеркально. Параметров расчёта нет: геометрия фиксирована, зона подтверждается только закрытием свечи C.</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div><label className="mb-1 block text-[11px] text-slate-400">Название</label><input type="text" value={indicator.name ?? ''} onChange={(event) => update(indicator.id, { name: event.target.value })} disabled={disabled} aria-label={`Название индикатора ${identifier}`} className={`w-full ${inputCls}`} /></div>
                     </div>
                     <label className="mt-2 flex items-center gap-2 text-[12px] text-slate-300"><input type="checkbox" checked={indicator.visible ?? false} onChange={(event) => update(indicator.id, { visible: event.target.checked })} disabled={disabled} aria-label={`Показывать на графике ${identifier}`} />Показывать на графике</label>
                     <p className="mt-1 text-[11px] text-slate-500">Скрывает зоны только на графике. Расчёт стратегии не меняется.</p>

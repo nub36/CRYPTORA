@@ -32,7 +32,7 @@
  */
 
 import type { ChartLevelLine, ChartMarker, ChartPriceSegment, ChartPriceZone } from '@/types/chart';
-import type { LabCandle, LabEvent, LabMarketStructureEvent, LabOrderBlock, LabTrade } from './types';
+import type { LabCandle, LabEvent, LabFairValueGap, LabMarketStructureEvent, LabOrderBlock, LabTrade } from './types';
 
 /**
  * Presentation-лимит числа маркеров (§13): плотный поток не должен топить
@@ -327,6 +327,53 @@ export function mapOrderBlockZones(result: {
     .sort((a, b) => a.fromTime - b.fromTime || a.id.localeCompare(b.id));
 }
 
+
+/** Deliberately subtler than Order Blocks: FVG zones are context, not levels. */
+const FVG_COLORS = {
+  BULLISH: { fill: 'rgba(20, 184, 166, 0.09)', border: 'rgba(45, 212, 191, 0.38)' },
+  BEARISH: { fill: 'rgba(244, 63, 94, 0.08)', border: 'rgba(251, 113, 133, 0.38)' },
+} as const;
+
+/**
+ * Fair Value Gap zones → generic CandleChart rectangles. The zone visually
+ * starts at candle A (`firstCandleTime`); ACTIVE/PARTIALLY_FILLED zones extend
+ * to the latest replay candle, FILLED zones stop at `fillCandleTime`.
+ * Projection is gated purely by indicator `visible`; it never reruns the
+ * strategy, and `knownAt` is never substituted as an x coordinate.
+ */
+export function mapFvgZones(result: {
+  candles: LabCandle[];
+  fairValueGaps?: LabFairValueGap[];
+  indicators: { indicatorsList?: Array<{ id: string; type: string; visible?: boolean }> };
+}): ChartPriceZone[] {
+  const latestTime = result.candles.at(-1)?.time;
+  if (latestTime === undefined) return [];
+  const knownTimes = new Set(result.candles.map((candle) => candle.time));
+
+  return (result.fairValueGaps ?? [])
+    .filter((zone) =>
+      result.indicators.indicatorsList?.some(
+        (indicator) => indicator.id === zone.indicatorId && indicator.type === 'FVG' && indicator.visible !== false
+      )
+    )
+    .flatMap((zone) => {
+      const toTime = zone.state === 'FILLED' ? zone.fillCandleTime : latestTime;
+      if (!knownTimes.has(zone.firstCandleTime) || toTime === undefined || !knownTimes.has(toTime)) return [];
+      const palette = FVG_COLORS[zone.direction];
+      const filled = zone.state === 'FILLED';
+      return [{
+        id: zone.id,
+        fromTime: zone.firstCandleTime,
+        toTime,
+        low: zone.low,
+        high: zone.high,
+        fillColor: filled ? palette.fill.replace(/0\.0[89]\)/, '0.04)') : palette.fill,
+        borderColor: filled ? palette.border.replace(/0\.38\)/, '0.22)') : palette.border,
+        state: zone.state,
+      } satisfies ChartPriceZone];
+    })
+    .sort((a, b) => a.fromTime - b.fromTime || a.id.localeCompare(b.id));
+}
 
 const MARKET_STRUCTURE_COLORS = {
   swingHigh: 'rgba(148, 163, 184, 0.82)',
