@@ -43,10 +43,18 @@ function indicatorLabel(
   // определение в конструкторе пользователь мог отредактировать после бэктеста.
   const fromResult = series.indicatorsList?.find((ind) => ind.id === indicatorId);
   if (fromResult?.name) return fromResult.name;
-  if (fromResult) return fromResult.type === 'ORDER_BLOCK' ? 'Order Block' : `${fromResult.type} ${fromResult.period}`;
+  if (fromResult) {
+    if (fromResult.type === 'ORDER_BLOCK') return 'Order Block';
+    if (fromResult.type === 'MARKET_STRUCTURE') return 'Market Structure';
+    return `${fromResult.type} ${fromResult.period}`;
+  }
   const def = definition?.indicators.find((ind) => ind.id === indicatorId);
   if (def?.name) return def.name;
-  if (def) return def.type === 'ORDER_BLOCK' ? 'Order Block' : `${def.type} ${def.period}`;
+  if (def) {
+    if (def.type === 'ORDER_BLOCK') return 'Order Block';
+    if (def.type === 'MARKET_STRUCTURE') return 'Market Structure';
+    return `${def.type} ${def.period}`;
+  }
   return indicatorId;
 }
 

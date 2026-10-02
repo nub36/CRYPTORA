@@ -26,6 +26,7 @@ export const LabCodeEditor: React.FC<{
       Логика: <code>all</code> — все условия, <code>any</code> — хотя бы одно условие, <code>not</code> — отрицание.
       {' '}Order Block: <code>insideBullishOrderBlock</code>/<code>insideBearishOrderBlock</code> — закрытие свечи внутри действующей зоны;
       {' '}<code>bullishOrderBlockRetest</code>/<code>bearishOrderBlockRetest</code> — первое возвращение цены в подтверждённую зону Order Block.
+      {' '}Market Structure: <code>swingHigh</code>/<code>swingLow</code> — подтверждённые swing-точки; <code>bullishBOS</code>/<code>bearishBOS</code> — пробой по закрытию в направлении структуры; <code>bullishCHoCH</code>/<code>bearishCHoCH</code> — пробой по закрытию против структуры. Swing-точка доступна только после подтверждения правыми свечами.
     </p>
     {(showStatus || errors.length > 0) && <LabCodeErrors errors={errors} />}
   </div>

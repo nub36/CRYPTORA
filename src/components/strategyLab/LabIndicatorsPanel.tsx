@@ -12,6 +12,7 @@ import type {
   IndicatorDefinition,
   IndicatorSource,
   OrderBlockIndicatorDefinition,
+  MarketStructureIndicatorDefinition,
 } from '@/services/strategyLab/types';
 import { buildIndicatorBindings } from '@/services/strategyLab/draft/identifiers';
 import { LabNumericInput } from './LabNumericInput';
@@ -36,6 +37,8 @@ const SOURCES: { value: IndicatorSource; label: string }[] = [
 
 const isOrderBlock = (indicator: IndicatorDefinition): indicator is OrderBlockIndicatorDefinition =>
   indicator.type === 'ORDER_BLOCK';
+const isMarketStructure = (indicator: IndicatorDefinition): indicator is MarketStructureIndicatorDefinition =>
+  indicator.type === 'MARKET_STRUCTURE';
 
 export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
   name,
@@ -112,6 +115,21 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
     ]);
   }, [indicators, onChange]);
 
+  const addMarketStructure = useCallback(() => {
+    const n = indicators.filter(isMarketStructure).length + 1;
+    onChange([
+      ...indicators,
+      {
+        id: n === 1 ? 'market-structure-main' : `market-structure-${n}`,
+        type: 'MARKET_STRUCTURE',
+        name: n === 1 ? 'Market Structure' : `Market Structure ${n}`,
+        leftBars: 2,
+        rightBars: 2,
+        visible: true,
+      },
+    ]);
+  }, [indicators, onChange]);
+
   const addOrderBlock = useCallback(() => {
     const firstAtr = indicators.find((indicator) => indicator.type === 'ATR');
     if (!firstAtr) return;
@@ -179,6 +197,7 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
             <button type="button" onClick={addAtr} disabled={disabled} data-qa="lab-add-atr" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> ATR</button>
             <button type="button" onClick={addRsi} disabled={disabled} data-qa="lab-add-rsi" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> RSI</button>
             <button type="button" onClick={addFractals} disabled={disabled} data-qa="lab-add-fractals" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Фракталы</button>
+            <button type="button" onClick={addMarketStructure} disabled={disabled} data-qa="lab-add-market-structure" className="inline-flex items-center gap-1 rounded border border-cyan-400/30 px-2.5 py-1 text-[12px] text-cyan-200 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Market Structure</button>
             <button
               type="button"
               onClick={addOrderBlock}
@@ -202,7 +221,7 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
             return (
               <div key={indicator.id} data-qa="lab-indicator-row" className="rounded-md border border-white/[.07] bg-surface-2/60 p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[11px] font-bold text-cyan-300">{indicator.type === 'ORDER_BLOCK' ? 'ORDER BLOCK' : indicator.type}</span>
+                  <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[11px] font-bold text-cyan-300">{indicator.type === 'ORDER_BLOCK' ? 'ORDER BLOCK' : indicator.type === 'MARKET_STRUCTURE' ? 'MARKET STRUCTURE' : indicator.type}</span>
                   <span className="text-[11px] text-slate-400">Код:</span>
                   <button type="button" onClick={() => copyIdentifier(identifier)} data-qa="lab-indicator-identifier" aria-label={`Копировать идентификатор ${identifier}`} title="Нажмите, чтобы скопировать идентификатор для кода стратегии" className="inline-flex items-center gap-1 rounded bg-slate-900 px-1.5 py-0.5 font-mono text-[11px] text-emerald-300 hover:bg-slate-800">
                     <code>{identifier}</code>
@@ -223,6 +242,17 @@ export const LabIndicatorsPanel: React.FC<LabIndicatorsPanelProps> = ({
                     </div>
                     <label className="mt-2 flex items-center gap-2 text-[12px] text-slate-300"><input type="checkbox" checked={indicator.visible ?? false} onChange={(event) => update(indicator.id, { visible: event.target.checked })} disabled={disabled} aria-label={`Показывать на графике ${identifier}`} />Показывать на графике</label>
                     <p className="mt-1 text-[11px] text-slate-500">Скрывает зоны только на графике. Расчёт стратегии не меняется.</p>
+                  </>
+                ) : isMarketStructure(indicator) ? (
+                  <>
+                    <p className="mb-3 text-[11px] text-slate-400">Структура рынка строится по подтверждённым swing-максимумам и минимумам. Swing-точка становится доступна стратегии только после подтверждения правыми свечами.</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div><label className="mb-1 block text-[11px] text-slate-400">Название</label><input type="text" value={indicator.name ?? ''} onChange={(event) => update(indicator.id, { name: event.target.value })} disabled={disabled} aria-label={`Название индикатора ${identifier}`} className={`w-full ${inputCls}`} /></div>
+                      <div><label className="mb-1 block text-[11px] text-slate-400">Левые свечи</label><LabNumericInput value={indicator.leftBars} onChange={(leftBars) => update(indicator.id, { leftBars } as Partial<IndicatorDefinition>)} min={1} max={10} integer disabled={disabled} aria-label={`Левые свечи индикатора ${identifier}`} className={`w-full ${inputCls}`} /></div>
+                      <div><label className="mb-1 block text-[11px] text-slate-400">Правые свечи</label><LabNumericInput value={indicator.rightBars} onChange={(rightBars) => update(indicator.id, { rightBars } as Partial<IndicatorDefinition>)} min={1} max={10} integer disabled={disabled} aria-label={`Правые свечи индикатора ${identifier}`} className={`w-full ${inputCls}`} /></div>
+                    </div>
+                    <label className="mt-2 flex items-center gap-2 text-[12px] text-slate-300"><input type="checkbox" checked={indicator.visible ?? false} onChange={(event) => update(indicator.id, { visible: event.target.checked })} disabled={disabled} aria-label={`Показывать на графике ${identifier}`} />Показывать на графике</label>
+                    <p className="mt-1 text-[11px] text-slate-500">BOS — пробой уровня по закрытию в направлении текущей структуры. CHoCH — пробой по закрытию против текущей структуры.</p>
                   </>
                 ) : (
                   <>

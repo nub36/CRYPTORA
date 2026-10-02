@@ -4,8 +4,9 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createChart, ColorType, LineStyle, IChartApi, ISeriesApi, IPriceLine, LineData, Time, TickMarkType } from 'lightweight-charts';
 import type { MouseEventParams, SeriesMarker } from 'lightweight-charts';
 import type { Timeframe } from '@/types/market';
-import type { ChartLevelLine, ChartMarker, ChartPriceZone } from '@/types/chart';
+import type { ChartLevelLine, ChartMarker, ChartPriceZone, ChartPriceSegment } from '@/types/chart';
 import { PriceZonesPrimitive } from './chart/PriceZonesPrimitive';
+import { PriceSegmentsPrimitive } from './chart/PriceSegmentsPrimitive';
 import { IndicatorPaneChart } from './IndicatorPaneChart';
 import { ChartTimeRangeSync } from './ChartTimeRangeSync';
 import { formatChartAxisTime, formatChartCrosshairTime } from '@/utils/chartTime';
@@ -89,6 +90,8 @@ interface CandleChartProps {
    * у вызывающего слоя; CandleChart знает только прямоугольники цена/время.
    */
   priceZones?: ChartPriceZone[];
+  /** Generic finite horizontal segments; callers own all domain semantics. */
+  priceSegments?: ChartPriceSegment[];
   /**
    * Маркеры событий поверх свечей (аддитивный props; существующие потребители
    * его не передают и ведут себя как раньше). Время — unix-секунды openTime бара,
@@ -307,6 +310,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   topRightSlot,
   resetViewToken,
   priceZones = [],
+  priceSegments = [],
   markers,
   levelLines,
   onMarkerClick,
@@ -317,6 +321,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const priceZonesPrimitiveRef = useRef<PriceZonesPrimitive | null>(null);
+  const priceSegmentsPrimitiveRef = useRef<PriceSegmentsPrimitive | null>(null);
   const barSeriesRef = useRef<ISeriesApi<'Bar'> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -610,8 +615,11 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     // compatible while production 4.2.3 always provides this API.
     if (typeof candleSeries.attachPrimitive === 'function') {
       const zonesPrimitive = new PriceZonesPrimitive(priceZones);
+      const segmentsPrimitive = new PriceSegmentsPrimitive(priceSegments);
       candleSeries.attachPrimitive(zonesPrimitive);
+      candleSeries.attachPrimitive(segmentsPrimitive);
       priceZonesPrimitiveRef.current = zonesPrimitive;
+      priceSegmentsPrimitiveRef.current = segmentsPrimitive;
     }
 
     // Crosshair move → OHLCV tooltip; keep a named handler for explicit teardown.
@@ -697,6 +705,11 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         candleSeries.detachPrimitive(zonesPrimitive);
       }
       priceZonesPrimitiveRef.current = null;
+      const segmentsPrimitive = priceSegmentsPrimitiveRef.current;
+      if (segmentsPrimitive && typeof candleSeries.detachPrimitive === 'function') {
+        candleSeries.detachPrimitive(segmentsPrimitive);
+      }
+      priceSegmentsPrimitiveRef.current = null;
       chart.remove();
       // Линии и маркеры принадлежат уничтоженной серии: ссылки обязаны быть
       // сброшены, иначе следующий эффект станет обновлять несуществующие линии.
@@ -719,11 +732,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Generic zones are presentation data. Updating them never recreates the
-  // chart, candles, markers, or the user's current viewport.
+  // Generic presentation primitives update without recreating the chart,
+  // candles, markers, or the user's current viewport.
   useEffect(() => {
     priceZonesPrimitiveRef.current?.setZones(priceZones);
   }, [priceZones]);
+  useEffect(() => {
+    priceSegmentsPrimitiveRef.current?.setSegments(priceSegments);
+  }, [priceSegments]);
 
   /**
    * Изменение высоты (fullscreen / раскладка рабочей области) НЕ пересоздаёт

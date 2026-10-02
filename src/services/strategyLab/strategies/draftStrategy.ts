@@ -16,6 +16,7 @@
 
 import { emaAligned, atrAligned, rsiAligned, confirmedFractals } from '../indicators';
 import { evaluateOrderBlocks, orderBlockConfirmationKey } from '../orderBlocks';
+import { evaluateMarketStructure, marketStructureEventKey } from '../marketStructure';
 import { simulateTrade } from '../executionSimulator';
 import type {
   LabCandle,
@@ -27,7 +28,9 @@ import type {
   StrategyDraftDefinition,
   IndicatorSource,
   OrderBlockIndicatorDefinition,
+  MarketStructureIndicatorDefinition,
   LabOrderBlock,
+  LabMarketStructureEvent,
   StrategyCondition,
 } from '../types';
 
@@ -42,6 +45,8 @@ export interface DraftStrategyEvaluation {
   rejectedCount: number;
   /** Confirmed Lab-only Order Block zones, including historical invalidated zones. */
   orderBlocks: LabOrderBlock[];
+  /** Complete Market Structure V1 chronology, independent from chart visibility. */
+  marketStructureEvents: LabMarketStructureEvent[];
 }
 
 function getPricesBySource(candles: LabCandle[], source?: IndicatorSource): number[] {
@@ -94,6 +99,10 @@ export function evaluateDraftStrategy(
     (ind): ind is OrderBlockIndicatorDefinition => ind.type === 'ORDER_BLOCK'
   );
   const orderBlockEvaluation = evaluateOrderBlocks(candles, orderBlockDefinitions, indSeries);
+  const marketStructureDefinitions = definition.indicators.filter(
+    (ind): ind is MarketStructureIndicatorDefinition => ind.type === 'MARKET_STRUCTURE'
+  );
+  const marketStructureEvaluation = evaluateMarketStructure(candles, marketStructureDefinitions);
 
   // Определение ключевых серий для совместимости с LabIndicatorSeries
   const longLeftId = definition.long.kind === 'cross' ? definition.long.left : '';
@@ -171,6 +180,17 @@ export function evaluateDraftStrategy(
         if (condition.kind === 'fractal') {
           const kind = condition.operator === 'fractalHigh' ? 'HIGH' : 'LOW';
           return confirmedFractalKeys.has(`${condition.indicatorId}:${index}:${kind}`);
+        }
+        if (condition.kind === 'marketStructure') {
+          const kind = condition.operator === 'swingHigh' ? 'SWING_HIGH'
+            : condition.operator === 'swingLow' ? 'SWING_LOW'
+            : condition.operator === 'bullishBOS' ? 'BULLISH_BOS'
+            : condition.operator === 'bearishBOS' ? 'BEARISH_BOS'
+            : condition.operator === 'bullishCHoCH' ? 'BULLISH_CHOCH'
+            : 'BEARISH_CHOCH';
+          return marketStructureEvaluation.eventsByIndex.get(index)?.has(
+            marketStructureEventKey(condition.indicatorId, kind)
+          ) ?? false;
         }
         if (condition.kind === 'orderBlock') {
           const direction = condition.operator.toLowerCase().includes('bullish')
@@ -361,5 +381,6 @@ export function evaluateDraftStrategy(
     candidateCount,
     rejectedCount,
     orderBlocks: orderBlockEvaluation.orderBlocks,
+    marketStructureEvents: marketStructureEvaluation.marketStructureEvents,
   };
 }

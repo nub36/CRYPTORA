@@ -38,6 +38,7 @@ import {
   DEFAULT_LAB_MARKER_OVERLAYS,
   mapLabEventMarkers,
   mapFractalMarkers,
+  mapMarketStructureProjection,
   mapOrderBlockZones,
   mapTradeLevels,
   type LabMarkerOverlays,
@@ -186,6 +187,18 @@ export const LabChart: React.FC<LabChartProps> = ({
     () => (result ? mapOrderBlockZones(result) : []),
     [result]
   );
+  const marketStructureProjection = useMemo(
+    () => (result ? mapMarketStructureProjection(result) : { markers: [], priceSegments: [] }),
+    [result]
+  );
+
+  const chartMarkers = useMemo(() => {
+    if (!result) return [];
+    return [...markerProjection.markers, ...mapFractalMarkers(result), ...marketStructureProjection.markers]
+      .map((marker, index) => ({ marker, index }))
+      .sort((a, b) => a.marker.time - b.marker.time || a.index - b.index)
+      .map(({ marker }) => marker);
+  }, [result, markerProjection.markers, marketStructureProjection.markers]);
 
   // Детальные уровни — только для выбранной сделки (§6), с учётом оверлеев.
   const levelLines = useMemo(
@@ -310,8 +323,9 @@ export const LabChart: React.FC<LabChartProps> = ({
         showMA={overlays.indicators}
         showVolume
         showBadges={false}
-        markers={[...markerProjection.markers, ...(result ? mapFractalMarkers(result) : [])]}
+        markers={chartMarkers}
         priceZones={priceZones}
+        priceSegments={marketStructureProjection.priceSegments}
         levelLines={levelLines}
         onMarkerClick={handleMarkerClick}
         resetViewToken={resetViewToken}

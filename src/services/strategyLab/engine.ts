@@ -99,6 +99,7 @@ export function runLabReplay(input: LabReplayInput, nowMs = Date.now()): LabRepl
     candles,
     indicators: evaluation.indicators,
     orderBlocks: evaluation.orderBlocks,
+    marketStructureEvents: evaluation.marketStructureEvents ?? [],
     events: evaluation.events,
     trades: evaluation.trades,
     rejections: evaluation.rejections,

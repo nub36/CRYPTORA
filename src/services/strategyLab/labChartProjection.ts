@@ -31,8 +31,8 @@
  * поэтому события движка НЕ хронологичны — сортируем здесь (устойчиво).
  */
 
-import type { ChartLevelLine, ChartMarker, ChartPriceZone } from '@/types/chart';
-import type { LabCandle, LabEvent, LabOrderBlock, LabTrade } from './types';
+import type { ChartLevelLine, ChartMarker, ChartPriceSegment, ChartPriceZone } from '@/types/chart';
+import type { LabCandle, LabEvent, LabMarketStructureEvent, LabOrderBlock, LabTrade } from './types';
 
 /**
  * Presentation-лимит числа маркеров (§13): плотный поток не должен топить
@@ -325,4 +325,98 @@ export function mapOrderBlockZones(result: {
       } satisfies ChartPriceZone];
     })
     .sort((a, b) => a.fromTime - b.fromTime || a.id.localeCompare(b.id));
+}
+
+
+const MARKET_STRUCTURE_COLORS = {
+  swingHigh: 'rgba(148, 163, 184, 0.82)',
+  swingLow: 'rgba(148, 163, 184, 0.82)',
+  bullish: 'rgba(45, 212, 191, 0.82)',
+  bearish: 'rgba(251, 113, 133, 0.82)',
+} as const;
+
+export interface MarketStructureProjection {
+  markers: ChartMarker[];
+  priceSegments: ChartPriceSegment[];
+}
+
+/**
+ * Pure Market Structure V1 chart projection. It intentionally reads the
+ * immutable replay output only and gates rendering by `visible`; no structure
+ * state, events, trades, or metrics are recalculated here.
+ */
+export function mapMarketStructureProjection(result: {
+  candles: LabCandle[];
+  marketStructureEvents?: LabMarketStructureEvent[];
+  indicators: { indicatorsList?: Array<{ id: string; type: string; visible?: boolean }> };
+}): MarketStructureProjection {
+  const visibleIds = new Set(
+    (result.indicators.indicatorsList ?? [])
+      .filter((indicator) => indicator.type === 'MARKET_STRUCTURE' && indicator.visible !== false)
+      .map((indicator) => indicator.id)
+  );
+  const candleTimes = new Set(result.candles.map((candle) => candle.time));
+  const markers: ChartMarker[] = [];
+  const priceSegments: ChartPriceSegment[] = [];
+
+  for (const event of result.marketStructureEvents ?? []) {
+    if (!visibleIds.has(event.indicatorId)) continue;
+    if (!('breakIndex' in event)) {
+      if (!candleTimes.has(event.sourceCandleTime)) continue;
+      const high = event.kind === 'SWING_HIGH';
+      markers.push({
+        id: `marker-${event.id}`,
+        time: event.sourceCandleTime,
+        position: high ? 'aboveBar' : 'belowBar',
+        shape: high ? 'arrowDown' : 'arrowUp',
+        color: high ? MARKET_STRUCTURE_COLORS.swingHigh : MARKET_STRUCTURE_COLORS.swingLow,
+        text: high ? 'SH' : 'SL',
+        size: 1,
+        payload: {
+          kind: event.kind,
+          indicatorId: event.indicatorId,
+          sourceIndex: event.sourceIndex,
+          confirmationIndex: event.confirmationIndex,
+          knownAt: event.knownAt,
+          price: event.price,
+        },
+      });
+      continue;
+    }
+
+    if (!candleTimes.has(event.brokenSwingSourceCandleTime) || !candleTimes.has(event.breakCandleTime)) continue;
+    const bullish = event.kind === 'BULLISH_BOS' || event.kind === 'BULLISH_CHOCH';
+    const choch = event.kind === 'BULLISH_CHOCH' || event.kind === 'BEARISH_CHOCH';
+    const color = bullish ? MARKET_STRUCTURE_COLORS.bullish : MARKET_STRUCTURE_COLORS.bearish;
+    priceSegments.push({
+      id: `segment-${event.id}`,
+      fromTime: event.brokenSwingSourceCandleTime,
+      toTime: event.breakCandleTime,
+      price: event.level,
+      color,
+      style: choch ? 'dashed' : 'solid',
+      lineWidth: 1,
+    });
+    markers.push({
+      id: `marker-${event.id}`,
+      time: event.breakCandleTime,
+      position: bullish ? 'belowBar' : 'aboveBar',
+      shape: bullish ? 'arrowUp' : 'arrowDown',
+      color,
+      text: choch ? 'CHoCH' : 'BOS',
+      size: 1,
+      payload: {
+        kind: event.kind,
+        indicatorId: event.indicatorId,
+        knownAt: event.knownAt,
+        level: event.level,
+        brokenSwingId: event.brokenSwingId,
+      },
+    });
+  }
+
+  return {
+    markers: sortMarkersByTime(markers),
+    priceSegments: priceSegments.sort((a, b) => a.fromTime - b.fromTime || a.id.localeCompare(b.id)),
+  };
 }

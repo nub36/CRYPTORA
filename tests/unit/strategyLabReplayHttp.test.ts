@@ -129,6 +129,47 @@ function mockOrderBlockRetestFixture(candles: LabCandle[]) {
   });
 }
 
+function marketStructureCandles() {
+  const values: Array<[number, number, number, number]> = [
+    [95, 100, 90, 95], [105, 110, 95, 105], [100, 105, 92, 100], [111, 112, 100, 111],
+    [91, 100, 90, 91], [100, 105, 93, 100], [89, 102, 88, 89], [106, 108, 100, 106],
+    [102, 104, 101, 102], [109, 110, 105, 109], [110, 111, 108, 110],
+  ];
+  const candles = values.map(([open, high, low, close], index) => {
+    const time = Math.floor(STRATEGY_LAB_FIXTURE_FROM_MS / 1000) + index * 3600;
+    return { time, closeTime: time + 3599, open, high, low, close, volume: 1_000 + index };
+  });
+  return { candles, swingSource: 1, swingConfirmation: 2, choch: 7, fill: 8 };
+}
+
+function marketStructureDraft(longCondition = 'bullishCHoCH(MARKET_STRUCTURE_MAIN)', visible = true) {
+  return {
+    name: 'Market Structure HTTP replay',
+    apiVersion: 2 as const,
+    indicators: [
+      { id: 'atr-main', type: 'ATR' as const, name: 'ATR Main', period: 1, visible: false },
+      { id: 'rsi-main', type: 'RSI' as const, name: 'RSI Main', period: 2, source: 'close' as const, visible: false },
+      { id: 'market-structure-main', type: 'MARKET_STRUCTURE' as const, name: 'Market Structure', leftBars: 1, rightBars: 1, visible },
+    ],
+    sourceCode: `strategy("Market Structure HTTP replay", () => { LONG(${longCondition}); SHORT(bearishCHoCH(MARKET_STRUCTURE_MAIN)); STOP(multiply(ATR_MAIN, 0.1)); TAKE_PROFIT(R(1)); });`,
+    execution: { feeBps: 0, slippageBps: 0 },
+  };
+}
+
+function mockMarketStructureFixture(candles: LabCandle[]) {
+  acquisitionSpies.read.mockResolvedValueOnce({
+    covered: true,
+    candles,
+    meta: {
+      datasetVersion: 'deterministic-market-structure-fixture-v1',
+      manifestGeneratedAt: '2025-01-15T00:00:00.000Z',
+      coverageFrom: new Date(STRATEGY_LAB_FIXTURE_FROM_MS).toISOString(),
+      coverageTo: new Date(FRACTAL_FIXTURE_TO_MS).toISOString(),
+      seriesSha256: 'e'.repeat(64),
+    },
+  });
+}
+
 function allIndicatorsDraft() {
   return {
     name: 'All indicator capabilities',
@@ -439,6 +480,61 @@ describe('Strategy Lab replay · deterministic real HTTP path', () => {
     const rejected = await client.post('/api/strategy-lab/replay', { ...replayBody(blocked), to: FRACTAL_FIXTURE_TO_MS });
     expect(rejected.status).toBe(200);
     expect((rejected.body as any).trades.some((trade: any) => trade.side === 'LONG')).toBe(false);
+  });
+
+
+  it('replays Market Structure chronology, no-look-ahead timing, composition, and saved-draft parity through real HTTP', async () => {
+    const fixture = marketStructureCandles();
+    const matching = marketStructureDraft('all(bullishCHoCH(MARKET_STRUCTURE_MAIN), below(RSI_MAIN, 100))');
+    const saved = await client.post('/api/strategy-lab/saved-strategies', matching);
+    expect(saved.status).toBe(201);
+    const listed = await client.get('/api/strategy-lab/saved-strategies');
+    const loaded = (listed.body as any).strategies.find((entry: any) => entry.sourceCode === matching.sourceCode);
+    expect(loaded).toBeDefined();
+
+    mockMarketStructureFixture(fixture.candles);
+    const response = await client.post('/api/strategy-lab/replay', {
+      ...replayBody({ name: loaded.name, indicators: loaded.indicators, sourceCode: loaded.sourceCode, execution: loaded.execution, apiVersion: loaded.apiVersion }),
+      to: FRACTAL_FIXTURE_TO_MS,
+    });
+    expect(response.status).toBe(200);
+    const result = response.body as any;
+    const swing = result.marketStructureEvents.find((event: any) => event.kind === 'SWING_HIGH' && event.sourceIndex === fixture.swingSource);
+    expect(swing).toMatchObject({
+      id: `ms:market-structure-main:SWING_HIGH:${fixture.swingSource}:${fixture.swingConfirmation}`,
+      confirmationIndex: fixture.swingConfirmation,
+      knownAt: fixture.candles[fixture.swingConfirmation].closeTime,
+    });
+    const breakEvent = result.marketStructureEvents.find((event: any) => event.kind === 'BULLISH_CHOCH' && event.breakIndex === fixture.choch);
+    expect(breakEvent).toMatchObject({
+      knownAt: fixture.candles[fixture.choch].closeTime,
+      previousState: 'BEARISH',
+      newState: 'BULLISH',
+    });
+    expect(result.marketStructureEvents.some((event: any) => event.kind === 'BULLISH_CHOCH' && event.breakIndex < fixture.choch)).toBe(false);
+    const candidate = result.events.find((event: any) => event.kind === 'CANDIDATE' && event.candleTime === fixture.candles[fixture.choch].time && event.side === 'LONG');
+    const trade = result.trades.find((entry: any) => entry.side === 'LONG' && entry.signalTime === fixture.candles[fixture.choch].time);
+    expect(candidate).toMatchObject({ knownAt: fixture.candles[fixture.choch].closeTime });
+    expect(trade).toMatchObject({ entryTime: fixture.candles[fixture.fill].time, entryPrice: fixture.candles[fixture.fill].open });
+    expect(result.events.some((event: any) => (event.kind === 'ENTRY' || event.kind === 'FILL') && event.candleTime === fixture.candles[fixture.choch].time)).toBe(false);
+
+    mockMarketStructureFixture(fixture.candles);
+    const blocked = marketStructureDraft('all(bullishCHoCH(MARKET_STRUCTURE_MAIN), below(RSI_MAIN, 0))');
+    const rejected = await client.post('/api/strategy-lab/replay', { ...replayBody(blocked), to: FRACTAL_FIXTURE_TO_MS });
+    expect(rejected.status).toBe(200);
+    expect((rejected.body as any).trades.some((entry: any) => entry.side === 'LONG' && entry.signalTime === fixture.candles[fixture.choch].time)).toBe(false);
+  });
+
+  it('rejects invalid Market Structure settings and wrong Market Structure DSL types through HTTP before persistence', async () => {
+    const invalidSettings = marketStructureDraft();
+    (invalidSettings.indicators[2] as { leftBars: number }).leftBars = 0;
+    const invalidSaved = await client.post('/api/strategy-lab/saved-strategies', invalidSettings);
+    expect(invalidSaved.status).toBe(400);
+
+    const wrongType = marketStructureDraft('bullishBOS(ATR_MAIN)');
+    const invalidReplay = await client.post('/api/strategy-lab/replay', replayBody(wrongType));
+    expect(invalidReplay.status).toBe(400);
+    expect(invalidReplay.body).toMatchObject({ code: 'INVALID_STRATEGY_CODE' });
   });
 
   it('uses only the mocked local candle acquisition boundary', () => {

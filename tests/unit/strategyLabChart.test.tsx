@@ -227,7 +227,7 @@ const TEST_DEFINITION: StrategyDraftDefinition = {
 
 /** Полный LabReplayResult с синтетическими сделками (контроль значений). */
 function makeResult(overrides: Partial<LabReplayResult> = {}): LabReplayResult {
-  const { orderBlocks = [], ...rest } = overrides;
+  const { orderBlocks = [], marketStructureEvents = [], ...rest } = overrides;
   const n = CANDLES.length;
   const emaFast: (number | null)[] = new Array(n).fill(null);
   const emaSlow: (number | null)[] = new Array(n).fill(null);
@@ -269,6 +269,7 @@ function makeResult(overrides: Partial<LabReplayResult> = {}): LabReplayResult {
       indicatorsList: TEST_DEFINITION.indicators,
     },
     orderBlocks,
+    marketStructureEvents,
     events: synthEvents(),
     trades: [tradeLong, tradeShort, tradeEod],
     rejections: [],

@@ -53,6 +53,18 @@ export interface ChartPriceZone {
   state?: 'ACTIVE' | 'MITIGATED' | 'INVALIDATED';
 }
 
+/** Generic finite horizontal segment rendered in chart coordinates. */
+export type ChartPriceSegmentStyle = ChartLevelLineStyle;
+export interface ChartPriceSegment {
+  id: string;
+  fromTime: number;
+  toTime: number;
+  price: number;
+  color: string;
+  style?: ChartPriceSegmentStyle;
+  lineWidth?: 1 | 2 | 3 | 4;
+}
+
 export interface ChartLevelLine {
   /** Стабильный идентификатор: по нему линии заменяются при смене сигнала. */
   id: string;

@@ -7,6 +7,7 @@ const calls = new Set([
   'bullishOrderBlock', 'bearishOrderBlock',
   'insideBullishOrderBlock', 'insideBearishOrderBlock',
   'bullishOrderBlockRetest', 'bearishOrderBlockRetest',
+  'swingHigh', 'swingLow', 'bullishBOS', 'bearishBOS', 'bullishCHoCH', 'bearishCHoCH',
   'all', 'any', 'not', 'multiply', 'R',
 ]);
 const legacyIndicatorCalls = new Set(['EMA', 'ATR']);

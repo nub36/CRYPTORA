@@ -72,6 +72,13 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       if (!ind.atrIndicatorId) {
         errors.push({ ...AT_START, message: `Order Block «${ind.name || ind.id}»: выберите ATR для импульса.` });
       }
+    } else if (ind.type === 'MARKET_STRUCTURE') {
+      if (!Number.isInteger(ind.leftBars) || ind.leftBars < 1 || ind.leftBars > 10) {
+        errors.push({ ...AT_START, message: `Market Structure «${ind.name || ind.id}»: левые свечи должны быть целым числом от 1 до 10.` });
+      }
+      if (!Number.isInteger(ind.rightBars) || ind.rightBars < 1 || ind.rightBars > 10) {
+        errors.push({ ...AT_START, message: `Market Structure «${ind.name || ind.id}»: правые свечи должны быть целым числом от 1 до 10.` });
+      }
     } else if (!Number.isFinite(ind.period) || ind.period < 1) {
       errors.push({ ...AT_START, message: `Индикатор «${ind.name || ind.id}»: период должен быть целым числом ≥ 1.` });
     }
@@ -171,6 +178,18 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
       if (e.args.length !== 1) fail(`${role}: функция принимает один индикатор.`);
       const ind = indicatorOf(e.args[0], role); expectType(ind, 'FRACTALS', role);
       return { kind: 'fractal', left: ind.id, right: ind.id, indicatorId: ind.id, operator: e.callee };
+    }
+    if (
+      e.callee === 'swingHigh' ||
+      e.callee === 'swingLow' ||
+      e.callee === 'bullishBOS' ||
+      e.callee === 'bearishBOS' ||
+      e.callee === 'bullishCHoCH' ||
+      e.callee === 'bearishCHoCH'
+    ) {
+      if (e.args.length !== 1) fail(`${role}: функция принимает один индикатор Market Structure.`);
+      const ind = indicatorOf(e.args[0], role); expectType(ind, 'MARKET_STRUCTURE', role);
+      return { kind: 'marketStructure', indicatorId: ind.id, operator: e.callee };
     }
     if (
       e.callee === 'bullishOrderBlock' ||
@@ -291,6 +310,16 @@ export function compileResearchDraft(draft: StrategyResearchDraft): DraftCompile
         lookback: ind.lookback,
         displacementMultiplier: ind.displacementMultiplier,
         atrIndicatorId: ind.atrIndicatorId,
+        visible: ind.visible ?? true,
+      };
+    }
+    if (ind.type === 'MARKET_STRUCTURE') {
+      return {
+        id: ind.id,
+        type: 'MARKET_STRUCTURE' as const,
+        name: ind.name || 'Market Structure',
+        leftBars: ind.leftBars,
+        rightBars: ind.rightBars,
         visible: ind.visible ?? true,
       };
     }

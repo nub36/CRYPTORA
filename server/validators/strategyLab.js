@@ -75,10 +75,20 @@ const orderBlockIndicatorSchema = z.object({
   visible: z.boolean().optional(),
 });
 
+const marketStructureIndicatorSchema = z.object({
+  id: z.string().min(1).max(64),
+  type: z.literal('MARKET_STRUCTURE'),
+  name: z.string().max(64).optional(),
+  leftBars: z.number().int().min(1).max(10),
+  rightBars: z.number().int().min(1).max(10),
+  visible: z.boolean().optional(),
+});
+
 /** Additive v2 indicator union: existing period indicators retain their shape. */
 export const indicatorSchema = z.discriminatedUnion('type', [
   periodIndicatorSchema,
   orderBlockIndicatorSchema,
+  marketStructureIndicatorSchema,
 ]);
 
 export const logicRuleSchema = z.object({

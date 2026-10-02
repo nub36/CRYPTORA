@@ -60,7 +60,7 @@ export interface LabCandle {
 // Конструктор стратегий (Phase 2A: Декларативный Draft Definition)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS' | 'ORDER_BLOCK';
+export type IndicatorType = 'EMA' | 'ATR' | 'RSI' | 'FRACTALS' | 'ORDER_BLOCK' | 'MARKET_STRUCTURE';
 export type IndicatorSource = 'close' | 'open' | 'high' | 'low';
 
 /** Existing period-based indicators retain their v2 draft shape unchanged. */
@@ -87,7 +87,17 @@ export interface OrderBlockIndicatorDefinition {
   visible?: boolean;
 }
 
-export type IndicatorDefinition = PeriodIndicatorDefinition | OrderBlockIndicatorDefinition;
+/** Independent confirmed-pivot Market Structure V1 configuration. */
+export interface MarketStructureIndicatorDefinition {
+  id: string;
+  type: 'MARKET_STRUCTURE';
+  name?: string;
+  leftBars: number;
+  rightBars: number;
+  visible?: boolean;
+}
+
+export type IndicatorDefinition = PeriodIndicatorDefinition | OrderBlockIndicatorDefinition | MarketStructureIndicatorDefinition;
 
 export type LogicOperator = 'crossesAbove' | 'crossesBelow';
 
@@ -106,6 +116,18 @@ export type OrderBlockCondition = {
     | 'bullishOrderBlockRetest'
     | 'bearishOrderBlockRetest';
 };
+/** Discrete confirmed Market Structure events; there are no persistent state predicates in V1. */
+export type MarketStructureCondition = {
+  kind: 'marketStructure';
+  indicatorId: string;
+  operator:
+    | 'swingHigh'
+    | 'swingLow'
+    | 'bullishBOS'
+    | 'bearishBOS'
+    | 'bullishCHoCH'
+    | 'bearishCHoCH';
+};
 
 /** Recursive safe boolean composition; arbitrary expressions remain unsupported. */
 export type AllCondition = { kind: 'all'; conditions: StrategyCondition[] };
@@ -118,6 +140,7 @@ export type StrategyCondition =
   | ThresholdCondition
   | FractalCondition
   | OrderBlockCondition
+  | MarketStructureCondition
   | LogicalCondition;
 export type LogicRule = StrategyCondition;
 
@@ -272,6 +295,45 @@ export interface LabOrderBlock {
   invalidatedAt?: number;
 }
 
+export type LabMarketStructureState = 'NEUTRAL' | 'BULLISH' | 'BEARISH';
+export type LabMarketStructureEventKind =
+  | 'SWING_HIGH'
+  | 'SWING_LOW'
+  | 'BULLISH_BOS'
+  | 'BEARISH_BOS'
+  | 'BULLISH_CHOCH'
+  | 'BEARISH_CHOCH';
+
+/** Immutable confirmed Swing metadata or a close-confirmed structural break. */
+export type LabMarketStructureEvent =
+  | {
+      id: string;
+      indicatorId: string;
+      kind: 'SWING_HIGH' | 'SWING_LOW';
+      sourceIndex: number;
+      sourceCandleTime: number;
+      confirmationIndex: number;
+      confirmationCandleTime: number;
+      knownAt: number;
+      price: number;
+    }
+  | {
+      id: string;
+      indicatorId: string;
+      kind: Exclude<LabMarketStructureEventKind, 'SWING_HIGH' | 'SWING_LOW'>;
+      breakIndex: number;
+      breakCandleTime: number;
+      knownAt: number;
+      breakClose: number;
+      level: number;
+      brokenSwingId: string;
+      brokenSwingKind: 'SWING_HIGH' | 'SWING_LOW';
+      brokenSwingSourceIndex: number;
+      brokenSwingSourceCandleTime: number;
+      previousState: LabMarketStructureState;
+      newState: LabMarketStructureState;
+    };
+
 export interface LabMetrics {
   totalCandidates: number;
   accepted: number;
@@ -328,6 +390,8 @@ export interface LabReplayResult {
   indicators: LabIndicatorSeries;
   /** Confirmed Lab-only Order Block zones; always emitted (empty when none exist). */
   orderBlocks: LabOrderBlock[];
+  /** Complete chronological Market Structure V1 events; independent of chart visibility. */
+  marketStructureEvents: LabMarketStructureEvent[];
   events: LabEvent[];
   trades: LabTrade[];
   rejections: LabRejection[];

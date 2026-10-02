@@ -36,4 +36,17 @@ describe('Strategy Lab Order Block settings UI', () => {
     expect(removeAtr).toBeDisabled();
     expect(removeAtr).toHaveAttribute('title', 'ATR используется в настройках Order Block.');
   });
+  it('creates MARKET_STRUCTURE_MAIN with frozen pivot defaults, visible stable code, and Russian help', () => {
+    render(<Harness initial={[{ id: 'atr-main', type: 'ATR', name: 'ATR Main', period: 14, visible: false }]} />);
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-qa="lab-add-market-structure"]')!);
+
+    expect(screen.getByText('MARKET STRUCTURE')).toBeVisible();
+    expect(screen.getByText('MARKET_STRUCTURE_MAIN')).toBeVisible();
+    expect(screen.getByLabelText('Левые свечи индикатора MARKET_STRUCTURE_MAIN')).toHaveValue('2');
+    expect(screen.getByLabelText('Правые свечи индикатора MARKET_STRUCTURE_MAIN')).toHaveValue('2');
+    expect(screen.getByLabelText('Показывать на графике MARKET_STRUCTURE_MAIN')).toBeChecked();
+    expect(screen.getByText('Структура рынка строится по подтверждённым swing-максимумам и минимумам. Swing-точка становится доступна стратегии только после подтверждения правыми свечами.')).toBeVisible();
+    expect(screen.getByText(/BOS — пробой уровня по закрытию/)).toBeVisible();
+  });
+
 });

@@ -177,6 +177,7 @@ function makeResult(n: number, generatedAt = 1): LabReplayResult {
       indicatorsList: DEFINITION.indicators,
     },
     orderBlocks: [],
+    marketStructureEvents: [],
     events: [],
     trades: [] as LabTrade[],
     rejections: [],
