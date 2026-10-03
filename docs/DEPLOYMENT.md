@@ -106,6 +106,15 @@ cluster mode, Node cluster workers, `server/productionServer.js`, or another
 replica of `server/index.js`: RadarMonitor is intentionally a process-local
 singleton and this deployment topology supplies exactly one process.
 
+The installed unit reads production secrets from exactly
+`/home/user/CRYPTORA/.env` via `EnvironmentFile=`. It does **not** load
+`.env.production` and the Node process does not invoke dotenv. Before deploying
+notification migration 017, generate `NOTIFICATION_ENCRYPTION_KEY` locally on
+the VPS, add it to that `.env` without printing it, preserve the existing
+owner-only file permissions, and back it up under the production secret policy.
+The key must remain stable: changing it makes existing Telegram ciphertext
+undecryptable. Never commit or regenerate it during normal deployments.
+
 ### 3.2 Future approved release runbook
 
 The order is mandatory:

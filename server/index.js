@@ -14,6 +14,10 @@ import { checkDatabase, closePool } from './db/pool.js';
 import { getStrategyScheduler } from './services/strategyEngine/strategyScheduler.js';
 import { getSignalMonitor } from './services/signalMonitor/signalMonitor.js';
 import { getRadarMonitor } from './services/radar/radarMonitor.js';
+import { registerSignalNotificationListener } from './services/notificationEvents.js';
+import { dispatchSignalEvent } from './services/notificationChannels.js';
+
+registerSignalNotificationListener(dispatchSignalEvent);
 
 const app = createApp();
 

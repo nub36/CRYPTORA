@@ -8,6 +8,7 @@ export interface ServerConfig {
   PORT: number;
   DATABASE_URL: string;
   SESSION_SECRET: string;
+  NOTIFICATION_ENCRYPTION_KEY: string;
   SESSION_MAX_AGE: number;
   /** 'postgres' in production; 'memory' only for tests. */
   SESSION_STORE: 'postgres' | 'memory' | string;

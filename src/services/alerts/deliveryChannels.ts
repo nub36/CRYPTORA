@@ -1,21 +1,16 @@
 import type { AlertChannelId, TriggeredUserAlert } from './alertEvaluator';
 
 /**
- * Каналы доставки алертов: Telegram Bot API и произвольный Webhook.
- * ---------------------------------------------------------------------------
- * Настройки (bot token / chat id / URL) хранятся ТОЛЬКО в localStorage браузера
- * пользователя: у CRYPTORA нет серверной части, секреты никуда не пересылаются,
- * кроме самого Telegram / указанного webhook. Это НЕ торговые ключи бирж
- * (инвариант ROADMAP) — только токен бота-уведомителя, созданного пользователем.
- *
- * Результат доставки честно фиксируется: DELIVERED (ответ 2xx прочитан),
- * SENT_UNCONFIRMED (запрос ушёл в режиме no-cors, ответ непрозрачен),
- * FAILED (сеть/HTTP/конфигурация) — с причиной.
+ * Browser and webhook delivery plus the authenticated Telegram backend relay.
+ * Telegram tokens are write-only in the browser and encrypted server-side;
+ * this module never builds a Telegram Bot API URL containing a secret.
  */
 export interface TelegramChannelConfig {
   enabled: boolean;
+  /** Write-only; API responses always return an empty string. */
   botToken: string;
   chatId: string;
+  tokenConfigured?: boolean;
 }
 export interface WebhookChannelConfig {
   enabled: boolean;
@@ -57,6 +52,7 @@ export function parseChannelsConfig(raw: string | null | undefined): AlertChanne
         enabled: Boolean(p.telegram?.enabled),
         botToken: typeof p.telegram?.botToken === 'string' ? p.telegram.botToken : '',
         chatId: typeof p.telegram?.chatId === 'string' ? p.telegram.chatId : '',
+        tokenConfigured: Boolean(p.telegram?.tokenConfigured || p.telegram?.botToken),
       },
       webhook: {
         enabled: Boolean(p.webhook?.enabled),
@@ -70,6 +66,18 @@ export function parseChannelsConfig(raw: string | null | undefined): AlertChanne
 
 function structuredCloneSafe<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
+}
+
+/**
+ * Removes a pre-v017 plaintext browser token without uploading it. Non-secret
+ * settings remain visible so the user can review them, but Telegram cannot be
+ * saved or tested until the token is deliberately entered again.
+ */
+export function redactLegacyTelegramSecret(config: AlertChannelsConfig): AlertChannelsConfig {
+  return {
+    ...config,
+    telegram: { ...config.telegram, botToken: '', tokenConfigured: false },
+  };
 }
 
 /** Валидация токена бота: `<digits>:<35 символов>` — без сетевого вызова. */
@@ -120,28 +128,24 @@ export async function deliverTelegram(
 ): Promise<Omit<DeliveryRecord, 'id' | 'timestamp'>> {
   const base = { eventId: ev.id, channel: 'TELEGRAM' as const };
   if (!cfg.enabled) return { ...base, status: 'SKIPPED', detail: 'канал выключен' };
-  if (!isPlausibleBotToken(cfg.botToken) || !cfg.chatId.trim()) {
-    return { ...base, status: 'FAILED', detail: 'некорректный bot token или chat id' };
+  if (!(cfg.tokenConfigured || isPlausibleBotToken(cfg.botToken)) || !/^-?[1-9]\d*$/.test(cfg.chatId.trim())) {
+    return { ...base, status: 'FAILED', detail: 'настройки Telegram не сохранены' };
   }
   try {
-    const res = await fetchFn(`https://api.telegram.org/bot${cfg.botToken.trim()}/sendMessage`, {
+    const res = await fetchFn('/api/notifications/telegram/send', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: cfg.chatId.trim(), text: formatTelegramText(ev), disable_web_page_preview: true }),
+      body: JSON.stringify({ event: ev }),
     });
-    if (!res.ok) {
-      let desc = `HTTP ${res.status}`;
-      try {
-        const j = (await res.json()) as { description?: string };
-        if (j.description) desc = `${desc}: ${j.description}`;
-      } catch {
-        /* тело не JSON */
-      }
-      return { ...base, status: 'FAILED', detail: desc };
+    let body: { ok?: boolean; code?: string; message?: string } | null = null;
+    try { body = (await res.json()) as { ok?: boolean; code?: string; message?: string }; } catch { /* malformed response */ }
+    if (!res.ok || body?.ok !== true) {
+      return { ...base, status: 'FAILED', detail: body?.message || body?.code || `HTTP ${res.status}` };
     }
-    return { ...base, status: 'DELIVERED', detail: `chat ${cfg.chatId.trim()}` };
-  } catch (e) {
-    return { ...base, status: 'FAILED', detail: `сеть: ${(e as Error).message}` };
+    return { ...base, status: 'DELIVERED', detail: 'Telegram подтвердил отправку' };
+  } catch {
+    return { ...base, status: 'FAILED', detail: 'Ошибка сети' };
   }
 }
 

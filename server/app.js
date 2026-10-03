@@ -28,6 +28,7 @@ import strategiesRouter from './routes/strategies.js';
 import signalsRouter from './routes/signals.js';
 import marketDataRouter, { marketDataLimiter } from './routes/marketData.js';
 import radarRouter from './routes/radar.js';
+import notificationsRouter from './routes/notifications.js';
 // Strategy Lab — изолированный research-контур (ADMIN ONLY, RESEARCH ONLY).
 import strategyLabRouter from './routes/strategyLab.js';
 
@@ -120,6 +121,7 @@ export function createApp(options = {}) {
   app.use('/api/auth/oauth', oauthRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/me', meRouter);
+  app.use('/api/notifications', notificationsRouter);
   app.use('/api/admin', adminRouter);
   // Strategy Lab: research backtest/replay. Admin-only внутри самого router'а.
   app.use('/api/strategy-lab', strategyLabRouter);

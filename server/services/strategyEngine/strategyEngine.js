@@ -34,6 +34,7 @@ import { getStrategy, PRODUCT_STRATEGIES } from '../strategyCatalog.js';
 import { provenanceOfNewSignal } from '../signalProvenance.js';
 import { withScanLock } from './scanMutex.js';
 import { recordScanResult, recordSignalEmitted } from '../strategySettings.js';
+import { emitSignalNotification } from '../notificationEvents.js';
 
 /**
  * Соответствие registry id ↔ ключ стратегии внутри LiveSignalEngine.
@@ -434,8 +435,10 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     if (!persist) continue;
 
     const res = await insertSignal(built.record);
-    if (res.inserted) inserted++;
-    else duplicates++;
+    if (res.inserted) {
+      inserted++;
+      emitSignalNotification(res.signal, 'NEW_SIGNAL');
+    } else duplicates++;
   }
 
   if (provenanceMismatch > 0) {
@@ -595,6 +598,7 @@ async function syncLifecycleFromCore({ core, engine, strategyId, execTf, status 
     });
 
     if (res.changed) {
+      emitSignalNotification(res.signal, res.signal?.status === 'FILLED' ? 'FILL' : 'OUTCOME');
       result.synced++;
       openByKey.delete(key); // строка закрыта — больше не кандидат
     } else {

@@ -24,7 +24,8 @@ RestartSec=5s
 
 # ── ОКРУЖЕНИЕ ───────────────────────────────────────────────────────────────
 # Секреты — в /home/user/CRYPTORA/.env (вне Git): DATABASE_URL, SESSION_SECRET,
-# APP_ORIGIN, SMTP_*. EnvironmentFile с префиксом '-' не роняет юнит, если файла
+# NOTIFICATION_ENCRYPTION_KEY, APP_ORIGIN, SMTP_*. Файлы `.env.production` и
+# `/root/CRYPTORA/.env.production` этим юнитом НЕ читаются. EnvironmentFile с префиксом '-' не роняет юнит, если файла
 # нет, но без DATABASE_URL бэкенд стартует в деградированном режиме
 # (/api/health: degraded) и НЕ запускает движок стратегий.
 EnvironmentFile=-/home/user/CRYPTORA/.env

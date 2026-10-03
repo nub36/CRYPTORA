@@ -4,6 +4,7 @@ import {
   deliverTelegram,
   deliverWebhook,
   parseChannelsConfig,
+  redactLegacyTelegramSecret,
   isPlausibleBotToken,
   isValidWebhookUrl,
   maskToken,
@@ -68,22 +69,25 @@ describe('deliveryChannels', () => {
     expect(cfg.telegram.enabled).toBe(true);
     expect(cfg.webhook.url).toBe('');
     expect(parseChannelsConfig('garbage').telegram.enabled).toBe(false);
+    const redacted = redactLegacyTelegramSecret(cfg);
+    expect(redacted.telegram).toMatchObject({ enabled: true, chatId: '1', botToken: '', tokenConfigured: false });
+    expect(cfg.telegram.botToken).toBe('t');
   });
 
   it('Telegram: DELIVERED только при 2xx; ошибка API — FAILED с описанием; секрет не логируется', async () => {
     const token = '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0';
-    const fetchOk = vi.fn(async (_u: string, _i?: RequestInit) => new Response('{"ok":true}', { status: 200 }));
-    const ok = await deliverTelegram({ enabled: true, botToken: token, chatId: '42' }, ev(), fetchOk);
+    const fetchOk = vi.fn(async (_u: string, _i?: RequestInit) => Response.json({ ok: true }));
+    const ok = await deliverTelegram({ enabled: true, botToken: '', tokenConfigured: true, chatId: '-42' }, ev(), fetchOk);
     expect(ok.status).toBe('DELIVERED');
-    expect(fetchOk.mock.calls[0][0]).toBe(`https://api.telegram.org/bot${token}/sendMessage`);
+    expect(fetchOk.mock.calls[0][0]).toBe('/api/notifications/telegram/send');
     const body = JSON.parse(String(fetchOk.mock.calls[0][1]?.body));
-    expect(body.chat_id).toBe('42');
-    expect(body.text).toContain('не исполняет сделок');
+    expect(body.event.id).toBe(ev().id);
+    expect(String(fetchOk.mock.calls[0][0])).not.toContain(token);
 
-    const fetchBad = vi.fn(async () => new Response('{"ok":false,"description":"Unauthorized"}', { status: 401 }));
-    const bad = await deliverTelegram({ enabled: true, botToken: token, chatId: '42' }, ev(), fetchBad);
+    const fetchBad = vi.fn(async () => Response.json({ ok: false, code: 'INVALID_TOKEN', message: 'Неверный токен' }, { status: 400 }));
+    const bad = await deliverTelegram({ enabled: true, botToken: '', tokenConfigured: true, chatId: '42' }, ev(), fetchBad);
     expect(bad.status).toBe('FAILED');
-    expect(bad.detail).toBe('HTTP 401: Unauthorized');
+    expect(bad.detail).toBe('Неверный токен');
     expect(bad.detail).not.toContain(token);
 
     const off = await deliverTelegram({ enabled: false, botToken: token, chatId: '42' }, ev(), fetchOk);

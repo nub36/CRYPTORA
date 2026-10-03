@@ -27,9 +27,11 @@ import { AlertDispatcher } from '@/services/alerts/AlertDispatcher';
 import {
   ALERT_CHANNELS_STORAGE_KEY,
   parseChannelsConfig,
+  redactLegacyTelegramSecret,
   type AlertChannelsConfig,
   type DeliveryRecord,
 } from '@/services/alerts/deliveryChannels';
+import { loadNotificationChannels } from '@/services/alerts/notificationSettingsApi';
 
 export type UserAlert = UserAlertRule;
 export type { TriggeredUserAlert, AlertChannelsConfig, DeliveryRecord };
@@ -184,7 +186,11 @@ export const MarketDataProviderComponent: React.FC<{
   );
   const [alertChannels, setAlertChannelsState] = useState<AlertChannelsConfig>(() => {
     try {
-      return parseChannelsConfig(localStorage.getItem(ALERT_CHANNELS_STORAGE_KEY));
+      // Never upload or retain the pre-v017 plaintext token. Preserve only
+      // non-secret fields so the user can review them and re-enter the token.
+      const legacy = parseChannelsConfig(localStorage.getItem(ALERT_CHANNELS_STORAGE_KEY));
+      localStorage.removeItem(ALERT_CHANNELS_STORAGE_KEY);
+      return redactLegacyTelegramSecret(legacy);
     } catch {
       return parseChannelsConfig(null);
     }
@@ -199,6 +205,15 @@ export const MarketDataProviderComponent: React.FC<{
 
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
+  useEffect(() => {
+    // Load on mount and again whenever the modal opens. The second load is
+    // important when a guest signs in without a full page reload.
+    let active = true;
+    void loadNotificationChannels()
+      .then((channels) => { if (active) setAlertChannelsState(channels); })
+      .catch(() => { /* guest/offline: retain the last in-memory state */ });
+    return () => { active = false; };
+  }, [isAlertsModalOpen]);
   const [userPlan, setUserPlan] = useState<PlanTier>(() => PlanManager.getCurrentPlan());
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
 
@@ -435,12 +450,8 @@ export const MarketDataProviderComponent: React.FC<{
   };
 
   const setAlertChannels = (cfg: AlertChannelsConfig) => {
+    // Only canonical, redacted values returned by the backend enter app state.
     setAlertChannelsState(cfg);
-    try {
-      localStorage.setItem(ALERT_CHANNELS_STORAGE_KEY, JSON.stringify(cfg));
-    } catch {
-      // ignore
-    }
   };
 
   return (
