@@ -58,6 +58,10 @@ export const config = {
 
   // Session
   SESSION_SECRET: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
+  // Dedicated 32-byte key (base64 or 64-char hex) for AES-256-GCM encryption
+  // of user-owned notification secrets. There is deliberately no fallback to
+  // SESSION_SECRET: missing configuration must fail closed, never weaken storage.
+  NOTIFICATION_ENCRYPTION_KEY: process.env.NOTIFICATION_ENCRYPTION_KEY || '',
   SESSION_MAX_AGE: parseInt(process.env.SESSION_MAX_AGE || '604800000', 10), // 7 days
   // Session store backend. 'postgres' is the only production-legal value.
   // 'memory' exists solely for the test suite and is refused under NODE_ENV=production.

@@ -39,6 +39,7 @@ import {
   MAX_OPEN_SIGNALS_FOR_SYNC,
 } from '../signalRepository.js';
 import { toPublishedSetup, toLifecyclePatch } from './signalTradeManager.js';
+import { emitSignalNotification } from '../notificationEvents.js';
 
 /** Шаг основного цикла наблюдения. */
 export const MONITOR_TICK_MS = 30_000;
@@ -545,6 +546,7 @@ export class SignalMonitor {
       fill,
       outcome,
     });
+    if (res.changed) emitSignalNotification(res.signal, res.signal?.status === 'FILLED' ? 'FILL' : 'OUTCOME');
 
     if (result.kind === 'FILLED') {
       await this.writeMonitor(row, { result: 'FILLED' });

@@ -8,6 +8,7 @@ import { PlanManager } from '@/services/subscription/PlanManager';
 import type { AlertChannelId, UserAlertCondition } from '@/services/alerts/alertEvaluator';
 import { conditionLabelRu } from '@/services/alerts/alertEvaluator';
 import { isPlausibleBotToken, isValidWebhookUrl, maskToken } from '@/services/alerts/deliveryChannels';
+import { saveNotificationChannels, testTelegramChannel } from '@/services/alerts/notificationSettingsApi';
 import { signalSymbolToRoute } from '@/services/signals/signalNotifications';
 import { Collapsible } from '@/components/common/Collapsible';
 
@@ -67,10 +68,14 @@ export const AlertsModal: React.FC = () => {
   const [channels, setChannels] = useState<AlertChannelId[]>(['IN_APP']);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [draft, setDraft] = useState(alertChannels);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTestingTelegram, setIsTestingTelegram] = useState(false);
 
   useEffect(() => {
-    setDraft(alertChannels);
-  }, [alertChannels]);
+    // Reopening always starts from the last canonical server value, not an
+    // unsaved draft left mounted behind the closed modal.
+    if (isAlertsModalOpen) setDraft(alertChannels);
+  }, [alertChannels, isAlertsModalOpen]);
 
   useEffect(() => {
     if (isAlertsModalOpen && tab === 'history') markAlertsRead();
@@ -106,9 +111,49 @@ export const AlertsModal: React.FC = () => {
   const toggleChannel = (ch: AlertChannelId) =>
     setChannels((prev) => (prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch]));
 
-  const saveChannels = () => {
-    setAlertChannels(draft);
-    flash('ok', 'Настройки каналов сохранены локально в браузере.');
+  const validateChannels = () => {
+    if (draft.telegram.enabled) {
+      if (!(draft.telegram.tokenConfigured || isPlausibleBotToken(draft.telegram.botToken))) return 'Неверный токен';
+      if (!/^-?[1-9]\d*$/.test(draft.telegram.chatId.trim())) return 'Некорректный Chat ID';
+    }
+    if (draft.webhook.enabled && !isValidWebhookUrl(draft.webhook.url)) return 'Некорректный Webhook URL';
+    return null;
+  };
+
+  const persistChannels = async () => {
+    const validationError = validateChannels();
+    if (validationError) throw new Error(validationError);
+    const saved = await saveNotificationChannels(draft);
+    setAlertChannels(saved);
+    setDraft(saved);
+    return saved;
+  };
+
+  const saveChannels = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await persistChannels();
+      flash('ok', 'Сохранено');
+    } catch (error) {
+      flash('err', error instanceof Error ? error.message : 'Не удалось сохранить');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const testTelegram = async () => {
+    if (isTestingTelegram || isSaving) return;
+    setIsTestingTelegram(true);
+    try {
+      await persistChannels();
+      const message = await testTelegramChannel();
+      flash('ok', message);
+    } catch (error) {
+      flash('err', error instanceof Error ? error.message : 'Ошибка Telegram');
+    } finally {
+      setIsTestingTelegram(false);
+    }
   };
 
   const requestBrowserPermission = async () => {
@@ -121,7 +166,7 @@ export const AlertsModal: React.FC = () => {
     else flash('err', `Разрешение на уведомления: ${p}.`);
   };
 
-  const tgReady = alertChannels.telegram.enabled && isPlausibleBotToken(alertChannels.telegram.botToken) && alertChannels.telegram.chatId.trim() !== '';
+  const tgReady = alertChannels.telegram.enabled && Boolean(alertChannels.telegram.tokenConfigured) && /^-?[1-9]\d*$/.test(alertChannels.telegram.chatId.trim());
   const whReady = alertChannels.webhook.enabled && isValidWebhookUrl(alertChannels.webhook.url);
 
   const currentValue = (a: (typeof alerts)[number]): string => {
@@ -152,7 +197,7 @@ export const AlertsModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto bg-surface border border-surface-border rounded-lg shadow-2xl p-6 text-slate-200">
+      <div className="relative w-full min-w-0 max-w-xl max-h-[92vh] overflow-x-hidden overflow-y-auto bg-surface border border-surface-border rounded-lg shadow-2xl p-4 sm:p-6 text-slate-200">
         <button onClick={closeAlertsModal} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors" aria-label="Закрыть">
           <X className="w-5 h-5" />
         </button>
@@ -547,8 +592,8 @@ export const AlertsModal: React.FC = () => {
         {tab === 'channels' && (
           <div className="space-y-4">
             <p className="text-[11px] text-slate-400 font-sans">
-              Настройки хранятся только в этом браузере (localStorage) и передаются только адресатам (Telegram Bot API / ваш webhook).
-              У CRYPTORA нет сервера-посредника. Это не ключи бирж — только уведомления.
+              Настройки привязаны к аккаунту. Telegram-токен передаётся только защищённому серверу CRYPTORA,
+              хранится зашифрованным и никогда не возвращается в браузер. Browser/Webhook сохраняются вместе с ним.
             </p>
 
             <section className="p-3 rounded-md border border-surface-border bg-surface-elevated/70 space-y-2">
@@ -590,12 +635,12 @@ export const AlertsModal: React.FC = () => {
                 </label>
               </div>
               <p className="text-[11px] text-slate-500 font-sans">
-                Создайте бота через @BotFather, напишите ему /start и укажите токен и chat id. Токен отправляется напрямую в api.telegram.org.
+                1. Создайте бота через @BotFather. 2. Откройте бота и отправьте /start. 3. Укажите Chat ID. Для группы добавьте бота в группу и используйте её отрицательный Chat ID. 4. Сохраните. 5. Проверьте отправку.
               </p>
               <input
                 type="password"
                 autoComplete="off"
-                placeholder="Bot token (123456789:AA...)"
+                placeholder={draft.telegram.tokenConfigured ? 'Токен сохранён — введите новый для замены' : 'Bot token (123456789:AA...)'}
                 value={draft.telegram.botToken}
                 onChange={(e) => setDraft((d) => ({ ...d, telegram: { ...d.telegram, botToken: e.target.value } }))}
                 className={`${inputCls} font-mono`}
@@ -614,8 +659,19 @@ export const AlertsModal: React.FC = () => {
                   ? isPlausibleBotToken(draft.telegram.botToken)
                     ? `токен ${maskToken(draft.telegram.botToken)} — формат корректен`
                     : 'формат токена не распознан'
-                  : 'токен не задан'}
+                  : draft.telegram.tokenConfigured
+                    ? 'токен сохранён на сервере (значение скрыто)'
+                    : 'токен не задан'}
               </div>
+              <button
+                type="button"
+                onClick={() => void testTelegram()}
+                disabled={isTestingTelegram || isSaving}
+                data-qa="telegram-test"
+                className="w-full sm:w-auto px-3 py-2 text-xs rounded border border-brand-cyan/50 text-brand-cyan hover:bg-brand-cyan/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isTestingTelegram ? 'Проверка…' : 'Проверить Telegram'}
+              </button>
             </section>
 
             <section className="p-3 rounded-md border border-surface-border bg-surface-elevated/70 space-y-2">
@@ -651,11 +707,12 @@ export const AlertsModal: React.FC = () => {
 
             <button
               type="button"
-              onClick={saveChannels}
+              onClick={() => void saveChannels()}
+              disabled={isSaving || isTestingTelegram}
               data-qa="channels-save"
-              className="w-full py-2 bg-brand-cyan hover:bg-sky-500 text-slate-950 font-semibold text-xs rounded transition-colors"
+              className="w-full py-2 bg-brand-cyan hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-semibold text-xs rounded transition-colors"
             >
-              Сохранить каналы
+              {isSaving ? 'Сохранение…' : 'Сохранить каналы'}
             </button>
           </div>
         )}

@@ -23,6 +23,13 @@ describe('production Radar deployment contract', () => {
     expect(restart).not.toMatch(/node\s+.*productionServer\.js/);
   });
 
+  it('loads notification encryption from the actual production EnvironmentFile', () => {
+    const unit = read('systemd/cryptora.service');
+    expect(unit).toMatch(/^EnvironmentFile=-\/home\/user\/CRYPTORA\/\.env$/m);
+    expect(unit).toContain('NOTIFICATION_ENCRYPTION_KEY');
+    expect(unit).not.toMatch(/^EnvironmentFile=.*\.env\.production$/m);
+  });
+
   it('makes migration completion a prerequisite of the supported restart path', () => {
     const deploy = read('scripts/deploy.sh');
     const update = read('scripts/update.sh');
