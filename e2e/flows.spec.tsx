@@ -5,13 +5,20 @@ import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import App from '@/App';
+
+function qaFixtureProvider() {
+  return window.localStorage.getItem('cryptora_qa_fixture') === '1'
+    ? new DemoMarketDataProvider()
+    : undefined;
+}
 
 function renderApp(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <AuthProvider>
-        <MarketDataProviderComponent>
+        <MarketDataProviderComponent customProvider={qaFixtureProvider()}>
           <App />
         </MarketDataProviderComponent>
       </AuthProvider>
@@ -334,12 +341,11 @@ test.describe('Playwright E2E: Core Terminal User Flows', () => {
     const card = await screen.findByLabelText(/Расчетная тепловая карта плотности ликвидаций/i);
     expect(within(card).getByText(/Тепловая карта плотности ликвидаций: цена × время/i)).toBeInTheDocument();
     expect(within(card).getByText('MODEL / ESTIMATED')).toBeInTheDocument();
-    expect(within(card).getByText(/ВХОД: QA-СВЕЧИ|candles/i)).toBeInTheDocument();
+    expect(await within(card).findByText(/ВХОД: QA-СВЕЧИ|candles/i)).toBeInTheDocument();
 
     // Полотно строится из ценовых строк (модель — детерминированная, без случайных значений).
-    const plot = card.querySelector('[role="img"]');
-    expect(plot).not.toBeNull();
-    expect(plot?.children.length).toBe(28);
+    const plot = await within(card).findByRole('img', { name: /Тепловая карта плотности ликвидаций/i });
+    expect(plot.children.length).toBe(28);
 
     // Карта никогда не подменяет фактический журнал событий: разделение уровней сохраняется.
     expect(

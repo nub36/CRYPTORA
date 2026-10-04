@@ -1,5 +1,33 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// embedded-postgres ships its own PostgreSQL runtime, including libpq, under
+// node_modules. The native initdb binary does not add that directory to the
+// dynamic loader search path itself. Make the bundled runtime discoverable
+// before any integration suite starts the server.
+const embeddedPostgresLib = path.resolve(
+  process.cwd(),
+  'node_modules/@embedded-postgres/linux-x64/native/lib',
+);
+if (fs.existsSync(embeddedPostgresLib)) {
+  // The npm tarball contains versioned files but omits the SONAME symlinks
+  // that a system package would install (for example libpq.so.5.18 without
+  // libpq.so.5). Recreate only those local, disposable links in node_modules.
+  for (const file of fs.readdirSync(embeddedPostgresLib)) {
+    const match = file.match(/^(lib[^.]+\.so\.\d+)(?:\.\d+)*$/);
+    if (!match) continue;
+    const soname = path.join(embeddedPostgresLib, match[1]);
+    if (!fs.existsSync(soname)) {
+      try { fs.symlinkSync(file, soname); } catch { /* another worker won */ }
+    }
+  }
+  const current = process.env.LD_LIBRARY_PATH?.split(':').filter(Boolean) ?? [];
+  if (!current.includes(embeddedPostgresLib)) {
+    process.env.LD_LIBRARY_PATH = [embeddedPostgresLib, ...current].join(':');
+  }
+}
 
 // Mock lightweight-charts for JSDOM canvas environment
 vi.mock('lightweight-charts', () => {

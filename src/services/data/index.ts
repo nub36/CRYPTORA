@@ -1,11 +1,9 @@
-import { MarketDataProvider } from './MarketDataProvider';
-import { DemoMarketDataProvider } from './DemoMarketDataProvider';
-
-// Default provider for terminal: Demo Provider (deterministic, reliable)
-export const defaultMarketDataProvider: MarketDataProvider = new DemoMarketDataProvider();
-
 export * from './MarketDataProvider';
-export * from './DemoMarketDataProvider';
+// DemoMarketDataProvider is intentionally not re-exported from the production
+// data barrel. Development code loads it explicitly through the DEV-gated
+// dynamic import in MarketDataContext; a barrel re-export would pull the QA
+// provider back into the production module graph.
+
 export * from './LiveMarketDataProvider';
 export * from './registry/assetRegistry';
 export * from './adapters/BinanceSpotAdapter';
