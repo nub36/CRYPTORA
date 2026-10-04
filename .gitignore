@@ -23,3 +23,7 @@ e2e/.request-audit.json
 # Боевые дампы сигналов: содержат данные прода, в репозиторий не попадают.
 cryptora-conflicts*.json
 *-conflicts-prod.json
+
+# Playwright
+playwright-report/
+test-results/

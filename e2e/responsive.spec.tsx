@@ -5,6 +5,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import App from '@/App';
 import { PRIMARY_NAV_ITEMS } from '@/components/layout/navigation';
 
@@ -26,6 +27,12 @@ function setWindowDimensions(width: number, height: number) {
   window.dispatchEvent(new Event('resize'));
 }
 
+function qaFixtureProvider() {
+  return window.localStorage.getItem('cryptora_qa_fixture') === '1'
+    ? new DemoMarketDataProvider()
+    : undefined;
+}
+
 // QA-фикстура: сброс localStorage переводит прогон на детерминированный датасет
 // и исключает реальные сетевые вызовы к биржам из E2E-прогона.
 test.beforeEach(() => {
@@ -44,7 +51,7 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
       const { container } = render(
         <MemoryRouter initialEntries={['/']}>
           <AuthProvider>
-            <MarketDataProviderComponent>
+            <MarketDataProviderComponent customProvider={qaFixtureProvider()}>
               <App />
             </MarketDataProviderComponent>
           </AuthProvider>
@@ -85,7 +92,7 @@ test.describe('Responsive Layout & Smoke Tests across Viewports', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <AuthProvider>
-          <MarketDataProviderComponent>
+          <MarketDataProviderComponent customProvider={qaFixtureProvider()}>
             <App />
           </MarketDataProviderComponent>
         </AuthProvider>

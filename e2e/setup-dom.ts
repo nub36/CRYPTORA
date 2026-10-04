@@ -11,7 +11,7 @@ declare global {
 }
 
 const dom = new JSDOM('<!DOCTYPE html><html><body><div id="root"></div></body></html>', {
-  url: 'http://localhost:5173',
+  url: 'http://localhost:4173',
   pretendToBeVisual: true,
 });
 

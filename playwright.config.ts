@@ -1,11 +1,20 @@
 import { defineConfig } from '@playwright/test';
 
+const e2ePort = 4173;
+const webServerMode = process.env.PLAYWRIGHT_WEB_SERVER === 'dev' ? 'dev' : 'preview';
+const webServerCommand = webServerMode === 'dev'
+  ? `npm run dev -- --port ${e2ePort}`
+  : 'npm run preview';
+
 export default defineConfig({
   testDir: './e2e',
-  // baseURL: без него page.goto('/') = «Cannot navigate to invalid URL»
-  // (routes.spec не пострадал — там абсолютные URL).
-  // data-qa — единый атрибут стабильных селекторов проекта; `getByTestId` читает его.
-  use: { baseURL: 'http://localhost:5173', testIdAttribute: 'data-qa' },
+  use: {
+    baseURL: `http://localhost:${e2ePort}`,
+    testIdAttribute: 'data-qa',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+    trace: 'retain-on-failure',
+  },
   timeout: 30000,
   forbidOnly: !!process.env.CI,
   // В CI одна ретрая попытка — страховка от сетевого флака браузерных тестов.
@@ -15,11 +24,11 @@ export default defineConfig({
   // Exclude screenshot QA tests from regular run — run on CI with --grep-invert '' to include
   testIgnore: process.env.CI_SCREENSHOTS ? [] : ['**/screenshotQA*'],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: true,
-    // Холодный старт vite dev на CI (optimizeDeps lucide-react и др.) может
-    // занимать заметно больше 15с — раньше из-за этого падали ВСЕ e2e разом.
+    command: webServerCommand,
+    url: `http://localhost:${e2ePort}`,
+    reuseExistingServer: webServerMode === 'dev' && !process.env.CI,
+    // Полный browser e2e использует dev-сервер для QA fixtures; production smoke
+    // запускается через vite preview. Оба режима намеренно согласованы на 4173.
     timeout: 120_000,
     stdout: 'ignore',
     stderr: 'pipe',

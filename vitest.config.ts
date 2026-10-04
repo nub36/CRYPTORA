@@ -20,6 +20,7 @@ export default defineConfig({
     include: [
       'tests/unit/**/*.{test,spec}.{ts,tsx}',
       'tests/integration/**/*.{test,spec}.{ts,tsx}',
+      'src/**/*.{test,spec}.{ts,tsx}',
     ],
     testTimeout: 60000,
     hookTimeout: 180000,

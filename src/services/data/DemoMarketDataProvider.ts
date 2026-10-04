@@ -12,7 +12,9 @@ import {
 } from '@/types/market';
 import { MarketDataProvider } from './MarketDataProvider';
 import type { OrderBookSnapshot } from '@/types/realtime';
+import { assertDemoNotInProduction } from './productionGuard';
 
+// CRYPTORA_DEMO_PROVIDER_IMPLEMENTATION — excluded from production builds.
 // Deterministic mock datasets
 const DEMO_TIMESTAMP = '2026-09-15T12:00:00Z';
 
@@ -1009,6 +1011,10 @@ function generateDeterministicCandles(basePrice: number, timeframe: Timeframe): 
 
 export class DemoMarketDataProvider implements MarketDataProvider {
   readonly isDemo = true;
+
+  constructor() {
+    assertDemoNotInProduction('DemoMarketDataProvider');
+  }
 
   async getMarketOverview(): Promise<MarketOverviewData> {
     return DEMO_OVERVIEW;

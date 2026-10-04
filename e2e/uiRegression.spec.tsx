@@ -5,6 +5,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import App from '@/App';
 import { PRIMARY_NAV_ITEMS, PRIMARY_NAV_CAPACITY } from '@/components/layout/navigation';
 
@@ -14,11 +15,17 @@ function setWindowDimensions(width: number, height: number) {
   window.dispatchEvent(new Event('resize'));
 }
 
+function qaFixtureProvider() {
+  return window.localStorage.getItem('cryptora_qa_fixture') === '1'
+    ? new DemoMarketDataProvider()
+    : undefined;
+}
+
 function renderApp(initialPath = '/') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <AuthProvider>
-        <MarketDataProviderComponent>
+        <MarketDataProviderComponent customProvider={qaFixtureProvider()}>
           <App />
         </MarketDataProviderComponent>
       </AuthProvider>
@@ -232,7 +239,7 @@ test.describe('UI/UX Premium Redesign Regression Suite', () => {
       const { container } = render(
         <MemoryRouter initialEntries={['/']}>
           <AuthProvider>
-            <MarketDataProviderComponent>
+            <MarketDataProviderComponent customProvider={qaFixtureProvider()}>
               <App />
             </MarketDataProviderComponent>
           </AuthProvider>

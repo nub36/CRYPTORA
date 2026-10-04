@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { MarketDataProvider } from '@/services/data/MarketDataProvider';
-import { DemoMarketDataProvider } from '@/services/data/DemoMarketDataProvider';
 import { LiveMarketDataProvider } from '@/services/data/LiveMarketDataProvider';
 import { BinanceSpotAdapter } from '@/services/data/adapters/BinanceSpotAdapter';
 import { KuCoinSpotAdapter } from '@/services/data/adapters/KuCoinSpotAdapter';
@@ -108,7 +107,6 @@ interface MarketDataContextType {
 
 const MarketDataContext = createContext<MarketDataContextType | null>(null);
 
-const singletonDemoProvider = new DemoMarketDataProvider();
 // Circuit breaker «здоровья источников» (общий для REST-адаптеров live-провайдера):
 // после систематических отказов endpoint (CORS KuCoin, гео-блок, делистнутый символ)
 // перестаёт долбиться каждым циклом опроса — консоль не засоряется повторными
@@ -407,10 +405,27 @@ export const MarketDataProviderComponent: React.FC<{
     };
   }, [dataMode, hasFundingAlerts, customProvider, runEvaluation]);
 
+  const [demoProvider, setDemoProvider] = useState<MarketDataProvider | null>(null);
+
+  // The QA provider is a development-only module. Keeping this import behind
+  // Vite's compile-time DEV branch prevents it from entering production output
+  // at all; the production guard in the provider remains a second safety net.
+  useEffect(() => {
+    let cancelled = false;
+    if (!customProvider && dataMode === 'demo' && import.meta.env.DEV) {
+      void import('@/services/data/DemoMarketDataProvider').then(({ DemoMarketDataProvider }) => {
+        if (!cancelled) setDemoProvider(new DemoMarketDataProvider());
+      });
+    } else {
+      setDemoProvider(null);
+    }
+    return () => { cancelled = true; };
+  }, [customProvider, dataMode]);
+
   const activeProvider = useMemo<MarketDataProvider>(() => {
     if (customProvider) return customProvider;
-    return dataMode === 'live' ? singletonLiveProvider : singletonDemoProvider;
-  }, [customProvider, dataMode]);
+    return dataMode === 'demo' && demoProvider ? demoProvider : singletonLiveProvider;
+  }, [customProvider, dataMode, demoProvider]);
 
   const toggleWatchlist = (symbol: string) => {
     const s = symbol.toUpperCase();
