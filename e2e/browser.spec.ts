@@ -30,7 +30,7 @@ test.describe('Браузерные e2e (Chromium)', () => {
     // юнит-тесты провайдера, не браузерные смоки.
     await expect(
       page
-        .getByRole('heading', { name: 'Рынок' })
+        .getByRole('heading', { name: 'Рыночные котировки' })
         .or(page.getByText('ИСТОЧНИК НЕДОСТУПЕН').first())
     ).toBeVisible({ timeout: 15_000 });
   });
