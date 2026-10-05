@@ -1,0 +1,33 @@
+-- ============================================================================
+-- 019: notification_delivery_log — индекс для durable redelivery worker
+-- ============================================================================
+-- Purpose
+-- -------
+-- Надёжная повторная доставка Telegram lifecycle-уведомлений (PR #56):
+-- worker `server/services/notificationRedelivery.js` находит пары
+-- (signal_lifecycle_events × telegram-enabled user), для которых НЕТ строки
+-- result='SUCCESS' в notification_delivery_log, по запросу вида:
+--
+--   LEFT JOIN notification_delivery_log d
+--     ON d.user_id = c.user_id
+--    AND d.event_id = e.signal_id::text
+--    AND d.event_type = e.event_type
+--
+-- Существующий индекс 017 (user_id, created_at DESC) не покрывает этот
+-- доступ: join идёт от события к пользователю, ключ — (event_id, event_type,
+-- user_id). Без индекса каждый sweep делал бы seq scan по журналу доставки.
+--
+-- Deliberate constraints
+-- ----------------------
+-- 1. ТОЛЬКО ДОБАВЛЕНИЕ: один частичный-covering btree-индекс; ни одна
+--    таблица/колонка/строка не меняется, никакого backfill.
+-- 2. created_at в хвосте индекса — чтобы backoff-проверка
+--    MAX(d.created_at) и фильтр result='SUCCESS' обслуживались index-only
+--    scan (все нужные колонки в индексе).
+-- 3. Журнал остаётся append-only: redelivery НЕ обновляет и НЕ удаляет
+--    строки — каждая попытка дописывает новую (политика попыток/backoff
+--    живёт в константах worker-а, а не в состоянии строк).
+-- ============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_notification_delivery_event
+    ON notification_delivery_log (event_id, event_type, user_id, result, created_at);

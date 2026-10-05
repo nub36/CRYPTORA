@@ -26,7 +26,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+
+// Шифрование Telegram-токенов для каналов доставки (до импорта server-модулей).
+process.env.NOTIFICATION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
 
 const ROOT = path.resolve(__dirname, '../..');
 
@@ -51,6 +55,8 @@ let repo: any = null;
 let monitorMod: any = null;
 let eventsMod: any = null;
 let notificationBus: any = null;
+let channelsMod: any = null;
+let redeliveryMod: any = null;
 
 /** Собирает все уведомления, ушедшие через emitSignalNotification. */
 const emitted: Array<{ signalId: unknown; eventType: string }> = [];
@@ -100,6 +106,8 @@ beforeAll(async () => {
   monitorMod = await import('../../server/services/signalMonitor/signalMonitor.js');
   eventsMod = await import('../../server/services/signalLifecycleEvents.js');
   notificationBus = await import('../../server/services/notificationEvents.js');
+  channelsMod = await import('../../server/services/notificationChannels.js');
+  redeliveryMod = await import('../../server/services/notificationRedelivery.js');
   const { closePool } = await import('../../server/db/pool.js');
   void closePool;
 
@@ -1045,5 +1053,242 @@ describe('Журнал событий не меняет торговые дан�
 
     const chain = await repo.verifyChain();
     expect(chain.breaks).toBe(0);
+  }, 120_000);
+});
+
+/* ───── Durable redelivery: worker × PostgreSQL × Telegram-моки (PR #56) ───── */
+/*
+ * Гарантия доставки — durable at-least-once attempt с per-user SUCCESS
+ * suppression (exactly-once НЕ обещается: у sendMessage нет idempotency
+ * key). Проверяется сквозной путь: signal_lifecycle_events (факт записан,
+ * доставки не было — модель crash после INSERT) → worker находит пару
+ * (событие × пользователь) → deliverSavedTelegram (настоящий, с настоящим
+ * шифрованием токена и журналом delivery_log) → мок Telegram API.
+ */
+
+/** Токены-маршрутизаторы: по токену мок понимает, чей это канал. */
+const TOKEN_A = '111111111:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw0';
+const TOKEN_B = '222222222:AAHdqTcvCH2vGWJxfSeofSAs0K5PALDsaw1';
+
+/** Полная зачистка пользователей/каналов/журнала доставки. */
+async function seedTelegramUsers(count = 2) {
+  await q('DELETE FROM notification_delivery_log');
+  await q('DELETE FROM notification_channels');
+  await q('DELETE FROM users');
+  const users: Array<{ id: string; token: string; chatId: string }> = [];
+  const tokens = [TOKEN_A, TOKEN_B];
+  for (let i = 0; i < count; i++) {
+    const id = crypto.randomUUID();
+    const chatId = `-100${i}`;
+    await q(
+      `INSERT INTO users (id, email, display_name, password_hash) VALUES ($1,$2,$3,$4)`,
+      [id, `user${i}@cryptora.test`, `User ${i}`, 'test-hash']
+    );
+    await q(
+      `INSERT INTO notification_channels
+         (user_id, browser_enabled, telegram_enabled, telegram_chat_id, telegram_token_ciphertext)
+       VALUES ($1, false, true, $2, $3)`,
+      [id, chatId, channelsMod.encryptTelegramToken(tokens[i], process.env.NOTIFICATION_ENCRYPTION_KEY)]
+    );
+    users.push({ id, token: tokens[i], chatId });
+  }
+  return users;
+}
+
+/** Мок Telegram API: фиксирует вызовы, режим ok/fail по токену. */
+function fakeTelegram(mode: Record<string, 'ok' | 'fail'> = {}) {
+  const calls: Array<{ token: string; chatId: string; text: string }> = [];
+  const fetchFn = async (url: string, init?: RequestInit) => {
+    const token = String(url).split('/bot')[1]?.split('/')[0] ?? '';
+    const body = JSON.parse(String(init?.body));
+    calls.push({ token, chatId: body.chat_id, text: body.text });
+    if (mode[token] === 'fail') {
+      return Response.json({ ok: false, error_code: 500, description: 'Internal Server Error' }, { status: 500 });
+    }
+    return Response.json({ ok: true, result: { message_id: calls.length } });
+  };
+  const callsFor = (token: string) => calls.filter((c) => c.token === token);
+  return { calls, fetchFn, callsFor };
+}
+
+/** Worker на настоящей БД; доставка — настоящий deliverSavedTelegram с моком fetch. */
+function makeRedeliveryWorker(fetchFn: (url: string, init?: RequestInit) => Promise<Response>) {
+  let NOW = Date.now();
+  const worker = new redeliveryMod.NotificationRedeliveryWorker({
+    now: () => NOW,
+    query: (sql: string, params: unknown[] = []) => db.query(sql, params),
+    loadSignal: (id: string) => repo.getSignalById(id),
+    deliver: (userId: string, payload: { eventType: string; eventId: string; text: string }) =>
+      channelsMod.deliverSavedTelegram(userId, payload, fetchFn, async () => {}),
+  });
+  return { worker, advance: (ms: number) => { NOW += ms; } };
+}
+
+describe('Redelivery worker: crash-recovery и per-user повторная доставка', () => {
+  it('событие записано, доставки не было (crash после INSERT) → worker доставляет; SUCCESS → больше не тревожит', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const [userA] = await seedTelegramUsers(1);
+    // Модель crash: факт зафиксирован в журнале, emit не дошёл до Telegram.
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'FILL', occurredAt: new Date(SETUP_TS + 2 * H) });
+
+    const tg = fakeTelegram();
+    const { worker } = makeRedeliveryWorker(tg.fetchFn);
+    const summary = await worker.sweep();
+
+    expect(summary).toMatchObject({ considered: 1, attempted: 1, delivered: 1, failed: 0 });
+    expect(tg.callsFor(userA.token)).toHaveLength(1);
+    expect(tg.calls[0].text).toContain('CRYPTORA — Вход');
+
+    const log = await q(
+      `SELECT result, event_type, event_id FROM notification_delivery_log WHERE user_id = $1`,
+      [userA.id]
+    );
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ result: 'SUCCESS', event_type: 'FILL', event_id: signal.id });
+
+    // Повторный sweep: SUCCESS в журнале — пара исключена из кандидатов SQL-ем.
+    const second = await worker.sweep();
+    expect(second).toMatchObject({ considered: 0, attempted: 0 });
+    expect(tg.callsFor(userA.token)).toHaveLength(1);
+  }, 120_000);
+
+  it('fan-out: A — SUCCESS, B — FAILURE; повтор получает ТОЛЬКО B', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const [userA, userB] = await seedTelegramUsers(2);
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'FILL', occurredAt: new Date(SETUP_TS + 2 * H) });
+
+    // Sweep 1: у A Telegram отвечает ok, у B — 500 (transient: 1+2 in-flight попытки).
+    let tg = fakeTelegram({ [TOKEN_A]: 'ok', [TOKEN_B]: 'fail' });
+    let harness = makeRedeliveryWorker(tg.fetchFn);
+    const first = await harness.worker.sweep();
+    expect(first).toMatchObject({ considered: 2, attempted: 2, delivered: 1, failed: 1 });
+    // A — ровно ОДНО сообщение; B — полный in-flight retry (3 вызова), FAILURE в журнале.
+    expect(tg.callsFor(userA.token)).toHaveLength(1);
+    expect(tg.callsFor(userB.token)).toHaveLength(1 + channelsMod.TELEGRAM_IMMEDIATE_RETRIES);
+
+    // Sweep 2 сразу (backoff 60s не истёк) — тишина для обоих.
+    const tooEarly = await harness.worker.sweep();
+    expect(tooEarly).toMatchObject({ attempted: 0, skippedBackoff: 1 });
+    expect(tg.callsFor(userA.token)).toHaveLength(1);
+
+    // «Рестарт»: Telegram починился, НОВЫЙ инстанс worker-а, время ушло на 61s.
+    tg = fakeTelegram({ [TOKEN_A]: 'ok', [TOKEN_B]: 'ok' });
+    harness = makeRedeliveryWorker(tg.fetchFn);
+    harness.advance(61_000);
+    const afterRestart = await harness.worker.sweep();
+
+    // Повторён ТОЛЬКО B: A исключён своим SUCCESS.
+    expect(afterRestart).toMatchObject({ considered: 1, attempted: 1, delivered: 1 });
+    expect(tg.callsFor(userA.token)).toHaveLength(0); // в НОВОМ моке вызовов A нет вообще
+    expect(tg.callsFor(userB.token)).toHaveLength(1);
+    expect(tg.calls[0].text).toContain('CRYPTORA — Вход');
+
+    const results = await q(
+      `SELECT user_id, result FROM notification_delivery_log WHERE event_id = $1 ORDER BY user_id`,
+      [signal.id]
+    );
+    expect(results.filter((r: any) => r.result === 'SUCCESS')).toHaveLength(2);
+  }, 120_000);
+
+  it('ordering: терминал TP2 уже доставлен — устаревшие TP1/BREAKEVEN подавлены', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const [userA] = await seedTelegramUsers(1);
+    // Терминал доставлен (SUCCESS в журнале), progress-события записаны, но не дошли.
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'TP2', occurredAt: new Date(SETUP_TS + 5 * H) });
+    await q(
+      `INSERT INTO notification_delivery_log (user_id, channel, event_type, event_id, result)
+       VALUES ($1, 'TELEGRAM', 'TP2', $2, 'SUCCESS')`,
+      [userA.id, signal.id]
+    );
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'TP1', occurredAt: new Date(SETUP_TS + 3 * H) });
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'BREAKEVEN', occurredAt: new Date(SETUP_TS + 4 * H) });
+
+    const tg = fakeTelegram();
+    const { worker } = makeRedeliveryWorker(tg.fetchFn);
+    const summary = await worker.sweep();
+
+    // Оба progress-события — STALE_ORDER: ни одного сообщения, пользователь
+    // уже знает исход; поздний «TP1 достигнут» был бы устаревшим шумом.
+    expect(summary).toMatchObject({ considered: 2, attempted: 0, suppressedStaleOrder: 2 });
+    expect(tg.calls).toHaveLength(0);
+  }, 120_000);
+
+  it('NEW_SIGNAL тоже восстанавливается: журнал — тот же durable source', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const [userA] = await seedTelegramUsers(1);
+    // Crash между recordSignalLifecycleEvent(NEW_SIGNAL) и emit.
+    await eventsMod.recordSignalLifecycleEvent(signal.id, {
+      eventType: 'NEW_SIGNAL',
+      occurredAt: new Date(signal.createdAt),
+    });
+
+    const tg = fakeTelegram();
+    const { worker } = makeRedeliveryWorker(tg.fetchFn);
+    const summary = await worker.sweep();
+
+    expect(summary).toMatchObject({ considered: 1, attempted: 1, delivered: 1 });
+    expect(tg.calls[0].text).toContain('Новый сигнал');
+
+    const again = await worker.sweep();
+    expect(again.attempted).toBe(0);
+    expect(tg.callsFor(userA.token)).toHaveLength(1);
+  }, 120_000);
+
+  it('время факта — occurred_at события, а не время повторной доставки', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    await seedTelegramUsers(1);
+    const occurredAt = new Date('2026-10-01T15:00:00.000Z');
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'TP1', occurredAt });
+
+    const tg = fakeTelegram();
+    const { worker } = makeRedeliveryWorker(tg.fetchFn);
+    await worker.sweep();
+
+    const expectedTime = channelsMod.formatSignalEventTime(occurredAt);
+    const nowTime = channelsMod.formatSignalEventTime(new Date());
+    expect(tg.calls[0].text).toContain(expectedTime);
+    expect(tg.calls[0].text).not.toContain(nowTime);
+  }, 120_000);
+
+  it('гонка параллельных sweep внутри инстанса: in-process guard — одна доставка', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    await seedTelegramUsers(1);
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'FILL', occurredAt: new Date(SETUP_TS + 2 * H) });
+
+    const tg = fakeTelegram();
+    const { worker } = makeRedeliveryWorker(tg.fetchFn);
+    const [a, b] = await Promise.all([worker.sweep(), worker.sweep()]);
+
+    expect(a).toBe(b); // guard вернул тот же promise
+    expect(tg.calls).toHaveLength(1);
+    expect(a.attempted).toBe(1);
+  }, 120_000);
+
+  it('permanent-ошибка подавлена: CHAT_NOT_FOUND не ретраится каждую минуту', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const [] = await seedTelegramUsers(1);
+    await eventsMod.recordSignalLifecycleEvent(signal.id, { eventType: 'FILL', occurredAt: new Date(SETUP_TS + 2 * H) });
+
+    // Telegram отвечает 400 chat not found — permanent.
+    const tg = fakeTelegram();
+    const failingFetch = async (_url: string, _init?: RequestInit) => {
+      void tg;
+      return Response.json({ ok: false, error_code: 400, description: 'Bad Request: chat not found' }, { status: 400 });
+    };
+    const harness = makeRedeliveryWorker(failingFetch);
+    const first = await harness.worker.sweep();
+    expect(first).toMatchObject({ attempted: 1, failed: 1 });
+
+    // Даже без backoff-окна (время ушло на час) — PERMANENT_SUPPRESSED.
+    harness.advance(60 * 60_000);
+    const second = await harness.worker.sweep();
+    expect(second).toMatchObject({ attempted: 0, suppressedPermanent: 1 });
   }, 120_000);
 });

@@ -108,6 +108,22 @@ async function start() {
     console.warn('[CRYPTORA] Signal monitor NOT started: database unreachable.');
   }
 
+  // ── Durable redelivery Telegram lifecycle-уведомлений ──────────────
+  // Отдельный worker (НЕ часть SignalMonitor): находит пары
+  // (lifecycle-событие × telegram-пользователь) без успешной доставки и
+  // досылает их по журналу signal_lifecycle_events / notification_delivery_log.
+  // Гарантия — durable at-least-once attempt с per-user SUCCESS suppression.
+  if (dbOk) {
+    try {
+      getNotificationRedeliveryWorker().start();
+      console.log('[CRYPTORA] Notification redelivery worker started (durable Telegram delivery).');
+    } catch (err) {
+      console.error('[CRYPTORA] Notification redelivery worker failed to start:', err.message);
+    }
+  } else {
+    console.warn('[CRYPTORA] Notification redelivery worker NOT started: database unreachable.');
+  }
+
   httpServer = app.listen(config.PORT, config.HOST, () => {
     console.log('=======================================================');
     console.log('  CRYPTORA Backend Server');
@@ -156,6 +172,15 @@ const shutdown = async (signal) => {
     console.log('[CRYPTORA] Signal monitor stopped.');
   } catch (err) {
     console.error('[CRYPTORA] Error stopping signal monitor:', err.message);
+  }
+  try {
+    // Redelivery worker останавливается ДО закрытия пула: sweep читает
+    // журналы и пишет delivery_log. Текущий sweep bounded; недоставленное
+    // подберёт следующий запуск — durable state в PostgreSQL.
+    await getNotificationRedeliveryWorker().stop();
+    console.log('[CRYPTORA] Notification redelivery worker stopped.');
+  } catch (err) {
+    console.error('[CRYPTORA] Error stopping notification redelivery worker:', err.message);
   }
   try {
     if (httpServer) {

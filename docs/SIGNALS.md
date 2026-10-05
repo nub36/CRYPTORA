@@ -763,6 +763,28 @@ PK `(signal_id, event_type)`: `INSERT … ON CONFLICT DO NOTHING` — уведо
 тик монитора или скан. `occurred_at` события — время факта из строки (`filled_at`/`closed_at`/
 `created_at`), не «сейчас».
 
+**Надёжность доставки — durable at-least-once attempt с per-user SUCCESS suppression.**
+Факт события и его доставка разделены осознанно: PK журнала гарантирует, что факт не задублируется,
+но НЕ гарантирует доехал ли Telegram. Поэтому (PR #56, 2026-10-05):
+(1) **immediate retry** — `deliverSavedTelegram` делает до 1+2 дополнительных попыток для
+transient-кодов (`TIMEOUT`/`NETWORK_ERROR`/`TELEGRAM_UNAVAILABLE`/`RATE_LIMITED`) с bounded backoff
+1–5 c; 429 — с уважением `parameters.retry_after` (длиннее 30 c — in-flight не спит, событие уходит
+worker-у); permanent-коды (`INVALID_TOKEN`/`CHAT_NOT_FOUND`/`BOT_CANNOT_MESSAGE`/`SECRET_UNAVAILABLE`/
+`NOT_CONFIGURED`/`TELEGRAM_REJECTED`) не ретраятся — повтор дал бы тот же результат;
+(2) **durable redelivery worker** (`server/services/notificationRedelivery.js`, стартует вместе с
+`cryptora.service`) — периодически находит пары (lifecycle-событие × telegram-пользователь) без строки
+`SUCCESS` в `notification_delivery_log` и досылает напрямую конкретному пользователю (факт НЕ
+переэмитится); политика: TTL 24 ч, ≤ 5 попыток на пару, экспоненциальный backoff 60 c → 15 мин,
+permanent-подавление 6 ч (после — одна проверка: токен могли починить), причинный ordering — событие
+не доставляется, если пользователю уже успешно доставлено более позднее событие того же сигнала
+(устаревший TP1/BE не приходит после терминала); внутри sweep — порядок рангов NEW_SIGNAL → FILL →
+TP1 → BREAKEVEN → терминал. Текст — тот же `formatSignalTelegramText`, время факта — `occurred_at`
+события, а не время retry. Fan-out изолирован: A=SUCCESS, B=FAILURE ⇒ повторится только B.
+**Честная граница:** Telegram sendMessage не поддерживает idempotency key — если провайдер фактически
+принял сообщение, но HTTP-ответ потерян, повтор потенциально даёт редкий дубль (at-least-once,
+НЕ exactly-once). Индекс миграции 019 `idx_notification_delivery_event (event_id, event_type,
+user_id, result, created_at)` обслуживает sweep-запрос; журнал доставки остаётся append-only.
+
 **Формат и время.** `formatSignalTelegramText` (тот же форматтер, расширен) собирает человекочитаемые
 сообщения: пара, стратегия, уровни (эффективные после исполнения — `fill_stop`/`fill_targets`),
 цены, R, время и обязательный дисклеймер «Информационное уведомление. Не является рекомендацией.».
@@ -786,7 +808,11 @@ BE/SL/TRAIL/TIMEOUT-исходы, отмена до входа по `LADDER_INVA
 тиком; блок §6 — TP1/BREAKEVEN открытой позиции сразу, «затем TP2 — только TP2», «TP2 на баре TP1 —
 без ложного BE», «терминал восстанавливает TP1+BE одним тиком», V2.8 «MFE ниже порога — тишина» и
 «терминальный BE не повторяется»; forward-compatibility — предзаписанные события не повторяются при
-терминальной классификации). Паритет рефакторинга степперов — `tests/unit/frozenCoreRefactorParity.test.ts`
+терминальной классификации). Доставка — `tests/unit/notificationRedelivery.test.ts` (immediate retry,
+429 retry_after, permanent no-retry, политика TTL/max-attempts/backoff/ordering, guard, graceful stop)
+и блок «Redelivery worker» в integration-файле (crash-recovery после INSERT, SUCCESS → нет повтора,
+fan-out A/B, рестарт worker, терминал подавляет устаревшие TP1/BE, NEW_SIGNAL recovery, гонка
+параллельных sweep, время факта из occurred_at, permanent-подавление). Паритет рефакторинга степперов — `tests/unit/frozenCoreRefactorParity.test.ts`
 (дословные reference-копии ДО-рефакторинга: 1851 проверка manageTrade V3.0/V3.3 + simulateTrailing V2.5
 по exit/grossR/barsHeld/hitTp1/hitTp2/feeR и консистентность прогресса терминалу).
 

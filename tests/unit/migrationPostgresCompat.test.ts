@@ -149,6 +149,7 @@ describe('migration inventory', () => {
       'idx_evt_token_hash',
       'idx_evt_user_id',
       'idx_evt_user_kind_created',
+      'idx_notification_delivery_event',
       'idx_notification_delivery_user_created',
       'idx_radar_events_created_at_asc',
       'idx_radar_events_event_timestamp_desc',

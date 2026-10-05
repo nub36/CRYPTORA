@@ -6,6 +6,79 @@ const TOKEN_RE = /^\d{6,12}:[A-Za-z0-9_-]{30,}$/;
 const CHAT_ID_RE = /^-?[1-9]\d*$/;
 const TELEGRAM_TIMEOUT_MS = 10_000;
 
+/*
+ * ── IMMEDIATE RETRY (2026-10-05, PR #56: надёжная доставка lifecycle-событий) ──
+ *
+ * Гарантия доставки — durable at-least-once attempt с per-user SUCCESS
+ * suppression (см. notificationRedelivery.js): сбой доставки НЕ теряет
+ * событие навсегда. Здесь — первая линия: ограниченный in-flight retry для
+ * TRANSIENT-ошибок прямо в вызове доставки; долговременный redelivery
+ * делает отдельный worker по журналу delivery_log.
+ *
+ * Политика именована и экспортирована: тесты и worker читают те же константы.
+ * Более длинные паузы (retry_after > CAP) in-flight НЕ ждут — их забирает
+ * worker с экспоненциальным backoff, чтобы не подвешивать процесс.
+ */
+
+/** Дополнительные попытки после первой (итого ≤ 1 + N вызовов sendMessage). */
+export const TELEGRAM_IMMEDIATE_RETRIES = 2;
+/** База backoff между in-flight попытками. */
+export const TELEGRAM_RETRY_BASE_DELAY_MS = 1_000;
+/** Потолок in-flight backoff. */
+export const TELEGRAM_RETRY_MAX_DELAY_MS = 5_000;
+/**
+ * Потолок in-flight ожидания для 429 retry_after: Telegram просит больше —
+ * отдаём событие worker-у (durable backoff), а не спим в горячем пути.
+ */
+export const TELEGRAM_RETRY_AFTER_CAP_MS = 30_000;
+
+/** Коды, для которых повтор имеет смысл (сеть/провайдер временно недоступен). */
+export const TRANSIENT_TELEGRAM_ERROR_CODES = Object.freeze([
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'TELEGRAM_UNAVAILABLE',
+  'RATE_LIMITED',
+]);
+
+/**
+ * Коды, при которых повтор бессмыслен до изменения конфигурации пользователем
+ * (токен/чат/секрет) или самого сообщения: повтор дал бы тот же результат.
+ */
+export const PERMANENT_TELEGRAM_ERROR_CODES = Object.freeze([
+  'INVALID_TOKEN',
+  'CHAT_NOT_FOUND',
+  'BOT_CANNOT_MESSAGE',
+  'SECRET_UNAVAILABLE',
+  'NOT_CONFIGURED',
+  'TELEGRAM_REJECTED',
+]);
+
+export function isTransientTelegramErrorCode(code) {
+  return TRANSIENT_TELEGRAM_ERROR_CODES.includes(String(code ?? ''));
+}
+
+export function isPermanentTelegramErrorCode(code) {
+  return PERMANENT_TELEGRAM_ERROR_CODES.includes(String(code ?? ''));
+}
+
+/**
+ * Задержка перед следующей in-flight попыткой (ms) или null — «не ждать»:
+ * retry_after Telegram длиннее CAP — событие уходит в durable redelivery.
+ * Экспортировано для юнит-тестов политики.
+ */
+export function immediateTelegramRetryDelayMs(result, attempt) {
+  let delay = Math.min(
+    TELEGRAM_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+    TELEGRAM_RETRY_MAX_DELAY_MS,
+  );
+  const retryAfterMs = Number(result?.retryAfterMs);
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+    if (retryAfterMs > TELEGRAM_RETRY_AFTER_CAP_MS) return null;
+    delay = Math.max(delay, retryAfterMs);
+  }
+  return delay;
+}
+
 export function isValidTelegramToken(value) {
   return TOKEN_RE.test(String(value ?? '').trim());
 }
@@ -132,13 +205,45 @@ export async function sendTelegram(token, chatId, text, fetchFn = fetch, timeout
     let body = null;
     try { body = await response.json(); } catch { /* invalid provider body */ }
     if (!response.ok || body?.ok !== true) {
-      return { ok: false, status: response.status, providerErrorCode: Number(body?.error_code) || null, code: mapTelegramFailure(response.status, body) };
+      // 429: Telegram отдаёт parameters.retry_after (секунды) — его читает
+      // retry-политика (immediateTelegramRetryDelayMs), in-flight sleep
+      // ограничен CAP, долгие паузы уходят в durable redelivery worker.
+      const retryAfterSec = Number(body?.parameters?.retry_after);
+      return {
+        ok: false,
+        status: response.status,
+        providerErrorCode: Number(body?.error_code) || null,
+        code: mapTelegramFailure(response.status, body),
+        retryAfterMs: Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec * 1000 : null,
+      };
     }
-    return { ok: true, status: response.status, providerErrorCode: null, code: null };
+    return { ok: true, status: response.status, providerErrorCode: null, code: null, retryAfterMs: null };
   } catch (error) {
-    return { ok: false, status: null, providerErrorCode: null, code: error?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR' };
+    return { ok: false, status: null, providerErrorCode: null, code: error?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR', retryAfterMs: null };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * sendMessage с ограниченным in-flight retry: ТОЛЬКО transient-коды,
+ * ≤ TELEGRAM_IMMEDIATE_RETRIES дополнительных попыток, bounded backoff,
+ * 429 — с уважением retry_after (в пределах CAP). Permanent-коды и «просит
+ * слишком долго» возвращаются сразу — их дорешает durable worker.
+ * Каждый вызов = самостоятельная попытка sendMessage со своим таймаутом.
+ */
+async function sendTelegramWithRetry(token, chatId, text, fetchFn, sleepFn) {
+  let attempt = 0;
+  let result = null;
+  for (;;) {
+    result = await sendTelegram(token, chatId, text, fetchFn);
+    attempt += 1;
+    if (result.ok) return result;
+    if (!isTransientTelegramErrorCode(result.code)) return result;
+    if (attempt > TELEGRAM_IMMEDIATE_RETRIES) return result;
+    const delay = immediateTelegramRetryDelayMs(result, attempt);
+    if (delay === null) return result;
+    await sleepFn(delay);
   }
 }
 
@@ -152,21 +257,28 @@ async function recordDelivery({ userId, eventType, eventId, result }) {
   console.info('[notification-delivery]', JSON.stringify({ channel: 'telegram', eventType, eventId: eventId ?? null, timestamp: new Date().toISOString(), result: result.ok ? 'success' : 'failure', providerStatus: result.status, providerErrorCode: result.providerErrorCode, errorCode: result.code }));
 }
 
-export async function deliverSavedTelegram(userId, { eventType, eventId = null, text }, fetchFn = fetch) {
+export async function deliverSavedTelegram(
+  userId,
+  { eventType, eventId = null, text },
+  fetchFn = fetch,
+  sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+) {
   const { rows } = await query('SELECT * FROM notification_channels WHERE user_id = $1', [userId]);
   const channel = rows[0];
   if (!channel?.telegram_enabled) {
-    const result = { ok: false, code: 'NOT_CONFIGURED', status: null, providerErrorCode: null };
+    const result = { ok: false, code: 'NOT_CONFIGURED', status: null, providerErrorCode: null, retryAfterMs: null };
     await recordDelivery({ userId, eventType, eventId, result }).catch(() => {});
     return result;
   }
   let result;
   try {
     const token = decryptTelegramToken(channel.telegram_token_ciphertext);
-    result = await sendTelegram(token, channel.telegram_chat_id, text, fetchFn);
+    result = await sendTelegramWithRetry(token, channel.telegram_chat_id, text, fetchFn, sleepFn);
   } catch {
-    result = { ok: false, code: 'SECRET_UNAVAILABLE', status: null, providerErrorCode: null };
+    result = { ok: false, code: 'SECRET_UNAVAILABLE', status: null, providerErrorCode: null, retryAfterMs: null };
   }
+  // Одна строка журнала на вызов доставки (итог попытки после in-flight retry):
+  // счётчик попыток redelivery-политики = число вызовов, а не число HTTP-пингов.
   await recordDelivery({ userId, eventType, eventId, result }).catch((error) => {
     console.error('[notification-delivery-log]', JSON.stringify({ channel: 'telegram', eventType, result: 'failure', errorCode: 'LOG_WRITE_FAILED', message: error?.message }));
   });

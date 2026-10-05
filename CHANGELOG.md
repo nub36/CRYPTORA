@@ -4,6 +4,59 @@
 
 ---
 
+## [Unreleased] — 2026-10-05 — Надёжная повторная доставка Telegram lifecycle-уведомлений (unmerged)
+
+Реализация решения B аудита доставки (перед merge PR #56): факт события и его доставка в Telegram
+разделены; сбой доставки больше не теряет уведомление навсегда. Гарантия — **durable at-least-once
+attempt с per-user SUCCESS suppression** (честно БЕЗ exactly-once: у Telegram sendMessage нет
+idempotency key, неоднозначный сетевой сбой может дать редкий дубль). Торговый lifecycle / frozen
+API / стратегии не тронуты.
+
+### Added
+- **Immediate retry в `deliverSavedTelegram`** (`server/services/notificationChannels.js`): до
+  1 + `TELEGRAM_IMMEDIATE_RETRIES` (=2) попыток только для transient-кодов (`TIMEOUT`,
+  `NETWORK_ERROR`, `TELEGRAM_UNAVAILABLE`, `RATE_LIMITED`), backoff 1–5 c; 429 — парсинг
+  `parameters.retry_after` (длиннее CAP 30 c — in-flight не спит, событие уходит worker-у);
+  permanent-коды не ретраятся. Одна строка `notification_delivery_log` на вызов (итог попытки).
+- **Durable redelivery worker** (`server/services/notificationRedelivery.js` + `.d.ts`): фоновый
+  сервис (НЕ часть SignalMonitor), стартует/останавливается в `server/index.js` рядом с остальными
+  background services (до закрытия DB-пула при SIGTERM). Находит пары (lifecycle-событие ×
+  telegram-пользователь) без строки `SUCCESS` в `notification_delivery_log` в окне TTL и доставляет
+  напрямую конкретному пользователю — факт НЕ переэмитится (PK `signal_lifecycle_events` остаётся
+  единственным дедупликатором факта). Источники: событие — `signal_lifecycle_events` (включая
+  NEW_SIGNAL — crash-recovery покрывает и публикацию), per-user успех — `notification_delivery_log`.
+- **Retry-политика именованными константами**: TTL 24 ч; `REDELIVERY_MAX_ATTEMPTS` 5; backoff
+  60 c → 15 мин (экспоненциальный); permanent-подавление 6 ч (после окна — одна проверка: токен
+  могли починить); batch-лимит 200 пар/sweep; in-process guard от параллельных sweep + singleton
+  (single-process инвариант деплоя).
+- **Ordering-политика**: причинный ранг NEW_SIGNAL(0) → FILL(1) → TP1(2) → BREAKEVEN(3) →
+  терминалы(4); событие не доставляется, если пользователю уже успешно доставлено более позднее
+  событие того же сигнала; внутри sweep — порядок рангов. Формат — тот же
+  `formatSignalTelegramText` (второго форматтера нет), время факта — `occurred_at` события, не
+  время retry.
+- **Телеметрия**: цикл `notificationRedelivery` в существующей health-инфраструктуре (та же
+  `CycleTelemetry`, что у монитора) + `notificationRedeliveryStatus()` (running / last sweep /
+  pending / delivered / failed / suppressed). Без токенов/chat IDs в логах.
+- **Миграция 019** (аддитивная): `idx_notification_delivery_event (event_id, event_type, user_id,
+  result, created_at)` — индекс журнала доставки под sweep-запрос; append-only, без destructive
+  изменений. Обновлён инвентарь `migrationPostgresCompat.test.ts`.
+
+### Tests
+- `tests/unit/notificationRedelivery.test.ts` (32): immediate retry (transient→success, 429
+  retry_after 3 c / 40 c → нет повтора, permanent → 1 вызов, лимит попыток, одна строка лога,
+  без токена в журнале); политика (ранги, backoff экспоненциальный, MAX_ATTEMPTS,
+  permanent-suppression 6 ч, STALE_ORDER во всех парах, чужие signal/user не мешают); payload
+  времени факта; worker sweep (порядок рангов, счётчики пропусков, missing signal, упавшая
+  доставка, in-process guard, graceful stop, stats, singleton).
+- Integration (`signalLifecycleEventsPostgres.test.ts`, +7 на настоящем PostgreSQL с настоящим
+  `deliverSavedTelegram` и зашифрованными токенами): crash-recovery (событие записано, доставки
+  нет → доставлено, SUCCESS → больше не тревожится); fan-out A=SUCCESS/B=FAILURE → повтор только B
+  (A — ровно одно сообщение, включая after-restаrt sweep); рестарт worker → recovery; терминал TP2
+  доставлен → устаревшие TP1/BREAKEVEN подавлены; NEW_SIGNAL crash-recovery; время факта из
+  `occurred_at`; гонка параллельных sweep (guard); permanent-подавление CHAT_NOT_FOUND.
+
+---
+
 ## [Unreleased] — 2026-10-05 — Оперативные события TP1/BREAKEVEN открытой позиции (§6, unmerged)
 
 Реализация варианта §6 исследования `docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md` (решение
