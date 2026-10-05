@@ -4,6 +4,32 @@
 
 ---
 
+## [Unreleased] — 2026-10-05 — HOTFIX: missing import в production-entry (redelivery worker не стартовал)
+
+Производственный инцидент на 5726732: `server/index.js` вызывал
+`getNotificationRedeliveryWorker()` в start/stop-путях, НЕ импортируя эту функцию → ReferenceError
+в рантайме, поглощённый try/catch («[CRYPTORA] Notification redelivery worker failed to start:
+getNotificationRedeliveryWorker is not defined»). Сервер работал, но durable redelivery был мёртв.
+Класс ошибки не ловился ни typecheck (index.js — JavaScript без checkJs), ни vitest (index.js не
+импортируется тестами).
+
+### Fixed
+- `server/index.js`: добавлен единственный недостающий import
+  `getNotificationRedeliveryWorker` из `./services/notificationRedelivery.js` — минимальный фикс;
+  миграции/воркер/каналы не менялись (код воркера был корректен, отсутствовала только wiring-строка
+  entry-точки).
+
+### Added
+- `tests/unit/serverEntryStartupContract.test.ts` — production-entry контракт, статически
+  закрывающий КЛАСС ошибки: (1) каждый идентификатор в теле index.js, совпадающий с экспортом
+  любого локального модуля server/**, обязан быть импортирован/объявлен (анти-ReferenceError);
+  (2) каждое имя из import index.js реально экспортируется модулем (анти-undefined); (3)
+  REGRESSION-пин redelivery-wiring (import + start() + stop()); (4) singleton-фабрика (путь
+  index.js) — один экземпляр, reset, валидный статус. Негативно провалидирован: без фикса падают
+  тесты 1 и 3, с фиксом — 4/4.
+
+---
+
 ## [Unreleased] — 2026-10-05 — Надёжная повторная доставка Telegram lifecycle-уведомлений (unmerged)
 
 Реализация решения B аудита доставки (перед merge PR #56): факт события и его доставка в Telegram

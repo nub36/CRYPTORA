@@ -16,6 +16,7 @@ import { getSignalMonitor } from './services/signalMonitor/signalMonitor.js';
 import { getRadarMonitor } from './services/radar/radarMonitor.js';
 import { registerSignalNotificationListener } from './services/notificationEvents.js';
 import { dispatchSignalEvent } from './services/notificationChannels.js';
+import { getNotificationRedeliveryWorker } from './services/notificationRedelivery.js';
 import { buildHealthReport } from './services/health/healthService.js';
 import { getHealthAlerter } from './services/health/healthAlerts.js';
 import { registerHealthAlertHook, createThrottledHealthAlertHook } from './services/health/healthAlertHook.js';
