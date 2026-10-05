@@ -25,7 +25,7 @@
  * `strategy_id`, плюс потеря сетапов двух других стратегий.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 
 /* -------------------------------------------------------------------------- */
 /* Состояние подставного ядра                                                  */
@@ -270,6 +270,20 @@ const expectedLevelsFor = (id: string) => {
     targets: shape.targets,
   };
 };
+
+/**
+ * Сетапы в этом файле привязаны к фиксированному бару SETUP_BAR, а движок
+ * отклоняет публикацию по просроченной свече. Пиним часы к этому бару,
+ * чтобы тест проверял изоляцию авторства, а не возраст фикстуры.
+ */
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(SETUP_BAR + 60 * 60 * 1000));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   h.inserts.length = 0;

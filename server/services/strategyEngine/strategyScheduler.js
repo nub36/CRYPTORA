@@ -14,6 +14,7 @@
  *     сканов.
  */
 
+import { getHealthTelemetry, CYCLE_STRATEGY_SCHEDULER } from '../health/telemetry.js';
 import { getEnabledStrategies, recordScanResult } from '../strategySettings.js';
 import { scanStrategySafely } from './strategyEngine.js';
 import { getMarketDataFetcher } from './marketDataFetcher.js';
@@ -51,8 +52,14 @@ export class StrategyScheduler {
    * @param {Function} [opts.scan] — инъекция для тестов
    * @param {Function} [opts.now]
    */
-  constructor({ tickMs = TICK_MS, getEnabled, scan, now, resolveSymbols } = {}) {
+  constructor({ tickMs = TICK_MS, getEnabled, scan, now, resolveSymbols, telemetry } = {}) {
     this.tickMs = tickMs;
+    /**
+     * Телеметрия цикла для `/api/health`. Это НЕ отдельный таймер: события
+     * публикует тот же `tick()`, который уже работает. Инъекция нужна тестам,
+     * чтобы не трогать реестр процесса.
+     */
+    this.telemetry = telemetry ?? getHealthTelemetry().cycle(CYCLE_STRATEGY_SCHEDULER);
     this.getEnabledFn = getEnabled ?? (() => getEnabledStrategies());
     this.scanFn = scan ?? ((p) => scanStrategySafely(p));
     this.nowFn = now ?? (() => Date.now());
@@ -91,6 +98,7 @@ export class StrategyScheduler {
   start() {
     if (this.running) return;
     this.running = true;
+    this.telemetry.markStarted();
     // Первый цикл сразу: после рестарта не ждём полного тика.
     this.timer = setInterval(() => {
       // Проверка флага здесь, а не внутри tick(): tick() — единица работы и
@@ -129,6 +137,7 @@ export class StrategyScheduler {
    */
   async tick() {
     this.cycles++;
+    this.telemetry.beginCycle();
     const now = this.nowFn();
 
     // Перечитываем состояние из БД КАЖДЫЙ цикл — переключение действует сразу.
@@ -139,6 +148,9 @@ export class StrategyScheduler {
       enabled = await this.getEnabledFn();
     } catch (e) {
       this.recordError(e);
+      // Цикл отработал, но не смог прочитать состояние: НЕ успех. Иначе при
+      // недоступной БД health бесконечно показывал бы «ok».
+      this.telemetry.completeCycle({ ok: false, errors: 1, error: e });
       return { considered: 0, launched: [], skippedDisabled: 0, skippedNotDue: [] };
     }
 
@@ -200,6 +212,13 @@ export class StrategyScheduler {
         this.inFlight.delete(strategyId);
       });
     }
+
+    this.telemetry.completeCycle({
+      ok: true,
+      inspected: enabled.length,
+      updated: launched.length,
+      errors: 0,
+    });
 
     return {
       considered: enabled.length,

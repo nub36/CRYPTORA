@@ -36,7 +36,16 @@
  * `tests/unit/serverMarketData.test.ts`, а не «на глаз».
  */
 
+import { getHealthTelemetry } from '../health/telemetry.js';
+
 const BINANCE_BASE = 'https://api.binance.com/api/v3/klines';
+
+/** Секунд в баре — для контракта свежести (возраст источника vs длительность бара). */
+export const INTERVAL_SECONDS = Object.freeze({
+  '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
+  '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '8h': 28800, '12h': 43200,
+  '1d': 86400, '3d': 259200, '1w': 604800,
+});
 
 /** Таймаут одного запроса. */
 export const REQUEST_TIMEOUT_MS = 10_000;
@@ -248,9 +257,16 @@ export class MarketDataFetcher {
    * @param {typeof fetch} [opts.fetchFn] — инъекция для тестов
    * @param {number} [opts.nowMs] — инъекция времени для тестов
    */
-  constructor({ fetchFn, nowMs } = {}) {
+  constructor({ fetchFn, nowMs, telemetry } = {}) {
     this.fetchFn = fetchFn ?? ((...a) => globalThis.fetch(...a));
     this.nowFn = nowMs ?? (() => Date.now());
+    /**
+     * Реестр свежести для `/api/health`. Запись делается на границе
+     * транспорта — единственном месте, где известны ОБА времени:
+     * closeTime последней закрытой свечи (источник) и момент получения.
+     * Ошибка телеметрии не влияет на загрузку свечей (см. recordFreshness).
+     */
+    this.telemetry = telemetry ?? null;
     /** @type {Map<string, {at: number, candles: Array, nextBoundaryMs: number|null}>} */
     this.cache = new Map();
     /** @type {Map<string, Promise<Array>>} */
@@ -264,6 +280,32 @@ export class MarketDataFetcher {
    */
   key(symbol, timeframe, limit) {
     return `${symbol}|${timeframe}|${limit ?? ''}`;
+  }
+
+  /**
+   * Публикация свежести. Никогда не бросает: мониторинг не имеет права
+   * сломать горячий путь загрузки рыночных данных.
+   */
+  recordFreshness(interval, candles, acquiredAtMs) {
+    try {
+      const registry = this.telemetry ?? getHealthTelemetry();
+      const last = Array.isArray(candles) && candles.length > 0 ? candles[candles.length - 1] : null;
+      registry.recordMarketData('binance-spot-candles', {
+        sourceTimestampMs: Number(last?.closeTime) || null,
+        receivedAtMs: acquiredAtMs,
+        intervalSeconds: INTERVAL_SECONDS[interval] ?? 0,
+      });
+    } catch {
+      // Телеметрия — наблюдение, а не зависимость.
+    }
+  }
+
+  recordFreshnessFailure(error) {
+    try {
+      (this.telemetry ?? getHealthTelemetry()).recordMarketDataFailure('binance-spot-candles', error);
+    } catch {
+      // см. выше
+    }
   }
 
   /** Счётчик реальных HTTP-запросов — для теста «нет веера дублей». */
@@ -330,10 +372,12 @@ export class MarketDataFetcher {
         const snap = dropFormingCandles(raw, acquiredAt);
         this.cache.set(key, { at: acquiredAt, candles: snap.candles, nextBoundaryMs: snap.nextBoundaryMs });
         this.inFlight.delete(key);
+        this.recordFreshness(interval, snap.candles, acquiredAt);
         return snap.candles;
       })
       .catch((e) => {
         this.inFlight.delete(key);
+        this.recordFreshnessFailure(e);
         throw e;
       });
 

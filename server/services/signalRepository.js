@@ -52,6 +52,7 @@
 import crypto from 'node:crypto';
 import { query, getClient } from '../db/pool.js';
 import { PROVENANCE_VERIFIED, PROVENANCE_UNKNOWN } from './signalProvenance.js';
+import { validateNewSignal, validateLifecycleTimestamps, HARD_INVARIANTS } from './signalInvariants.js';
 
 /** Фиксированный ключ advisory lock для сериализации дописи в цепочку. */
 export const SIGNAL_CHAIN_LOCK_KEY = 730117;
@@ -344,10 +345,50 @@ const INSERT_COLUMNS = [
 /**
  * Добавляет сигнал, если его ещё нет.
  *
- * @returns {Promise<{inserted: boolean, signal: object|null}>}
- *   inserted=false — сигнал на этот бар уже был (дедупликация сработала).
+ * ГРАНИЦА ИНВАРИАНТОВ (production-hardening). Перед записью строка проходит
+ * `validateNewSignal` по ЖЁСТКИМ инвариантам (`HARD_INVARIANTS`): свеча из
+ * будущего и сигнал с demo-провайдера не могут быть легитимны ни на одном
+ * пути записи. Проверка живёт на границе персистентности, а не в вызывающем
+ * коде: сюда приходят все пути записи, и ни один не должен её обойти.
+ *
+ * Контекстные инварианты (просроченная свеча, полнота provenance) проверяет
+ * граница СКАНА (`runStrategyScan`): «свежесть» имеет смысл только для живой
+ * публикации, а восстановление архива законно работает со старыми барами.
+ *
+ * Математика стратегий не затрагивается: ни один уровень, ни одно R, ни одно
+ * правило входа/выхода здесь не вычисляется и не корректируется.
+ *
+ * @param {object} signal
+ * @param {{nowMs?:number, providerIsDemo?:boolean, skipInvariants?:boolean}} [opts]
+ *   `skipInvariants` существует ТОЛЬКО для миграционных/восстановительных
+ *   сценариев и не используется ни одним production-путём.
+ * @returns {Promise<{inserted: boolean, signal: object|null, rejected?: string, violations?: Array}>}
+ *   inserted=false — сигнал на этот бар уже был (дедупликация сработала)
+ *   ЛИБО строка отвергнута инвариантом (`rejected: 'INVARIANT_VIOLATION'`).
  */
-export async function insertSignal(signal) {
+export async function insertSignal(signal, opts = {}) {
+  if (opts.skipInvariants !== true) {
+    const verdict = validateNewSignal(signal, {
+      nowMs: opts.nowMs,
+      providerIsDemo: opts.providerIsDemo,
+      // Только жёсткие инварианты: свеча из будущего и demo-провайдер.
+      // Контекстные (просроченный бар, полнота provenance) проверяет скан —
+      // см. комментарий к HARD_INVARIANTS.
+      only: HARD_INVARIANTS,
+    });
+    if (!verdict.ok) {
+      // Одна строка на отказ: это событие целостности, а не шум.
+      // eslint-disable-next-line no-console
+      console.warn('[signalRepository]', JSON.stringify({
+        event: 'signal_rejected_by_invariant',
+        strategyId: signal?.strategyId ?? null,
+        symbol: signal?.symbol ?? null,
+        timeframe: signal?.timeframe ?? null,
+        violations: verdict.violations.map((v) => v.code),
+      }));
+      return { inserted: false, signal: null, rejected: 'INVARIANT_VIOLATION', violations: verdict.violations };
+    }
+  }
   const levels = resolveLevels(signal);
   const client = await getClient();
   try {
@@ -742,6 +783,24 @@ async function writeLifecycle(id, patch) {
       pnl_result_pct: patch.pnlResultPct !== undefined ? patch.pnlResultPct : row.pnl_result_pct,
       bars_held: patch.barsHeld !== undefined ? patch.barsHeld : row.bars_held,
     };
+    /**
+     * ВРЕМЕННЫ́Е ИНВАРИАНТЫ. Выход не может быть раньше входа, вход — раньше
+     * бара сетапа. Такая строка невосстановима: её R и длительность
+     * бессмысленны. Отказ лучше записи: исходные данные остаются целыми,
+     * а факт отказа виден в логе и в read-only аудите.
+     */
+    const timestamps = validateLifecycleTimestamps(next);
+    if (!timestamps.ok) {
+      await client.query('ROLLBACK');
+      // eslint-disable-next-line no-console
+      console.warn('[signalRepository]', JSON.stringify({
+        event: 'lifecycle_rejected_by_invariant',
+        signalId: id,
+        violations: timestamps.violations.map((v) => v.code),
+      }));
+      return { changed: false, signal: mapRow(row), reason: 'INVALID_LIFECYCLE_TIMESTAMPS' };
+    }
+
     push('outcome_hash', computeOutcomeHash(outcomePayload(next)));
 
     params.push(id);

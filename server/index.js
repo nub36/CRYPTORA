@@ -16,8 +16,26 @@ import { getSignalMonitor } from './services/signalMonitor/signalMonitor.js';
 import { getRadarMonitor } from './services/radar/radarMonitor.js';
 import { registerSignalNotificationListener } from './services/notificationEvents.js';
 import { dispatchSignalEvent } from './services/notificationChannels.js';
+import { buildHealthReport } from './services/health/healthService.js';
+import { getHealthAlerter } from './services/health/healthAlerts.js';
+import { registerHealthAlertHook, createThrottledHealthAlertHook } from './services/health/healthAlertHook.js';
 
 registerSignalNotificationListener(dispatchSignalEvent);
+
+/**
+ * Health-alert'ы (Telegram) подключаются ТОЛЬКО здесь, в production-входе.
+ *
+ * Таймера ради health не создаётся: хук дёргает уже существующий цикл
+ * монитора сигналов (см. signalMonitor.finishTick → notifyHealthCycle),
+ * а троттлинг ограничивает фактическую проверку одним разом в минуту.
+ * Ошибка доставки поглощается внутри хука и не влияет на наблюдение.
+ */
+registerHealthAlertHook(
+  createThrottledHealthAlertHook({
+    buildReport: () => buildHealthReport(),
+    alerter: getHealthAlerter(),
+  })
+);
 
 const app = createApp();
 

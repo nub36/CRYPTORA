@@ -40,6 +40,8 @@ import {
 } from '../signalRepository.js';
 import { toPublishedSetup, toLifecyclePatch } from './signalTradeManager.js';
 import { emitSignalNotification } from '../notificationEvents.js';
+import { getHealthTelemetry, CYCLE_SIGNAL_MONITOR } from '../health/telemetry.js';
+import { notifyHealthCycle } from '../health/healthAlertHook.js';
 
 /** Шаг основного цикла наблюдения. */
 export const MONITOR_TICK_MS = 30_000;
@@ -244,6 +246,7 @@ export class SignalMonitor {
     loadCore = loadStrategyCore,
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     requestTimeoutMs = MONITOR_REQUEST_TIMEOUT_MS,
+    telemetry,
   } = {}) {
     this.tickMs = tickMs;
     this.nowFn = now;
@@ -255,6 +258,11 @@ export class SignalMonitor {
     this.loadCoreFn = loadCore;
     this.sleepFn = sleep;
     this.requestTimeoutMs = requestTimeoutMs;
+    /**
+     * Телеметрия цикла для `/api/health`. Публикуется ТЕМ ЖЕ тиком, который
+     * уже работает: отдельного health-таймера нет (см. healthAlertHook.js).
+     */
+    this.telemetry = telemetry ?? getHealthTelemetry().cycle(CYCLE_SIGNAL_MONITOR);
 
     this.timer = null;
     this.running = false;
@@ -295,6 +303,7 @@ export class SignalMonitor {
   }  start() {
     if (this.running) return;
     this.running = true;
+    this.telemetry.markStarted();
     this.timer = setInterval(() => {
       if (!this.running) return;
       this.tick().catch((e) => this.recordError(e));
@@ -345,6 +354,7 @@ export class SignalMonitor {
    */
   async tick() {
     const startedMs = this.nowFn();
+    this.telemetry.beginCycle();
     this.lastTickStartedAt = new Date(startedMs).toISOString();
     const summary = {
       openSignals: 0,
@@ -423,6 +433,23 @@ export class SignalMonitor {
     this.lastTickDurationMs = summary.durationMs;
     this.lastSummary = { ...summary };
     this.cycles += 1;
+
+    /**
+     * Успех цикла = он дошёл до конца и не накопил подряд идущих отказов
+     * рыночных данных. Тик без открытых сигналов — успех: монитору нечего
+     * было делать, и это не авария.
+     */
+    this.telemetry.completeCycle({
+      ok: this.consecutiveFailures === 0,
+      inspected: summary.openSignals,
+      updated: summary.filled + summary.resolved,
+      errors: summary.errors,
+      error: this.lastError,
+    });
+    // Health-alert'ы висят на СУЩЕСТВУЮЩЕМ цикле. Хук ничего не ждёт и не
+    // бросает: недоступный Telegram не имеет права прервать наблюдение.
+    notifyHealthCycle();
+
     return { ...summary };
   }
 
