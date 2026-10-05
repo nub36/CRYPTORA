@@ -345,6 +345,11 @@ describe('Жизненный цикл: монитор → события → д�
     await flushNotifications();
     const mid = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
     expect(mid.status).toBe('FILLED'); // промежуточный TP1 — не исход
+    // ГРАНИЦА НАБЛЮДАЕМОСТИ (docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md):
+    // касание TP1 закрытой свечой при открытой позиции наружу НЕ наблюдаемо —
+    // frozen `manageTrade` возвращает null, прогресс не отдаётся и не персистится.
+    // Событие TP1/BE из свечной математики вне frozen-правил не выводится.
+    expect(emittedFor(signal.id)).toEqual(['FILL']);
 
     // Тик 3: выход по безубытку (стоп переведён на уровень входа после TP1).
     const withBe = () => window([FILL_BAR, TP1_BAR, BE_BAR]);
@@ -704,6 +709,112 @@ describe('V3.3 и V3.4 (коридор): полный набор событий 
     await flushNotifications();
     expect(emittedFor(v33.signal.id)).toEqual(['FILL', 'TP1', 'TP2']);
     expect(emittedFor(v34.signal.id)).toEqual(['FILL', 'TP1', 'TP2']);
+  }, 120_000);
+});
+
+/* ─────────── Граница наблюдаемости и forward-compatibility (§9.6) ─────────── */
+/*
+ * Исследование docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md:
+ * промежуточные TP1/BREAKEVEN открытой позиции НЕ определяются без frozen API
+ * (прогресс живёт в локальных переменных manageTrade/simulateTrailing и наружу
+ * не возвращается). Эти тесты ФИКСИРУЮТ границу и доказывают, что текущая
+ * архитектура готова к будущим progress events без изменения классификатора.
+ */
+describe('Граница наблюдаемости: прогресс открытой позиции не выдумывается', () => {
+  it('V3.0: позиция открыта, BE внутри цикла уже применён — события BE нет', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    // Вход + бар TP1 + бар СТРОГО ПОСЛЕ него (BE взведён по R3, стоп на entry
+    // 64600), но выше стопа и ниже TP2: внутри manageTrade beArmed = true,
+    // позиция открыта ⇒ trackPublishedSetup вернёт FILLED без прогресса.
+    const postTp1Bar: [number, number, number, number] = [64700, 65200, 64650, 65000];
+    const bars: Array<[number, number, number, number]> = [FILL_BAR, TP1_BAR, postTp1Bar];
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED');
+    // Ни TP1, ни BREAKEVEN: факты не наблюдаемы через существующий API,
+    // а выводить их из свечей вне frozen-правил запрещено (DONT_DO §4).
+    expect(emittedFor(signal.id)).toEqual(['FILL']);
+
+    // Рестарт: по-прежнему тишина (до терминального исхода).
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL']);
+    expect(await recordedEvents(signal.id)).toEqual(['FILL']);
+  }, 120_000);
+
+  it('V2.8: MFE ≥ 1R при открытой позиции (BE внутри трейлера взведён) — события BE нет', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedV28();
+    // Бар входа: high 112 = MFE ровно 1R ⇒ внутри simulateTrailing armed = true,
+    // стоп переведён на entry (102). Но исхода нет — v28TrailOutcome вернёт null.
+    const bars: Array<[number, number, number, number]> = [[102, 112, 95, 108]];
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED');
+    expect(emittedFor(signal.id)).toEqual(['FILL']);
+    expect(await recordedEvents(signal.id)).toEqual(['FILL']);
+  }, 120_000);
+});
+
+describe('Forward-compatibility: терминальная классификация учитывает записанные события', () => {
+  // Модель будущего progress-события: TP1 записан в журнал заранее (так его
+  // записал бы монитор из progress-поля frozen API — предложение §6 документа).
+  async function preRecordTp1(signalId: string) {
+    await q(
+      `INSERT INTO signal_lifecycle_events (signal_id, event_type) VALUES ($1, 'TP1')`,
+      [signalId]
+    );
+  }
+
+  it('предзаписанный TP1 не повторяется при исходе TP1_THEN_BE: уходит только BREAKEVEN', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    await preRecordTp1(signal.id);
+
+    const candles = () => window([FILL_BAR, TP1_BAR, BE_BAR]);
+    const now = SETUP_TS + 6 * H;
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('CLOSED');
+    expect(row.close_reason).toBe('TP1_THEN_BE');
+    // FILL — впервые (вход произошёл в этом же тике), TP1 — погашен PK-дедупом,
+    // BREAKEVEN — единственное новое терминальное событие.
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'BREAKEVEN']);
+    expect(await recordedEvents(signal.id)).toEqual(expect.arrayContaining(['FILL', 'TP1', 'BREAKEVEN']));
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'BREAKEVEN']);
+  }, 120_000);
+
+  it('предзаписанный TP1 не повторяется при исходе TP2: уходит только TP2', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    await preRecordTp1(signal.id);
+
+    const candles = () => window([FILL_BAR, TP1_BAR, TP2_BAR]);
+    const now = SETUP_TS + 6 * H;
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('TARGET_REACHED');
+    expect(row.close_reason).toBe('TP2');
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP2']);
+    expect(await recordedEvents(signal.id)).toEqual(expect.arrayContaining(['FILL', 'TP1', 'TP2']));
   }, 120_000);
 });
 
