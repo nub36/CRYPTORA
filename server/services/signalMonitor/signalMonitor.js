@@ -39,7 +39,7 @@ import {
   MAX_OPEN_SIGNALS_FOR_SYNC,
 } from '../signalRepository.js';
 import { toPublishedSetup, toLifecyclePatch } from './signalTradeManager.js';
-import { emitSignalNotification } from '../notificationEvents.js';
+import { dispatchSignalLifecycleEvents, dispatchSignalProgressEvents } from '../signalLifecycleEvents.js';
 import { getHealthTelemetry, CYCLE_SIGNAL_MONITOR } from '../health/telemetry.js';
 import { notifyHealthCycle } from '../health/healthAlertHook.js';
 
@@ -235,6 +235,11 @@ export class SignalMonitor {
    * @param {Function} [opts.loadCore]
    * @param {Function} [opts.sleep] — инъекция для тестов (backoff)
    * @param {number} [opts.requestTimeoutMs] — таймаут запроса свечей
+   * @param {Function} [opts.dispatchEvents] — отправка событий уведомлений
+   *        (инъекция для тестов; продакшен — signalLifecycleEvents)
+   * @param {Function} [opts.dispatchProgressEvents] — отправка ПРОМЕЖУТОЧНЫХ
+   *        событий ОТКРЫТОЙ позиции TP1/BREAKEVEN из frozen-прогресса
+   *        (инъекция для тестов; продакшен — signalLifecycleEvents, §6)
    */
   constructor({
     tickMs = MONITOR_TICK_MS,
@@ -247,6 +252,8 @@ export class SignalMonitor {
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     requestTimeoutMs = MONITOR_REQUEST_TIMEOUT_MS,
     telemetry,
+    dispatchEvents = dispatchSignalLifecycleEvents,
+    dispatchProgressEvents = dispatchSignalProgressEvents,
   } = {}) {
     this.tickMs = tickMs;
     this.nowFn = now;
@@ -255,6 +262,19 @@ export class SignalMonitor {
     this.getCandlesFn = getCandles ?? (null);
     // Журнал наблюдения: в тестах подменяется, в продакшене пишет в signals.
     this.recordMonitorFn = recordMonitor ?? ((id, patch) => recordSignalMonitorCheck(id, patch));
+    /**
+     * События уведомлений. Диспетчер сам никогда не бросает и сам
+     * дедуплицирует (signal_lifecycle_events, миграция 018), поэтому сбой
+     * доставки не может уронить тик наблюдения.
+     */
+    this.dispatchEventsFn = dispatchEvents;
+    /**
+     * Промежуточные события открытой позиции (TP1/BREAKEVEN). Тот же
+     * контракт «никогда не бросает + персистентный дедуп», что и у
+     * переходов: вызывается на каждом тике открытой FILLED-строки, повторы
+     * гасятся PK signal_lifecycle_events.
+     */
+    this.dispatchProgressEventsFn = dispatchProgressEvents;
     this.loadCoreFn = loadCore;
     this.sleepFn = sleep;
     this.requestTimeoutMs = requestTimeoutMs;
@@ -573,9 +593,28 @@ export class SignalMonitor {
       fill,
       outcome,
     });
-    if (res.changed) emitSignalNotification(res.signal, res.signal?.status === 'FILLED' ? 'FILL' : 'OUTCOME');
+    // Уведомления о переходе (вход / цели / безубыток / стоп / отмена /
+    // закрытие) отправляет ТОЛЬКО победивший писатель (changed=true), а
+    // повторная отправка невозможна из-за персистентного дедупа событий.
+    if (res.changed) await this.dispatchEventsFn(res.signal, res.previous ?? null);
 
     if (result.kind === 'FILLED') {
+      // ПРОМЕЖУТОЧНЫЕ события ОТКРЫТОЙ позиции (§6): TP1 забронирован /
+      // BE взведён — из `result.progress` frozen-ядра. Вызывается НЕ только
+      // при changed: строка могла стать FILLED на прошлом тике, и тогда
+      // syncSignalLifecycle честно ответит NO_TRANSITION в момент, когда
+      // TP1 только что состоялся. Прогресс не выводится из changed ещё и
+      // потому, что previous-снапшот строки прошлый прогресс не знает —
+      // единственная защита от дублей это PK (signal_id, event_type).
+      // Порядок причинный: FILL (переход выше) → TP1 → BREAKEVEN.
+      if (result.progress && (result.progress.tp1Booked || result.progress.beArmed)) {
+        // Строка для уведомления: свежая после перехода, иначе текущая
+        // открытая из listOpenSignals. ALREADY_CLOSED — сигнал уже закрыт
+        // (терминальные события уже отправил победивший писатель): прогресс
+        // открытой позиции не отправляется.
+        const openRow = res.signal ?? (res.reason !== 'ALREADY_CLOSED' ? row : null);
+        if (openRow) await this.dispatchProgressEventsFn(openRow, result.progress);
+      }
       await this.writeMonitor(row, { result: 'FILLED' });
       summary.filled += 1;
       summary.checked += 1;

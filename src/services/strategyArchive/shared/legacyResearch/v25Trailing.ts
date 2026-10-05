@@ -36,72 +36,162 @@ export interface V25Outcome {
 }
 
 export function simulateTrailing(input: V25Input): V25Outcome | null {
+  return runV25(input).outcome;
+}
+
+/**
+ * Прогресс ОТКРЫТОЙ позиции по frozen-трейлингу (2026-10-05, PR #56, §6
+ * docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md). Экспорт внутреннего
+ * состояния `simulateTrailing` тем же степпером — НЕ вторая реализация:
+ *   • beArmed — стоп РЕАЛЬНО переведён на уровень входа (или выше, в трейлинг)
+ *     по правилу `peakMfe >= BREAKEVEN_R`; это само состояние `armed`
+ *     frozen-алгоритма, вычисленное на закрытых барах.
+ * У V2.5/V2.8 нет TP-лестницы в сопровождении, поэтому tp1Booked для них
+ * всегда false (TP1-событие не выдумывается).
+ */
+export interface V25Progress {
+  beArmed: boolean;
+  /** closeTime бара, на котором armed вступил в силу; null = ещё не вооружён. */
+  beArmedAt: number | null;
+}
+
+/** Прогресс ОТКРЫТОЙ позиции теми же правилами (экспорт состояния, не копия логики). */
+export function inspectTrailing(input: V25Input): V25Progress | null {
+  return runV25(input).progress;
+}
+
+/**
+ * ВНУТРЕННИЙ СТЕППЕР ТРЕЙЛИНГА (единая реализация).
+ *
+ * Рефакторинг 2026-10-05: тело цикла `simulateTrailing` извлечено в один
+ * степпер БЕЗ изменения порядка вычислений (проверка стопа — ДО арминга на
+ * каждом баре, прежний intrabar порядок). Терминальный исход и прогресс
+ * считаются одним набором правил. Паритет с прежней реализацией доказан
+ * тестом `tests/unit/frozenCoreRefactorParity.test.ts` (дословная копия
+ * ДО-рефакторинга) и golden-тестами `tests/unit/strategyArchive/v27v28.test.ts`.
+ */
+
+interface V25State {
+  stop: number;
+  stopR: number;
+  peakMfe: number;
+  lastUpdateMfe: number;
+  armed: boolean;
+  armedBar: number;
+  maxFav: number;
+  maxAdv: number;
+}
+
+interface V25Ctx {
+  long: boolean;
+  entryPrice: number;
+  rOf: (p: number) => number;
+  priceAtR: (r: number) => number;
+}
+
+type V25Step =
+  | { kind: 'WAIT' }
+  | { kind: 'EXIT'; reason: 'SL' | 'BE' | 'TRAIL'; exitPrice: number; finalStop: number }
+  | { kind: 'TIMEOUT_EXIT'; exitPrice: number; finalStop: number };
+
+function v25Step(s: V25State, ctx: V25Ctx, c: ArchiveCandle, i: number): V25Step {
+  const favPrice = ctx.long ? c.high : c.low;
+  const advPrice = ctx.long ? c.low : c.high;
+  const favR = ctx.rOf(favPrice);
+  const advR = ctx.rOf(advPrice);
+  if (favR > s.maxFav) s.maxFav = favR;
+  if (advR < s.maxAdv) s.maxAdv = advR;
+
+  const hitStop = ctx.long ? c.low <= s.stop : c.high >= s.stop;
+  if (hitStop) {
+    const reason: V25ExitReason = !s.armed ? 'SL' : (Math.abs(s.stopR) < 1e-9 ? 'BE' : 'TRAIL');
+    return { kind: 'EXIT', reason, exitPrice: s.stop, finalStop: s.stop };
+  }
+
+  if (favR > s.peakMfe) s.peakMfe = favR;
+
+  if (!s.armed && s.peakMfe >= BREAKEVEN_R) {
+    s.armed = true;
+    s.armedBar = i;
+    s.stop = ctx.entryPrice;
+    s.stopR = 0;
+    s.lastUpdateMfe = s.peakMfe;
+    const trailR = s.peakMfe - TRAIL_DISTANCE_R;
+    if (trailR > s.stopR) {
+      s.stopR = trailR;
+      s.stop = ctx.priceAtR(trailR);
+      s.lastUpdateMfe = s.peakMfe;
+    }
+  } else if (s.armed && s.peakMfe - s.lastUpdateMfe >= TRAIL_STEP_R) {
+    const trailR = s.peakMfe - TRAIL_DISTANCE_R;
+    if (trailR > s.stopR) {
+      s.stopR = trailR;
+      s.stop = ctx.priceAtR(trailR);
+    }
+    s.lastUpdateMfe = s.peakMfe;
+  }
+
+  if (!s.armed && i + 1 >= TIMEOUT_BARS) {
+    return { kind: 'TIMEOUT_EXIT', exitPrice: c.close, finalStop: s.stop };
+  }
+  return { kind: 'WAIT' };
+}
+
+function runV25(input: V25Input): { outcome: V25Outcome | null; progress: V25Progress | null } {
   const { direction, entryPrice, stopLoss, bars } = input;
   const risk = Math.abs(entryPrice - stopLoss);
-  if (!(risk > 0) || bars.length === 0) return null;
+  if (!(risk > 0) || bars.length === 0) return { outcome: null, progress: null };
 
   const long = direction === 'LONG';
-  const rOf = (p: number): number => (long ? p - entryPrice : entryPrice - p) / risk;
-  const priceAtR = (r: number): number => (long ? entryPrice + r * risk : entryPrice - r * risk);
-
-  let stop = stopLoss;
-  let stopR = rOf(stopLoss);
-  let peakMfe = 0;
-  let lastUpdateMfe = 0;
-  let armed = false;
-  let maxFav = -Infinity;
-  let maxAdv = Infinity;
+  const ctx: V25Ctx = {
+    long,
+    entryPrice,
+    rOf: (p: number): number => (long ? p - entryPrice : entryPrice - p) / risk,
+    priceAtR: (r: number): number => (long ? entryPrice + r * risk : entryPrice - r * risk),
+  };
+  const s: V25State = {
+    stop: stopLoss,
+    stopR: ctx.rOf(stopLoss),
+    peakMfe: 0,
+    lastUpdateMfe: 0,
+    armed: false,
+    armedBar: -1,
+    maxFav: -Infinity,
+    maxAdv: Infinity,
+  };
 
   for (let i = 0; i < bars.length; i++) {
-    const c = bars[i]!;
-    const favPrice = long ? c.high : c.low;
-    const advPrice = long ? c.low : c.high;
-    const favR = rOf(favPrice);
-    const advR = rOf(advPrice);
-    if (favR > maxFav) maxFav = favR;
-    if (advR < maxAdv) maxAdv = advR;
-
-    const hitStop = long ? c.low <= stop : c.high >= stop;
-    if (hitStop) {
-      const reason: V25ExitReason = !armed ? 'SL' : (Math.abs(stopR) < 1e-9 ? 'BE' : 'TRAIL');
+    const step = v25Step(s, ctx, bars[i]!, i);
+    if (step.kind === 'EXIT') {
       return {
-        reason, exitPrice: stop, barsHeld: i + 1, grossR: rOf(stop),
-        mfeR: Math.max(0, maxFav), mfeAtExitR: Math.max(0, maxFav),
-        maeR: Number.isFinite(maxAdv) ? maxAdv : 0, reachedBreakeven: armed, finalStop: stop,
+        outcome: {
+          reason: step.reason, exitPrice: step.exitPrice, barsHeld: i + 1, grossR: ctx.rOf(step.exitPrice),
+          mfeR: Math.max(0, s.maxFav), mfeAtExitR: Math.max(0, s.maxFav),
+          maeR: Number.isFinite(s.maxAdv) ? s.maxAdv : 0, reachedBreakeven: s.armed, finalStop: step.finalStop,
+        },
+        progress: v25ProgressOf(s, bars),
       };
     }
-
-    if (favR > peakMfe) peakMfe = favR;
-
-    if (!armed && peakMfe >= BREAKEVEN_R) {
-      armed = true;
-      stop = entryPrice;
-      stopR = 0;
-      lastUpdateMfe = peakMfe;
-      const trailR = peakMfe - TRAIL_DISTANCE_R;
-      if (trailR > stopR) {
-        stopR = trailR;
-        stop = priceAtR(trailR);
-        lastUpdateMfe = peakMfe;
-      }
-    } else if (armed && peakMfe - lastUpdateMfe >= TRAIL_STEP_R) {
-      const trailR = peakMfe - TRAIL_DISTANCE_R;
-      if (trailR > stopR) {
-        stopR = trailR;
-        stop = priceAtR(trailR);
-      }
-      lastUpdateMfe = peakMfe;
-    }
-
-    if (!armed && i + 1 >= TIMEOUT_BARS) {
+    if (step.kind === 'TIMEOUT_EXIT') {
       return {
-        reason: 'TIMEOUT', exitPrice: c.close, barsHeld: i + 1, grossR: rOf(c.close),
-        mfeR: Math.max(0, maxFav), mfeAtExitR: Math.max(0, maxFav),
-        maeR: Number.isFinite(maxAdv) ? maxAdv : 0, reachedBreakeven: false, finalStop: stop,
+        outcome: {
+          reason: 'TIMEOUT', exitPrice: step.exitPrice, barsHeld: i + 1, grossR: ctx.rOf(step.exitPrice),
+          mfeR: Math.max(0, s.maxFav), mfeAtExitR: Math.max(0, s.maxFav),
+          maeR: Number.isFinite(s.maxAdv) ? s.maxAdv : 0, reachedBreakeven: false, finalStop: step.finalStop,
+        },
+        progress: v25ProgressOf(s, bars),
       };
     }
   }
-  return null;
+  return { outcome: null, progress: v25ProgressOf(s, bars) };
+}
+
+function v25ProgressOf(s: V25State, bars: readonly ArchiveCandle[]): V25Progress {
+  const armedBar = s.armedBar >= 0 ? bars[s.armedBar] : undefined;
+  return {
+    beArmed: s.armed,
+    beArmedAt: armedBar ? armedBar.closeTime : null,
+  };
 }
 
 /** Per-leg fee in R: maker on entry, taker on exit. No rebate. */

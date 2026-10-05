@@ -35,7 +35,10 @@ import { provenanceOfNewSignal } from '../signalProvenance.js';
 import { validateNewSignal } from '../signalInvariants.js';
 import { withScanLock } from './scanMutex.js';
 import { recordScanResult, recordSignalEmitted } from '../strategySettings.js';
-import { emitSignalNotification } from '../notificationEvents.js';
+import {
+  dispatchNewSignalEvent,
+  dispatchSignalLifecycleEvents,
+} from '../signalLifecycleEvents.js';
 
 /**
  * Соответствие registry id ↔ ключ стратегии внутри LiveSignalEngine.
@@ -477,7 +480,9 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     const res = await insertSignal(built.record);
     if (res.inserted) {
       inserted++;
-      emitSignalNotification(res.signal, 'NEW_SIGNAL');
+      // NEW_SIGNAL уходит ровно один раз: inserted=true гарантирует UNIQUE-
+      // дедуп вставки, журнал событий (018) дублирует защиту для аудита.
+      await dispatchNewSignalEvent(res.signal);
     } else duplicates++;
   }
 
@@ -641,7 +646,9 @@ async function syncLifecycleFromCore({ core, engine, strategyId, execTf, status 
     });
 
     if (res.changed) {
-      emitSignalNotification(res.signal, res.signal?.status === 'FILLED' ? 'FILL' : 'OUTCOME');
+      // Полный набор событий перехода (вход/цели/безубыток/стоп/отмена/
+      // закрытие) с персистентной дедупликацией — см. signalLifecycleEvents.
+      await dispatchSignalLifecycleEvents(res.signal, res.previous ?? null);
       result.synced++;
       openByKey.delete(key); // строка закрыта — больше не кандидат
     } else {

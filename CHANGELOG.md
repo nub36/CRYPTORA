@@ -4,6 +4,177 @@
 
 ---
 
+## [Unreleased] — 2026-10-05 — HOTFIX: missing import в production-entry (redelivery worker не стартовал)
+
+Производственный инцидент на 5726732: `server/index.js` вызывал
+`getNotificationRedeliveryWorker()` в start/stop-путях, НЕ импортируя эту функцию → ReferenceError
+в рантайме, поглощённый try/catch («[CRYPTORA] Notification redelivery worker failed to start:
+getNotificationRedeliveryWorker is not defined»). Сервер работал, но durable redelivery был мёртв.
+Класс ошибки не ловился ни typecheck (index.js — JavaScript без checkJs), ни vitest (index.js не
+импортируется тестами).
+
+### Fixed
+- `server/index.js`: добавлен единственный недостающий import
+  `getNotificationRedeliveryWorker` из `./services/notificationRedelivery.js` — минимальный фикс;
+  миграции/воркер/каналы не менялись (код воркера был корректен, отсутствовала только wiring-строка
+  entry-точки).
+
+### Added
+- `tests/unit/serverEntryStartupContract.test.ts` — production-entry контракт, статически
+  закрывающий КЛАСС ошибки: (1) каждый идентификатор в теле index.js, совпадающий с экспортом
+  любого локального модуля server/**, обязан быть импортирован/объявлен (анти-ReferenceError);
+  (2) каждое имя из import index.js реально экспортируется модулем (анти-undefined); (3)
+  REGRESSION-пин redelivery-wiring (import + start() + stop()); (4) singleton-фабрика (путь
+  index.js) — один экземпляр, reset, валидный статус. Негативно провалидирован: без фикса падают
+  тесты 1 и 3, с фиксом — 4/4.
+
+---
+
+## [Unreleased] — 2026-10-05 — Надёжная повторная доставка Telegram lifecycle-уведомлений (unmerged)
+
+Реализация решения B аудита доставки (перед merge PR #56): факт события и его доставка в Telegram
+разделены; сбой доставки больше не теряет уведомление навсегда. Гарантия — **durable at-least-once
+attempt с per-user SUCCESS suppression** (честно БЕЗ exactly-once: у Telegram sendMessage нет
+idempotency key, неоднозначный сетевой сбой может дать редкий дубль). Торговый lifecycle / frozen
+API / стратегии не тронуты.
+
+### Added
+- **Immediate retry в `deliverSavedTelegram`** (`server/services/notificationChannels.js`): до
+  1 + `TELEGRAM_IMMEDIATE_RETRIES` (=2) попыток только для transient-кодов (`TIMEOUT`,
+  `NETWORK_ERROR`, `TELEGRAM_UNAVAILABLE`, `RATE_LIMITED`), backoff 1–5 c; 429 — парсинг
+  `parameters.retry_after` (длиннее CAP 30 c — in-flight не спит, событие уходит worker-у);
+  permanent-коды не ретраятся. Одна строка `notification_delivery_log` на вызов (итог попытки).
+- **Durable redelivery worker** (`server/services/notificationRedelivery.js` + `.d.ts`): фоновый
+  сервис (НЕ часть SignalMonitor), стартует/останавливается в `server/index.js` рядом с остальными
+  background services (до закрытия DB-пула при SIGTERM). Находит пары (lifecycle-событие ×
+  telegram-пользователь) без строки `SUCCESS` в `notification_delivery_log` в окне TTL и доставляет
+  напрямую конкретному пользователю — факт НЕ переэмитится (PK `signal_lifecycle_events` остаётся
+  единственным дедупликатором факта). Источники: событие — `signal_lifecycle_events` (включая
+  NEW_SIGNAL — crash-recovery покрывает и публикацию), per-user успех — `notification_delivery_log`.
+- **Retry-политика именованными константами**: TTL 24 ч; `REDELIVERY_MAX_ATTEMPTS` 5; backoff
+  60 c → 15 мин (экспоненциальный); permanent-подавление 6 ч (после окна — одна проверка: токен
+  могли починить); batch-лимит 200 пар/sweep; in-process guard от параллельных sweep + singleton
+  (single-process инвариант деплоя).
+- **Ordering-политика**: причинный ранг NEW_SIGNAL(0) → FILL(1) → TP1(2) → BREAKEVEN(3) →
+  терминалы(4); событие не доставляется, если пользователю уже успешно доставлено более позднее
+  событие того же сигнала; внутри sweep — порядок рангов. Формат — тот же
+  `formatSignalTelegramText` (второго форматтера нет), время факта — `occurred_at` события, не
+  время retry.
+- **Телеметрия**: цикл `notificationRedelivery` в существующей health-инфраструктуре (та же
+  `CycleTelemetry`, что у монитора) + `notificationRedeliveryStatus()` (running / last sweep /
+  pending / delivered / failed / suppressed). Без токенов/chat IDs в логах.
+- **Миграция 019** (аддитивная): `idx_notification_delivery_event (event_id, event_type, user_id,
+  result, created_at)` — индекс журнала доставки под sweep-запрос; append-only, без destructive
+  изменений. Обновлён инвентарь `migrationPostgresCompat.test.ts`.
+
+### Tests
+- `tests/unit/notificationRedelivery.test.ts` (32): immediate retry (transient→success, 429
+  retry_after 3 c / 40 c → нет повтора, permanent → 1 вызов, лимит попыток, одна строка лога,
+  без токена в журнале); политика (ранги, backoff экспоненциальный, MAX_ATTEMPTS,
+  permanent-suppression 6 ч, STALE_ORDER во всех парах, чужие signal/user не мешают); payload
+  времени факта; worker sweep (порядок рангов, счётчики пропусков, missing signal, упавшая
+  доставка, in-process guard, graceful stop, stats, singleton).
+- Integration (`signalLifecycleEventsPostgres.test.ts`, +7 на настоящем PostgreSQL с настоящим
+  `deliverSavedTelegram` и зашифрованными токенами): crash-recovery (событие записано, доставки
+  нет → доставлено, SUCCESS → больше не тревожится); fan-out A=SUCCESS/B=FAILURE → повтор только B
+  (A — ровно одно сообщение, включая after-restаrt sweep); рестарт worker → recovery; терминал TP2
+  доставлен → устаревшие TP1/BREAKEVEN подавлены; NEW_SIGNAL crash-recovery; время факта из
+  `occurred_at`; гонка параллельных sweep (guard); permanent-подавление CHAT_NOT_FOUND.
+
+---
+
+## [Unreleased] — 2026-10-05 — Оперативные события TP1/BREAKEVEN открытой позиции (§6, unmerged)
+
+Реализация варианта §6 исследования `docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md` (решение
+владельца): Telegram уведомляет о TP1 и переводе стопа в безубыток СРАЗУ — пока позиция ещё открыта,
+а не постфактум при терминальном исходе. Торговая математика НЕ менялась: расширение frozen API —
+только экспорт уже существующего внутреннего состояния через единый степпер.
+
+### Added
+- **`inspectTrade` (v30Core.ts / v33Core.ts)** и **`inspectTrailing` (v25Trailing.ts)** + обёртка
+  **`v28TrailProgress` (v28Live.ts)**: прогресс ОТКРЫТОЙ позиции — `{ tp1Booked, tp1At, beArmed,
+  beArmedAt }` (времена — closeTime подтверждающего бара). Инспекторы читают состояние ТОГО ЖЕ
+  степпера, что считает терминальный исход (см. Changed), — это не вторая реализация правил.
+- **`LifecycleProgress`** и аддитивное необязательное поле `progress?: LifecycleProgress` в
+  `FILLED`-варианте `LifecycleResult` (`src/services/signals/live/lifecycle.ts`); реэкспорт типа из
+  `server/services/strategyEngine/entry.ts`. V2.8: `tp1Booked` всегда false (у трейлинга нет
+  TP-лестницы). RESOLVED-результаты и терминальная классификация не менялись (fallback сохранён).
+- **`classifyProgressEvents` + `dispatchSignalProgressEvents`** (`server/services/signalLifecycleEvents.js`):
+  чистая классификация прогресса в события (причинный порядок TP1 → BREAKEVEN) → персистентный
+  PK-дедуп `signal_lifecycle_events` → emit; никогда не бросает; время факта — из прогресса, не «сейчас».
+- **Монитор**: инъекцируемый `dispatchProgressEvents`; в `FILLED`-ветке монитор передаёт прогресс ядра
+  в диспетчер на каждом тике (не только при `changed` — `syncSignalLifecycle` честно отвечает
+  `NO_TRANSITION`, когда TP1 состоялся при уже записанном входе; при `ALREADY_CLOSED` прогресс не
+  отправляется). Повторные тики, рестарты, параллельные тики и гонки монитор×скан гасятся PK журнала.
+- **Формат Telegram**: BE/TP1 ОТКРЫТОЙ позиции — «Позиция: остаётся открытой», время — closeTime бара
+  подтверждения (`progressAt` в полезной нагрузке), без строк исхода/R (они появятся в терминальном
+  событии); терминальные форматы не менялись.
+- **`tests/unit/frozenCoreRefactorParity.test.ts`** (1851 проверка): ДОСЛОВНЫЕ копии ДО-рефакторинга
+  `manageTrade` V3.0/V3.3 и `simulateTrailing` V2.5 как reference; паритет по exit/grossR/barsHeld/
+  hitTp1/hitTp2/feeR (точная арифметика), консистентность прогресса терминалу, монотонность по
+  префиксам, «бар арминга = бар TP1 + 1» (R3), «бар арминга = первый бар с peakMfe ≥ 1R» (V2.5).
+
+### Changed
+- **Рефакторинг в единый степпер БЕЗ изменения математики** (единственное изменение frozen-файлов за
+  все пасы, явно разрешённое владельцем): тела `manageTrade` (v30Core/v33Core) и `simulateTrailing`
+  (v25Trailing) извлечены во внутренние `v30Step`/`v33Step`/`v25Step` + `runV30Trade`/`runV33Trade`/
+  `runV25`; публичные функции делегируют и сохранили сигнатуры. Порядок вычислений (R1 stop-first,
+  R2 TP1-before-TP2, R3 BE-строго-после, R4, R5, V2.5 arming-после-проверки-стопа) не менялся;
+  неизменность доказана parity-тестом и golden-тестами ядер (не переписывались).
+- Тесты-документы пасса 2.5 «граница наблюдаемости» обновлены под реализованную семантику: TP1 при
+  открытой позиции и BE при MFE ≥ 1R у V2.8 теперь ЭМИТЯТСЯ (это и было предметом задачи);
+  forward-compatibility-тесты сохранены без изменений.
+
+### Invariants
+- Торговая математика, intrabar-порядок, fill/SL/TP/timeout/trailing semantics, терминальные исходы,
+  replay-результаты, golden-тесты — НЕ менялись. Прогресс НЕ персистится в `signals` (никакой новой
+  миграции): детерминированный replay из frozen на каждом тике + PK-дедуп журнала. BE при терминальном
+  TP2 не создаётся (доказательства armed-срабатывания нет), включая «TP2 на баре TP1»; TP1 не
+  выдумывается у V2.8. Событие не опережает серверную истину: facts — только frozen-ядро по закрытым
+  свечам. Терминальная классификация — fallback: восстанавливает доказуемые TP1/BE, если промежуточные
+  тики пропущены, и не повторяет уже записанные progress-события (PK).
+
+### Tests
+- Полный прогон: **226 файлов / 4631 тест зелёный** (было 225/2757); `typecheck` 0 ошибок; `build` OK;
+  `git diff --check` чисто. Integration на embedded PostgreSQL: 31/31, включая новые сценарии §6:
+  FILLED-без-TP1 → только FILL; TP1 открытой → сразу; BE-арминга открытой → сразу; повторный тик/
+  рестарт → тишина; затем TP2 → только TP2; «TP2 на баре TP1» → TP1/TP2 без ложного BE; терминал
+  одним тиком восстанавливает TP1+BE; V2.8 MFE<порога → тишина, MFE≥1R открытая → BE сразу,
+  терминальный BE не повторяется, TP1 нет; параллельные тики и монитор×скан — по одному разу.
+- Юнит: `signalLifecycleEvents.test.ts` 49 (классификация/дедуп/время/формат прогресс-событий),
+  `signalMonitor.test.ts` 38 (wiring: NO_TRANSITION → прогресс уходит, ALREADY_CLOSED/терминал/пустой
+  прогресс → нет).
+
+---
+
+## [Unreleased] — 2026-10-05 — Telegram-события полного жизненного цикла сигнала (unmerged)
+
+### Researched (промежуточные TP1/BE открытой позиции — решение «не реализовывать»)
+- **Запрос владельца перед merge PR #56:** уведомлять о TP1 и переводе SL в BE оперативно — в момент, когда серверная модель считает TP1 достигнутым / SL переведённым на entry, а не постфактум при терминальном исходе. **Вывод исследования (`docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md`): без изменения frozen API безопасно невозможно.** Данные (уровни, fill, закрытые свечи) вне ядра есть, но правила интерпретации (R1 stop-first, R2 TP1-before-TP2, R3 BE-на-бар-после-TP1, V2.5 MFE-arming) живут только в локальных переменных цикла `manageTrade`/`simulateTrailing` и наружу не возвращаются, пока позиция открыта (`LifecycleResult.FILLED` несёт только `SetupFill`; `manageTrade` → `null`; `hitTp1`/`reachedBreakeven` — поля терминального результата; в БД прогресс не персистится). Вывод прогресса в `server/` потребовал бы пересказа торговых правил — запрещено DONT_DO §4 и является классом дефекта инцидента V3.3. Frozen-файлы НЕ изменены; задокументировано минимальное предложение API (`inspectTrade`/`inspectTrailing` с общим степпером + аддитивное `progress`-поле в `LifecycleResult`) для отдельного решения владельца.
+- **Семантика TP1 ≠ BREAKEVEN подтверждена:** BE никогда не выводится из TP1 — только из фактического выхода по безубытку (`TP1_THEN_BE` V3.x / `BE` V2.8); при `TP1_THEN_SL` BE-события нет (BE не взводился, R1), при `TP2` BE не эмитируется (недоказуемо — TP2 мог исполниться на баре TP1 по R2), у V2.8 TP1-события нет вовсе (трейлинг не отслеживает лестницу).
+- **Тесты-документы:** граница наблюдаемости (касание TP1 закрытой свечой при открытой позиции и MFE ≥ 1R у V2.8 событий НЕ создают — прогресс не выдумывается по свечам вне frozen-правил) и forward-compatibility (предзаписанный в журнал TP1 — модель будущего progress-события — не повторяется при терминальной классификации `TP1_THEN_BE`/`TP2`; уходит только новое событие): текущая архитектура дедупа готова к подключению progress events без изменения классификатора.
+
+### Added
+- **Миграция 018 `signal_lifecycle_events`** (аддитивная): журнал фактов жизненного цикла сигнала с PK `(signal_id, event_type)` — персистентная дедупликация уведомлений, переживающая рестарты `cryptora.service`, повторные тики монитора, повторные сканы и гонки писателей. `occurred_at` — время факта из строки сигнала (`filled_at`/`closed_at`/`created_at`), а не «сейчас». Ни одна существующая таблица/строка не меняется, backfill не нужен (закрытые строки больше не переходят).
+- **`server/services/signalLifecycleEvents.js`**: чистая классификация перехода «было → стало» в упорядоченный набор событий (`FILL`, `TP1`, `TP2`, `BREAKEVEN`, `STOP_LOSS`, `CANCELLED`, `CLOSED`) + `INSERT … ON CONFLICT DO NOTHING` + отправка только первой записи события. Факты — ТОЛЬКО из строки `signals`; TP1 доказывается исходом (exitReason `TP2`/`TP1_THEN_*` — правила R2/R3 frozen-ядра), BREAKEVEN — реальным закрытием по безубытку (`TP1_THEN_BE`/`BE`). Промежуточные состояния, которых frozen-ядро не отдаёт, НЕ выдумываются; `TP3+` не создаётся (frozen-ведение целей останавливается на TP2).
+- **Интеграция монитора и движка**: `SignalMonitor` получил инъекцируемый `dispatchEvents` (продакшен — реальный диспетчер); `strategyEngine` отправляет `NEW_SIGNAL` и события скан-синхронизации через тот же механизм. `syncSignalLifecycle` возвращает снапшот `previous` (status + факт исполнения) для классификации — «прямой» ACTIVE → терминал больше не теряет событие входа.
+
+### Changed
+- **`formatSignalTelegramText` расширен** (тот же форматтер, не параллельная реализация): человекочитаемые сообщения полного цикла — 🟢 новый сигнал (уровни, стратегия, статус), 🎯 вход (цена, эффективные SL/TP после сдвига исполнения), ✅ TP1/TP2 (финальная цель с R), 🛡 безубыток (новый SL = уровень входа), ❌ Stop Loss (цена выхода, R), 🚫 отмена до входа (причина, статус), 🏁 закрытие по правилам стратегии (таймаут/трейлинг). Обязательный дисклеймер проекта сохранён в каждом сообщении. Время — в часовом поясе процесса (существующая настройка окружения TZ, без хардкода зоны, смещение показывается явно); UTC-таймстемпы в БД/API не меняются. Точность цен адаптивна (PEPE-масштаб не теряет значащие цифры).
+- Ровно один «финальный» класс события на терминальный переход: после TP2 / Stop Loss / безубытка отдельное «CLOSED» НЕ отправляется (бессмысленный дубль); `CANCELLED` строго отделён от Stop Loss (безсделковый терминал до входа vs стоп после входа).
+
+### Invariants
+- Математика стратегий, условия ENTRY/SL/TP/безубытка, генерация сетапов и уровни — НЕ менялись; frozen-файлы (`v30Core`, `v33Core`, `v25Trailing`, `lifecycle.ts`, V3.4) не тронуты. Сервер остаётся source of truth: Telegram отражает только записанные сервером факты.
+- Дедупликация двух уровней: монотонность `writeLifecycle` (первая линия, без изменений) + PK журнала событий (закрывает вывод одного события из разных переходов и параллельных писателей). Сбой журнала/отправки логируется и съедается (at-most-once) и не может уронить тик монитора или скан.
+- `notification_delivery_log.event_type` — TEXT без CHECK, новые типы пишутся без изменений схемы.
+
+### Tests
+- `tests/unit/signalLifecycleEvents.test.ts` (38): классификация всех переходов (включая «прямой» ACTIVE→терминал и V2.8 trail/BE), домен event_type, дедуп, отказоустойчивость диспетчера, формат всех сообщений, дисклеймер, время/zone, PEPE-точность.
+- `tests/integration/signalLifecycleEventsPostgres.test.ts` (20, настоящий PostgreSQL + настоящие миграции + настоящий `SignalMonitor` и frozen-ядро): NEW_SIGNAL/FILL/TP1/TP2/BREAKEVEN/STOP_LOSS/CANCELLED/CLOSED по одному разу; повторные тики, рестарт-инстанс монитора и параллельные тики молчат; гонка монитор×скан не дублирует FILL; журнал не меняет уровни/статусы/хэш-цепочку; домен CHECK таблицы.
+- Обновлён инвентарь миграций `tests/unit/migrationPostgresCompat.test.ts` (+`signal_lifecycle_events`).
+
+---
+
 ## [Unreleased] — 2026-10-01 — Strategy Lab BLOCKS-1: настоящий блочный редактор стратегий (блок-схема) (unmerged)
 
 ### Added

@@ -260,3 +260,5 @@ export function __setHealthTelemetryForTests(registry) {
 export const CYCLE_SIGNAL_MONITOR = 'signalMonitor';
 export const CYCLE_RADAR_MONITOR = 'radarMonitor';
 export const CYCLE_STRATEGY_SCHEDULER = 'strategyScheduler';
+/** Durable redelivery Telegram lifecycle-уведомлений (не critical-цикл). */
+export const CYCLE_NOTIFICATION_REDELIVERY = 'notificationRedelivery';

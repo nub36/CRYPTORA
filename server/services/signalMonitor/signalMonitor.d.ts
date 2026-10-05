@@ -114,6 +114,8 @@ export interface StrategyCoreForMonitor {
   /**
    * Frozen-функция ведения опубликованного сетапа. Тип намеренно свободный:
    * это функция из `src/`, и её сигнатура — единственный источник правды.
+   * FILLED-результат может нести аддитивное `progress` (§6): монитор
+   * передаёт его в dispatchProgressEvents, ничего не вычисляя сам.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   trackPublishedSetup: (entry: any, candles: readonly any[]) => any;
@@ -172,6 +174,12 @@ export interface SignalMonitorOptions {
   loadCore?: () => Promise<StrategyCoreForMonitor>;
   sleep?: (ms: number) => Promise<void>;
   requestTimeoutMs?: number;
+  /** Инъекция для тестов: события переходов (по умолчанию signalLifecycleEvents). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dispatchEvents?: (...args: any[]) => Promise<unknown>;
+  /** Инъекция для тестов: промежуточные TP1/BREAKEVEN открытой позиции (§6). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dispatchProgressEvents?: (...args: any[]) => Promise<unknown>;
 }
 
 export declare class SignalMonitor {
@@ -190,6 +198,10 @@ export declare class SignalMonitor {
   loadCoreFn: () => Promise<StrategyCoreForMonitor>;
   sleepFn: (ms: number) => Promise<void>;
   requestTimeoutMs: number;
+  /** События переходов (FILL/TP/SL/…); никогда не бросает. */
+  dispatchEventsFn: (...args: any[]) => Promise<unknown>;
+  /** Промежуточные события TP1/BREAKEVEN открытой позиции; никогда не бросает. */
+  dispatchProgressEventsFn: (...args: any[]) => Promise<unknown>;
 
   timer: ReturnType<typeof setInterval> | null;
   running: boolean;

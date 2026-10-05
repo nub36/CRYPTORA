@@ -105,17 +105,21 @@ function makeMonitor(opts: {
   candlesFor?: Record<string, ReturnType<typeof candle>[]>;
   candlesError?: Error;
   loadCoreError?: Error;
+  /** Ответ syncFn (форма syncSignalLifecycle); по умолчанию «переход записан». */
+  syncResult?: Record<string, unknown>;
 } = {}) {
   const candleRequests: Array<{ symbol: string; timeframe: string; limit: number }> = [];
   const syncs: unknown[] = [];
   const monitorWrites: Array<{ id: unknown; patch: { result: string; error?: string } }> = [];
+  const eventDispatches: Array<{ signal: unknown; previous: unknown }> = [];
+  const progressDispatches: Array<{ signal: unknown; progress: unknown }> = [];
 
   const monitor = new SignalMonitor({
     now: () => SETUP_TS + 40 * H,
     listOpen: async () => opts.rows ?? [],
     sync: async (patch) => {
       syncs.push(patch);
-      return { signal: { id: 'sig-1', outcomeHash: 'h' }, status: 'WRITTEN' };
+      return opts.syncResult ?? { changed: true, signal: { ...openRow(), status: 'FILLED' }, previous: null };
     },
     getCandles: async (symbol, timeframe, limit) => {
       candleRequests.push({ symbol, timeframe, limit });
@@ -134,9 +138,15 @@ function makeMonitor(opts: {
       : async () => CORE,
     sleep: async () => {},
     tickMs: MONITOR_TICK_MS,
+    dispatchEvents: async (signal, previous) => {
+      eventDispatches.push({ signal, previous });
+    },
+    dispatchProgressEvents: async (signal, progress) => {
+      progressDispatches.push({ signal, progress });
+    },
   });
 
-  return { monitor, candleRequests, syncs, monitorWrites };
+  return { monitor, candleRequests, syncs, monitorWrites, eventDispatches, progressDispatches };
 }
 
 describe('groupOpenSignals — группировка по символу × таймфрейму', () => {
@@ -587,5 +597,106 @@ describe('SignalMonitor — неизвестный стратегический 
     expect(syncs).toHaveLength(0);
     expect(monitorWrites[0].patch.result).toBe('SKIP');
     expect(String(monitorWrites[0].patch.error)).toContain('NO_STOP');
+  });
+});
+
+/* ───────── Прогресс открытой позиции → события TP1/BREAKEVEN (§6) ───────── */
+
+describe('SignalMonitor: dispatchProgressEvents — wiring прогресса из frozen-ядра', () => {
+  /** Бары: сетап → вход (100.5) → TP1 (h 111) → бар строго после TP1 (BE armed). */
+  function progressCandles(withPostTp1Bar: boolean, withTp2Bar = false) {
+    const bars = [
+      candle(SETUP_TS, 100, 101, 99, 100),          // бар сетапа
+      candle(SETUP_TS + 1 * H, 100.5, 101, 100.2, 100.8), // вход @100.5
+      candle(SETUP_TS + 2 * H, 101, 111, 100.8, 110.5),   // TP1 (110), без TP2
+    ];
+    if (withPostTp1Bar) {
+      bars.push(candle(SETUP_TS + 3 * H, 104, 105, 101, 104)); // R3: BE armed, без выхода
+    }
+    if (withTp2Bar) {
+      bars.push(candle(SETUP_TS + 4 * H, 104, 121, 103, 120)); // TP2 — терминал
+    }
+    return bars;
+  }
+
+  it('TP1 забронирован при открытой позиции: прогресс уходит в диспетчер с closeTime бара TP1', async () => {
+    const { monitor, progressDispatches, eventDispatches } = makeMonitor({
+      rows: [openRow()],
+      candlesFor: { 'BTCUSDT|1h': progressCandles(false) },
+    });
+    await monitor.tick();
+
+    // Переход ACTIVE→FILLED записан → события перехода (FILL) ушли победителю.
+    expect(eventDispatches).toHaveLength(1);
+    // Прогресс: tp1Booked=true на баре TP1, BE ещё не взведён (строго после).
+    expect(progressDispatches).toHaveLength(1);
+    const { signal, progress } = progressDispatches[0] as {
+      signal: { id: string; status: string };
+      progress: { tp1Booked: boolean; tp1At: number; beArmed: boolean; beArmedAt: number | null };
+    };
+    expect(signal.id).toBe('sig-1');
+    expect(signal.status).toBe('FILLED');
+    expect(progress.tp1Booked).toBe(true);
+    expect(progress.tp1At).toBe(SETUP_TS + 3 * H - 1); // closeTime бара TP1 (open + tfMs − 1)
+    expect(progress.beArmed).toBe(false);
+    expect(progress.beArmedAt).toBeNull();
+  });
+
+  it('NO_TRANSITION (строка уже FILLED): прогресс всё равно диспатчится — по строке из listOpen', async () => {
+    // Монитор видит открытую строку, sync честно говорит «перехода нет»
+    // (вход зафиксирован на прошлом тике), но TP1 состоялся только что.
+    const { monitor, progressDispatches } = makeMonitor({
+      rows: [openRow({ status: 'FILLED', fillPrice: 100.5 })],
+      candlesFor: { 'BTCUSDT|1h': progressCandles(true) },
+      syncResult: { found: true, changed: false, reason: 'NO_TRANSITION', signal: null, previous: null },
+    });
+    await monitor.tick();
+
+    expect(progressDispatches).toHaveLength(1);
+    const { signal, progress } = progressDispatches[0] as {
+      signal: { id: string };
+      progress: { tp1Booked: boolean; beArmed: boolean; beArmedAt: number | null };
+    };
+    // res.signal = null ⇒ диспетчер получил текущую открытую строку монитора.
+    expect(signal.id).toBe('sig-1');
+    expect(progress.tp1Booked).toBe(true);
+    expect(progress.beArmed).toBe(true); // R3: бар строго после TP1 обработан
+    expect(progress.beArmedAt).toBe(SETUP_TS + 4 * H - 1); // closeTime бара арминга
+  });
+
+  it('ALREADY_CLOSED: терминальные события уже ушли победителю — прогресс не отправляется', async () => {
+    const { monitor, progressDispatches, eventDispatches } = makeMonitor({
+      rows: [openRow({ status: 'FILLED', fillPrice: 100.5 })],
+      candlesFor: { 'BTCUSDT|1h': progressCandles(true) },
+      syncResult: { found: true, changed: false, reason: 'ALREADY_CLOSED', signal: null, previous: null },
+    });
+    await monitor.tick();
+    expect(eventDispatches).toHaveLength(0);
+    expect(progressDispatches).toHaveLength(0);
+  });
+
+  it('открытая позиция без TP1/BE: диспетчер прогресса не вызывается', async () => {
+    const bars = [
+      candle(SETUP_TS, 100, 101, 99, 100),
+      candle(SETUP_TS + 1 * H, 100.5, 101, 100.2, 100.8), // вход
+    ];
+    const { monitor, progressDispatches } = makeMonitor({
+      rows: [openRow()],
+      candlesFor: { 'BTCUSDT|1h': bars },
+    });
+    await monitor.tick();
+    expect(progressDispatches).toHaveLength(0);
+  });
+
+  it('терминальный исход (TP2): только события перехода, без progress-диспетчера', async () => {
+    const { monitor, progressDispatches, eventDispatches } = makeMonitor({
+      rows: [openRow()],
+      candlesFor: { 'BTCUSDT|1h': progressCandles(true, true) },
+    });
+    await monitor.tick();
+    // RESOLVED: классификация терминала (FILL, TP1, TP2) — задача dispatchEvents;
+    // progress-путь для закрытой позиции не применяется.
+    expect(eventDispatches).toHaveLength(1);
+    expect(progressDispatches).toHaveLength(0);
   });
 });

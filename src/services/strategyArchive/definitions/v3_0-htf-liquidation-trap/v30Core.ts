@@ -114,77 +114,184 @@ export interface V30TradeResult {
 }
 
 /**
- * Manage one filled position. Intrabar rules (pre-registered):
+ * Прогресс ОТКРЫТОЙ позиции (2026-10-05, экспорт внутреннего состояния
+ * `manageTrade` для уведомлений; торговая семантика не менялась):
+ *   • tp1Booked — TP1 забронирован по правилу R2 (включая ветку TP2-на-баре-TP1);
+ *   • beArmed — armed-стоп УЖЕ ДЕЙСТВОВАЛ при обработке хотя бы одного бара
+ *     (правило R3 «строго после бара TP1»): не «будет вооружён», а реально
+ *     применён к закрытому бару. При booked-TP1 без последующего бара
+ *     beArmed = false — BE из TP1 не выводится.
+ * Времена — closeTime подтверждающего бара (lifecycle видит только закрытые
+ * свечи); null = факт не произошёл.
+ */
+export interface V30TradeProgress {
+  tp1Booked: boolean;
+  tp1At: number | null;
+  beArmed: boolean;
+  beArmedAt: number | null;
+}
+
+/**
+ * ВНУТРЕННИЙ СТЕППЕР ВЕДЕНИЯ СДЕЛКИ (единая реализация правил).
+ *
+ * Intrabar rules (pre-registered, unchanged):
  *   R1 stop checked BEFORE targets on every bar;
  *   R2 TP1 books before TP2 when both land on one bar;
  *   R3 breakeven arms only on bars strictly AFTER the TP1 bar;
  *   R4 the stop never moves backwards;
  *   R5 timeout counts the entry bar as bar 1.
+ *
+ * Рефакторинг 2026-10-05 (PR #56, решение владельца по §6
+ * docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md): тело цикла
+ * `manageTrade` извлечено в один степпер БЕЗ изменения порядка вычислений,
+ * чтобы терминальный исход (`manageTrade`) и прогресс открытой позиции
+ * (`inspectTrade`) считались ОДНИМ набором правил R1–R5. Паритет
+ * байт-в-байт с прежней реализацией доказывается тестом
+ * `tests/unit/frozenCoreRefactorParity.test.ts` (дословная копия
+ * ДО-рефакторинга как reference) и существующими golden-тестами
+ * `tests/unit/strategyArchive/v30Core.test.ts`.
+ *
+ * Прогресс — ЭКСПОРТ уже существующего внутреннего состояния
+ * (hitTp1/tp1Bar/beArmed), а не новая торговая логика.
+ */
+
+/** Внутреннее состояние цикла ведения сделки. */
+interface V30TradeState {
+  hitTp1: boolean;
+  tp1Bar: number;
+  realised: number;
+  legs: { price: number; weight: number; taker: boolean }[];
+  /** BE-стоп уже действовал при обработке хотя бы одного бара (R3: строго после бара TP1). */
+  sawArmedStop: boolean;
+  /** Индекс первого бара, обработанного с armed-стопом (-1 = ещё не было). */
+  armedStopBar: number;
+}
+
+/** Неизменяемый контекст сделки (уровни/направление/константы). */
+interface V30TradeCtx {
+  long: boolean;
+  entry: number;
+  stop: number;
+  tp1: number;
+  tp2: number;
+  timeoutBars: number;
+  risk: number;
+  rOf: (p: number) => number;
+}
+
+type V30Step =
+  | { kind: 'WAIT' }
+  | { kind: 'FINISH'; exit: V30ExitReason; exitPrice: number; weight: number };
+
+/** Один бар ведения сделки: ровно прежние проверки в прежнем порядке. */
+function v30Step(s: V30TradeState, ctx: V30TradeCtx, c: ArchiveCandle, i: number): V30Step {
+  const beArmed = s.hitTp1 && s.tp1Bar >= 0 && i > s.tp1Bar;   // R3
+  if (beArmed && !s.sawArmedStop) { s.sawArmedStop = true; s.armedStopBar = i; }
+  const stopNow = beArmed ? ctx.entry : ctx.stop;                // R4: BE is never worse than stop0
+
+  const hitStop = ctx.long ? c.low <= stopNow : c.high >= stopNow;
+  const hitT1 = !s.hitTp1 && (ctx.long ? c.high >= ctx.tp1 : c.low <= ctx.tp1);
+  const hitT2 = ctx.long ? c.high >= ctx.tp2 : c.low <= ctx.tp2;
+
+  // R1: stop first, always.
+  if (hitStop) {
+    if (!s.hitTp1) return { kind: 'FINISH', exit: 'SL', exitPrice: stopNow, weight: 1 };
+    return { kind: 'FINISH', exit: beArmed ? 'TP1_THEN_BE' : 'TP1_THEN_SL', exitPrice: stopNow, weight: 0.5 };
+  }
+
+  if (hitT1) {
+    s.hitTp1 = true; s.tp1Bar = i;
+    s.realised += 0.5 * ctx.rOf(ctx.tp1);
+    s.legs.push({ price: ctx.tp1, weight: 0.5, taker: true });
+    // R2: TP1 books first, then TP2 may close the remainder on the same bar.
+    if (hitT2) return { kind: 'FINISH', exit: 'TP2', exitPrice: ctx.tp2, weight: 0.5 };
+    if (i + 1 >= ctx.timeoutBars) return { kind: 'FINISH', exit: 'TP1_THEN_TIMEOUT', exitPrice: c.close, weight: 0.5 };
+    return { kind: 'WAIT' };
+  }
+
+  if (s.hitTp1 && hitT2) return { kind: 'FINISH', exit: 'TP2', exitPrice: ctx.tp2, weight: 0.5 };
+  if (!s.hitTp1 && hitT2) {
+    s.hitTp1 = true;
+    s.realised += 0.5 * ctx.rOf(ctx.tp1);
+    s.legs.push({ price: ctx.tp1, weight: 0.5, taker: true });
+    return { kind: 'FINISH', exit: 'TP2', exitPrice: ctx.tp2, weight: 0.5 };
+  }
+
+  if (i + 1 >= ctx.timeoutBars) {
+    return { kind: 'FINISH', exit: s.hitTp1 ? 'TP1_THEN_TIMEOUT' : 'TIMEOUT', exitPrice: c.close, weight: s.hitTp1 ? 0.5 : 1 };
+  }
+  return { kind: 'WAIT' };
+}
+
+/** Терминальный результат — ровно прежний `finish` (те же ноги, тот же порядок). */
+function v30Finish(s: V30TradeState, ctx: V30TradeCtx, step: Extract<V30Step, { kind: 'FINISH' }>, i: number): V30TradeResult {
+  s.legs.push({ price: step.exitPrice, weight: step.weight, taker: true });
+  const gross = s.realised + step.weight * ctx.rOf(step.exitPrice);
+  return {
+    exit: step.exit, grossR: gross, barsHeld: i + 1, hitTp1: s.hitTp1, hitTp2: step.exit === 'TP2',
+    feeR: (mk, tk) => s.legs.reduce((acc, l) => acc + legFeeR(l.price, l.weight, l.taker ? tk : mk, ctx.risk), 0),
+  };
+}
+
+/** Прогресс открытой позиции из фактического состояния степпера. */
+function v30ProgressOf(s: V30TradeState, bars: readonly ArchiveCandle[]): V30TradeProgress {
+  const tp1Bar = s.tp1Bar >= 0 ? bars[s.tp1Bar] : undefined;
+  const armedBar = s.armedStopBar >= 0 ? bars[s.armedStopBar] : undefined;
+  return {
+    tp1Booked: s.hitTp1,
+    tp1At: tp1Bar ? tp1Bar.closeTime : null,
+    beArmed: s.sawArmedStop,
+    beArmedAt: armedBar ? armedBar.closeTime : null,
+  };
+}
+
+/** ЕДИНЫЙ прогон: терминальный исход и прогресс одним степпером. */
+function runV30Trade(
+  direction: ArchiveDirection, entry: number, stop0: number,
+  tp1: number, tp2: number, bars: readonly ArchiveCandle[],
+): { result: V30TradeResult | null; progress: V30TradeProgress | null } {
+  const { TIMEOUT_BARS } = V30_CONSTANTS;
+  const risk = Math.abs(entry - stop0);
+  if (!(risk > 0) || bars.length === 0) return { result: null, progress: null };
+  const long = direction === 'LONG';
+  const ctx: V30TradeCtx = {
+    long, entry, stop: stop0, tp1, tp2, timeoutBars: TIMEOUT_BARS, risk,
+    rOf: (p: number): number => (long ? p - entry : entry - p) / risk,
+  };
+  const s: V30TradeState = {
+    hitTp1: false, tp1Bar: -1, realised: 0,
+    legs: [{ price: entry, weight: 1, taker: false }],   // maker entry
+    sawArmedStop: false, armedStopBar: -1,
+  };
+
+  for (let i = 0; i < bars.length && i < TIMEOUT_BARS; i++) {
+    const step = v30Step(s, ctx, bars[i]!, i);
+    if (step.kind === 'FINISH') return { result: v30Finish(s, ctx, step, i), progress: v30ProgressOf(s, bars) };
+  }
+  return { result: null, progress: v30ProgressOf(s, bars) };   // unresolved at the dataset boundary
+}
+
+/**
+ * Manage one filled position (терминальный исход; правила R1–R5 — см. степпер).
+ * null = позиция ещё открыта на границе датасета.
  */
 export function manageTrade(
   direction: ArchiveDirection, entry: number, stop0: number,
   tp1: number, tp2: number, bars: readonly ArchiveCandle[],
 ): V30TradeResult | null {
-  const { TIMEOUT_BARS } = V30_CONSTANTS;
-  const risk = Math.abs(entry - stop0);
-  if (!(risk > 0) || bars.length === 0) return null;
-  const long = direction === 'LONG';
-  const rOf = (p: number): number => (long ? p - entry : entry - p) / risk;
+  return runV30Trade(direction, entry, stop0, tp1, tp2, bars).result;
+}
 
-  const stop = stop0;
-  let hitTp1 = false;
-  let tp1Bar = -1;
-  let realised = 0;
-  const legs: { price: number; weight: number; taker: boolean }[] = [];
-  legs.push({ price: entry, weight: 1, taker: false });   // maker entry
-
-  const finish = (exit: V30ExitReason, exitPrice: number, weight: number, i: number): V30TradeResult => {
-    legs.push({ price: exitPrice, weight, taker: true });
-    const gross = realised + weight * rOf(exitPrice);
-    return {
-      exit, grossR: gross, barsHeld: i + 1, hitTp1, hitTp2: exit === 'TP2',
-      feeR: (mk, tk) => legs.reduce((s, l) => s + legFeeR(l.price, l.weight, l.taker ? tk : mk, risk), 0),
-    };
-  };
-
-  for (let i = 0; i < bars.length && i < TIMEOUT_BARS; i++) {
-    const c = bars[i]!;
-    const beArmed = hitTp1 && tp1Bar >= 0 && i > tp1Bar;   // R3
-    const stopNow = beArmed ? entry : stop;                 // R4: BE is never worse than stop0
-
-    const hitStop = long ? c.low <= stopNow : c.high >= stopNow;
-    const hitT1 = !hitTp1 && (long ? c.high >= tp1 : c.low <= tp1);
-    const hitT2 = long ? c.high >= tp2 : c.low <= tp2;
-
-    // R1: stop first, always.
-    if (hitStop) {
-      if (!hitTp1) return finish('SL', stopNow, 1, i);
-      return finish(beArmed ? 'TP1_THEN_BE' : 'TP1_THEN_SL', stopNow, 0.5, i);
-    }
-
-    if (hitT1) {
-      hitTp1 = true; tp1Bar = i;
-      realised += 0.5 * rOf(tp1);
-      legs.push({ price: tp1, weight: 0.5, taker: true });
-      // R2: TP1 books first, then TP2 may close the remainder on the same bar.
-      if (hitT2) return finish('TP2', tp2, 0.5, i);
-      if (i + 1 >= TIMEOUT_BARS) return finish('TP1_THEN_TIMEOUT', c.close, 0.5, i);
-      continue;
-    }
-
-    if (hitTp1 && hitT2) return finish('TP2', tp2, 0.5, i);
-    if (!hitTp1 && hitT2) {
-      hitTp1 = true;
-      realised += 0.5 * rOf(tp1);
-      legs.push({ price: tp1, weight: 0.5, taker: true });
-      return finish('TP2', tp2, 0.5, i);
-    }
-
-    if (i + 1 >= TIMEOUT_BARS) {
-      return finish(hitTp1 ? 'TP1_THEN_TIMEOUT' : 'TIMEOUT', c.close, hitTp1 ? 0.5 : 1, i);
-    }
-  }
-  return null;   // unresolved at the dataset boundary
+/**
+ * Прогресс ОТКРЫТОЙ позиции теми же правилами R1–R5 (экспорт внутреннего
+ * состояния, НЕ вторая реализация). null — сделка не могла быть оценена
+ * (risk ≤ 0 / нет баров), ровно как manageTrade → null.
+ */
+export function inspectTrade(
+  direction: ArchiveDirection, entry: number, stop0: number,
+  tp1: number, tp2: number, bars: readonly ArchiveCandle[],
+): V30TradeProgress | null {
+  return runV30Trade(direction, entry, stop0, tp1, tp2, bars).progress;
 }
 
 export interface V30Pending {
