@@ -24,12 +24,12 @@ export function escapeAttr(s) {
   return escapeHtml(s).replace(/'/g, '&#39;');
 }
 
-/** Public host shown in the footer (e.g. cryptora.duckdns.org). */
+/** Public host shown in the footer (e.g. cryptonic.online). */
 function appHost() {
   try {
     return new URL(config.APP_ORIGIN).host;
   } catch {
-    return 'cryptora.duckdns.org';
+    return 'cryptonic.online';
   }
 }
 

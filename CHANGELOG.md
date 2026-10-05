@@ -4,6 +4,49 @@
 
 ---
 
+## [Unreleased] — 2026-10-05 — Миграция production-домена на cryptonic.online (canonical; www и legacy DuckDNS → постоянный 301)
+
+Финальное решение владельца (заменяет fallback-схему): canonical production URL —
+`https://cryptonic.online`; `www.cryptonic.online/*` и legacy `cryptora.duckdns.org/*` постоянно
+301-редиректят на него на уровне nginx с сохранением path/query и до приложения не доходят.
+`APP_TRUSTED_ORIGINS` не вводится. Название продукта остаётся CRYPTORA.
+
+### Changed
+- **Canonical origin:** production `APP_ORIGIN` → `https://cryptonic.online` (единственный origin
+  CSRF/OAuth/почтовых ссылок). Комментарии и fallback-хост `server/config.js`,
+  `server/middleware/csrf.js`, `server/services/mail/templates.js`; production-фикстуры
+  `tests/unit/csrf.test.ts`; примеры `.env.example` (APP_ORIGIN + OAuth callback), BACKEND_SETUP.md,
+  AUTH_SETUP.md (SMTP-отправитель noreply@cryptonic.online; на NS reg.ru теперь возможны
+  SPF/DKIM/DMARC), SERVER_ARCHITECTURE_DESIGN.md, deploy.yml.
+- **nginx/cryptora.conf** — целевая схема: HTTP (все три имени) → 301 canonical + ACME webroot;
+  HTTPS canonical — полный application vhost (+HSTS per-hostname); HTTPS www и legacy DuckDNS —
+  отдельные server-block'и только с `return 301 https://cryptonic.online$request_uri;`.
+  Сертификат и certbot-renewal DuckDNS сохраняются (HTTPS-редирект требует валидного TLS).
+  Путь статики → фактический /root/CRYPTORA/dist.
+- **systemd/cryptora.service** — пути выровнены с фактическим production (/root/CRYPTORA,
+  подтверждено владельцем); HOST=127.0.0.1 (порт 3000 наружу не публикуется; живой процесс до
+  исправления слушал все интерфейсы — см. runbook, Задача 4).
+- **docs/DEPLOYMENT.md** — §4 переписан под доменную схему; пути /root/CRYPTORA.
+
+### Added
+- **SEO (минимально корректный набор, которого SPA ранее не имела):** index.html — canonical,
+  og:*, Twitter-карточка на https://cryptonic.online/; src/seo/canonicalUrl.ts +
+  CanonicalUrlUpdater — динамические canonical/og:url по маршруту (query/hash отбрасываются);
+  public/robots.txt + public/sitemap.xml (только реальные статические маршруты; абсолютные URL —
+  только cryptonic.online). Фиктивные SEO-механизмы не добавлялись.
+- **Guard-тест** tests/unit/productionDomainReferences.test.ts: runtime-код/тесты/конфиг-артефакты
+  не содержат cryptora.duckdns.org; в nginx-шаблоне legacy-хост — только в redirect-block; systemd
+  — loopback + /root/CRYPTORA. CI-версия обязательного after-deploy скана.
+- **Runbook** docs/agent-plan/DOMAIN_MIGRATION.md: полная пошаговая процедура с проверкой после
+  каждого шага, DNS-гейты, smoke-план, rollback.
+
+### Tests
+- tests/unit/canonicalUrl.test.ts (9), productionDomainReferences.test.ts (6), обновлённый
+  csrf.test.ts (production-фикстуры cryptonic.online). Frontend API остался same-origin relative
+  /api; торговая логика не тронута.
+
+---
+
 ## [Unreleased] — 2026-10-01 — Strategy Lab BLOCKS-1: настоящий блочный редактор стратегий (блок-схема) (unmerged)
 
 ### Added

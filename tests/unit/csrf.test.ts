@@ -20,8 +20,8 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Express } from 'express';
 
-const PRODUCTION_ORIGIN = 'https://cryptora.duckdns.org';
-const PRODUCTION_HOST = 'cryptora.duckdns.org';
+const PRODUCTION_ORIGIN = 'https://cryptonic.online';
+const PRODUCTION_HOST = 'cryptonic.online';
 const CSRF_ERROR = 'Запрос отклонён (CSRF)';
 
 interface RawResponse {
@@ -198,7 +198,7 @@ describe('CSRF — development policy', () => {
   });
 });
 
-describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
+describe('CSRF — production policy (https://cryptonic.online)', () => {
   let port: number;
   let close: () => Promise<void>;
 
@@ -226,7 +226,7 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
     process.env.NODE_ENV = 'test';
   });
 
-  it('a same-origin request from cryptora.duckdns.org passes', async () => {
+  it('a same-origin request from cryptonic.online passes', async () => {
     const res = await rawRequest(
       port,
       'POST',
@@ -259,14 +259,14 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
   });
 
   it('a same-host http:// origin is REJECTED in production (HTTPS-only)', async () => {
-    // The canonical origin is https://cryptora.duckdns.org, so a scheme
+    // The canonical origin is https://cryptonic.online, so a scheme
     // downgrade must not be accepted even though the host matches.
     const res = await rawRequest(
       port,
       'POST',
       '/api/auth/login',
       {
-        Origin: 'http://cryptora.duckdns.org',
+        Origin: 'http://cryptonic.online',
         Host: PRODUCTION_HOST,
         'Content-Type': 'application/json',
       },
@@ -282,7 +282,7 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
       'POST',
       '/api/auth/login',
       {
-        Origin: 'https://evil.cryptora.duckdns.org',
+        Origin: 'https://evil.cryptonic.online',
         Host: PRODUCTION_HOST,
         'Content-Type': 'application/json',
       },
@@ -292,13 +292,13 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
     expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
   });
 
-  it('a suffix attack origin is rejected (cryptora.duckdns.org.evil.com)', async () => {
+  it('a suffix attack origin is rejected (cryptonic.online.evil.com)', async () => {
     const res = await rawRequest(
       port,
       'POST',
       '/api/auth/login',
       {
-        Origin: 'https://cryptora.duckdns.org.evil.com',
+        Origin: 'https://cryptonic.online.evil.com',
         Host: PRODUCTION_HOST,
         'Content-Type': 'application/json',
       },
@@ -308,13 +308,13 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
     expect((res.body as { error: string }).error).toBe(CSRF_ERROR);
   });
 
-  it('a prefix attack origin is rejected (notcryptora.duckdns.org)', async () => {
+  it('a prefix attack origin is rejected (notcryptonic.online)', async () => {
     const res = await rawRequest(
       port,
       'POST',
       '/api/auth/login',
       {
-        Origin: 'https://notcryptora.duckdns.org',
+        Origin: 'https://notcryptonic.online',
         Host: PRODUCTION_HOST,
         'Content-Type': 'application/json',
       },
@@ -362,7 +362,7 @@ describe('CSRF — production policy (https://cryptora.duckdns.org)', () => {
       'POST',
       '/api/auth/login',
       {
-        Referer: 'http://cryptora.duckdns.org/login',
+        Referer: 'http://cryptonic.online/login',
         Host: PRODUCTION_HOST,
         'Content-Type': 'application/json',
       },

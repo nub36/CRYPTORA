@@ -2,7 +2,8 @@
 
 Полное руководство по настройке почты (коды подтверждения email) и социального
 входа (Google / Telegram / Yandex / VK ID) для production-домена
-`https://cryptora.duckdns.org`.
+`https://cryptonic.online` (постоянный 301-редирект с legacy
+`cryptora.duckdns.org` и с `www.cryptonic.online` выполняет nginx).
 
 Все секреты живут **только** в `.env` на сервере. Ни один секрет не попадает в
 git, в логи или в ответы API. Плейсхолдеры всех переменных — в `.env.example`.
@@ -19,7 +20,7 @@ SMTP_PORT=587
 SMTP_SECURE=false        # true = implicit TLS (порт 465), false = STARTTLS (порт 587)
 SMTP_USER=
 SMTP_PASS=               # никогда не коммитится
-SMTP_FROM_EMAIL=noreply@cryptora.duckdns.org
+SMTP_FROM_EMAIL=noreply@cryptonic.online
 SMTP_FROM_NAME=CRYPTORA
 SMTP_TIMEOUT_MS=10000
 MAIL_TRANSPORT=          # пусто = auto: smtp при заданном SMTP_HOST
@@ -41,7 +42,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=<ваш логин Brevo, вида 7xxxxx001@smtp-brevo.com>
 SMTP_PASS=<SMTP key из панели Brevo>
-SMTP_FROM_EMAIL=noreply@cryptora.duckdns.org
+SMTP_FROM_EMAIL=noreply@cryptonic.online
 SMTP_FROM_NAME=CRYPTORA
 ```
 
@@ -56,7 +57,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=resend
 SMTP_PASS=<re_... API key>
-SMTP_FROM_EMAIL=noreply@cryptora.duckdns.org
+SMTP_FROM_EMAIL=noreply@cryptonic.online
 SMTP_FROM_NAME=CRYPTORA
 ```
 
@@ -69,12 +70,14 @@ SMTP_FROM_NAME=CRYPTORA
 | --- | --- | --- |
 | TXT (SPF) | `@` | `v=spf1 include:spf.brevo.com ~all` (или `include:resend.com`) |
 | TXT (DKIM) | `<selector>._domainkey` | выдаёт провайдер (публичный ключ DKIM) |
-| TXT (DMARC) | `_dmarc` | `v=DMARC1; p=quarantine; rua=mailto:admin@cryptora.duckdns.org` |
+| TXT (DMARC) | `_dmarc` | `v=DMARC1; p=quarantine; rua=mailto:admin@cryptonic.online` |
 
-Примечание: `duckdns.org` — динамический DNS и не поддерживает произвольные
-TXT-записи для поддоменов. Для серьёзной доставляемости используйте отправителя
-на собственном домене (например, `noreply@вашдомен.ru`) и подтвердите его у
-провайдера; адрес отправителя не обязан совпадать с доменом сайта.
+Примечание: `cryptonic.online` обслуживается NS reg.ru и поддерживает
+произвольные TXT-записи (SPF/DKIM/DMARC) — в отличие от прежнего
+`cryptora.duckdns.org` (динамический DNS без таких записей). Подтвердите домен
+у провайдера рассылки и используйте отправителя на собственном домене
+(`noreply@cryptonic.online`); адрес отправителя не обязан совпадать с доменом
+сайта.
 
 ### Прочие переменные кода подтверждения
 

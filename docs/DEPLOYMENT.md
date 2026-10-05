@@ -42,7 +42,7 @@
 production backend: it has no PostgreSQL, auth/sessions, `/api/signals`, `/api/strategies`,
 `/api/admin/*`, or Radar monitor. `npm start` now maps to `server/index.js`, but the only supported
 production process manager is the repository `systemd/cryptora.service` unit. It is `Type=simple`
-with exactly one `ExecStart=/usr/local/bin/node /home/user/CRYPTORA/server/index.js`; PM2 cluster
+with exactly one `ExecStart=/usr/local/bin/node /root/CRYPTORA/server/index.js`; PM2 cluster
 mode, Node cluster workers, and multiple service replicas are unsupported because `RadarMonitor` is
 a process-local singleton, not a distributed leader. Nginx serves static assets directly and proxies
 `/api/` to that one backend on port 3000.
@@ -107,7 +107,7 @@ replica of `server/index.js`: RadarMonitor is intentionally a process-local
 singleton and this deployment topology supplies exactly one process.
 
 The installed unit reads production secrets from exactly
-`/home/user/CRYPTORA/.env` via `EnvironmentFile=`. It does **not** load
+`/root/CRYPTORA/.env` via `EnvironmentFile=`. It does **not** load
 `.env.production` and the Node process does not invoke dotenv. Before deploying
 notification migration 017, generate `NOTIFICATION_ENCRYPTION_KEY` locally on
 the VPS, add it to that `.env` without printing it, preserve the existing
@@ -125,7 +125,7 @@ frontend publication → systemd restart → health/Radar verification.**
 ```bash
 # 0. Choose the owner-approved, already-merged immutable SHA.
 export RELEASE_SHA='<approved merged commit SHA>'
-cd /home/user/CRYPTORA
+cd /root/CRYPTORA
 
 # 1. Backup PostgreSQL before changing code or schema. Store outside the repo
 # and verify the backup according to the database restore policy.
@@ -153,7 +153,7 @@ npm test
 npm run build
 ```
 
-The checked-in Nginx configuration serves `/home/user/CRYPTORA/dist` directly,
+The checked-in Nginx configuration serves `/root/CRYPTORA/dist` directly,
 so a build in that supported checkout publishes the frontend there. If a
 separate approved staging build is used, the only allowed publication command
 is an explicit static artifact sync to that same Nginx root — never source-code
@@ -161,7 +161,7 @@ rsync:
 
 ```bash
 sudo rsync -a --delete --delay-updates \
-  /path/to/approved-staging/dist/ /home/user/CRYPTORA/dist/
+  /path/to/approved-staging/dist/ /root/CRYPTORA/dist/
 ```
 
 Only after migration and frontend publication succeed, restart the one supported
@@ -205,28 +205,44 @@ Radar writes and history reads will fail while `radar_events` is absent.
 
 ---
 
-## 4. Настройка Домена и HTTPS (Let's Encrypt / Certbot)
+## 4. Домены и HTTPS (canonical: cryptonic.online)
 
-Если для терминала выделен домен (например, `cryptora.app`):
+Финальная схема (миграция домена 2026-10-05; полный runbook —
+`docs/agent-plan/DOMAIN_MIGRATION.md`):
 
-1. **Настройка DNS:**  
-   В панели DNS-провайдера создайте A-записи:
-   - `@` -> `IP_ВАШЕГО_VPS`
-   - `www` -> `IP_ВАШЕГО_VPS`
+| Hostname | HTTP (порт 80) | HTTPS (порт 443) |
+| --- | --- | --- |
+| `cryptonic.online` | 301 → `https://cryptonic.online$request_uri` | **приложение** (canonical vhost) |
+| `www.cryptonic.online` | 301 → canonical | 301 → canonical |
+| `cryptora.duckdns.org` (legacy) | 301 → canonical | 301 → canonical |
 
-2. **Получение SSL-сертификата через Certbot:**
-   ```bash
-   sudo apt-get install certbot python3-certbot-nginx -y
-   sudo certbot --nginx -d cryptora.app -d www.cryptora.app
-   ```
+Правила схемы:
 
-3. **Автоматическое продление:**
-   Certbot устанавливает cron/systemd-таймер автоматического обновления. Проверка:
-   ```bash
-   sudo certbot renew --dry-run
-   ```
+- **Редиректы сохраняют path и query** (`$request_uri`), статус 301.
+- **Canonical application URL:** `https://cryptonic.online`; `APP_ORIGIN` в
+  production = ровно это значение. Legacy-хост и `www` до приложения не
+  доходят (редирект на уровне nginx), поэтому `APP_TRUSTED_ORIGINS` не нужен.
+- **TLS:** одна линейка Let's Encrypt на `cryptonic.online` + `www.cryptonic.online`
+  и отдельная — на `cryptora.duckdns.org`. Сертификат legacy обязателен, пока
+  живёт HTTPS-редирект; **renewal DuckDNS не удалять**.
+- **Порт 3000 наружу не публикуется:** nginx проксирует `/api/*` на
+  `127.0.0.1:3000`; бэкенд (`HOST=127.0.0.1` в systemd-юните) слушает только
+  loopback. Проверка: `ss -ltnp | grep :3000` → ожидаемо `127.0.0.1:3000`.
+- **Cookies:** host-only `Secure; HttpOnly; SameSite=Lax` — без `Domain=`;
+  `Domain=.cryptonic.online` не используется.
 
-Если домен еще не делегирован, терминал доступен напрямую по IP-адресу сервера на порту 80/3000 (HTTP).
+Порядок настройки (подробно — runbook):
+
+1. **DNS (панель reg.ru):** A `@` → IPv4 VPS, A `www` → IPv4 VPS. Проверить у
+   авторитативных NS: `dig @ns1.reg.ru cryptonic.online A +short` (и для www) —
+   только потом выпускать сертификат.
+2. **HTTP vhost + ACME webroot** (`/var/www/certbot`) → `nginx -t` → reload.
+3. **Сертификат:** `sudo certbot certonly --webroot -w /var/www/certbot -d cryptonic.online -d www.cryptonic.online`.
+4. **HTTPS vhost'ы** (приложение на canonical; редиректы www/legacy) → `nginx -t` → reload.
+5. **Автопродление:** `sudo certbot renew --dry-run` (охватывает обе линейки).
+
+Порядок смены домена на живом сервере — строго по шагам runbook: сначала
+новый домен проверяется отдельно и только потом включается редирект с legacy.
 
 ---
 

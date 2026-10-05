@@ -6,12 +6,15 @@
  *
  * PRODUCTION POLICY (HTTPS-only)
  *   The single allowed origin is the canonical `config.APP_ORIGIN`
- *   (https://cryptora.duckdns.org). Matched as an exact origin — scheme,
+ *   (https://cryptonic.online). Matched as an exact origin — scheme,
  *   host and port must all agree. Therefore:
- *     https://cryptora.duckdns.org            → allowed
- *     http://cryptora.duckdns.org             → 403 (scheme downgrade)
- *     https://evil.cryptora.duckdns.org       → 403 (subdomain)
- *     https://cryptora.duckdns.org.evil.com   → 403 (suffix attack)
+ *     https://cryptonic.online                → allowed
+ *     http://cryptonic.online                 → 403 (scheme downgrade)
+ *     https://evil.cryptonic.online           → 403 (subdomain)
+ *     https://cryptonic.online.evil.com       → 403 (suffix attack)
+ *   Прежний production-hostname (DuckDNS) после миграции домена (2026-10-05)
+ *   постоянно 301-редиректит на canonical на уровне nginx и до приложения
+ *   не доходит.
  *   The domain is never hardcoded here; it comes from APP_ORIGIN.
  *
  * DEVELOPMENT POLICY

@@ -4,9 +4,13 @@ After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=user
-Group=user
-WorkingDirectory=/home/user/CRYPTORA
+# Фактический production (подтверждён владельцем 2026-10-05): приложение
+# живёт в /root/CRYPTORA, юнит запускается от root. Перед установкой сверить
+# с живым юнитом (`systemctl cat cryptora`) — расхождение живого юнита с этим
+# файлом фиксируется в docs/agent-plan/DOMAIN_MIGRATION.md.
+User=root
+Group=root
+WorkingDirectory=/root/CRYPTORA
 
 # ── ЧТО ЗАПУСКАЕТСЯ ─────────────────────────────────────────────────────────
 # `server/index.js` — настоящий бэкенд: Express, auth/сессии в PostgreSQL,
@@ -18,21 +22,24 @@ WorkingDirectory=/home/user/CRYPTORA
 # index.js выглядит как «сайт работает», но /api/signals, /login и /admin
 # перестают отвечать, а сканирование стратегий не начинается. Статику в
 # production раздаёт nginx (см. docs/DEPLOYMENT.md), не Node.
-ExecStart=/usr/local/bin/node /home/user/CRYPTORA/server/index.js
+ExecStart=/usr/local/bin/node /root/CRYPTORA/server/index.js
 Restart=always
 RestartSec=5s
 
 # ── ОКРУЖЕНИЕ ───────────────────────────────────────────────────────────────
-# Секреты — в /home/user/CRYPTORA/.env (вне Git): DATABASE_URL, SESSION_SECRET,
+# Секреты — в /root/CRYPTORA/.env (вне Git): DATABASE_URL, SESSION_SECRET,
 # NOTIFICATION_ENCRYPTION_KEY, APP_ORIGIN, SMTP_*. Файлы `.env.production` и
 # `/root/CRYPTORA/.env.production` этим юнитом НЕ читаются. EnvironmentFile с префиксом '-' не роняет юнит, если файла
 # нет, но без DATABASE_URL бэкенд стартует в деградированном режиме
 # (/api/health: degraded) и НЕ запускает движок стратегий.
-EnvironmentFile=-/home/user/CRYPTORA/.env
+EnvironmentFile=-/root/CRYPTORA/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
-# Навигация: nginx проксирует /api → 127.0.0.1:3000. Слушать 0.0.0.0 не нужно
-# и небезопасно: бэкенд не должен быть доступен мимо TLS/WSGW.
+# Навигация: nginx проксирует /api → 127.0.0.1:3000. Слушать все интерфейсы
+# не нужно и небезопасно: бэкенд не должен быть доступен мимо TLS/WSGW.
+# До выравнивания (2026-10-05) живой процесс слушал все интерфейсы — юнит
+# возвращает loopback-привязку; проверка после применения:
+# `ss -ltnp | grep :3000` → ожидаемо 127.0.0.1:3000.
 Environment=HOST=127.0.0.1
 Environment=SESSION_STORE=postgres
 Environment=MARKET_DATA_PROXY_ENABLED=true
@@ -52,7 +59,7 @@ ProtectHome=read-only
 # При `ProtectHome=read-only` список ReadWritePaths накапливается; несуществующий
 # путь systemd игнорирует, поэтому указан корень приложения, а не только
 # `.generated` (иначе mkdir внутри read-only каталога был бы невозможен).
-ReadWritePaths=/home/user/CRYPTORA
+ReadWritePaths=/root/CRYPTORA
 
 # ── РЕСУРСЫ ─────────────────────────────────────────────────────────────────
 LimitNOFILE=65536

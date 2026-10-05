@@ -4,11 +4,11 @@
 
 CRYPTORA Phase 1 backend: Express 5 + PostgreSQL + Argon2id authentication + server-side sessions.
 
-**Production URL:** `https://cryptora.duckdns.org`
+**Production URL:** `https://cryptonic.online` (canonical; `www.cryptonic.online` и legacy `cryptora.duckdns.org` постоянно 301-редиректят на него на уровне nginx)
 
 **Architecture:**
 ```
-Internet → Nginx (:443) → Static frontend (/var/www/cryptora)
+Internet → Nginx (:443) → Static frontend (/root/CRYPTORA/dist)
                         → /api/* → http://127.0.0.1:3000
 ```
 
@@ -62,7 +62,7 @@ cp .env.example .env
 | `PORT` | Backend port | `3000` |
 | `COOKIE_SECURE` | HTTPS-only cookies | `true` (production) |
 | `SESSION_STORE` | Session store backend | `postgres` (production). `memory` is test-only and refused when `NODE_ENV=production` |
-| `APP_ORIGIN` | Canonical public origin. The **only** origin the CSRF middleware accepts in production, and the base for verification links. Must be `https://` in production — a plain-`http` value is rejected. No trailing slash, no path. | `https://cryptora.duckdns.org` |
+| `APP_ORIGIN` | Canonical public origin. The **only** origin the CSRF middleware accepts in production, and the base for verification links. Must be `https://` in production — a plain-`http` value is rejected. No trailing slash, no path. | `https://cryptonic.online` |
 | `SMTP_HOST` | SMTP relay host. Empty ⇒ mail is **unavailable** in production (registration still works, resend answers `503 MAIL_UNAVAILABLE`). Production never silently falls back to a fake transport. | `smtp.example.com` |
 | `MAIL_FROM` | Display sender | `CRYPTORA <noreply@example.com>` |
 
@@ -325,7 +325,7 @@ WantedBy=multi-user.target
 - **Passwords:** Argon2id (64MB memory, 3 iterations)
 - **Sessions:** Server-side PostgreSQL (connect-pg-simple)
 - **Cookies:** `HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=7d`
-- **CSRF:** In production only the exact canonical `APP_ORIGIN` is accepted for `Origin`/`Referer`. `http://cryptora.duckdns.org`, `https://evil.cryptora.duckdns.org` and `https://cryptora.duckdns.org.evil.com` are all rejected. The domain is never hardcoded — it comes from `APP_ORIGIN`. Dev `localhost` origins keep working.
+- **CSRF:** In production only the exact canonical `APP_ORIGIN` is accepted for `Origin`/`Referer`. `http://cryptonic.online`, `https://evil.cryptonic.online` and `https://cryptonic.online.evil.com` are all rejected. The domain is never hardcoded — it comes from `APP_ORIGIN`. Dev `localhost` origins keep working.
 - **Email verification:** mandatory before login; raw token only in the mailbox, SHA-256 digest only in PostgreSQL, single-use, transactional
 - **Rate limiting:** Per-IP for auth endpoints, plus a separate tight budget for `resend-verification` and a per-email resend throttle
 - **No secret logging:** SMTP password, session secret, verification token and the full verification link are never written to logs or the audit trail

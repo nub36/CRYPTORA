@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { MarketDataProviderComponent } from '@/context/MarketDataContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { CanonicalUrlUpdater } from '@/seo/CanonicalUrlUpdater';
 import App from './App';
 
 // Self-hosted fonts (Д1: CSP-safe, no Google Fonts dependency)
@@ -21,6 +22,7 @@ import './index.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <CanonicalUrlUpdater />
       <ThemeProvider>
         <AuthProvider>
           <MarketDataProviderComponent>

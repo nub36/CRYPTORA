@@ -12,7 +12,11 @@ describe('production Radar deployment contract', () => {
     const restart = read('scripts/restart.sh');
 
     expect(unit).toMatch(/^Type=simple$/m);
-    expect(unit).toMatch(/^ExecStart=\/usr\/local\/bin\/node \/home\/user\/CRYPTORA\/server\/index\.js$/m);
+    // Фактический production (подтверждён владельцем 2026-10-05): /root/CRYPTORA.
+    expect(unit).toMatch(/^WorkingDirectory=\/root\/CRYPTORA$/m);
+    expect(unit).toMatch(/^ExecStart=\/usr\/local\/bin\/node \/root\/CRYPTORA\/server\/index\.js$/m);
+    // Бэкенд слушает только loopback: порт 3000 наружу не публикуется (nginx → 127.0.0.1:3000).
+    expect(unit).toMatch(/^Environment=HOST=127\.0\.0\.1$/m);
     expect(unit).not.toMatch(/^ExecStart=.*productionServer\.js$/m);
     expect(pkg.scripts.start).toBe('node server/index.js');
     expect(restart).toContain('npm run migrate');
@@ -25,7 +29,7 @@ describe('production Radar deployment contract', () => {
 
   it('loads notification encryption from the actual production EnvironmentFile', () => {
     const unit = read('systemd/cryptora.service');
-    expect(unit).toMatch(/^EnvironmentFile=-\/home\/user\/CRYPTORA\/\.env$/m);
+    expect(unit).toMatch(/^EnvironmentFile=-\/root\/CRYPTORA\/\.env$/m);
     expect(unit).toContain('NOTIFICATION_ENCRYPTION_KEY');
     expect(unit).not.toMatch(/^EnvironmentFile=.*\.env\.production$/m);
   });
