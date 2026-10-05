@@ -289,6 +289,130 @@ describe('recordSignalLifecycleEvent — персистентный дедуп',
   });
 });
 
+/* ───────────── Прогресс ОТКРЫТОЙ позиции (§6, 2026-10-05) ───────────── */
+
+describe('classifyProgressEvents — прогресс открытой позиции из frozen-ядра', () => {
+  it('null/undefined/не-объект → событий нет', () => {
+    expect(events.classifyProgressEvents(null)).toEqual([]);
+    expect(events.classifyProgressEvents(undefined)).toEqual([]);
+    expect(events.classifyProgressEvents('TP1' as never)).toEqual([]);
+  });
+
+  it('пустой прогресс открытой позиции → событий нет', () => {
+    expect(events.classifyProgressEvents({ tp1Booked: false, tp1At: null, beArmed: false, beArmedAt: null })).toEqual([]);
+  });
+
+  it('TP1 забронирован, BE ещё не взведён → ровно TP1 (допустимое состояние V3.x)', () => {
+    expect(
+      events.classifyProgressEvents({ tp1Booked: true, tp1At: 1_800_000_000_000, beArmed: false, beArmedAt: null })
+    ).toEqual(['TP1']);
+  });
+
+  it('TP1 + BE → причинный порядок [TP1, BREAKEVEN]', () => {
+    expect(
+      events.classifyProgressEvents({ tp1Booked: true, tp1At: 1, beArmed: true, beArmedAt: 2 })
+    ).toEqual(['TP1', 'BREAKEVEN']);
+  });
+
+  it('V2.8-форма: beArmed без TP1 → ровно BREAKEVEN (TP1 у трейлинга не выдумывается)', () => {
+    expect(
+      events.classifyProgressEvents({ tp1Booked: false, tp1At: null, beArmed: true, beArmedAt: 1_800_000_360_000 })
+    ).toEqual(['BREAKEVEN']);
+  });
+});
+
+describe('dispatchSignalProgressEvents — запись, дедуп, время факта', () => {
+  function makePool() {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const inserted = new Set<string>();
+    const pool = {
+      query: vi.fn(async (sql: string, params: unknown[] = []) => {
+        calls.push({ sql, params });
+        if (sql.includes('INSERT INTO signal_lifecycle_events')) {
+          const [signalId, eventType] = params as [string, string];
+          const key = `${signalId}|${eventType}`;
+          if (inserted.has(key)) return { rows: [] };
+          inserted.add(key);
+          return { rows: [{ signal_id: signalId, event_type: eventType }] };
+        }
+        throw new Error(`Unexpected SQL: ${sql}`);
+      }),
+      __inserted: inserted,
+      __calls: calls,
+    };
+    return pool;
+  }
+
+  it('отправляет TP1 и BREAKEVEN по одному разу; время факта — из прогресса, не «сейчас»', async () => {
+    const pool = makePool();
+    poolModule.__setPoolForTests(pool as never);
+    const emitted: Array<{ signal: Record<string, unknown>; type: string }> = [];
+    notificationBus.registerSignalNotificationListener((signal: any, type: string) => {
+      emitted.push({ signal, type });
+    });
+
+    const row = signalRow({ status: 'FILLED', fillPrice: 101, filledAt: '2026-10-01T13:00:00.000Z' });
+    const progress = {
+      tp1Booked: true,
+      tp1At: Date.parse('2026-10-01T15:00:00.000Z'),
+      beArmed: true,
+      beArmedAt: Date.parse('2026-10-01T16:00:00.000Z'),
+    };
+
+    const first = await events.dispatchSignalProgressEvents(row, progress);
+    expect(first).toEqual(['TP1', 'BREAKEVEN']);
+    expect(emitted.map((e) => e.type)).toEqual(['TP1', 'BREAKEVEN']);
+    // occurred_at = closeTime подтверждающего бара (tp1At/beArmedAt).
+    const tp1Insert = pool.__calls.find((c) => (c.params as string[])[1] === 'TP1')!;
+    expect((tp1Insert.params[2] as Date).toISOString()).toBe('2026-10-01T15:00:00.000Z');
+    const beInsert = pool.__calls.find((c) => (c.params as string[])[1] === 'BREAKEVEN')!;
+    expect((beInsert.params[2] as Date).toISOString()).toBe('2026-10-01T16:00:00.000Z');
+    // Полезная нагрузка уведомления несёт время факта для открытой строки.
+    expect(emitted[0]!.signal.progressAt).toBe('2026-10-01T15:00:00.000Z');
+    expect(emitted[1]!.signal.progressAt).toBe('2026-10-01T16:00:00.000Z');
+
+    // Повторный тик с тем же прогрессом: PK гасит оба события.
+    const second = await events.dispatchSignalProgressEvents(row, progress);
+    expect(second).toEqual([]);
+    expect(emitted).toHaveLength(2);
+  });
+
+  it('нет id или нет прогресса — ни записи, ни отправки', async () => {
+    const pool = makePool();
+    poolModule.__setPoolForTests(pool as never);
+    expect(await events.dispatchSignalProgressEvents({ status: 'FILLED' }, { tp1Booked: true, beArmed: false })).toEqual([]);
+    expect(await events.dispatchSignalProgressEvents(signalRow(), null)).toEqual([]);
+    expect(await events.dispatchSignalProgressEvents(signalRow(), { tp1Booked: false, beArmed: false, tp1At: null, beArmedAt: null })).toEqual([]);
+    expect(pool.__calls).toHaveLength(0);
+  });
+
+  it('сбой записи журнала не бросается и не отправляет уведомление', async () => {
+    const pool = {
+      query: vi.fn(async () => {
+        throw new Error('db is down');
+      }),
+    };
+    poolModule.__setPoolForTests(pool as never);
+    const emitted: string[] = [];
+    notificationBus.registerSignalNotificationListener((_s: any, type: string) => emitted.push(type));
+
+    await expect(
+      events.dispatchSignalProgressEvents(signalRow(), { tp1Booked: true, tp1At: 1, beArmed: false, beArmedAt: null })
+    ).resolves.toEqual([]);
+    expect(emitted).toEqual([]);
+  });
+
+  it('отсутствует время факта → occurred_at NULL, время не выдумывается', async () => {
+    const pool = makePool();
+    poolModule.__setPoolForTests(pool as never);
+    notificationBus.registerSignalNotificationListener(() => undefined);
+
+    await events.dispatchSignalProgressEvents(signalRow(), { tp1Booked: true, tp1At: null, beArmed: false, beArmedAt: null });
+    const insert = pool.__calls.find((c) => (c.params as string[])[1] === 'TP1')!;
+    expect(insert.params[2]).toBeNull();
+  });
+});
+
 /* ─────────────────────────── Формат сообщений ─────────────────────────── */
 
 describe('formatSignalTelegramText — понятные сообщения полного цикла', () => {
@@ -358,6 +482,43 @@ describe('formatSignalTelegramText — понятные сообщения по�
     );
     expect(text).toContain('✅ CRYPTORA — TP1');
     expect(text).toContain('110.00');
+  });
+
+  it('безубыток ОТКРЫТОЙ позиции (§6): стоп на входе, позиция жива, время — бар арминга', () => {
+    const text = notifications.formatSignalTelegramText(
+      signalRow({
+        status: 'FILLED',
+        fillPrice: 101,
+        filledAt: '2026-10-01T13:00:00.000Z',
+        progressAt: '2026-10-01T16:00:00.000Z',
+      }),
+      'BREAKEVEN'
+    );
+    expect(text).toContain('Безубыток');
+    expect(text).toContain('Стоп переведён в безубыток');
+    expect(text).toContain('101.00 (уровень входа)');
+    expect(text).toContain('Позиция: остаётся открытой');
+    // Открытая сделка не выдаётся за закрытую: строки исхода отсутствуют.
+    expect(text).not.toContain('Сделка закрыта');
+    expect(text).not.toContain('Результат:');
+  });
+
+  it('TP1 ОТКРЫТОЙ позиции (§6): цена первой цели, позиция жива, время — бар подтверждения', () => {
+    const text = notifications.formatSignalTelegramText(
+      signalRow({
+        status: 'FILLED',
+        fillPrice: 101,
+        filledAt: '2026-10-01T13:00:00.000Z',
+        fillTargets: [110, 120],
+        progressAt: '2026-10-01T15:00:00.000Z',
+      }),
+      'TP1'
+    );
+    expect(text).toContain('TP1');
+    expect(text).toContain('110.0');
+    expect(text).toContain('Позиция: остаётся открытой');
+    expect(text).not.toContain('финальная цель');
+    expect(text).not.toContain('Сделка завершена');
   });
 
   it('безубыток: новый SL на уровне входа', () => {

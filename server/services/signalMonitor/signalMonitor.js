@@ -39,7 +39,7 @@ import {
   MAX_OPEN_SIGNALS_FOR_SYNC,
 } from '../signalRepository.js';
 import { toPublishedSetup, toLifecyclePatch } from './signalTradeManager.js';
-import { dispatchSignalLifecycleEvents } from '../signalLifecycleEvents.js';
+import { dispatchSignalLifecycleEvents, dispatchSignalProgressEvents } from '../signalLifecycleEvents.js';
 import { getHealthTelemetry, CYCLE_SIGNAL_MONITOR } from '../health/telemetry.js';
 import { notifyHealthCycle } from '../health/healthAlertHook.js';
 
@@ -237,6 +237,9 @@ export class SignalMonitor {
    * @param {number} [opts.requestTimeoutMs] — таймаут запроса свечей
    * @param {Function} [opts.dispatchEvents] — отправка событий уведомлений
    *        (инъекция для тестов; продакшен — signalLifecycleEvents)
+   * @param {Function} [opts.dispatchProgressEvents] — отправка ПРОМЕЖУТОЧНЫХ
+   *        событий ОТКРЫТОЙ позиции TP1/BREAKEVEN из frozen-прогресса
+   *        (инъекция для тестов; продакшен — signalLifecycleEvents, §6)
    */
   constructor({
     tickMs = MONITOR_TICK_MS,
@@ -250,6 +253,7 @@ export class SignalMonitor {
     requestTimeoutMs = MONITOR_REQUEST_TIMEOUT_MS,
     telemetry,
     dispatchEvents = dispatchSignalLifecycleEvents,
+    dispatchProgressEvents = dispatchSignalProgressEvents,
   } = {}) {
     this.tickMs = tickMs;
     this.nowFn = now;
@@ -264,6 +268,13 @@ export class SignalMonitor {
      * доставки не может уронить тик наблюдения.
      */
     this.dispatchEventsFn = dispatchEvents;
+    /**
+     * Промежуточные события открытой позиции (TP1/BREAKEVEN). Тот же
+     * контракт «никогда не бросает + персистентный дедуп», что и у
+     * переходов: вызывается на каждом тике открытой FILLED-строки, повторы
+     * гасятся PK signal_lifecycle_events.
+     */
+    this.dispatchProgressEventsFn = dispatchProgressEvents;
     this.loadCoreFn = loadCore;
     this.sleepFn = sleep;
     this.requestTimeoutMs = requestTimeoutMs;
@@ -588,6 +599,22 @@ export class SignalMonitor {
     if (res.changed) await this.dispatchEventsFn(res.signal, res.previous ?? null);
 
     if (result.kind === 'FILLED') {
+      // ПРОМЕЖУТОЧНЫЕ события ОТКРЫТОЙ позиции (§6): TP1 забронирован /
+      // BE взведён — из `result.progress` frozen-ядра. Вызывается НЕ только
+      // при changed: строка могла стать FILLED на прошлом тике, и тогда
+      // syncSignalLifecycle честно ответит NO_TRANSITION в момент, когда
+      // TP1 только что состоялся. Прогресс не выводится из changed ещё и
+      // потому, что previous-снапшот строки прошлый прогресс не знает —
+      // единственная защита от дублей это PK (signal_id, event_type).
+      // Порядок причинный: FILL (переход выше) → TP1 → BREAKEVEN.
+      if (result.progress && (result.progress.tp1Booked || result.progress.beArmed)) {
+        // Строка для уведомления: свежая после перехода, иначе текущая
+        // открытая из listOpenSignals. ALREADY_CLOSED — сигнал уже закрыт
+        // (терминальные события уже отправил победивший писатель): прогресс
+        // открытой позиции не отправляется.
+        const openRow = res.signal ?? (res.reason !== 'ALREADY_CLOSED' ? row : null);
+        if (openRow) await this.dispatchProgressEventsFn(openRow, result.progress);
+      }
       await this.writeMonitor(row, { result: 'FILLED' });
       summary.filled += 1;
       summary.checked += 1;

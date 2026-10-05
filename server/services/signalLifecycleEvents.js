@@ -10,25 +10,41 @@
  * R). Никаких собственных расчётов уровней или исходов здесь нет и быть не
  * может (DONT_DO §4: запрет серверной копии математики стратегий).
  *
- * ГРАНИЦА НАБЛЮДАЕМОСТИ (честное ограничение модели). Frozen-ядро
- * (`trackPublishedSetup`) отдаёт только УЖЕ СОСТОЯВШИЕСЯ факты: fill и
- * терминальный исход. Промежуточный прогресс открытой позиции (момент
- * касания TP1, перевод стопа в BE «на баре») ядро не отдаёт и в БД не
- * пишет — поэтому события TP1/BREAKEVEN фиксируются ТОГДА, когда исход
- * сделки их ДОКАЗЫВАЕТ по правилам frozen-ядра:
+ * ПРОМЕЖУТОЧНЫЕ СОБЫТИЯ ОТКРЫТОЙ ПОЗИЦИИ (2026-10-05, PR #56, §6
+ * docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md). Frozen-ядро теперь
+ * ЭКСПОРТИРУЕТ свой внутренний прогресс: `trackPublishedSetup` в
+ * FILLED-результате несёт аддитивное `progress { tp1Booked, tp1At, beArmed,
+ * beArmedAt }` — состояние ТОГО ЖЕ степпера, который считает терминальный
+ * исход (inspectTrade/inspectTrailing), а не вторая реализация правил.
+ * `dispatchSignalProgressEvents` превращает его в события:
+ *
+ *   • TP1       ⇔ progress.tp1Booked (V3.x, правило R2: включая ветку
+ *                 TP2-на-баре-TP1; V2.8 tp1Booked всегда false);
+ *   • BREAKEVEN ⇔ progress.beArmed (V3.x: armed-стоп реально действовал на
+ *                 обработанном баре — R3 «строго после бара TP1»; V2.8:
+ *                 состояние `armed` frozen-трейлинга при MFE ≥ 1R).
+ *
+ * ТЕРМИНАЛЬНЫЙ ПУТЬ ОСТАЁТСЯ FALLBACK и ИСТИННОЙ ПОСЛЕДНЕЙ ИНСТАНЦИЕЙ:
+ * если промежуточные тики пропущены, исход по-прежнему ДОКАЗЫВАЕТ события
+ * по правилам frozen-ядра:
  *
  *   • TP1 доказан  ⇔ exitReason ∈ {TP2, TP1_THEN_BE, TP1_THEN_SL,
  *                    TP1_THEN_TIMEOUT} — правило R2 V3.x («TP1 books before
  *                    TP2», включая ветку одновременного касания) и сами
  *                    причины вида «TP1_THEN_*»;
  *   • BREAKEVEN    ⇔ сделка реально ЗАКРЫТА по безубытку: exitReason
- *                    TP1_THEN_BE (V3.x: BE взводится баром позже TP1,
- *                    правило R3) или BE (V2.8 trail: стоп = цена входа);
+ *                    TP1_THEN_BE (V3.x) или BE (V2.8 trail);
  *   • TP2          ⇔ статус TARGET_REACHED (managedStatus('TP2'));
  *   • TP3+         — frozen-ведение целей за пределами TP2 не отслеживает
  *                    (docs/SIGNALS.md §3.1), поэтому такие события не
  *                    создаются искусственно; домен таблицы допускает TPn
  *                    на случай будущей реальной поддержки стратегией.
+ *
+ * Смешение путей безопасно: если TP1/BREAKEVEN уже записаны progress-путём,
+ * терминальная классификация тех же событий гасится PK (signal_id,
+ * event_type); если прогресс был пропущен — терминальный путь его
+ * восстанавливает. BREAKEVEN для закрытой TP2-сделки НЕ создаётся ни одним
+ * из путей (armed-стоп мог не сработать — доказательства нет).
  *
  * ДЕДУПЛИКАЦИЯ — ПЕРСИСТЕНТНАЯ, НЕ В ПАМЯТИ ПРОЦЕССА:
  *   • таблица `signal_lifecycle_events` (миграция 018),
@@ -138,6 +154,91 @@ export function classifyLifecycleTransition(previous, next) {
   }
 
   return events;
+}
+
+/**
+ * Какие ПРОМЕЖУТОЧНЫЕ события несёт прогресс ОТКРЫТОЙ позиции.
+ *
+ * Чистая функция от `LifecycleResult.progress` (frozen-ядро, §6). Порядок —
+ * причинный (TP1 → BREAKEVEN): TP1 бронируется раньше, чем взводится BE
+ * (правило R3 V3.x); у V2.8 tp1Booked всегда false, поэтому только BE.
+ * Ничего не вычисляется по рыночным данным: интерпретируется ТО, что уже
+ * посчитал frozen-степпер.
+ *
+ * @param {{tp1Booked?: boolean, tp1At?: number|null, beArmed?: boolean, beArmedAt?: number|null}|null} progress
+ * @returns {string[]} упорядоченные типы событий ('TP1', 'BREAKEVEN')
+ */
+export function classifyProgressEvents(progress) {
+  if (!progress || typeof progress !== 'object') return [];
+  const events = [];
+  if (progress.tp1Booked === true) events.push('TP1');
+  if (progress.beArmed === true) events.push('BREAKEVEN');
+  return events;
+}
+
+/**
+ * Время факта прогресс-события — closeTime подтверждающего бара из
+ * frozen-прогресса (ms), а не «сейчас». Не выдумывается: null = ядро не отдало.
+ */
+function progressOccurredAt(progress, eventType) {
+  if (!progress || typeof progress !== 'object') return null;
+  const ms = eventType === 'TP1' ? progress.tp1At : progress.beArmedAt;
+  const n = Number(ms);
+  return Number.isFinite(n) && n > 0 ? new Date(n) : null;
+}
+
+/**
+ * Отправляет ПРОМЕЖУТОЧНЫЕ уведомления об ОТКРЫТОЙ позиции: прогресс из
+ * FILLED-результата frozen-ядра → события TP1/BREAKEVEN → персистентный
+ * дедуп → emit (fire-and-forget).
+ *
+ * Вызывается на КАЖДОМ тике с открытой позицией (не только при изменении
+ * строки: syncSignalLifecycle честно вернёт NO_TRANSITION, когда вход был
+ * зафиксирован раньше, а TP1 состоялся только что) — повторы гасятся
+ * PK (signal_id, event_type), поэтому лишних сообщений не бывает.
+ *
+ * Никогда не бросает (как dispatchSignalLifecycleEvents): сбой журнала
+ * логируется, наблюдение продолжается.
+ *
+ * @param {object|null} signal строка ОТКРЫТОГО сигнала (форма mapRow; достаточно id)
+ * @param {{tp1Booked?: boolean, tp1At?: number|null, beArmed?: boolean, beArmedAt?: number|null}|null} progress
+ * @returns {Promise<string[]> события, которые УШЛИ в отправку (уже записанные — нет)
+ */
+export async function dispatchSignalProgressEvents(signal, progress = null) {
+  if (!signal?.id) return [];
+  const events = classifyProgressEvents(progress);
+  const dispatched = [];
+  for (const eventType of events) {
+    try {
+      const occurredAt = progressOccurredAt(progress, eventType);
+      const { recorded } = await recordSignalLifecycleEvent(signal.id, {
+        eventType,
+        occurredAt,
+      });
+      if (recorded) {
+        // Время факта (closeTime подтверждающего бара) передаётся в полезной
+        // нагрузке уведомления: терминальных полей у открытой строки ещё нет.
+        emitSignalNotification(
+          { ...signal, progressAt: occurredAt ? occurredAt.toISOString() : null },
+          eventType
+        );
+        dispatched.push(eventType);
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[signal-lifecycle-events]',
+        JSON.stringify({
+          signalId: signal.id,
+          eventType,
+          result: 'failure',
+          errorCode: 'EVENT_RECORD_FAILED',
+          message: e instanceof Error ? e.message : String(e),
+        })
+      );
+    }
+  }
+  return dispatched;
 }
 
 /** Время факта для события — из строки сигнала, не «сейчас». */

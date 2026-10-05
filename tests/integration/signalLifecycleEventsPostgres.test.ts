@@ -345,11 +345,10 @@ describe('Жизненный цикл: монитор → события → д�
     await flushNotifications();
     const mid = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
     expect(mid.status).toBe('FILLED'); // промежуточный TP1 — не исход
-    // ГРАНИЦА НАБЛЮДАЕМОСТИ (docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md):
-    // касание TP1 закрытой свечой при открытой позиции наружу НЕ наблюдаемо —
-    // frozen `manageTrade` возвращает null, прогресс не отдаётся и не персистится.
-    // Событие TP1/BE из свечной математики вне frozen-правил не выводится.
-    expect(emittedFor(signal.id)).toEqual(['FILL']);
+    // §6 (docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md, РЕАЛИЗОВАН):
+    // frozen-ядро экспортирует прогресс открытой позиции (inspectTrade того же
+    // степпера), поэтому TP1 уведомляется СРАЗУ, не дожидаясь исхода.
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1']);
 
     // Тик 3: выход по безубытку (стоп переведён на уровень входа после TP1).
     const withBe = () => window([FILL_BAR, TP1_BAR, BE_BAR]);
@@ -359,6 +358,7 @@ describe('Жизненный цикл: монитор → события → д�
     const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
     expect(row.status).toBe('CLOSED');
     expect(row.close_reason).toBe('TP1_THEN_BE');
+    // TP1 уже записан progress-путём — терминал добавляет только BREAKEVEN.
     expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
 
     // Рестарт: событие BREAKEVEN не повторяется.
@@ -712,64 +712,267 @@ describe('V3.3 и V3.4 (коридор): полный набор событий 
   }, 120_000);
 });
 
-/* ─────────── Граница наблюдаемости и forward-compatibility (§9.6) ─────────── */
+/* ───── Промежуточные события ОТКРЫТОЙ позиции (§6, 2026-10-05) ───── */
 /*
- * Исследование docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md:
- * промежуточные TP1/BREAKEVEN открытой позиции НЕ определяются без frozen API
- * (прогресс живёт в локальных переменных manageTrade/simulateTrailing и наружу
- * не возвращается). Эти тесты ФИКСИРУЮТ границу и доказывают, что текущая
- * архитектура готова к будущим progress events без изменения классификатора.
+ * docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md, реализованный вариант §6:
+ * frozen-ядро ЭКСПОРТИРУЕТ прогресс открытой позиции (инспекторы ТОГО ЖЕ
+ * степпера, что считает терминальный исход — inspectTrade/inspectTrailing),
+ * монитор отправляет TP1/BREAKEVEN, пока позиция ЖИВА. Повторы между тиками,
+ * рестартами и параллельными писателями гасит PK signal_lifecycle_events;
+ * терминальная классификация остаётся fallback и не повторяет записанное.
+ *
+ * Бары-примитивы (V3.0 LONG: вход 64600, стоп 63800, TP1 65500, TP2 66200):
+ *   FILL_BAR — вход по коридору; TP1_BAR — TP1 без TP2; POST_TP1_BAR — бар
+ *   строго после TP1 (R3: BE armed, без выхода); TP2_BAR — терминальный TP2;
+ *   TP1_TP2_BAR — TP1 и TP2 одним баром (R2: TP1 бронируется первым).
  */
-describe('Граница наблюдаемости: прогресс открытой позиции не выдумывается', () => {
-  it('V3.0: позиция открыта, BE внутри цикла уже применён — события BE нет', async (ctx) => {
+const POST_TP1_BAR: [number, number, number, number] = [64700, 65200, 64650, 65000]; // BE armed, позиция жива
+const TP1_TP2_BAR: [number, number, number, number] = [64650, 66300, 64600, 66200]; // TP1 + TP2 одним баром
+
+describe('V3.x: TP1/BREAKEVEN открытой позиции (§6)', () => {
+  it('FILLED без TP1: только FILL, прогресс пуст', async (ctx) => {
     if (guard(ctx)) return;
     const { signal } = await seedSignal();
-    // Вход + бар TP1 + бар СТРОГО ПОСЛЕ него (BE взведён по R3, стоп на entry
-    // 64600), но выше стопа и ниже TP2: внутри manageTrade beArmed = true,
-    // позиция открыта ⇒ trackPublishedSetup вернёт FILLED без прогресса.
-    const postTp1Bar: [number, number, number, number] = [64700, 65200, 64650, 65000];
-    const bars: Array<[number, number, number, number]> = [FILL_BAR, TP1_BAR, postTp1Bar];
-    const candles = () => window(bars);
-    const now = SETUP_TS + (bars.length + 2) * H;
+    const candles = () => window([FILL_BAR, CALM_BAR]);
+    const now = SETUP_TS + 5 * H;
 
     await makeMonitor(candles, now).tick();
     await flushNotifications();
 
     const row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
     expect(row.status).toBe('FILLED');
-    // Ни TP1, ни BREAKEVEN: факты не наблюдаемы через существующий API,
-    // а выводить их из свечей вне frozen-правил запрещено (DONT_DO §4).
-    expect(emittedFor(signal.id)).toEqual(['FILL']);
-
-    // Рестарт: по-прежнему тишина (до терминального исхода).
-    await makeMonitor(candles, now).tick();
-    await flushNotifications();
+    // Вход есть, целей и безубытка нет — тишина после FILL.
     expect(emittedFor(signal.id)).toEqual(['FILL']);
     expect(await recordedEvents(signal.id)).toEqual(['FILL']);
+  });
+
+  it('TP1 забронирован при открытой позиции: TP1 уходит сразу; повторный тик и рестарт молчат', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const candles = () => window([FILL_BAR, TP1_BAR]);
+    const now = SETUP_TS + 4 * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED'); // позиция ещё открыта
+    expect(row.close_reason).toBeNull();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1']);
+
+    // Повторный тик тем же окном: NO_TRANSITION, прогресс тот же — PK гасит.
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1']);
+
+    // Рестарт (новый инстанс, та же БД): по-прежнему один TP1.
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1']);
+    expect(await recordedEvents(signal.id)).toEqual(expect.arrayContaining(['FILL', 'TP1']));
+  });
+
+  it('следующий бар взвёл BE при открытой позиции: BREAKEVEN сразу; затем TP2 — только TP2', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const openCandles = () => window([FILL_BAR, TP1_BAR, POST_TP1_BAR]);
+    const now = SETUP_TS + 6 * H;
+
+    // Тик 1: вход + TP1 + бар строго после (BE armed) — всё ещё открыта.
+    await makeMonitor(openCandles, now).tick();
+    await flushNotifications();
+    let row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED');
+    // Причинный порядок: FILL → TP1 → BREAKEVEN.
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
+
+    // Тик 2 (то же окно) и рестарт-инстанс: тишина.
+    await makeMonitor(openCandles, now).tick();
+    await flushNotifications();
+    await makeMonitor(openCandles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
+
+    // Тик 3: пришёл бар TP2 — терминал. TP1/BREAKEVEN уже записаны,
+    // новое событие ровно одно: TP2.
+    const closedCandles = () => window([FILL_BAR, TP1_BAR, POST_TP1_BAR, TP2_BAR]);
+    await makeMonitor(closedCandles, SETUP_TS + 7 * H).tick();
+    await flushNotifications();
+    row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('TARGET_REACHED');
+    expect(row.close_reason).toBe('TP2');
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN', 'TP2']);
+    expect(await recordedEvents(signal.id)).toEqual(expect.arrayContaining(['FILL', 'TP1', 'BREAKEVEN', 'TP2']));
   }, 120_000);
 
-  it('V2.8: MFE ≥ 1R при открытой позиции (BE внутри трейлера взведён) — события BE нет', async (ctx) => {
+  it('TP2 на баре TP1: TP1/TP2 без ложного BREAKEVEN (BE не взводится баром самого TP1)', async (ctx) => {
     if (guard(ctx)) return;
-    const { signal } = await seedV28();
-    // Бар входа: high 112 = MFE ровно 1R ⇒ внутри simulateTrailing armed = true,
-    // стоп переведён на entry (102). Но исхода нет — v28TrailOutcome вернёт null.
-    const bars: Array<[number, number, number, number]> = [[102, 112, 95, 108]];
-    const candles = () => window(bars);
-    const now = SETUP_TS + (bars.length + 2) * H;
+    const { signal } = await seedSignal();
+    const candles = () => window([FILL_BAR, TP1_TP2_BAR]);
+    const now = SETUP_TS + 4 * H;
 
     await makeMonitor(candles, now).tick();
     await flushNotifications();
 
-    const row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
-    expect(row.status).toBe('FILLED');
-    expect(emittedFor(signal.id)).toEqual(['FILL']);
-    expect(await recordedEvents(signal.id)).toEqual(['FILL']);
+    const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('TARGET_REACHED');
+    expect(row.close_reason).toBe('TP2');
+    // R2 доказывает TP1 (бронируется первым на том же баре), R3 НЕ даёт BE
+    // (armed строго ПОСЛЕ бара TP1, а сделка на нём же закрылась).
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'TP2']);
+    expect(await recordedEvents(signal.id)).toEqual(expect.arrayContaining(['FILL', 'TP1', 'TP2']));
+    expect(await recordedEvents(signal.id)).not.toContain('BREAKEVEN');
+  }, 120_000);
+
+  it('путь пройден между тиками: терминал TP1_THEN_BE восстанавливает TP1 и BE одним тиком', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    // Монитор «спал»: вход, TP1 и BE-выход случились до первого тика.
+    const candles = () => window([FILL_BAR, TP1_BAR, BE_BAR]);
+    const now = SETUP_TS + 6 * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('CLOSED');
+    expect(row.close_reason).toBe('TP1_THEN_BE');
+    // Терминальная классификация — fallback: доказывает и TP1, и BREAKEVEN.
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
   }, 120_000);
 });
 
+describe('V2.8: BREAKEVEN открытой позиции из frozen-трейлинга (§6)', () => {
+  it('MFE ниже порога: открытая позиция без BE-события', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedV28();
+    // open 102 ⇒ стоп 92 (риск 10); high 104 = MFE 0.2R < 1R — BE не взведён.
+    const bars: Array<[number, number, number, number]> = [[102, 104, 98, 103]];
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED');
+    expect(emittedFor(signal.id)).toEqual(['FILL']);
+    expect(await recordedEvents(signal.id)).toEqual(['FILL']);
+  }, 120_000);
+
+  it('порог MFE ≥ 1R при открытой позиции: BREAKEVEN сразу; повтор/рестарт молчат; терминальный BE не повторяется; TP1 не создаётся', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedV28();
+    // Бар входа: high 112 = MFE ровно 1R ⇒ armed, стоп = вход 102; low 95 > 92 — выхода нет.
+    const openBars: Array<[number, number, number, number]> = [[102, 112, 95, 108]];
+    const openCandles = () => window(openBars);
+    const now = SETUP_TS + (openBars.length + 2) * H;
+
+    await makeMonitor(openCandles, now).tick();
+    await flushNotifications();
+
+    let row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED'); // позиция открыта, стоп уже на входе
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'BREAKEVEN']);
+
+    // Повторный тик и рестарт: PK гасит.
+    await makeMonitor(openCandles, now).tick();
+    await flushNotifications();
+    await makeMonitor(openCandles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'BREAKEVEN']);
+
+    // Терминальный BE (low 101 ≤ 102): классификатор повторно не отправляет.
+    const closedBars: Array<[number, number, number, number]> = [
+      [102, 112, 95, 108],
+      [108, 108, 101, 101],
+    ];
+    await makeMonitor(() => window(closedBars), SETUP_TS + (closedBars.length + 2) * H).tick();
+    await flushNotifications();
+    row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('CLOSED');
+    expect(row.close_reason).toBe('BE');
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'BREAKEVEN']);
+
+    // У трейлинга нет TP-лестницы: событие TP1 не выдумывается.
+    const recorded = await recordedEvents(signal.id);
+    expect(recorded).not.toContain('TP1');
+    expect(recorded).toEqual(expect.arrayContaining(['FILL', 'BREAKEVEN']));
+  }, 120_000);
+});
+
+describe('Гонки: прогресс открытой позиции при параллельных писателях', () => {
+  it('два параллельных тика монитора не дублируют TP1/BREAKEVEN', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const candles = () => window([FILL_BAR, TP1_BAR, POST_TP1_BAR]);
+    const now = SETUP_TS + 6 * H;
+
+    // Оба тика видят одно окно и оба пытаются записать одни и те же события.
+    await Promise.all([
+      makeMonitor(candles, now).tick(),
+      makeMonitor(candles, now).tick(),
+    ]);
+    await flushNotifications();
+
+    const row = (await q('SELECT status FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('FILLED');
+    // Каждое событие — ровно один раз (PK решает конкуренцию INSERT-ов).
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
+
+    const counts = (await q(
+      'SELECT event_type, COUNT(*)::int AS n FROM signal_lifecycle_events WHERE signal_id = $1 GROUP BY event_type',
+      [signal.id]
+    )) as Array<{ event_type: string; n: number }>;
+    expect(counts.every((r) => r.n === 1)).toBe(true);
+  }, 120_000);
+
+  it('монитор × скан-синхронизация: терминальная классификация скана не повторяет записанный прогресс', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedSignal();
+    const now = SETUP_TS + 7 * H;
+
+    // Тик 1 (окно короче): открытая позиция фиксирует прогресс TP1/BE.
+    await makeMonitor(() => window([FILL_BAR, TP1_BAR, POST_TP1_BAR]), now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
+
+    // Писатель-«скан» (тот же sync + та же классификация) закрывает сделку
+    // терминальным исходом TP1_THEN_BE: TP1/BREAKEVEN гасятся PK.
+    const repoAny = repo as any;
+    const row = (await q('SELECT * FROM signals WHERE id = $1', [signal.id]))[0];
+    const closed = await repoAny.syncSignalLifecycle({
+      strategyId: row.strategy_id,
+      symbol: row.symbol,
+      timeframe: row.timeframe,
+      signalCandleTs: row.signal_candle_ts,
+      fill: {
+        price: 64600, at: row.signal_candle_ts, barOpenTime: new Date(row.signal_candle_ts).getTime() + H,
+        stop: 63800, targets: [65500, 66200],
+      },
+      outcome: {
+        status: 'CLOSED', closedAt: new Date(SETUP_TS + 5 * H), exitReason: 'TP1_THEN_BE',
+        exitPrice: 64600, resultR: 0.5, netResultR: 0.49, pnlResultPct: 0, barsHeld: 4,
+      },
+    });
+    expect(closed.changed).toBe(true);
+    await eventsMod.dispatchSignalLifecycleEvents(closed.signal, closed.previous ?? null);
+    await flushNotifications();
+
+    // Новых событий нет: FILL/TP1/BREAKEVEN уже в журнале.
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'TP1', 'BREAKEVEN']);
+  }, 120_000);
+});
+
+/* ───────── Forward-compatibility: терминал учитывает записанные события ───────── */
+
 describe('Forward-compatibility: терминальная классификация учитывает записанные события', () => {
-  // Модель будущего progress-события: TP1 записан в журнал заранее (так его
-  // записал бы монитор из progress-поля frozen API — предложение §6 документа).
+  // Прогресс-событие, записанное заранее (так его записал бы монитор из
+  // progress-поля frozen API — реализовано в §6 выше); терминал не повторяет.
   async function preRecordTp1(signalId: string) {
     await q(
       `INSERT INTO signal_lifecycle_events (signal_id, event_type) VALUES ($1, 'TP1')`,

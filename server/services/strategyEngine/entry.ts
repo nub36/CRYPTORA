@@ -25,7 +25,7 @@ export { ARCHIVE_TF_MS } from '@/services/strategyArchive/types';
  * так появился баг V3.3). Экспорт аддитивен и не меняет поведение функции.
  */
 export { trackPublishedSetup } from '@/services/signals/live/lifecycle';
-export type { LifecycleResult } from '@/services/signals/live/lifecycle';
+export type { LifecycleResult, LifecycleProgress } from '@/services/signals/live/lifecycle';
 
 /**
  * Константы окна и таймфрейма исполнения — экспортируются, чтобы сервер НЕ

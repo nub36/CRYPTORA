@@ -376,6 +376,9 @@ export function formatSignalTelegramText(signal, eventType) {
     // завершилась (closeReason = TPn ⇒ статус TARGET_REACHED). Соседнее
     // событие TP1 на той же строке — промежуточная цель, а не финал.
     const isFinal = s.status === 'TARGET_REACHED' && s.closeReason === eventType;
+    // Открытая позиция (progress-событие §6): время факта — closeTime бара
+    // подтверждения из frozen-прогресса (progressAt), а не бар входа.
+    const isOpen = !isFinal && s.status === 'FILLED';
     const price = isFinal
       ? formatSignalPrice(s.closePrice ?? s.fillTargets?.[1] ?? s.targets?.[1] ?? s.targets?.[0])
       : formatSignalPrice(s.fillTargets?.[0] ?? s.targets?.[0]);
@@ -384,12 +387,26 @@ export function formatSignalTelegramText(signal, eventType) {
       line('Пара', pair),
       line('Цена', price),
       ...(isFinal ? [line('Сделка завершена', 'цель достигнута'), ...resultLines(s)] : []),
-      line('Время', formatSignalEventTime(s.closedAt ?? s.filledAt)),
+      ...(isOpen ? [line('Позиция', 'остаётся открытой')] : []),
+      line('Время', formatSignalEventTime(s.progressAt ?? s.closedAt ?? s.filledAt)),
       disclaimer,
     ].join('\n');
   }
 
   if (eventType === 'BREAKEVEN') {
+    // Прогресс ОТКРЫТОЙ позиции (§6): стоп переведён на уровень входа по
+    // правилам frozen-ядра, сделка ещё жива — исхода и R пока нет.
+    if (s.status === 'FILLED') {
+      return [
+        '🛡 CRYPTORA — Безубыток',
+        line('Пара', pair),
+        'Стоп переведён в безубыток',
+        line('Новый SL', `${formatSignalPrice(s.fillPrice)} (уровень входа)`),
+        line('Позиция', 'остаётся открытой'),
+        line('Время', formatSignalEventTime(s.progressAt ?? s.filledAt)),
+        disclaimer,
+      ].join('\n');
+    }
     return [
       '🛡 CRYPTORA — Безубыток',
       line('Пара', pair),
