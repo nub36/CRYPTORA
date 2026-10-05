@@ -15,9 +15,12 @@ import '@fontsource-variable/jetbrains-mono';
 
 import './index.css';
 
+// React Router v7: оба прежних future-флага (v7_startTransition, v7_relativeSplatPath)
+// стали поведением по умолчанию — проп `future` у BrowserRouter удалён из типов
+// (см. React Router v6→v7 upgrade guide).
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter basename={import.meta.env.BASE_URL} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ThemeProvider>
         <AuthProvider>
           <MarketDataProviderComponent>
