@@ -8,5 +8,9 @@ export function getNotificationChannels(userId: string): Promise<Record<string, 
 export function saveNotificationChannels(userId: string, input: unknown): Promise<Record<string, unknown>>;
 export function sendTelegram(token: string, chatId: string, text: string, fetchFn?: NotificationFetch, timeoutMs?: number): Promise<TelegramResult>;
 export function deliverSavedTelegram(userId: string, event: { eventType: string; eventId?: string | null; text: string }, fetchFn?: NotificationFetch): Promise<TelegramResult>;
+export const SIGNAL_TELEGRAM_DISCLAIMER: string;
+export function signalEventTimeZone(): string;
+export function formatSignalEventTime(value: unknown): string;
+export function formatSignalPrice(value: unknown): string;
 export function formatSignalTelegramText(signal: Record<string, unknown>, eventType: string): string;
 export function dispatchSignalEvent(signal: Record<string, unknown>, eventType: string, fetchFn?: NotificationFetch): Promise<PromiseSettledResult<TelegramResult>[]>;

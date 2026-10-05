@@ -113,6 +113,7 @@ describe('migration inventory', () => {
     const tables = new Set(columns.map((c) => c.table.toLowerCase()));
     // signal_monitor_state (010) and radar_events (012) are server monitor tables.
     // strategy_test_runs (015) — тестовые периоды стратегий.
+    // signal_lifecycle_events (018) — персистентный дедуп уведомлений сигнала.
     expect([...tables].sort()).toEqual([
       'audit_log',
       'auth_identities',
@@ -122,6 +123,7 @@ describe('migration inventory', () => {
       'radar_events',
       'scan_universe',
       'sessions',
+      'signal_lifecycle_events',
       'signal_monitor_state',
       'signals',
       'strategy_lab_saved_strategies',

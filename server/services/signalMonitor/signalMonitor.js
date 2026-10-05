@@ -39,7 +39,7 @@ import {
   MAX_OPEN_SIGNALS_FOR_SYNC,
 } from '../signalRepository.js';
 import { toPublishedSetup, toLifecyclePatch } from './signalTradeManager.js';
-import { emitSignalNotification } from '../notificationEvents.js';
+import { dispatchSignalLifecycleEvents } from '../signalLifecycleEvents.js';
 import { getHealthTelemetry, CYCLE_SIGNAL_MONITOR } from '../health/telemetry.js';
 import { notifyHealthCycle } from '../health/healthAlertHook.js';
 
@@ -235,6 +235,8 @@ export class SignalMonitor {
    * @param {Function} [opts.loadCore]
    * @param {Function} [opts.sleep] — инъекция для тестов (backoff)
    * @param {number} [opts.requestTimeoutMs] — таймаут запроса свечей
+   * @param {Function} [opts.dispatchEvents] — отправка событий уведомлений
+   *        (инъекция для тестов; продакшен — signalLifecycleEvents)
    */
   constructor({
     tickMs = MONITOR_TICK_MS,
@@ -247,6 +249,7 @@ export class SignalMonitor {
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     requestTimeoutMs = MONITOR_REQUEST_TIMEOUT_MS,
     telemetry,
+    dispatchEvents = dispatchSignalLifecycleEvents,
   } = {}) {
     this.tickMs = tickMs;
     this.nowFn = now;
@@ -255,6 +258,12 @@ export class SignalMonitor {
     this.getCandlesFn = getCandles ?? (null);
     // Журнал наблюдения: в тестах подменяется, в продакшене пишет в signals.
     this.recordMonitorFn = recordMonitor ?? ((id, patch) => recordSignalMonitorCheck(id, patch));
+    /**
+     * События уведомлений. Диспетчер сам никогда не бросает и сам
+     * дедуплицирует (signal_lifecycle_events, миграция 018), поэтому сбой
+     * доставки не может уронить тик наблюдения.
+     */
+    this.dispatchEventsFn = dispatchEvents;
     this.loadCoreFn = loadCore;
     this.sleepFn = sleep;
     this.requestTimeoutMs = requestTimeoutMs;
@@ -573,7 +582,10 @@ export class SignalMonitor {
       fill,
       outcome,
     });
-    if (res.changed) emitSignalNotification(res.signal, res.signal?.status === 'FILLED' ? 'FILL' : 'OUTCOME');
+    // Уведомления о переходе (вход / цели / безубыток / стоп / отмена /
+    // закрытие) отправляет ТОЛЬКО победивший писатель (changed=true), а
+    // повторная отправка невозможна из-за персистентного дедупа событий.
+    if (res.changed) await this.dispatchEventsFn(res.signal, res.previous ?? null);
 
     if (result.kind === 'FILLED') {
       await this.writeMonitor(row, { result: 'FILLED' });

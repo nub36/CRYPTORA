@@ -924,7 +924,11 @@ function fillPatch(fill) {
  * @param {{status:string, closedAt?:string|Date|null, exitReason?:string|null,
  *          exitPrice?:number|null, resultR?:number|null, netResultR?:number|null,
  *          pnlResultPct?:number|null, barsHeld?:number|null}|null} [p.outcome]
- * @returns {Promise<{found:boolean, changed:boolean, reason:string|null, signal:object|null}>}
+ * @returns {Promise<{found:boolean, changed:boolean, reason:string|null, signal:object|null,
+ *                    previous:{status:string, fillPrice:number|null}|null}>}
+ *   `previous` — снапшот строки ДО перехода (status + факт исполнения). Нужен
+ *   классификации событий уведомлений (signalLifecycleEvents): «вход только
+ *   что состоялся» ≠ «вход был известен раньше». Только для changed=true.
  */
 export async function syncSignalLifecycle({
   strategyId, symbol, timeframe, signalCandleTs, fill = null, outcome = null,
@@ -934,9 +938,9 @@ export async function syncSignalLifecycle({
       WHERE strategy_id = $1 AND symbol = $2 AND timeframe = $3 AND signal_candle_ts = $4`,
     [strategyId, symbol, timeframe, new Date(signalCandleTs)]
   );
-  if (rows.length === 0) return { found: false, changed: false, reason: 'NO_SUCH_SIGNAL', signal: null };
+  if (rows.length === 0) return { found: false, changed: false, reason: 'NO_SUCH_SIGNAL', signal: null, previous: null };
   if (CLOSED_SIGNAL_STATUSES.includes(rows[0].status)) {
-    return { found: true, changed: false, reason: 'ALREADY_CLOSED', signal: null };
+    return { found: true, changed: false, reason: 'ALREADY_CLOSED', signal: null, previous: null };
   }
   if (isNoTradeStatus(outcome?.status) && rowIsEntered(rows[0])) {
     // Событие целостности, а не шум: после фикса границы кэша расхождение
@@ -949,8 +953,14 @@ export async function syncSignalLifecycle({
         ` ${strategyId} ${symbol} ${timeframe} @${new Date(signalCandleTs).toISOString()}` +
         ` (status=${rows[0].status}); signal stays entered and monitored`
     );
-    return { found: true, changed: false, reason: ENTERED_SIGNAL_NO_TRADE_REASON, signal: null };
+    return { found: true, changed: false, reason: ENTERED_SIGNAL_NO_TRADE_REASON, signal: null, previous: null };
   }
+
+  /** Снапшот «до» — для классификации событий уведомлений (см. docblock). */
+  const previous = {
+    status: rows[0].status,
+    fillPrice: num(rows[0].fill_price),
+  };
 
   if (outcome) {
     const res = await closeSignal(rows[0].id, outcome.status, {
@@ -966,7 +976,7 @@ export async function syncSignalLifecycle({
       barsHeld: outcome.barsHeld === undefined ? null : outcome.barsHeld,
       fill: fill ?? undefined,
     });
-    if (res !== null) return { found: true, changed: true, reason: null, signal: res };
+    if (res !== null) return { found: true, changed: true, reason: null, signal: res, previous };
     // writeLifecycle отказал. Строка либо уже терминальная, либо (гонка:
     // монитор записал FILLED между нашим SELECT и записью) исполненная строка
     // получила безсделковый вердикт — различаем честно, а не одним «ALREADY_CLOSED».
@@ -979,15 +989,16 @@ export async function syncSignalLifecycle({
       changed: false,
       reason: refusedAsEntered ? ENTERED_SIGNAL_NO_TRADE_REASON : 'ALREADY_CLOSED',
       signal: null,
+      previous: null,
     };
   }
 
   if (fill && rows[0].status === 'ACTIVE') {
     const res = await markSignalFilled(rows[0].id, fill);
-    return { found: true, changed: res !== null, reason: res ? null : 'ALREADY_CLOSED', signal: res };
+    return { found: true, changed: res !== null, reason: res ? null : 'ALREADY_CLOSED', signal: res, previous };
   }
 
-  return { found: true, changed: false, reason: 'NO_TRANSITION', signal: null };
+  return { found: true, changed: false, reason: 'NO_TRANSITION', signal: null, previous: null };
 }
 
 /**
