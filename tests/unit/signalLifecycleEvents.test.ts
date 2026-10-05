@@ -398,6 +398,26 @@ describe('formatSignalTelegramText — понятные сообщения по�
     expect(expired).toContain('истёк без входа');
   });
 
+  it('V2.8-причины отмены до входа объяснены по-человечески', () => {
+    const ladder = fmt(
+      signalRow({ status: 'CANCELLED', closeReason: 'LADDER_INVALID_AT_FILL' }),
+      'CANCELLED'
+    );
+    expect(ladder).toContain('отменён до входа (лестница целей неисполнима)');
+
+    const noBar = fmt(
+      signalRow({ status: 'CANCELLED', closeReason: 'NO_CONTIGUOUS_NEXT_BAR' }),
+      'CANCELLED'
+    );
+    expect(noBar).toContain('отменён до входа (нет смежного бара данных)');
+
+    const geometry = fmt(
+      signalRow({ status: 'CANCELLED', closeReason: 'REJECTED_GEOMETRY' }),
+      'CANCELLED'
+    );
+    expect(geometry).toContain('отменён до входа (геометрия коридора отклонена)');
+  });
+
   it('закрытие по правилам стратегии (таймаут/трейлинг) — отдельное событие', () => {
     const text = fmt(
       signalRow({ status: 'CLOSED', fillPrice: 101, closeReason: 'TIMEOUT', closePrice: 105, resultR: 0.24 }),

@@ -21,8 +21,8 @@
 - `notification_delivery_log.event_type` — TEXT без CHECK, новые типы пишутся без изменений схемы.
 
 ### Tests
-- `tests/unit/signalLifecycleEvents.test.ts` (37): классификация всех переходов (включая «прямой» ACTIVE→терминал и V2.8 trail/BE), домен event_type, дедуп, отказоустойчивость диспетчера, формат всех сообщений, дисклеймер, время/zone, PEPE-точность.
-- `tests/integration/signalLifecycleEventsPostgres.test.ts` (14, настоящий PostgreSQL + настоящие миграции + настоящий `SignalMonitor` и frozen-ядро): NEW_SIGNAL/FILL/TP1/TP2/BREAKEVEN/STOP_LOSS/CANCELLED/CLOSED по одному разу; повторные тики, рестарт-инстанс монитора и параллельные тики молчат; гонка монитор×скан не дублирует FILL; журнал не меняет уровни/статусы/хэш-цепочку; домен CHECK таблицы.
+- `tests/unit/signalLifecycleEvents.test.ts` (38): классификация всех переходов (включая «прямой» ACTIVE→терминал и V2.8 trail/BE), домен event_type, дедуп, отказоустойчивость диспетчера, формат всех сообщений, дисклеймер, время/zone, PEPE-точность.
+- `tests/integration/signalLifecycleEventsPostgres.test.ts` (20, настоящий PostgreSQL + настоящие миграции + настоящий `SignalMonitor` и frozen-ядро): NEW_SIGNAL/FILL/TP1/TP2/BREAKEVEN/STOP_LOSS/CANCELLED/CLOSED по одному разу; повторные тики, рестарт-инстанс монитора и параллельные тики молчат; гонка монитор×скан не дублирует FILL; журнал не меняет уровни/статусы/хэш-цепочку; домен CHECK таблицы.
 - Обновлён инвентарь миграций `tests/unit/migrationPostgresCompat.test.ts` (+`signal_lifecycle_events`).
 
 ---

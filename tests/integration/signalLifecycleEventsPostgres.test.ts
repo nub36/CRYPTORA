@@ -543,6 +543,170 @@ describe('Дедупликация между писателями', () => {
   }, 120_000);
 });
 
+/* ───────────── V2.8 (MARKET_NEXT_OPEN) и V3.3/V3.4 (коридор) ───────────── */
+
+/**
+ * V2.8-план: вход по OPEN бара N+1 (frozen `v28EntryAtNextOpen`: сдвиг стопа/
+ * целей на дельту исполнения, `executableLadder`, rr1 ≥ min_rr=1), далее
+ * трейлинг V2.5 (`simulateTrailing`: BE при MFE ≥ 1R, трейлинг 1R шагом 0.25R,
+ * таймаут 10 баров до взвода BE).
+ */
+async function seedV28(overrides: Record<string, unknown> = {}) {
+  return seedSignal({
+    strategyId: 'V2_8_ZERO_FEE_SNIPER_TRAILING',
+    entryType: 'MARKET_NEXT_OPEN',
+    entryMin: 100,
+    entryMax: 100,
+    stopLoss: 90,
+    targets: [115, 130],
+    ...overrides,
+  });
+}
+
+describe('V2.8 (MARKET_NEXT_OPEN): события входа по open и trail-исходов', () => {
+  it('вход по open → выход по безубытку: FILL и BREAKEVEN по одному разу', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedV28();
+
+    // Бар входа: open 102 (сдвиг +2 ⇒ стоп 92, риск 10), high РОВНО 112
+    // (MFE = 1R ⇒ BE взведён, трейлинг ещё не подтянулся), low выше стопа.
+    // Бар 2: low 101 ≤ 102 (BE-стоп) ⇒ выход по безубытку.
+    const bars: Array<[number, number, number, number]> = [
+      [102, 112, 95, 108],
+      [108, 108, 101, 101],
+    ];
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason, fill_price FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('CLOSED');
+    expect(row.close_reason).toBe('BE');
+    expect(Number(row.fill_price)).toBe(102);
+    // Событие входа есть; безубыток — отдельное событие; TP-событий НЕТ
+    // (лестница трейлингом не отслеживается — честное ограничение frozen-ядра).
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'BREAKEVEN']);
+
+    // Рестарт-инстанс монитора: тишина.
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'BREAKEVEN']);
+  }, 120_000);
+
+  it('стоп на баре входа (до взвода BE): FILL + STOP_LOSS, не «отмена»', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedV28();
+    // open 102 ⇒ стоп 92; low 91 задет до MFE ≥ 1R ⇒ SL.
+    const bars: Array<[number, number, number, number]> = [[102, 104, 91, 93]];
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('INVALIDATED');
+    expect(row.close_reason).toBe('SL');
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'STOP_LOSS']);
+  }, 120_000);
+
+  it('трейлинг-стоп: FILL + CLOSED (выход по правилам стратегии, не TP/SL/BE)', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedV28();
+    // Бар 1: high 115 ⇒ MFE 1.3R, BE+trail ⇒ стоп 105. Бар 2: high 120 ⇒
+    // MFE 1.8R (шаг 0.5R ≥ 0.25R) ⇒ стоп 110. Бар 3: low 109 ≤ 110 ⇒ TRAIL.
+    const bars: Array<[number, number, number, number]> = [
+      [102, 115, 100, 112],
+      [113, 120, 106, 118],
+      [118, 118, 109, 110],
+    ];
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason, close_price FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('CLOSED');
+    expect(row.close_reason).toBe('TRAIL');
+    expect(Number(row.close_price)).toBe(110);
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'CLOSED']);
+  }, 120_000);
+
+  it('таймаут без взвода BE: FILL + CLOSED', async (ctx) => {
+    if (guard(ctx)) return;
+    const { signal } = await seedV28();
+    // 10 баров (TIMEOUT_BARS трейлера) без MFE ≥ 1R и без стопа.
+    const bars: Array<[number, number, number, number]> = Array.from(
+      { length: 10 },
+      () => [102, 106, 98, 104] as [number, number, number, number]
+    );
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('CLOSED');
+    expect(row.close_reason).toBe('TIMEOUT');
+    expect(emittedFor(signal.id)).toEqual(['FILL', 'CLOSED']);
+  }, 120_000);
+
+  it('отмена до входа: лестница неисполнима после сдвига — CANCELLED без FILL', async (ctx) => {
+    if (guard(ctx)) return;
+    // rr1 после сдвига = (107-102)/10 = 0.5 < min_rr = 1 ⇒ NO_ENTRY.
+    const { signal } = await seedV28({ targets: [105] });
+    const bars: Array<[number, number, number, number]> = [[102, 108, 99, 104]];
+    const candles = () => window(bars);
+    const now = SETUP_TS + (bars.length + 2) * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    const row = (await q('SELECT status, close_reason, fill_price FROM signals WHERE id = $1', [signal.id]))[0];
+    expect(row.status).toBe('CANCELLED');
+    expect(row.close_reason).toBe('LADDER_INVALID_AT_FILL');
+    expect(row.fill_price).toBeNull();
+    expect(emittedFor(signal.id)).toEqual(['CANCELLED']);
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(signal.id)).toEqual(['CANCELLED']);
+  }, 120_000);
+});
+
+describe('V3.3 и V3.4 (коридор): полный набор событий одним тиком', () => {
+  it('обе стратегии дают FILL → TP1 → TP2; V3.4 не менялась, но сопровождается', async (ctx) => {
+    if (guard(ctx)) return;
+    const v33 = await seedSignal({ strategyId: 'V3_3_HTF_ZONE_MITIGATION' });
+    const v34 = await seedSignal({ strategyId: 'V3_4_HTF_ZONE_MITIGATION_QUALITY' });
+
+    // Один и тот же бар сетапа и один инструмент ⇒ ОДНА группа монитора:
+    // обе строки ведутся одним запросом свечей.
+    const candles = () => window([FILL_BAR, TP1_BAR, TP2_BAR]);
+    const now = SETUP_TS + 6 * H;
+
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+
+    for (const s of [v33.signal, v34.signal]) {
+      const row = (await q('SELECT status, close_reason FROM signals WHERE id = $1', [s.id]))[0];
+      expect(row.status).toBe('TARGET_REACHED');
+      expect(row.close_reason).toBe('TP2');
+      expect(emittedFor(s.id)).toEqual(['FILL', 'TP1', 'TP2']);
+    }
+
+    // Повторный тик: обе строки терминальны и молчат.
+    await makeMonitor(candles, now).tick();
+    await flushNotifications();
+    expect(emittedFor(v33.signal.id)).toEqual(['FILL', 'TP1', 'TP2']);
+    expect(emittedFor(v34.signal.id)).toEqual(['FILL', 'TP1', 'TP2']);
+  }, 120_000);
+});
+
 /* ───────────────────── Журнал ≠ торговая правда ───────────────────── */
 
 describe('Журнал событий не меняет торговые данные', () => {
