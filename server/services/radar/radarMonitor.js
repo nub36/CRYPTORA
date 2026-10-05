@@ -13,6 +13,7 @@ import { subscribeScanUniverseChanged } from '../scanUniverseEvents.js';
 import { config } from '../../config.js';
 import { BinanceRadarTickerStream } from './binanceRadarTickerStream.js';
 import { persistRadarEvent, purgeExpiredRadarEvents } from './radarEventRepository.js';
+import { getHealthTelemetry, CYCLE_RADAR_MONITOR } from '../health/telemetry.js';
 
 const UNIVERSE_REFRESH_MS = 30_000;
 const RETENTION_SWEEP_MS = 6 * 60 * 60_000;
@@ -45,6 +46,7 @@ export class RadarMonitor {
     retentionSweepMs = RETENTION_SWEEP_MS,
     now = () => Date.now(),
     logger = console,
+    telemetry,
   } = {}) {
     this.core = core ?? new AnomalyCalculationCore();
     this.getUniverse = getUniverse ?? (() => getScanUniverseState());
@@ -56,6 +58,12 @@ export class RadarMonitor {
     this.retentionSweepMs = retentionSweepMs;
     this.now = now;
     this.logger = logger;
+    /**
+     * Телеметрия для `/api/health`. Циклом radar-монитора считается обновление
+     * эффективной вселенной (`refreshUniverse`) — уже существующий
+     * периодический процесс. Отдельного health-таймера не создаётся.
+     */
+    this.telemetry = telemetry ?? getHealthTelemetry().cycle(CYCLE_RADAR_MONITOR);
 
     this.running = false;
     this.starting = false;
@@ -94,6 +102,7 @@ export class RadarMonitor {
     if (this.running || this.starting) return;
     this.starting = true;
     this.running = true;
+    this.telemetry.markStarted();
     this.startedAt = new Date(this.now()).toISOString();
     try {
       this.unsubscribeUniverseChanges = this.subscribeUniverseChanges(() => {
@@ -137,6 +146,7 @@ export class RadarMonitor {
   async refreshUniverse() {
     if (!this.running) return;
     if (this.refreshPromise) return this.refreshPromise;
+    this.telemetry.beginCycle();
     this.refreshPromise = (async () => {
       try {
         const universe = await this.getUniverse();
@@ -149,6 +159,8 @@ export class RadarMonitor {
           this.stream.setSymbols([]);
           this.feed = { ...this.feed, state: 'unavailable', subscribedSymbols: 0 };
           this.recordError(new Error('Active Spot universe (exchangeInfo) unavailable'), 'UNIVERSE_UNAVAILABLE');
+          // Вселенная неизвестна ⇒ детектор не работает. Это НЕ успешный цикл.
+          this.telemetry.completeCycle({ ok: false, errors: 1, error: 'UNIVERSE_UNAVAILABLE' });
           return;
         }
 
@@ -160,8 +172,15 @@ export class RadarMonitor {
         this.activeSymbols = next;
         this.clearErrorCodes('UNIVERSE_UNAVAILABLE', 'UNIVERSE_REFRESH_ERROR');
         this.stream.setSymbols(next);
+        this.telemetry.completeCycle({
+          ok: true,
+          inspected: next.length,
+          updated: this.persistedEvents,
+          errors: 0,
+        });
       } catch (error) {
         this.recordError(error, 'UNIVERSE_REFRESH_ERROR');
+        this.telemetry.completeCycle({ ok: false, errors: 1, error });
       }
     })().finally(() => {
       this.refreshPromise = null;
@@ -171,6 +190,15 @@ export class RadarMonitor {
 
   processTicker(tick) {
     if (!this.running || !this.activeSymbols.includes(tick.symbol)) return [];
+    /**
+     * Контракт свежести: у тикера есть ВРЕМЯ БИРЖИ (`tick.timestamp`) и
+     * момент получения. Health смотрит оба — «сокет открыт» не означает
+     * «рынок приходит».
+     */
+    this.telemetry.registry?.recordMarketData?.('binance-spot-ticker', {
+      sourceTimestampMs: Number(tick?.timestamp) || null,
+      receivedAtMs: this.now(),
+    });
     const detected = this.core.processTick(tick);
     for (const event of detected) this.queuePersistence(event, tick.timestamp);
     return detected;

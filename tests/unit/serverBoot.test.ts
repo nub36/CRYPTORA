@@ -103,7 +103,12 @@ describe('real routes over real HTTP', () => {
     expect(body.app).toBe('CRYPTORA Market Intelligence Terminal');
     expect(body.version).toBeTruthy();
     expect(typeof body.uptimeSeconds).toBe('number');
-    expect(['connected', 'disconnected']).toContain(body.database);
+    // Контракт расширен: `database` — объект отчёта, строковый статус
+    // сохранён в back-compat поле `databaseStatus`.
+    expect(['connected', 'disconnected']).toContain(body.databaseStatus);
+    const database = body.database as Record<string, unknown>;
+    expect(['ok', 'error']).toContain(database.status);
+    expect(typeof database.latencyMs).toBe('number');
   });
 
   it('GET /api/health exposes ONLY booleans for mail/providers — no hosts, ids or secrets', async () => {

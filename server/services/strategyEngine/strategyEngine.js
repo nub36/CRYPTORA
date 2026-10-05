@@ -32,6 +32,7 @@ import {
 } from '../signalRepository.js';
 import { getStrategy, PRODUCT_STRATEGIES } from '../strategyCatalog.js';
 import { provenanceOfNewSignal } from '../signalProvenance.js';
+import { validateNewSignal } from '../signalInvariants.js';
 import { withScanLock } from './scanMutex.js';
 import { recordScanResult, recordSignalEmitted } from '../strategySettings.js';
 import { emitSignalNotification } from '../notificationEvents.js';
@@ -395,6 +396,10 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
   let duplicates = 0;
   let skippedNoKey = 0;
   let provenanceMismatch = 0;
+  /** Сетапы, отклонённые инвариантами живой публикации (см. ниже). */
+  let invariantRejected = 0;
+  /** @type {Set<string>} какие именно инварианты сработали — для сводки скана. */
+  const invariantCodes = new Set();
   /** Кто именно породил отвергнутые сетапы — для честного лога, а не «что-то пошло не так». */
   const alienStrategyIds = new Set();
 
@@ -432,6 +437,41 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
       if (built.provenanceMismatch) alienStrategyIds.add(built.provenanceMismatch);
       continue;
     }
+    /**
+     * КОНТЕКСТНЫЕ ИНВАРИАНТЫ ЖИВОЙ ПУБЛИКАЦИИ.
+     *
+     * Здесь (и только здесь) известно, что публикация — живая: свечи взяты
+     * у биржи только что. Поэтому именно на этой границе проверяется то,
+     * что бессмысленно проверять на записи вообще:
+     *   • бар сетапа не из будущего (look-ahead);
+     *   • бар сетапа не просрочен (сетап, которому десятки баров, —
+     *     это история, а не текущий рынок);
+     *   • provenance полон (strategyId + strategyVersion), иначе строку
+     *     нельзя соотнести с посчитавшим её кодом;
+     *   • данные не из demo-провайдера (production-сигнал из фикстуры
+     *     невозможен по определению).
+     * Математика стратегий не затрагивается: ни один уровень не меняется —
+     * сетап либо публикуется как есть, либо не публикуется вовсе.
+     */
+    const invariants = validateNewSignal(built.record, {
+      providerIsDemo: dataFetcher.asProvider?.()?.isDemo === true,
+    });
+    if (!invariants.ok) {
+      invariantRejected++;
+      for (const violation of invariants.violations) {
+        invariantCodes.add(violation.code);
+      }
+      // eslint-disable-next-line no-console
+      console.warn('[strategyEngine]', JSON.stringify({
+        event: 'setup_rejected_by_invariant',
+        strategyId,
+        symbol: built.record.symbol,
+        timeframe: built.record.timeframe,
+        violations: invariants.violations.map((v) => v.code),
+      }));
+      continue;
+    }
+
     if (!persist) continue;
 
     const res = await insertSignal(built.record);
@@ -481,6 +521,9 @@ export async function runStrategyScan({ strategyId, symbols = null, fetcher, per
     duplicates,
     skippedNoKey,
     provenanceMismatch,
+    /** Сетапы, отвергнутые инвариантами живой публикации (future/stale/demo/provenance). */
+    invariantRejected,
+    invariantViolations: [...invariantCodes],
     rejected,
     lifecycle,
     scan: {

@@ -17,6 +17,9 @@
 
 export const STATISTICS_PERIODS: readonly ('all' | '24h' | '7d' | '30d' | '90d')[];
 
+/** Срез «вне тестовых прогонов»: исторические сигналы без test_run_id. */
+export const TEST_RUN_NONE: 'none';
+
 /** Граница окна периода (null = без ограничения). Чистая функция. */
 export declare function periodStart(
   period: string,
@@ -77,6 +80,8 @@ export interface SignalStatisticsFilters {
   strategyId?: string;
   symbol?: string;
   period?: string;
+  /** Строгая фильтрация по членству в тестовом прогоне; 'none' — исторические. */
+  testRunId?: string | null;
   /** Инъекция времени (тесты). */
   nowMs?: number;
 }

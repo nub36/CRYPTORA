@@ -24,7 +24,7 @@
  * между ними детерминированно и без сети.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 
 /* -------------------------------------------------------------------------- */
 /* Подстановки                                                                 */
@@ -305,6 +305,21 @@ const makeFetcher = (opts: { fail?: boolean } = {}) => {
     },
   };
 };
+
+/**
+ * Фикстуры привязаны к фиксированному бару SETUP_BAR. Движок проверяет
+ * инвариант «сетап не публикуется по просроченной свече», поэтому часы
+ * теста пинятся к этому бару: иначе фикстура ломалась бы просто от того,
+ * что календарь ушёл вперёд, и тест перестал бы проверять оркестрацию.
+ */
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(SETUP_BAR + 60 * 60 * 1000));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   h.state.pendingSetups = [];

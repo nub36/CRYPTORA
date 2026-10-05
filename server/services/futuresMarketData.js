@@ -27,6 +27,8 @@ import { getFuturesUniverseCache } from './exchangeUniverse.js';
 
 const BINANCE_FUTURES = 'https://fapi.binance.com';
 
+import { getHealthTelemetry } from './health/telemetry.js';
+
 /** Bulk endpoints are cheap (weight 40/1) — a short TTL keeps the table live. */
 export const BULK_TTL_MS = 15_000;
 /** Per-symbol OI sweep; Binance refreshes OI roughly every few seconds, 60s is ample. */
@@ -378,7 +380,40 @@ export function __resetFuturesMarketStoreForTests(store = null) {
   defaultStore = store;
 }
 
-/** Payload handler for `GET /api/market/derivatives/futures`. */
+/**
+ * Payload handler for `GET /api/market/derivatives/futures`.
+ *
+ * Здесь же публикуется свежесть деривативных потоков для `/api/health`:
+ * это единственное место, где известен и момент получения снапшота
+ * (`fetchedAt`), и момент биржевого свипа open interest
+ * (`coverage.openInterestSweptAt`). Телеметрия обёрнута в try/catch —
+ * наблюдение не имеет права сломать выдачу рыночных данных.
+ */
 export async function futuresMarketSnapshotPayload() {
-  return getFuturesMarketSnapshotStore().snapshot();
+  const snapshot = await getFuturesMarketSnapshotStore().snapshot();
+  try {
+    const registry = getHealthTelemetry();
+    const fetchedAtMs = Date.parse(snapshot?.fetchedAt ?? '');
+    if (Number.isFinite(fetchedAtMs)) {
+      registry.recordMarketData('binance-futures-snapshot', {
+        sourceTimestampMs: fetchedAtMs,
+        receivedAtMs: fetchedAtMs,
+      });
+      // Funding берётся из того же premiumIndex, что и снапшот.
+      registry.recordMarketData('binance-futures-funding', {
+        sourceTimestampMs: fetchedAtMs,
+        receivedAtMs: fetchedAtMs,
+      });
+    }
+    const oiSweptMs = Date.parse(snapshot?.coverage?.openInterestSweptAt ?? '');
+    if (Number.isFinite(oiSweptMs)) {
+      registry.recordMarketData('binance-futures-open-interest', {
+        sourceTimestampMs: oiSweptMs,
+        receivedAtMs: oiSweptMs,
+      });
+    }
+  } catch {
+    // см. комментарий выше
+  }
+  return snapshot;
 }

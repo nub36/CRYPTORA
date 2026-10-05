@@ -26,6 +26,7 @@
     "test:e2e:debug": "PLAYWRIGHT_WEB_SERVER=dev playwright test --debug",
     "migrate": "node scripts/migrate.mjs",
     "migrate:status": "node scripts/migrate.mjs status",
+    "audit:production-health": "node scripts/audit-production-health.mjs",
     "create-admin": "node scripts/create-admin.mjs",
     "postinstall": "node scripts/patch-playwright-jsx.cjs"
   },
