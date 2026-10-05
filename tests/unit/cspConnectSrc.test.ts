@@ -27,6 +27,9 @@ describe('production CSP connect-src covers all external origins used in src/', 
       for (const m of txt.matchAll(/(https|wss):\/\/([a-zA-Z0-9.-]+)(:\d+)?/g)) {
         const host = m[2];
         if (/github|keepachangelog|localhost|example|w3\.org|schema|vitejs|react/.test(host)) continue;
+        // Собственный canonical origin приложения (src/seo/canonicalUrl.ts: canonical/og:url,
+        // НЕ fetch-цель) — same-origin, в CSP покрыт 'self'; в connect-src не добавляется.
+        if (host === 'cryptonic.online') continue;
         origins.add(`${m[1]}://${host}${m[3] ?? ''}`);
       }
     }

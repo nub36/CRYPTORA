@@ -1,0 +1,7 @@
+# CRYPTORA — https://cryptonic.online
+# API-эндпоинты не предназначены для обхода краулерами (rate limits); 
+# публичные SPA-маршруты индексируются свободно.
+User-agent: *
+Disallow: /api/
+
+Sitemap: https://cryptonic.online/sitemap.xml

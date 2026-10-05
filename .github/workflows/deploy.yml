@@ -10,7 +10,7 @@
 #
 # Триггер — ТОЛЬКО ручной запуск (workflow_dispatch).
 # При интеграции v0.9.0 автотриггер push→main отключён: продакшен терминала — VPS
-# (cryptora.duckdns.org), а GH Pages вырождает auth/AI в «гостевой» режим. Публикация
+# (https://cryptonic.online), а GH Pages вырождает auth/AI в «гостевой» режим. Публикация
 # на Pages — отдельное осознанное решение владельца (запуск вручную из вкладки Actions).
 
 name: Deploy to GitHub Pages

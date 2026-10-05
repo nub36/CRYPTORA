@@ -1115,7 +1115,7 @@ src/
 ### Production URL
 
 ```
-https://cryptora.duckdns.org
+https://cryptonic.online
 ```
 
 ### Network topology
@@ -1145,7 +1145,7 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 ### Same-origin
 
-Frontend и API на одном домене (`cryptora.duckdns.org`). CORS не нужен. Не настраивать `Access-Control-Allow-Origin: *`.
+Frontend и API на одном домене (`cryptonic.online`). CORS не нужен. Не настраивать `Access-Control-Allow-Origin: *`.
 
 ### Auth cookies (production)
 
@@ -1323,7 +1323,7 @@ Same-origin — CORS **не нужен**. Не добавлять `cors()` middl
 8.  sudo cp -r dist/* /var/www/cryptora/          # deploy static files
 9.  sudo systemctl restart cryptora               # restart backend
 10. sudo nginx -t && sudo systemctl reload nginx
-11. curl -s https://cryptora.duckdns.org/api/health
+11. curl -s https://cryptonic.online/api/health
 ```
 
 **Агент НЕ выполняет команды на production VPS.** Только local dev/test/build.
@@ -1331,4 +1331,4 @@ Same-origin — CORS **не нужен**. Не добавлять `cors()` middl
 ---
 
 *Документ составлен на основании HEAD 78b56b3, v0.8.44.*
-*Production URL: https://cryptora.duckdns.org*
+*Production URL: https://cryptonic.online (миграция домена 2026-10-05: см. docs/agent-plan/DOMAIN_MIGRATION.md)*

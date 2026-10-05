@@ -33,7 +33,9 @@ export const config = {
    *
    * Single source of truth for CSRF origin checks, OAuth redirect URIs and
    * links embedded in outgoing mail. Never hardcode the domain in middleware
-   * or services. Production: https://cryptora.duckdns.org
+   * or services. Production: https://cryptonic.online (2026-10-05: прежний
+   * DuckDNS-hostname постоянно 301-редиректит на него на уровне nginx и до
+   * приложения не доходит — отдельного trusted origin не требуется).
    * APP_BASE_URL is accepted as an alias for deployments documented that way.
    */
   APP_ORIGIN: (process.env.APP_ORIGIN || process.env.APP_BASE_URL || 'http://localhost:5173').replace(/\/+$/, ''),

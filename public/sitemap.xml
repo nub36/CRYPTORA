@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CRYPTORA — sitemap канонического домена https://cryptonic.online.
+     Только статические верхнеуровневые маршруты SPA (src/App.tsx);
+     динамические (/coin/:symbol, /articles/:slug и т.п.) не перечисляются. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://cryptonic.online/</loc></url>
+  <url><loc>https://cryptonic.online/market</loc></url>
+  <url><loc>https://cryptonic.online/futures</loc></url>
+  <url><loc>https://cryptonic.online/liquidations</loc></url>
+  <url><loc>https://cryptonic.online/screener</loc></url>
+  <url><loc>https://cryptonic.online/radar</loc></url>
+  <url><loc>https://cryptonic.online/heatmaps</loc></url>
+  <url><loc>https://cryptonic.online/tools</loc></url>
+  <url><loc>https://cryptonic.online/strategies</loc></url>
+  <url><loc>https://cryptonic.online/signals</loc></url>
+  <url><loc>https://cryptonic.online/correlations</loc></url>
+  <url><loc>https://cryptonic.online/onchain</loc></url>
+  <url><loc>https://cryptonic.online/journal</loc></url>
+  <url><loc>https://cryptonic.online/calendar</loc></url>
+  <url><loc>https://cryptonic.online/ecosystem</loc></url>
+  <url><loc>https://cryptonic.online/portfolio</loc></url>
+  <url><loc>https://cryptonic.online/articles</loc></url>
+  <url><loc>https://cryptonic.online/news</loc></url>
+</urlset>
