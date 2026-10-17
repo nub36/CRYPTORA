@@ -56,6 +56,7 @@ export interface HealthReport {
     signalMonitor: Record<string, unknown>;
     radarMonitor: Record<string, unknown>;
     strategyScheduler: Record<string, unknown>;
+    notificationRedelivery: Record<string, unknown>;
     thresholds: Record<string, number>;
   };
 }

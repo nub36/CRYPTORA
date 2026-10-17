@@ -22,6 +22,7 @@ import {
   CYCLE_SIGNAL_MONITOR,
   CYCLE_RADAR_MONITOR,
   CYCLE_STRATEGY_SCHEDULER,
+  CYCLE_NOTIFICATION_REDELIVERY,
 } from './telemetry.js';
 import {
   classifyFreshness,
@@ -211,6 +212,16 @@ export async function buildHealthReport(deps = {}) {
     nowMs, processStartedAtMs, grace
   );
 
+  const notificationRedelivery = classifyCycle(
+    cycles[CYCLE_NOTIFICATION_REDELIVERY] ?? null,
+    {
+      stale: thresholds.notificationRedeliveryStaleSeconds,
+      error: thresholds.notificationRedeliveryErrorSeconds,
+      maxConsecutiveFailures: thresholds.notificationRedeliveryMaxConsecutiveFailures,
+    },
+    nowMs, processStartedAtMs, grace
+  );
+
   const marketData = buildMarketDataSection(telemetry.marketDataObservations(), thresholds, nowMs);
 
   /**
@@ -247,6 +258,7 @@ export async function buildHealthReport(deps = {}) {
     signalMonitor: { ...signalMonitor, staleThresholdSeconds: thresholds.signalMonitorStaleSeconds },
     radarMonitor: { ...radarMonitor, staleThresholdSeconds: thresholds.radarMonitorStaleSeconds },
     strategyScheduler: { ...strategyScheduler, staleThresholdSeconds: thresholds.strategySchedulerStaleSeconds },
+    notificationRedelivery: { ...notificationRedelivery, staleThresholdSeconds: thresholds.notificationRedeliveryStaleSeconds },
     thresholds,
   };
 

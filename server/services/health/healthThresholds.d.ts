@@ -15,6 +15,9 @@ export interface HealthThresholds {
   radarMonitorErrorSeconds: number;
   strategySchedulerStaleSeconds: number;
   strategySchedulerErrorSeconds: number;
+  notificationRedeliveryStaleSeconds: number;
+  notificationRedeliveryErrorSeconds: number;
+  notificationRedeliveryMaxConsecutiveFailures: number;
   alertCooldownSeconds: number;
   alertMinConsecutiveObservations: number;
   startupGraceSeconds: number;
