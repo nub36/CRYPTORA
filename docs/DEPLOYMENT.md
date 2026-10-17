@@ -175,6 +175,14 @@ curl --fail http://127.0.0.1:3000/api/radar/status
 curl --fail 'http://127.0.0.1:3000/api/radar/events?limit=1'
 ```
 
+Alongside the strategy scheduler and the signal/radar monitors, the backend starts a background
+**notification redelivery worker** (Telegram lifecycle notifications; see docs/SIGNALS.md §9.6). It
+requires migration 019 (delivered by the standard `npm run migrate` step above) and follows the same
+single-process invariant as the other background services: it is stopped before the DB pool on
+`SIGTERM`, and its durable state lives in PostgreSQL, so a restart continues where it left off.
+After a restart, `/api/health` exposes its cycle telemetry (`notificationRedelivery`: last sweep,
+pending/delivered counters); no separate systemd unit or manual action is needed.
+
 Immediately after a normal backend restart, Radar status should be server-owned
 and normally `warming`, not `live`; after valid ticker observations for every
 effective Scan Universe symbol, verify `marketFeed.state = connected` and

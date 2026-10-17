@@ -12,7 +12,7 @@
  */
 
 export { simulateFixedRr } from '../v2_7-rr-optimization/v27Core';
-export { simulateTrailing } from '../../shared/legacyResearch/v25Trailing';
+export { simulateTrailing, inspectTrailing, type V25Progress } from '../../shared/legacyResearch/v25Trailing';
 
 /** The frozen lump fee that `trackOutcome` subtracts; removed to recover gross for the SMC arm. */
 export const FROZEN_FEE_PCT = 0.1;

@@ -238,60 +238,142 @@ export interface V33TradeResult {
   hitTp2: boolean;
 }
 
-export function manageTrade(
-  direction: ArchiveDirection, entry: number, stop0: number, tp1: number, tp2: number, bars: readonly ArchiveCandle[],
-): V33TradeResult | null {
+/**
+ * Прогресс ОТКРЫТОЙ позиции (2026-10-05, экспорт внутреннего состояния
+ * `manageTrade`; торговая семантика не менялась — см. V30TradeProgress).
+ */
+export interface V33TradeProgress {
+  tp1Booked: boolean;
+  tp1At: number | null;
+  beArmed: boolean;
+  beArmedAt: number | null;
+}
+
+/**
+ * ВНУТРЕННИЙ СТЕППЕР ВЕДЕНИЯ СДЕЛКИ (единая реализация правил).
+ *
+ * Рефакторинг 2026-10-05 (PR #56, §6 docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md):
+ * тело цикла `manageTrade` извлечено в один степпер БЕЗ изменения порядка
+ * вычислений — терминальный исход и прогресс (`inspectTrade`) считаются одним
+ * набором правил. Паритет с прежней реализацией доказан тестом
+ * `tests/unit/frozenCoreRefactorParity.test.ts` и golden-тестами
+ * `tests/unit/strategyArchive/v33.test.ts`.
+ */
+
+interface V33TradeState {
+  hitTp1: boolean;
+  tp1Bar: number;
+  realised: number;
+  legs: { price: number; weight: number; taker: boolean }[];
+  sawArmedStop: boolean;
+  armedStopBar: number;
+}
+
+interface V33TradeCtx {
+  long: boolean;
+  entry: number;
+  stop: number;
+  tp1: number;
+  tp2: number;
+  timeoutBars: number;
+  risk: number;
+  rOf: (p: number) => number;
+}
+
+type V33Step =
+  | { kind: 'WAIT' }
+  | { kind: 'FINISH'; exit: V33ExitReason; exitPrice: number; weight: number };
+
+function v33Step(s: V33TradeState, ctx: V33TradeCtx, c: ArchiveCandle, i: number): V33Step {
+  const beArmed = s.hitTp1 && s.tp1Bar >= 0 && i > s.tp1Bar;
+  if (beArmed && !s.sawArmedStop) { s.sawArmedStop = true; s.armedStopBar = i; }
+  const stopNow = beArmed ? ctx.entry : ctx.stop;
+
+  const hitStop = ctx.long ? c.low <= stopNow : c.high >= stopNow;
+  const hitT1 = !s.hitTp1 && (ctx.long ? c.high >= ctx.tp1 : c.low <= ctx.tp1);
+  const hitT2 = ctx.long ? c.high >= ctx.tp2 : c.low <= ctx.tp2;
+
+  if (hitStop) {
+    if (!s.hitTp1) return { kind: 'FINISH', exit: 'SL', exitPrice: stopNow, weight: 1 };
+    return { kind: 'FINISH', exit: beArmed ? 'TP1_THEN_BE' : 'TP1_THEN_SL', exitPrice: stopNow, weight: 0.5 };
+  }
+  if (hitT1) {
+    s.hitTp1 = true; s.tp1Bar = i;
+    s.realised += 0.5 * ctx.rOf(ctx.tp1);
+    s.legs.push({ price: ctx.tp1, weight: 0.5, taker: true });
+    if (hitT2) return { kind: 'FINISH', exit: 'TP2', exitPrice: ctx.tp2, weight: 0.5 };
+    if (i + 1 >= ctx.timeoutBars) return { kind: 'FINISH', exit: 'TP1_THEN_TIMEOUT', exitPrice: c.close, weight: 0.5 };
+    return { kind: 'WAIT' };
+  }
+  if (s.hitTp1 && hitT2) return { kind: 'FINISH', exit: 'TP2', exitPrice: ctx.tp2, weight: 0.5 };
+  if (!s.hitTp1 && hitT2) {
+    s.hitTp1 = true;
+    s.realised += 0.5 * ctx.rOf(ctx.tp1);
+    s.legs.push({ price: ctx.tp1, weight: 0.5, taker: true });
+    return { kind: 'FINISH', exit: 'TP2', exitPrice: ctx.tp2, weight: 0.5 };
+  }
+  if (i + 1 >= ctx.timeoutBars) {
+    return { kind: 'FINISH', exit: s.hitTp1 ? 'TP1_THEN_TIMEOUT' : 'TIMEOUT', exitPrice: c.close, weight: s.hitTp1 ? 0.5 : 1 };
+  }
+  return { kind: 'WAIT' };
+}
+
+function v33Finish(s: V33TradeState, ctx: V33TradeCtx, step: Extract<V33Step, { kind: 'FINISH' }>, i: number): V33TradeResult {
+  s.legs.push({ price: step.exitPrice, weight: step.weight, taker: true });
+  const gross = s.realised + step.weight * ctx.rOf(step.exitPrice);
+  return {
+    exit: step.exit, grossR: gross, barsHeld: i + 1, hitTp1: s.hitTp1, hitTp2: step.exit === 'TP2',
+    feeR: (mk, tk) => s.legs.reduce((acc, l) => acc + legFeeR(l.price, l.weight, l.taker ? tk : mk, ctx.risk), 0),
+  };
+}
+
+function v33ProgressOf(s: V33TradeState, bars: readonly ArchiveCandle[]): V33TradeProgress {
+  const tp1Bar = s.tp1Bar >= 0 ? bars[s.tp1Bar] : undefined;
+  const armedBar = s.armedStopBar >= 0 ? bars[s.armedStopBar] : undefined;
+  return {
+    tp1Booked: s.hitTp1,
+    tp1At: tp1Bar ? tp1Bar.closeTime : null,
+    beArmed: s.sawArmedStop,
+    beArmedAt: armedBar ? armedBar.closeTime : null,
+  };
+}
+
+function runV33Trade(
+  direction: ArchiveDirection, entry: number, stop0: number,
+  tp1: number, tp2: number, bars: readonly ArchiveCandle[],
+): { result: V33TradeResult | null; progress: V33TradeProgress | null } {
   const { TIMEOUT_BARS } = V33_CONSTANTS;
   const risk = Math.abs(entry - stop0);
-  if (!(risk > 0) || bars.length === 0) return null;
+  if (!(risk > 0) || bars.length === 0) return { result: null, progress: null };
   const long = direction === 'LONG';
-  const rOf = (p: number): number => (long ? p - entry : entry - p) / risk;
-
-  let hitTp1 = false;
-  let tp1Bar = -1;
-  let realised = 0;
-  const legs: { price: number; weight: number; taker: boolean }[] = [];
-  legs.push({ price: entry, weight: 1, taker: false });
-
-  const finish = (exit: V33ExitReason, exitPrice: number, weight: number, i: number): V33TradeResult => {
-    legs.push({ price: exitPrice, weight, taker: true });
-    const gross = realised + weight * rOf(exitPrice);
-    return {
-      exit, grossR: gross, barsHeld: i + 1, hitTp1, hitTp2: exit === 'TP2',
-      feeR: (mk, tk) => legs.reduce((s, l) => s + legFeeR(l.price, l.weight, l.taker ? tk : mk, risk), 0),
-    };
+  const ctx: V33TradeCtx = {
+    long, entry, stop: stop0, tp1, tp2, timeoutBars: TIMEOUT_BARS, risk,
+    rOf: (p: number): number => (long ? p - entry : entry - p) / risk,
+  };
+  const s: V33TradeState = {
+    hitTp1: false, tp1Bar: -1, realised: 0,
+    legs: [{ price: entry, weight: 1, taker: false }],
+    sawArmedStop: false, armedStopBar: -1,
   };
 
   for (let i = 0; i < bars.length && i < TIMEOUT_BARS; i++) {
-    const c = bars[i]!;
-    const beArmed = hitTp1 && tp1Bar >= 0 && i > tp1Bar;
-    const stopNow = beArmed ? entry : stop0;
-    const hitStop = long ? c.low <= stopNow : c.high >= stopNow;
-    const hitT1 = !hitTp1 && (long ? c.high >= tp1 : c.low <= tp1);
-    const hitT2 = long ? c.high >= tp2 : c.low <= tp2;
-
-    if (hitStop) {
-      if (!hitTp1) return finish('SL', stopNow, 1, i);
-      return finish(beArmed ? 'TP1_THEN_BE' : 'TP1_THEN_SL', stopNow, 0.5, i);
-    }
-    if (hitT1) {
-      hitTp1 = true; tp1Bar = i;
-      realised += 0.5 * rOf(tp1);
-      legs.push({ price: tp1, weight: 0.5, taker: true });
-      if (hitT2) return finish('TP2', tp2, 0.5, i);
-      if (i + 1 >= TIMEOUT_BARS) return finish('TP1_THEN_TIMEOUT', c.close, 0.5, i);
-      continue;
-    }
-    if (hitTp1 && hitT2) return finish('TP2', tp2, 0.5, i);
-    if (!hitTp1 && hitT2) {
-      hitTp1 = true;
-      realised += 0.5 * rOf(tp1);
-      legs.push({ price: tp1, weight: 0.5, taker: true });
-      return finish('TP2', tp2, 0.5, i);
-    }
-    if (i + 1 >= TIMEOUT_BARS) return finish(hitTp1 ? 'TP1_THEN_TIMEOUT' : 'TIMEOUT', c.close, hitTp1 ? 0.5 : 1, i);
+    const step = v33Step(s, ctx, bars[i]!, i);
+    if (step.kind === 'FINISH') return { result: v33Finish(s, ctx, step, i), progress: v33ProgressOf(s, bars) };
   }
-  return null;
+  return { result: null, progress: v33ProgressOf(s, bars) };
+}
+
+export function manageTrade(
+  direction: ArchiveDirection, entry: number, stop0: number, tp1: number, tp2: number, bars: readonly ArchiveCandle[],
+): V33TradeResult | null {
+  return runV33Trade(direction, entry, stop0, tp1, tp2, bars).result;
+}
+
+/** Прогресс ОТКРЫТОЙ позиции теми же правилами (экспорт состояния, не копия логики). */
+export function inspectTrade(
+  direction: ArchiveDirection, entry: number, stop0: number, tp1: number, tp2: number, bars: readonly ArchiveCandle[],
+): V33TradeProgress | null {
+  return runV33Trade(direction, entry, stop0, tp1, tp2, bars).progress;
 }
 
 /** Last confirmed 4H swing high/low + Amendment-1 ordered legs, per number of CLOSED 4H bars. */

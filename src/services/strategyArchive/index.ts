@@ -32,7 +32,7 @@ export { V28_CONSTANTS, ARM_ORDER as V28_ARM_ORDER } from './definitions/v2_8-ze
 // LIVE-обёртка V2.8 (архивный sniper-цикл на произвольном окне закрытых свечей). Единственная точка, через
 // которую замороженный движок V2 доступен вне strategyArchive/ — правила стратегии не меняются.
 export {
-  runV28Live, v28NetR, v28EntryAtNextOpen, v28TrailOutcome, V28_LIVE_TIMEFRAME, V28_LIVE_HTF, V28_LIVE_NET_FEES,
+  runV28Live, v28NetR, v28EntryAtNextOpen, v28TrailOutcome, v28TrailProgress, V28_LIVE_TIMEFRAME, V28_LIVE_HTF, V28_LIVE_NET_FEES,
   type V28LiveArgs, type V28LiveEvent, type V28LiveOutput, type V28LiveStatus, type V28PoolKind,
   type V28NextOpenPlan, type V28NextOpenResult, type V28TrailOutcome,
 } from './definitions/v2_8-zero-fee-sniper-trailing/v28Live';

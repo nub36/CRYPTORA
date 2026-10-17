@@ -15,11 +15,16 @@
  *
  * Детерминировано: одинаковые публикация + свечи → одинаковый результат, поэтому
  * функцию можно вызывать на каждом скане без состояния.
+ *
+ * 2026-10-05 (PR #56, §6): FILLED-результат дополнительно несёт аддитивное
+ * `progress` — экспорт внутреннего состояния frozen-степпера (TP1 забронирован,
+ * BE-стоп armed) для оперативных уведомлений ОТКРЫТОЙ позиции. Терминальные
+ * исходы (RESOLVED) не меняются; см. LifecycleProgress.
  */
 import type { ArchiveCandle } from '@/services/strategyArchive/types';
-import { corridorStep, manageTrade as manageTradeV30, V30_CONSTANTS } from '@/services/strategyArchive/definitions/v3_0-htf-liquidation-trap/v30Core';
-import { manageTrade as manageTradeV33, V33_CONSTANTS } from '@/services/strategyArchive/definitions/v3_3-htf-zone-mitigation/v33Core';
-import { v28EntryAtNextOpen, v28TrailOutcome } from '@/services/strategyArchive';
+import { corridorStep, inspectTrade as inspectTradeV30, manageTrade as manageTradeV30, V30_CONSTANTS } from '@/services/strategyArchive/definitions/v3_0-htf-liquidation-trap/v30Core';
+import { inspectTrade as inspectTradeV33, manageTrade as manageTradeV33, V33_CONSTANTS } from '@/services/strategyArchive/definitions/v3_3-htf-zone-mitigation/v33Core';
+import { v28EntryAtNextOpen, v28TrailOutcome, v28TrailProgress } from '@/services/strategyArchive';
 import type { AnalyticalSetup, SetupFill, SetupOutcome } from '@/services/signals/SignalsAuditLedger';
 import { V30_STRATEGY_ID } from './replays/v30LiveReplay';
 import { V33_STRATEGY_ID } from './replays/v33LiveReplay';
@@ -32,10 +37,35 @@ export type LifecycleResult =
   | { kind: 'UNCHANGED' }
   /** Бар сетапа не найден в окне, хотя окно его должно покрывать (пропуск данных) — пропустить скан. */
   | { kind: 'SKIP'; reason: string }
-  /** Исполнение известно, позиция ещё открыта. */
-  | { kind: 'FILLED'; fill: SetupFill }
+  /** Исполнение известно, позиция ещё открыта. Поле progress аддитивное (см. LifecycleProgress). */
+  | { kind: 'FILLED'; fill: SetupFill; progress?: LifecycleProgress }
   /** Финальный исход (с исполнением или без). */
   | { kind: 'RESOLVED'; fill: SetupFill | null; outcome: SetupOutcome };
+
+/**
+ * Прогресс ОТКРЫТОЙ (FILLED) позиции по закрытым барам — экспорт внутреннего
+ * состояния frozen-ядра, а не вторая реализация правил (2026-10-05, PR #56,
+ * §6 docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md):
+ *
+ *   • V3.0/V3.3/V3.4 — `inspectTrade` того же степпера, что `manageTrade`:
+ *     tp1Booked = TP1 забронирован по R2 (включая TP2-на-баре-TP1);
+ *     beArmed = armed-стоп реально действовал при обработке хотя бы одного
+ *     бара (R3: строго после бара TP1). tp1=true при be=false допустимо.
+ *   • V2.8 — `v28TrailProgress` (инспектор того же трейлинг-степпера):
+ *     beArmed = состояние `armed` frozen-алгоритма (MFE ≥ 1R); tp1Booked
+ *     всегда false — у трейлинга нет TP1, событие не выдумывается.
+ *
+ * Времена — closeTime (ms) подтверждающего бара; null = факт не произошёл.
+ * Поле аддитивно присутствует ТОЛЬКО в FILLED-варианте: терминальный исход
+ * классифицируется как раньше (RESOLVED без progress).
+ */
+export interface LifecycleProgress {
+  tp1Booked: boolean;
+  tp1At: number | null;
+  beArmed: boolean;
+  beArmedAt: number | null;
+}
+
 
 export function isoOf(ms: number): string {
   return new Date(ms).toISOString();
@@ -99,6 +129,8 @@ function trackCorridor(entry: AnalyticalSetup, h1: readonly ArchiveCandle[], set
   const makerBps = isV33 ? V33_CONSTANTS.MAKER_BPS : V30_CONSTANTS.MAKER_BPS;
   const takerBps = isV33 ? V33_CONSTANTS.TAKER_BPS : V30_CONSTANTS.TAKER_BPS;
   const manage = isV33 ? manageTradeV33 : manageTradeV30;
+  // Инспектор того же степпера: прогресс открытой позиции без второй копии правил.
+  const inspect = isV33 ? inspectTradeV33 : inspectTradeV30;
 
   for (let j = setupIndex + 1; j < h1.length; j++) {
     const c = h1[j]!;
@@ -111,7 +143,12 @@ function trackCorridor(entry: AnalyticalSetup, h1: readonly ArchiveCandle[], set
     const fill: SetupFill = { price: step.fill, at: isoOf(c.openTime), barOpenTime: c.openTime, stop: pending.stop, targets: [tp1, tp2] };
     const bars = h1.slice(j, Math.min(h1.length, j + timeoutBars + 2));
     const r = manage(pending.dir, step.fill, pending.stop, tp1, tp2, bars);
-    if (!r) return { kind: 'FILLED', fill };
+    if (!r) {
+      // Позиция открыта на границе окна: прогресс — состояние того же степпера
+      // на том же срезе баров (tp1Booked/beArmed для уведомлений, §6).
+      const prog = inspect(pending.dir, step.fill, pending.stop, tp1, tp2, bars);
+      return { kind: 'FILLED', fill, ...(prog ? { progress: prog } : {}) };
+    }
     const lastBar = bars[Math.min(bars.length, r.barsHeld) - 1]!;
     const exitPrice = managedExitPrice(r.exit, step.fill, pending.stop, tp2, lastBar);
     const fee = r.feeR(makerBps, takerBps);
@@ -149,7 +186,13 @@ function trackNextOpen(entry: AnalyticalSetup, h1: readonly ArchiveCandle[], set
   const fill: SetupFill = { price: res.entryPrice, at: isoOf(res.entryCandleTime), barOpenTime: res.entryCandleTime, stop: res.stop, targets: res.targets };
   const barsFromEntry = h1.slice(setupIndex + 1);
   const t = v28TrailOutcome(entry.direction, res.entryPrice, res.stop, barsFromEntry);
-  if (!t) return { kind: 'FILLED', fill };
+  if (!t) {
+    // Позиция открыта: BE-прогресс — состояние `armed` frozen-трейлинга на том
+    // же срезе баров; TP1 у трейлинга нет, tp1Booked всегда false.
+    const tp = v28TrailProgress(entry.direction, res.entryPrice, res.stop, barsFromEntry);
+    const prog = tp ? { tp1Booked: false, tp1At: null, beArmed: tp.beArmed, beArmedAt: tp.beArmedAt } : undefined;
+    return { kind: 'FILLED', fill, ...(prog ? { progress: prog } : {}) };
+  }
   const exitBar = barsFromEntry[t.barsHeld - 1]!;
   return {
     kind: 'RESOLVED', fill,

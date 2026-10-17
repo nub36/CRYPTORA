@@ -47,7 +47,7 @@ import { toLegacyCandles, WINDOW_MARGIN } from '../../legacy/v2/sniperEntryLoop'
 import type { Candle, Timeframe } from '../../legacy/v2/coreTypes';
 import { TF_MS } from '../../legacy/v2/coreTypes';
 import type { V2Setup } from '../../legacy/v2/types';
-import { simulateTrailing } from './v28Core';
+import { simulateTrailing, inspectTrailing, type V25Progress } from './v28Core';
 
 export const V28_LIVE_TIMEFRAME: ArchiveTimeframe = '1h';
 /** HTF-серии, которые замороженный движок ожидает для 1h (HTF_MAP['1h']). */
@@ -351,4 +351,19 @@ export function v28TrailOutcome(
   if (!tr) return null;
   const risk = Math.abs(entryPrice - stop);
   return { reason: tr.reason, exitPrice: tr.exitPrice, barsHeld: tr.barsHeld, grossR: tr.grossR, netR: v28NetR(tr.grossR, entryPrice, tr.exitPrice, risk) };
+}
+
+/**
+ * Прогресс ОТКРЫТОЙ V2.8-позиции: `inspectTrailing` (V2.5, frozen) на том же
+ * срезе баров, что `v28TrailOutcome` (2026-10-05, PR #56, §6
+ * docs/SIGNAL_LIFECYCLE_PROGRESS_EVENTS_2026-10-05.md). Это экспорт
+ * внутреннего состояния того же степпера, а не вторая реализация: beArmed —
+ * стоп реально переведён на вход (или выше) по правилу MFE ≥ 1R. У V2.8 нет
+ * TP-лестницы, tp1Booked для неё всегда false. null — как у v28TrailOutcome.
+ */
+export function v28TrailProgress(
+  direction: ArchiveDirection, entryPrice: number, stop: number, barsFromEntry: readonly ArchiveCandle[],
+): V25Progress | null {
+  const bars = barsFromEntry.slice(0, FROZEN_ENGINE.outcomeTimeoutBars + 64);
+  return inspectTrailing({ direction, entryPrice, stopLoss: stop, bars });
 }
