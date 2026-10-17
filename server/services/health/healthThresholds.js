@@ -62,6 +62,11 @@ export const DEFAULT_HEALTH_THRESHOLDS = Object.freeze({
   strategySchedulerStaleSeconds: 300,
   strategySchedulerErrorSeconds: 1_800,
 
+  /** Telegram redelivery worker: sweep каждые 60 с. */
+  notificationRedeliveryStaleSeconds: 180,
+  notificationRedeliveryErrorSeconds: 300,
+  notificationRedeliveryMaxConsecutiveFailures: 3,
+
   /** Пауза между повторными Telegram-уведомлениями об ОДНОЙ и той же проблеме. */
   alertCooldownSeconds: 1_800,
   /**
@@ -93,6 +98,9 @@ export const HEALTH_ENV_KEYS = Object.freeze({
   HEALTH_RADAR_MONITOR_ERROR_SECONDS: 'radarMonitorErrorSeconds',
   HEALTH_STRATEGY_SCHEDULER_STALE_SECONDS: 'strategySchedulerStaleSeconds',
   HEALTH_STRATEGY_SCHEDULER_ERROR_SECONDS: 'strategySchedulerErrorSeconds',
+  HEALTH_NOTIFICATION_REDELIVERY_STALE_SECONDS: 'notificationRedeliveryStaleSeconds',
+  HEALTH_NOTIFICATION_REDELIVERY_ERROR_SECONDS: 'notificationRedeliveryErrorSeconds',
+  HEALTH_NOTIFICATION_REDELIVERY_MAX_FAILURES: 'notificationRedeliveryMaxConsecutiveFailures',
   HEALTH_ALERT_COOLDOWN_SECONDS: 'alertCooldownSeconds',
   HEALTH_ALERT_MIN_OBSERVATIONS: 'alertMinConsecutiveObservations',
   HEALTH_STARTUP_GRACE_SECONDS: 'startupGraceSeconds',
@@ -140,6 +148,7 @@ export function resolveHealthThresholds(env = process.env, log) {
     ['signalMonitorStaleSeconds', 'signalMonitorErrorSeconds'],
     ['radarMonitorStaleSeconds', 'radarMonitorErrorSeconds'],
     ['strategySchedulerStaleSeconds', 'strategySchedulerErrorSeconds'],
+    ['notificationRedeliveryStaleSeconds', 'notificationRedeliveryErrorSeconds'],
   ];
   for (const [staleKey, errorKey] of pairs) {
     if (resolved[errorKey] < resolved[staleKey]) {

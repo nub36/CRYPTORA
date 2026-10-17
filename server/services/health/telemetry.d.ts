@@ -50,6 +50,8 @@ export interface MarketDataObservation {
   failures: number;
 }
 
+export const CYCLE_NOTIFICATION_REDELIVERY = 'notificationRedelivery';
+
 export declare class HealthTelemetryRegistry {
   constructor(now?: () => number);
   processStartedAtMs: number;

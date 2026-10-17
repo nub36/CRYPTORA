@@ -21,6 +21,7 @@ import {
   CYCLE_SIGNAL_MONITOR,
   CYCLE_RADAR_MONITOR,
   CYCLE_STRATEGY_SCHEDULER,
+  CYCLE_NOTIFICATION_REDELIVERY,
 } from '../../server/services/health/telemetry.js';
 import { resolveHealthThresholds, DEFAULT_HEALTH_THRESHOLDS } from '../../server/services/health/healthThresholds.js';
 
@@ -327,5 +328,174 @@ describe('health thresholds', () => {
       () => {}
     );
     expect(resolved.marketDataErrorSeconds).toBe(900);
+  });
+});
+
+describe('notificationRedelivery observability (non-critical)', () => {
+  const T0 = Date.parse('2026-10-05T12:00:00.000Z');
+
+  function registryWithRedelivery(ok = true, startedAtMs = T0 - 3600_000) {
+    const reg = new HealthTelemetryRegistry(() => T0);
+    reg.processStartedAtMs = startedAtMs;
+    const cycle = reg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    cycle.markStarted();
+    if (ok) {
+      cycle.beginCycle();
+      cycle.completeCycle({ ok: true, inspected: 5, updated: 2, errors: 0 });
+    }
+    return reg;
+  }
+
+  it('успешный цикл worker: status=ok, cycles>0, lastSuccessfulCycleAt не null', async () => {
+    const reg = registryWithRedelivery(true);
+    const { body } = await buildHealthReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    expect(body.notificationRedelivery).toBeDefined();
+    expect(body.notificationRedelivery.status).toBe('ok');
+    expect(body.notificationRedelivery.cycles).toBeGreaterThan(0);
+    expect(body.notificationRedelivery.lastSuccessfulCycleAt).not.toBeNull();
+    expect(body.notificationRedelivery.inspectedSignals).toBe(5);
+    expect(body.notificationRedelivery.updatedSignals).toBe(2);
+    expect(body.notificationRedelivery.errors).toBe(0);
+  });
+
+  it('во время startup grace без успешного цикла: status=starting', async () => {
+    const reg = new HealthTelemetryRegistry(() => T0);
+    reg.processStartedAtMs = T0 - 30_000; // 30 с назад
+    const cycle = reg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    cycle.markStarted();
+    // нет completeCycle — ещё не выполнил
+    const { body } = await buildHealthReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    expect(body.notificationRedelivery.status).toBe('starting');
+    expect(body.notificationRedelivery.reason).toBe('STARTING');
+  });
+
+  it('после grace нет успешных циклов: status=stale', async () => {
+    const reg = new HealthTelemetryRegistry(() => T0);
+    reg.processStartedAtMs = T0 - 600_000; // 10 мин назад
+    const cycle = reg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    cycle.markStarted();
+    // полный цикл не был завершён успешно
+    const { body } = await buildHealthReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    expect(body.notificationRedelivery.status).toBe('stale');
+    expect(body.notificationRedelivery.reason).toBe('NO_SUCCESSFUL_CYCLE');
+  });
+
+  it('последний успешный цикл слишком старый: status=stale', async () => {
+    const reg = registryWithRedelivery(true, T0 - 600_000);
+    // перезаписываем lastSuccessfulCycleAt на очень старый
+    const cycle = reg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    cycle.completeCycle({ ok: true, inspected: 0, updated: 0, errors: 0 });
+    // но processStartedAt старый — сделаем цикл очень старым через snapshot manipulation
+    // Проще: создадим регистр с успешным циклом в прошлом
+    const oldReg = new HealthTelemetryRegistry(() => T0);
+    oldReg.processStartedAtMs = T0 - 600_000;
+    const c = oldReg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    c.markStarted();
+    c.completeCycle({ ok: true, inspected: 1, updated: 0, errors: 0 });
+    // сдвинем lastSuccessfulCycleAt назад через прямое изменение? Нет — snapshot только для чтения.
+    // Вместо этого изменяем now: если сейчас T0 + 400_000, цикл 400_000 мс назад = 400с > stale 180
+    const { body } = await buildHealthReport({ telemetry: oldReg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 + 250_000 });
+    expect(body.notificationRedelivery.status).toBe('stale');
+    expect(body.notificationRedelivery.reason).toBe('CYCLE_AGE_EXCEEDED');
+  });
+
+  it('последовательные ошибки отражаются: consecutiveFailures увеличивается', async () => {
+    const reg = new HealthTelemetryRegistry(() => T0);
+    reg.processStartedAtMs = T0 - 3600_000;
+    const c = reg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    c.markStarted();
+    // первоначальный успешный цикл (иначе reference=null => stale, не error)
+    c.beginCycle();
+    c.completeCycle({ ok: true, inspected: 1, updated: 0, errors: 0 });
+    c.beginCycle();
+    c.completeCycle({ ok: false, error: new Error('telegram timeout'), errors: 1 });
+    c.beginCycle();
+    c.completeCycle({ ok: false, error: new Error('telegram timeout'), errors: 1 });
+    c.beginCycle();
+    c.completeCycle({ ok: false, error: new Error('telegram timeout'), errors: 1 });
+    const { body } = await buildHealthReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    expect(body.notificationRedelivery.consecutiveFailures).toBe(3);
+    expect(body.notificationRedelivery.errors).toBe(1);
+    expect(body.notificationRedelivery.status).toBe('error');
+    expect(body.notificationRedelivery.reason).toBe('CONSECUTIVE_FAILURES');
+  });
+
+  it('non-critical: ошибка Telegram worker не приводит к health.error или 503', async () => {
+    const reg = new HealthTelemetryRegistry(() => T0);
+    reg.processStartedAtMs = T0 - 3600_000;
+    // критические циклы ок
+    for (const name of [CYCLE_SIGNAL_MONITOR, CYCLE_RADAR_MONITOR, CYCLE_STRATEGY_SCHEDULER]) {
+      const c = reg.cycle(name);
+      c.markStarted();
+      c.beginCycle();
+      c.completeCycle({ ok: true, inspected: 1, updated: 0, errors: 0 });
+    }
+    reg.recordMarketData('binance-spot-candles', { sourceTimestampMs: T0 - 60_000, receivedAtMs: T0 - 30_000, intervalSeconds: 3600 });
+    reg.recordMarketData('binance-spot-ticker', { sourceTimestampMs: T0 - 60_000, receivedAtMs: T0 - 30_000, intervalSeconds: 30 });
+    reg.recordMarketData('binance-futures-snapshot', { sourceTimestampMs: T0 - 60_000, receivedAtMs: T0 - 30_000, intervalSeconds: 300 });
+    reg.recordMarketData('binance-futures-open-interest', { sourceTimestampMs: T0 - 60_000, receivedAtMs: T0 - 30_000, intervalSeconds: 300 });
+    reg.recordMarketData('binance-futures-funding', { sourceTimestampMs: T0 - 60_000, receivedAtMs: T0 - 30_000, intervalSeconds: 300 });
+    reg.recordMarketData('kucoin-spot-candles', { sourceTimestampMs: T0 - 60_000, receivedAtMs: T0 - 30_000, intervalSeconds: 3600 });
+    const c = reg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    c.markStarted();
+    c.beginCycle();
+    c.completeCycle({ ok: true, inspected: 1, updated: 0, errors: 0 });
+    c.beginCycle();
+    c.completeCycle({ ok: false, error: new Error('fail'), errors: 1 });
+    // повторные ошибки для error
+    c.beginCycle();
+    c.completeCycle({ ok: false, error: new Error('fail'), errors: 1 });
+    c.beginCycle();
+    c.completeCycle({ ok: false, error: new Error('fail'), errors: 1 });
+    const { httpStatus, body } = await buildHealthReport({
+      telemetry: reg,
+      thresholds: DEFAULT_HEALTH_THRESHOLDS,
+      now: () => T0,
+      checkDatabase: async () => ({ status: 'ok', latencyMs: 10, errorCode: null }),
+    });
+    expect(body.notificationRedelivery.status).toBe('error');
+    // notificationRedelivery исключён из worst(): при его error общая ошибка НЕ должна быть только из-за Telegram
+    expect(body.status).not.toBe('error');
+    expect(httpStatus).toBe(200);
+    // readiness не зависит от Telegram (notificationRedelivery не в requiredCycles)
+    const ready = await buildReadinessReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    expect(ready.body.subsystems).not.toHaveProperty(CYCLE_NOTIFICATION_REDELIVERY);
+  });
+
+  it('безопасность: в ответе нет lastError, токенов, chat id, сигналов, SQL', async () => {
+    const reg = new HealthTelemetryRegistry(() => T0);
+    reg.processStartedAtMs = T0 - 3600_000;
+    const c = reg.cycle(CYCLE_NOTIFICATION_REDELIVERY);
+    c.markStarted();
+    c.beginCycle();
+    c.completeCycle({ ok: false, error: new Error('token=abc123 chat=99998 signal=42'), errors: 1 });
+    const { body } = await buildHealthReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    const text = JSON.stringify(body.notificationRedelivery);
+    expect(text).not.toContain('token=');
+    expect(text).not.toContain('abc123');
+    expect(text).not.toContain('chat=');
+    expect(text).not.toContain('signal=');
+    expect(text).not.toContain('lastError'); // classifyCycle фильтрует
+  });
+
+  it('backward compatibility: существующие ключи не удалены', async () => {
+    const reg = registryWithRedelivery(true);
+    const { body } = await buildHealthReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    expect(body).toHaveProperty('status');
+    expect(body).toHaveProperty('database');
+    expect(body).toHaveProperty('marketData');
+    expect(body).toHaveProperty('signalMonitor');
+    expect(body).toHaveProperty('radarMonitor');
+    expect(body).toHaveProperty('strategyScheduler');
+    expect(body).toHaveProperty('thresholds');
+    expect(body).toHaveProperty('notificationRedelivery');
+  });
+
+  it('no side effects: buildHealthReport не запускает worker / sweep / Telegram', async () => {
+    // Просто проверяем, что вызов не выбрасывает
+    const reg = registryWithRedelivery(true);
+    await buildHealthReport({ telemetry: reg, thresholds: DEFAULT_HEALTH_THRESHOLDS, now: () => T0 });
+    // buildHealthReport не изменил регистр (read-only)
+    expect(reg.cycle(CYCLE_NOTIFICATION_REDELIVERY).snapshot().cycles).toBe(1);
   });
 });
