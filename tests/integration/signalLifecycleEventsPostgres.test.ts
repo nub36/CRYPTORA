@@ -1138,7 +1138,7 @@ describe('Redelivery worker: crash-recovery и per-user повторная до�
 
     expect(summary).toMatchObject({ considered: 1, attempted: 1, delivered: 1, failed: 0 });
     expect(tg.callsFor(userA.token)).toHaveLength(1);
-    expect(tg.calls[0].text).toContain('CRYPTORA — Вход');
+    expect(tg.calls[0].text).toContain('✅ Вход в сделку');
 
     const log = await q(
       `SELECT result, event_type, event_id FROM notification_delivery_log WHERE user_id = $1`,
@@ -1183,7 +1183,7 @@ describe('Redelivery worker: crash-recovery и per-user повторная до�
     expect(afterRestart).toMatchObject({ considered: 1, attempted: 1, delivered: 1 });
     expect(tg.callsFor(userA.token)).toHaveLength(0); // в НОВОМ моке вызовов A нет вообще
     expect(tg.callsFor(userB.token)).toHaveLength(1);
-    expect(tg.calls[0].text).toContain('CRYPTORA — Вход');
+    expect(tg.calls[0].text).toContain('✅ Вход в сделку');
 
     const results = await q(
       `SELECT user_id, result FROM notification_delivery_log WHERE event_id = $1 ORDER BY user_id`,

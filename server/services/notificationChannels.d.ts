@@ -41,6 +41,7 @@ export function sendTelegram(
   text: string,
   fetchFn?: NotificationFetch,
   timeoutMs?: number,
+  parseMode?: 'HTML',
 ): Promise<TelegramResult>;
 
 /**
@@ -51,7 +52,7 @@ export function sendTelegram(
  */
 export function deliverSavedTelegram(
   userId: string,
-  event: { eventType: string; eventId?: string | null; text: string },
+  event: { eventType: string; eventId?: string | null; text: string; parseMode?: 'HTML' },
   fetchFn?: NotificationFetch,
   sleepFn?: NotificationSleep,
 ): Promise<TelegramResult>;

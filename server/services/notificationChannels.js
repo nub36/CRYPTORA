@@ -192,14 +192,14 @@ function mapTelegramFailure(status, body) {
   return status >= 500 ? 'TELEGRAM_UNAVAILABLE' : 'TELEGRAM_REJECTED';
 }
 
-export async function sendTelegram(token, chatId, text, fetchFn = fetch, timeoutMs = TELEGRAM_TIMEOUT_MS) {
+export async function sendTelegram(token, chatId, text, fetchFn = fetch, timeoutMs = TELEGRAM_TIMEOUT_MS, parseMode) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchFn(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true, ...(parseMode ? { parse_mode: parseMode } : {}) }),
       signal: controller.signal,
     });
     let body = null;
@@ -232,11 +232,11 @@ export async function sendTelegram(token, chatId, text, fetchFn = fetch, timeout
  * слишком долго» возвращаются сразу — их дорешает durable worker.
  * Каждый вызов = самостоятельная попытка sendMessage со своим таймаутом.
  */
-async function sendTelegramWithRetry(token, chatId, text, fetchFn, sleepFn) {
+async function sendTelegramWithRetry(token, chatId, text, fetchFn, sleepFn, parseMode) {
   let attempt = 0;
   let result = null;
   for (;;) {
-    result = await sendTelegram(token, chatId, text, fetchFn);
+    result = await sendTelegram(token, chatId, text, fetchFn, TELEGRAM_TIMEOUT_MS, parseMode);
     attempt += 1;
     if (result.ok) return result;
     if (!isTransientTelegramErrorCode(result.code)) return result;
@@ -259,7 +259,7 @@ async function recordDelivery({ userId, eventType, eventId, result }) {
 
 export async function deliverSavedTelegram(
   userId,
-  { eventType, eventId = null, text },
+  { eventType, eventId = null, text, parseMode },
   fetchFn = fetch,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 ) {
@@ -273,7 +273,7 @@ export async function deliverSavedTelegram(
   let result;
   try {
     const token = decryptTelegramToken(channel.telegram_token_ciphertext);
-    result = await sendTelegramWithRetry(token, channel.telegram_chat_id, text, fetchFn, sleepFn);
+    result = await sendTelegramWithRetry(token, channel.telegram_chat_id, text, fetchFn, sleepFn, parseMode);
   } catch {
     result = { ok: false, code: 'SECRET_UNAVAILABLE', status: null, providerErrorCode: null, retryAfterMs: null };
   }
@@ -445,138 +445,119 @@ function resultLines(signal) {
  * @param {string} eventType NEW_SIGNAL | FILL | TP1..TPn | BREAKEVEN |
  *        STOP_LOSS | CANCELLED | CLOSED | OUTCOME (легаси) | прочее
  */
+export function escapeTelegramHtml(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function expandScientificNotation(text) {
+  const match = /^([+-]?)(\d+)(?:\.(\d*))?[eE]([+-]?\d+)$/.exec(text);
+  if (!match) return text;
+  const [, sign, integer, fraction = '', exponentText] = match;
+  const digits = `${integer}${fraction}`;
+  const decimalPosition = integer.length + Number(exponentText);
+  if (decimalPosition <= 0) return `${sign}0.${'0'.repeat(-decimalPosition)}${digits}`;
+  if (decimalPosition >= digits.length) return `${sign}${digits}${'0'.repeat(decimalPosition - digits.length)}`;
+  return `${sign}${digits.slice(0, decimalPosition)}.${digits.slice(decimalPosition)}`;
+}
+
+function exactSignalPrice(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    return expandScientificNotation(String(value));
+  }
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  const numericPrice = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+  return numericPrice.test(text) ? text : null;
+}
+
+function readableStrategy(id) {
+  if (!id) return null;
+  if (id === 'V3_4_HTF_ZONE_MITIGATION_QUALITY') return 'V3.4 · HTF Zone';
+  return String(id).replace(/^V(\d+)_(\d+)_/, 'V$1.$2 · ').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Compact HTML formatter shared by primary delivery and durable redelivery. */
 export function formatSignalTelegramText(signal, eventType) {
   const s = signal ?? {};
-  const pair = s.symbol ?? '—';
-  const strategy = [s.strategyId, s.strategyVersion].filter(Boolean).join(' · ');
-  const disclaimer = SIGNAL_TELEGRAM_DISCLAIMER;
+  const titles = {
+    NEW_SIGNAL: '🟢 Новый сигнал', FILL: '✅ Вход в сделку', TP1: '🎯 Первая цель достигнута',
+    BREAKEVEN: '🛡️ Безубыток', TP2: '🏆 Вторая цель достигнута', STOP_LOSS: '🔴 Stop Loss',
+    CANCELLED: '⚪ Сигнал отменён', CLOSED: '🏁 Сделка закрыта',
+  };
+  const header = titles[eventType] ?? `CRYPTORA · ${eventType === 'OUTCOME' ? 'Сигнал завершён' : eventType}`;
+  const rows = [`<b>${escapeTelegramHtml(header)}</b>`];
+  const add = (label, value) => {
+    if (value === null || value === undefined || value === '') return;
+    rows.push(`<b>${escapeTelegramHtml(label)}:</b> <code>${escapeTelegramHtml(value)}</code>`);
+  };
+  const pair = s.symbol;
+  const strategy = readableStrategy(s.strategyId);
+  add('Пара', pair);
+  add('Стратегия', strategy ? (s.strategyId === 'V3_4_HTF_ZONE_MITIGATION_QUALITY' ? strategy : `${strategy}${s.strategyVersion ? ` · ${s.strategyVersion}` : ''}`) : null);
 
   if (eventType === 'NEW_SIGNAL') {
-    const entry = Number.isFinite(Number(s.entryMin)) && Number.isFinite(Number(s.entryMax)) && s.entryMin !== s.entryMax
-      ? `${formatSignalPrice(s.entryMin)} – ${formatSignalPrice(s.entryMax)}`
-      : formatSignalPrice(s.entryMin ?? s.entryMax);
-    return [
-      '🟢 CRYPTORA — Новый сигнал',
-      line('Пара', pair),
-      line('Стратегия', strategy || '—'),
-      line('Направление', directionText(s.direction)),
-      line('Статус', 'Активен — ожидание входа'),
-      line('Вход', entry),
-      line('SL', formatSignalPrice(s.stopLoss)),
-      ...targetLines(s.targets),
-      line('Время', formatSignalEventTime(s.createdAt ?? s.signalCandleTs)),
-      disclaimer,
-    ].join('\n');
-  }
-
-  if (eventType === 'FILL') {
-    const { stop, targets } = effectiveLevels(s);
-    return [
-      '🎯 CRYPTORA — Вход',
-      line('Пара', pair),
-      line('Стратегия', strategy || '—'),
-      line('Цена входа', formatSignalPrice(s.fillPrice)),
-      line('SL', formatSignalPrice(stop)),
-      ...targetLines(targets),
-      line('Время', formatSignalEventTime(s.filledAt)),
-      disclaimer,
-    ].join('\n');
-  }
-
-  if (/^TP\d+$/.test(String(eventType))) {
-    // «Финальная цель» — только то событие TPn, которым сделка реально
-    // завершилась (closeReason = TPn ⇒ статус TARGET_REACHED). Соседнее
-    // событие TP1 на той же строке — промежуточная цель, а не финал.
+    const min = exactSignalPrice(s.entryMin), max = exactSignalPrice(s.entryMax);
+    add('Направление', s.direction);
+    add('Вход', min && max && min !== max ? `${min} – ${max}` : (min ?? max));
+    add('SL', exactSignalPrice(s.stopLoss));
+    const targets = Array.isArray(s.targets) ? s.targets : [];
+    add('TP1', exactSignalPrice(targets[0])); add('TP2', exactSignalPrice(targets[1]));
+    if (s.status) add('Статус', s.status === 'ACTIVE' ? 'Активен — ожидание входа' : s.status);
+    add('Время', formatSignalEventTime(s.createdAt ?? s.signalCandleTs));
+  } else if (eventType === 'FILL') {
+    add('Цена входа', exactSignalPrice(s.fillPrice));
+    add('SL', exactSignalPrice(s.fillStop ?? s.stopLoss));
+    const targets = Array.isArray(s.fillTargets) && s.fillTargets.length ? s.fillTargets : s.targets;
+    add('TP1', exactSignalPrice(targets?.[0])); add('TP2', exactSignalPrice(targets?.[1]));
+    if (s.status) add('Статус', s.status);
+    add('Время', formatSignalEventTime(s.filledAt));
+  } else if (/^TP\d+$/.test(String(eventType))) {
     const isFinal = s.status === 'TARGET_REACHED' && s.closeReason === eventType;
-    // Открытая позиция (progress-событие §6): время факта — closeTime бара
-    // подтверждения из frozen-прогресса (progressAt), а не бар входа.
     const isOpen = !isFinal && s.status === 'FILLED';
-    const price = isFinal
-      ? formatSignalPrice(s.closePrice ?? s.fillTargets?.[1] ?? s.targets?.[1] ?? s.targets?.[0])
-      : formatSignalPrice(s.fillTargets?.[0] ?? s.targets?.[0]);
-    return [
-      `✅ CRYPTORA — ${eventType}${isFinal ? ' · финальная цель' : ''}`,
-      line('Пара', pair),
-      line('Цена', price),
-      ...(isFinal ? [line('Сделка завершена', 'цель достигнута'), ...resultLines(s)] : []),
-      ...(isOpen ? [line('Позиция', 'остаётся открытой')] : []),
-      line('Время', formatSignalEventTime(s.progressAt ?? s.closedAt ?? s.filledAt)),
-      disclaimer,
-    ].join('\n');
-  }
-
-  if (eventType === 'BREAKEVEN') {
-    // Прогресс ОТКРЫТОЙ позиции (§6): стоп переведён на уровень входа по
-    // правилам frozen-ядра, сделка ещё жива — исхода и R пока нет.
-    if (s.status === 'FILLED') {
-      return [
-        '🛡 CRYPTORA — Безубыток',
-        line('Пара', pair),
-        'Стоп переведён в безубыток',
-        line('Новый SL', `${formatSignalPrice(s.fillPrice)} (уровень входа)`),
-        line('Позиция', 'остаётся открытой'),
-        line('Время', formatSignalEventTime(s.progressAt ?? s.filledAt)),
-        disclaimer,
-      ].join('\n');
+    const index = Number(String(eventType).slice(2)) - 1;
+    const level = isFinal ? (s.closePrice ?? s.fillTargets?.[index] ?? s.targets?.[index])
+      : (s.fillTargets?.[index] ?? s.targets?.[index]);
+    add('Событие', eventType);
+    if (isFinal) add('Результат события', 'финальная цель');
+    add('Цена', exactSignalPrice(level));
+    if (isFinal) { add('Сделка завершена', 'цель достигнута'); resultLines(s).forEach((x) => rows.push(`<code>${escapeTelegramHtml(x)}</code>`)); }
+    if (isOpen) add('Позиция', 'остаётся открытой');
+    if (s.status && !isOpen && !isFinal) add('Статус', s.status);
+    add('Время', formatSignalEventTime(s.progressAt ?? s.closedAt ?? s.filledAt));
+  } else if (eventType === 'BREAKEVEN') {
+    rows.push('<code>Стоп переведён в безубыток</code>');
+    add('Новый SL', s.fillPrice !== null && s.fillPrice !== undefined ? `${exactSignalPrice(s.fillPrice)} (уровень входа)` : null);
+    if (s.status === 'FILLED') add('Позиция', 'остаётся открытой');
+    else {
+      add('Сделка закрыта', closeReasonText(s.closeReason));
+      resultLines(s).forEach((x) => rows.push(`<code>${escapeTelegramHtml(x)}</code>`));
     }
-    return [
-      '🛡 CRYPTORA — Безубыток',
-      line('Пара', pair),
-      'Стоп переведён в безубыток',
-      line('Новый SL', `${formatSignalPrice(s.fillPrice)} (уровень входа)`),
-      line('Сделка закрыта', closeReasonText(s.closeReason)),
-      ...resultLines(s),
-      line('Время', formatSignalEventTime(s.closedAt)),
-      disclaimer,
-    ].join('\n');
+    add('Время', formatSignalEventTime(s.status === 'FILLED' ? (s.progressAt ?? s.filledAt) : s.closedAt));
+  } else if (eventType === 'STOP_LOSS') {
+    add('Цена выхода', exactSignalPrice(s.closePrice));
+    add('Причина', s.closeReason === 'TP1_THEN_SL' ? 'стоп после TP1' : 'стоп-лосс');
+    resultLines(s).forEach((x) => rows.push(`<code>${escapeTelegramHtml(x)}</code>`));
+    add('Время', formatSignalEventTime(s.closedAt));
+  } else if (eventType === 'CANCELLED') {
+    const reason = s.status === 'EXPIRED' || s.status === 'UNRESOLVED'
+      ? noTradeStatusText(s.status, s.closeReason)
+      : (s.closeReason && s.closeReason !== 'CANCELLED' ? noTradeStatusText(s.status, s.closeReason) : null);
+    add('Причина', reason ?? (s.status === 'CANCELLED' ? 'отменён до входа (причина не указана)' : null));
+    add('Статус', s.status);
+    add('Время', formatSignalEventTime(s.closedAt));
+  } else if (eventType === 'CLOSED') {
+    add('Причина', closeReasonText(s.closeReason));
+    add('Цена закрытия', exactSignalPrice(s.closePrice));
+    resultLines(s).forEach((x) => rows.push(`<code>${escapeTelegramHtml(x)}</code>`));
+    add('Время', formatSignalEventTime(s.closedAt));
+  } else {
+    add('Статус', s.status);
+    add('Время', formatSignalEventTime(s.closedAt ?? s.updatedAt));
   }
-
-  if (eventType === 'STOP_LOSS') {
-    return [
-      '❌ CRYPTORA — Stop Loss',
-      line('Пара', pair),
-      line('Цена выхода', formatSignalPrice(s.closePrice)),
-      line('Причина', s.closeReason === 'TP1_THEN_SL' ? 'стоп после TP1' : 'стоп-лосс'),
-      ...resultLines(s),
-      line('Время', formatSignalEventTime(s.closedAt)),
-      disclaimer,
-    ].join('\n');
-  }
-
-  if (eventType === 'CANCELLED') {
-    return [
-      '🚫 CRYPTORA — Сигнал отменён',
-      line('Пара', pair),
-      line('Стратегия', strategy || '—'),
-      line('Причина', noTradeStatusText(s.status, s.closeReason)),
-      line('Статус', s.status ?? '—'),
-      line('Время', formatSignalEventTime(s.closedAt)),
-      disclaimer,
-    ].join('\n');
-  }
-
-  if (eventType === 'CLOSED') {
-    return [
-      '🏁 CRYPTORA — Сигнал закрыт',
-      line('Пара', pair),
-      line('Причина', closeReasonText(s.closeReason)),
-      line('Цена закрытия', formatSignalPrice(s.closePrice)),
-      ...resultLines(s),
-      line('Время', formatSignalEventTime(s.closedAt)),
-      disclaimer,
-    ].join('\n');
-  }
-
-  // Легаси-домен (OUTCOME) и неизвестные типы: честный универсальный текст.
-  const labels = { OUTCOME: 'Сигнал завершён' };
-  return [
-    `CRYPTORA — ${labels[eventType] ?? eventType}`,
-    line('Пара', pair),
-    line('Стратегия', strategy || '—'),
-    line('Статус', s.status ?? '—'),
-    line('Время', formatSignalEventTime(s.closedAt ?? s.updatedAt)),
-    disclaimer,
-  ].join('\n');
+  rows.push(escapeTelegramHtml(SIGNAL_TELEGRAM_DISCLAIMER));
+  return rows.join('\n');
 }
 
 export async function dispatchSignalEvent(signal, eventType, fetchFn = fetch) {
@@ -585,6 +566,7 @@ export async function dispatchSignalEvent(signal, eventType, fetchFn = fetch) {
     eventType,
     eventId: signal.id,
     text: formatSignalTelegramText(signal, eventType),
+    parseMode: 'HTML',
   }, fetchFn)));
   return settled;
 }

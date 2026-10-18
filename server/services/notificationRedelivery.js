@@ -421,6 +421,7 @@ export class NotificationRedeliveryWorker {
             eventType: candidate.eventType,
             eventId: candidate.signalId,
             text,
+            parseMode: 'HTML',
           });
           if (result && result.ok) summary.delivered += 1;
           else summary.failed += 1;
