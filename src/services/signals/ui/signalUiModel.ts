@@ -18,9 +18,25 @@
  *     на сервере: массив целей имеет приоритет;
  *   • R показывается только у состояний со сделкой; `null` → «сделки не было»;
  *   • неизвестный серверу статус не подменяется нейтральным словом.
+ *   • прогресс lifecycle (`dto.progress` — серверная проекция журнала,
+ *     Signals UI V1): достигнутые цели/стоп помечаются `reached` и рисуются
+ *     отлично от ожидающих; действующий стоп после BE идёт отдельным набором
+ *     `progressLevels`. Отсутствие прогресса в DTO = «неизвестно»: рендер как
+ *     раньше, без отметок (обратная совместимость отображения);
+ *   • fill-стоп, переставший быть эффективным после взведения BE (у V3.x он
+ *     равен первоначальному), из `effectiveLevels` исключается — его место
+ *     занимает доказанный действующий стоп; публикационный стоп при этом
+ *     остаётся исторической линией;
+ *   • факты прогресса НЕ перевыводятся на клиенте: ни по свечам, ни по цене,
+ *     ни из `lifecycleEvents` напрямую — единственный источник флага/уровня
+ *     это `dto.progress` от сервера.
  */
 
-import type { SignalDto, SignalProvenanceStatus } from '@/services/strategyOps';
+import type {
+  SignalDto,
+  SignalLifecycleProgressDto,
+  SignalProvenanceStatus,
+} from '@/services/strategyOps';
 import { OPEN_SIGNAL_STATUSES } from '@/services/strategyOps';
 import {
   describeServerSignalOutcome,
@@ -62,6 +78,39 @@ export interface SignalLevelRow {
   targetIndex?: number;
   /** Уровни после исполнения (ядро сдвигает стоп/цели, например V2.8). */
   effective?: boolean;
+  /**
+   * Уровень достигнут по подтверждённому серверному факту (цель взята,
+   * стоп сработал). Достигнутый уровень рисуется отлично от ожидающего
+   * (стиль + отметка ✓), но с графика не убирается — это история.
+   */
+  reached?: boolean;
+  /**
+   * Строка прогресса (действующий стоп после BE), а не публикации или
+   * исполнения. Существует, только если сервер доказал значение
+   * (`progress.currentStop`); иначе уровня нет вообще.
+   */
+  progressLevel?: boolean;
+}
+
+/**
+ * Нормализованный lifecycle-прогресс сигнала для UI.
+ *
+ * Источник — ТОЛЬКО `dto.progress` (серверная проекция журнала + исхода).
+ * Отсутствие в DTO = «неизвестно»: все флаги ложны, стоп — null, и рендер
+ * совпадает с досигнальным V1 (обратная совместимость отображения).
+ */
+export interface SignalProgressModel {
+  tp1Hit: boolean;
+  tp1HitAt: string | null;
+  tp2Hit: boolean;
+  tp2HitAt: string | null;
+  breakevenArmed: boolean;
+  breakevenArmedAt: string | null;
+  stopHit: boolean;
+  stopHitAt: string | null;
+  /** Действующий стоп (доказанный сервером) — null = рисовать запрещено. */
+  currentStop: number | null;
+  currentStopBasis: string | null;
 }
 
 export interface SignalUiModel {
@@ -120,8 +169,21 @@ export interface SignalUiModel {
   /**
    * Эффективные уровни после исполнения (`fillStop`/`fillTargets`) — отдельный
    * набор: оба честны, подменять один другим нельзя.
+   *
+   * Исключение (Signals UI V1): fill-стоп, переставший быть эффективным после
+   * взведения BE, сюда не входит — действующий стоп несёт `progressLevels`.
    */
   effectiveLevels: SignalLevelRow[];
+  /**
+   * Нормализованный lifecycle-прогресс (см. `SignalProgressModel`).
+   * Всегда заполнен; «неизвестно» = флаги ложны, стоп — null.
+   */
+  progress: SignalProgressModel;
+  /**
+   * Уровни прогресса: действующий стоп после BE (когда доказан сервером).
+   * Отдельный набор — публикационные и fill-уровни не подменяются.
+   */
+  progressLevels: SignalLevelRow[];
   fill: { price: number | null; priceText: string; at: string | null } | null;
 
   outcome: {
@@ -183,9 +245,50 @@ export function resolveTargetPrices(signal: SignalDto): number[] {
   return legacy;
 }
 
+/** Прогресс «неизвестен» (в DTO нет `progress`): отметок нет, рендер как раньше. */
+const EMPTY_PROGRESS: SignalProgressModel = {
+  tp1Hit: false,
+  tp1HitAt: null,
+  tp2Hit: false,
+  tp2HitAt: null,
+  breakevenArmed: false,
+  breakevenArmedAt: null,
+  stopHit: false,
+  stopHitAt: null,
+  currentStop: null,
+  currentStopBasis: null,
+};
+
+/**
+ * Нормализация серверной проекции прогресса.
+ *
+ * Перенос как есть, с защитой типов (контракт обратной совместимости:
+ * поле опционально, мусор вместо флага — ложь, не число вместо стопа — null).
+ * Факты НЕ перевыводятся: клиент доверяет `dto.progress` целиком.
+ */
+export function resolveSignalProgress(signal: SignalDto): SignalProgressModel {
+  const p: SignalLifecycleProgressDto | null | undefined = signal.progress ?? null;
+  if (!p || typeof p !== 'object') return { ...EMPTY_PROGRESS };
+  const flag = (v: unknown): boolean => v === true;
+  const iso = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+  return {
+    tp1Hit: flag(p.tp1Hit),
+    tp1HitAt: iso(p.tp1HitAt),
+    tp2Hit: flag(p.tp2Hit),
+    tp2HitAt: iso(p.tp2HitAt),
+    breakevenArmed: flag(p.breakevenArmed),
+    breakevenArmedAt: iso(p.breakevenArmedAt),
+    stopHit: flag(p.stopHit),
+    stopHitAt: iso(p.stopHitAt),
+    currentStop: finiteOrNull(p.currentStop),
+    currentStopBasis: typeof p.currentStopBasis === 'string' ? p.currentStopBasis : null,
+  };
+}
+
 /** Публикационные уровни: вход (границы зоны как отдельные уровни), стоп, цели. */
 export function buildLevelRows(signal: SignalDto): SignalLevelRow[] {
   const rows: SignalLevelRow[] = [];
+  const progress = resolveSignalProgress(signal);
   const entryMin = finiteOrNull(signal.entryMin);
   const entryMax = finiteOrNull(signal.entryMax);
 
@@ -207,10 +310,14 @@ export function buildLevelRows(signal: SignalDto): SignalLevelRow[] {
       price: stop,
       tone: 'red',
       comparator: stopSign(signal.direction),
+      ...(progress.stopHit ? { reached: true } : {}),
     });
   }
 
+  // Отметка достижения — только TP1 (индекс 0) и TP2 (индекс 1): frozen-ведение
+  // отслеживает ровно эти две цели, TP3+ фактами журнала не подтверждаются.
   resolveTargetPrices(signal).forEach((price, index) => {
+    const reached = (index === 0 && progress.tp1Hit) || (index === 1 && progress.tp2Hit);
     rows.push({
       id: `target-${index + 1}`,
       kind: 'target',
@@ -218,6 +325,7 @@ export function buildLevelRows(signal: SignalDto): SignalLevelRow[] {
       price,
       tone: 'green',
       targetIndex: index,
+      ...(reached ? { reached: true } : {}),
     });
   });
 
@@ -230,6 +338,7 @@ export function buildEffectiveLevelRows(signal: SignalDto): SignalLevelRow[] {
     return [];
   }
   const rows: SignalLevelRow[] = [];
+  const progress = resolveSignalProgress(signal);
   const fillPrice = finiteOrNull(signal.fillPrice);
   if (fillPrice !== null) {
     rows.push({
@@ -242,7 +351,12 @@ export function buildEffectiveLevelRows(signal: SignalDto): SignalLevelRow[] {
     });
   }
   const fillStop = finiteOrNull(signal.fillStop);
-  if (fillStop !== null) {
+  // BE взведён и действующий стоп доказан: fill-стоп (у V3.x он равен
+  // первоначальному) больше НЕ эффективен — показывать его под подписью
+  // «Эффективный стоп» значило бы выдавать старый стоп за действующий.
+  // Его место занимает `buildProgressLevelRows`, а публикационный «Стоп»
+  // остаётся исторической линией.
+  if (fillStop !== null && progress.currentStop === null) {
     rows.push({
       id: 'fill-stop',
       kind: 'stop',
@@ -270,6 +384,30 @@ export function buildEffectiveLevelRows(signal: SignalDto): SignalLevelRow[] {
       });
   }
   return rows;
+}
+
+/**
+ * Уровни прогресса: действующий стоп после BE.
+ *
+ * Строка существует, ТОЛЬКО если сервер доказал значение
+ * (`progress.currentStop`): во всех остальных случаях — пусто. Уровень
+ * не выдумывается никогда (V2.8-трейлинг, закрытые позиции, отсутствие
+ * прогресса в DTO — все дают «нет строки»).
+ */
+export function buildProgressLevelRows(signal: SignalDto): SignalLevelRow[] {
+  const progress = resolveSignalProgress(signal);
+  if (progress.currentStop === null) return [];
+  return [
+    {
+      id: 'current-stop',
+      kind: 'stop',
+      label: 'Стоп в безубытке (действующий)',
+      price: progress.currentStop,
+      tone: 'red',
+      comparator: stopSign(signal.direction),
+      progressLevel: true,
+    },
+  ];
 }
 
 /** Полное отображение DTO → модель UI. */
@@ -329,6 +467,8 @@ export function toSignalUiModel(signal: SignalDto): SignalUiModel {
 
     levels: buildLevelRows(signal),
     effectiveLevels: buildEffectiveLevelRows(signal),
+    progress: resolveSignalProgress(signal),
+    progressLevels: buildProgressLevelRows(signal),
     fill:
       signal.fillPrice !== null || signal.filledAt !== null
         ? {

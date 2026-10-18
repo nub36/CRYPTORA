@@ -325,3 +325,37 @@ export function signalPairText(symbol: string): string {
 export function signalBaseSymbol(symbol: string): string {
   return pairLabel(symbol).toUpperCase().split('/')[0] ?? symbol.toUpperCase();
 }
+
+/* ── Бейджи lifecycle-прогресса (Signals UI V1) ────────────────────────────
+ *
+ * Тексты для подтверждённых сервером фактов (`SignalProgressModel`).
+ * Каждый бейдж — факт из `dto.progress`, а не вывод клиента: компонент
+ * решает только «показывать / не показывать» по флагам.
+ */
+
+/** «🎯 TP1 достигнут» — факт из журнала/исхода, время здесь не печатается. */
+export function tp1BadgeText(): string {
+  return '🎯 TP1 достигнут';
+}
+
+/** «🏆 TP2 достигнут» — терминальная цель подтверждена сервером. */
+export function tp2BadgeText(): string {
+  return '🏆 TP2 достигнут';
+}
+
+/**
+ * «🛡️ Стоп в безубытке» + цена действующего стопа, когда она доказана.
+ * Без цены (V2.8-трейлинг: значение API неизвестно) — только статус:
+ * уровень не выдумывается.
+ */
+export function breakevenBadgeText(currentStop: number | null | undefined): string {
+  if (typeof currentStop === 'number' && Number.isFinite(currentStop)) {
+    return `🛡️ Стоп в безубытке · ${formatSignalPrice(currentStop)}`;
+  }
+  return '🛡️ Стоп в безубытке';
+}
+
+/** «🔴 Закрыт по стопу» — терминальный исход INVALIDATED подтверждён. */
+export function stopHitBadgeText(): string {
+  return '🔴 Закрыт по стопу';
+}

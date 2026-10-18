@@ -27,6 +27,41 @@ export type SignalEntryType = 'LIMIT_CORRIDOR' | 'MARKET_NEXT_OPEN';
  */
 export type ProvenanceStatus = 'VERIFIED' | 'MISMATCH' | 'UNKNOWN';
 
+/**
+ * Подтверждённое событие журнала `signal_lifecycle_events` (миграция 018) —
+ * сырой факт для отображения. Время — момент ФАКТА (`occurred_at`), не
+ * отправки; null = ядро время не отдало.
+ */
+export interface SignalLifecycleEvent {
+  eventType: string;
+  occurredAt: Date | string | null;
+}
+
+/** Основание действующего стопа: armed-стоп V3.x стоит на цене входа (R3/R4). */
+export type SignalCurrentStopBasis = 'BE_AT_ENTRY';
+
+/**
+ * READ-ONLY проекция lifecycle-прогресса для UI (см.
+ * `projectSignalLifecycleProgress` в signalLifecycleEvents.js).
+ *
+ * Только интерпретация persisted-фактов (строка + журнал): TP1/TP2/стоп —
+ * достигнуты ли; BE — взведён ли armed-стоп ОТКРЫТОЙ позиции; currentStop —
+ * действующий стоп, когда его значение доказуемо (V3.x + BE + вход),
+ * иначе null (выдуманный уровень запрещён).
+ */
+export interface SignalLifecycleProgress {
+  tp1Hit: boolean;
+  tp1HitAt: string | null;
+  tp2Hit: boolean;
+  tp2HitAt: string | null;
+  breakevenArmed: boolean;
+  breakevenArmedAt: string | null;
+  stopHit: boolean;
+  stopHitAt: string | null;
+  currentStop: number | null;
+  currentStopBasis: SignalCurrentStopBasis | null;
+}
+
 export interface SignalRow {
   id: string;
   strategyId: string;
@@ -74,6 +109,14 @@ export interface SignalRow {
    * не влияет на `hash` / `outcome_hash`.
    */
   provenanceStatus: ProvenanceStatus;
+  /**
+   * События журнала ЭТОГО сигнала. Присоединяют только чтения для API
+   * (`listSignals`, `getSignalWithProgressById`); внутренние пути (монитор,
+   * скан, запись lifecycle, Telegram redelivery) поля не несут.
+   */
+  lifecycleEvents?: SignalLifecycleEvent[];
+  /** Проекция прогресса для UI. Тот же контракт наличия, что у `lifecycleEvents`. */
+  progress?: SignalLifecycleProgress;
 }
 
 export interface NewSignal {
@@ -163,12 +206,27 @@ export function resolveLevels(p?: {
 
 export function insertSignal(signal: NewSignal): Promise<{ inserted: boolean; signal: SignalRow | null }>;
 export function listSignals(p?: SignalFilters & { limit?: number; offset?: number }): Promise<SignalRow[]>;
+/**
+ * События журнала для набора сигналов — ОДНИМ запросом (`signal_id = ANY($1)`).
+ * Только чтение; пустой набор — пустой результат без запроса. N+1 запрещён.
+ */
+export function listSignalLifecycleEvents(
+  signalIds: Array<string | null | undefined>
+): Promise<Map<string, SignalLifecycleEvent[]>>;
 export function countSignals(filters?: SignalFilters): Promise<number>;
 /**
- * Один сигнал по `signals.id` — точечное чтение для deep-link'а колокольчика.
+ * Один сигнал по `signals.id` — ровно один запрос, БЕЗ чтения журнала.
+ * Используется Telegram Redelivery (`loadSignal` по умолчанию), поэтому
+ * загрузка UI-прогресса сюда не входит: отказ журнала не должен ронять sweep.
  * Карантинные строки не скрываются: `provenanceStatus` отдаётся как есть.
  */
 export function getSignalById(id: string): Promise<SignalRow | null>;
+/**
+ * Один сигнал + lifecycle-факты для UI — только для `GET /api/signals/:id`
+ * (deep-link обязан показать тот же прогресс, что и лента).
+ * НЕ использовать в доставке уведомлений.
+ */
+export function getSignalWithProgressById(id: string): Promise<SignalRow | null>;
 /** Форма UUID (любой регистр) — проверка до обращения к БД. */
 export const SIGNAL_ID_PATTERN: RegExp;
 export function isSignalIdShape(id: string): boolean;
