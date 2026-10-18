@@ -344,7 +344,7 @@ function makeWorker(opts: {
   signals?: Record<string, Record<string, unknown>>;
   deliverResult?: { ok: boolean };
 } = {}) {
-  const deliverCalls: Array<{ userId: string; payload: { eventType: string; eventId: string; text: string } }> = [];
+  const deliverCalls: Array<{ userId: string; payload: { eventType: string; eventId: string; text: string; parseMode?: 'HTML' } }> = [];
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   let NOW = 1_800_000_000_000;
   const signals: Record<string, Record<string, unknown>> = opts.signals ?? {};
@@ -393,7 +393,8 @@ describe('NotificationRedeliveryWorker.sweep — доставка и поряд�
     expect(summary).toMatchObject({ considered: 3, deliverable: 3, attempted: 3, delivered: 3, failed: 0 });
     expect(deliverCalls.map((c) => c.payload.eventType)).toEqual(['TP1', 'BREAKEVEN', 'TP2']);
     // Тот же форматтер, что первичная доставка: текст сообщения узнаваем.
-    expect(deliverCalls[0]!.payload.text).toContain('TP1');
+    expect(deliverCalls[0]!.payload.text).toContain('🎯 Первая цель достигнута');
+    expect(deliverCalls[0]!.payload.parseMode).toBe('HTML');
     expect(deliverCalls[0]!.payload.text).toContain('BTC/USDT');
     expect(deliverCalls[1]!.payload.text).toContain('Безубыток');
     // eventId = signal_id (ключ per-user SUCCESS-дедупа).

@@ -416,18 +416,20 @@ describe('dispatchSignalProgressEvents — запись, дедуп, время 
 /* ─────────────────────────── Формат сообщений ─────────────────────────── */
 
 describe('formatSignalTelegramText — понятные сообщения полного цикла', () => {
-  const fmt = notifications.formatSignalTelegramText;
+  // Lifecycle assertions check rendered content, independently of the new Telegram HTML tags.
+  const fmt = (signal: Record<string, unknown>, eventType: string) =>
+    notifications.formatSignalTelegramText(signal, eventType).replace(/<\/?[^>]+>/g, '');
 
   it('новый сигнал: уровни, стратегия, статус, время, дисклеймер', () => {
     const text = fmt(signalRow(), 'NEW_SIGNAL');
-    expect(text).toContain('🟢 CRYPTORA — Новый сигнал');
+    expect(text).toContain('🟢 Новый сигнал');
     expect(text).toContain('BTC/USDT');
-    expect(text).toContain('V3_0_HTF_LIQUIDATION_TRAP');
+    expect(text).toContain('V3.0 · HTF LIQUIDATION TRAP · 3.0.0');
     expect(text).toContain('Активен');
-    expect(text).toContain('SL: 90.0000');
-    expect(text).toContain('TP1: 110.00');
-    expect(text).toContain('TP2: 120.00');
-    expect(text).toContain('Вход: 100.00 – 101.00');
+    expect(text).toContain('SL: 90');
+    expect(text).toContain('TP1: 110');
+    expect(text).toContain('TP2: 120');
+    expect(text).toContain('Вход: 100 – 101');
     expect(text).toContain('Время:');
     expect(text).toContain('Информационное уведомление. Не является рекомендацией.');
   });
@@ -437,9 +439,9 @@ describe('formatSignalTelegramText — понятные сообщения по�
       signalRow({ status: 'FILLED', fillPrice: 101, filledAt: '2026-10-01T13:00:00.000Z' }),
       'FILL'
     );
-    expect(text).toContain('🎯 CRYPTORA — Вход');
-    expect(text).toContain('Цена входа: 101.00');
-    expect(text).toContain('SL: 90.0000');
+    expect(text).toContain('✅ Вход в сделку');
+    expect(text).toContain('Цена входа: 101');
+    expect(text).toContain('SL: 90');
     expect(text).toContain('Время:');
     expect(text).toContain('Информационное уведомление. Не является рекомендацией.');
   });
@@ -455,8 +457,8 @@ describe('formatSignalTelegramText — понятные сообщения по�
       }),
       'FILL'
     );
-    expect(text).toContain('SL: 190.00');
-    expect(text).toContain('TP1: 215.00');
+    expect(text).toContain('SL: 190');
+    expect(text).toContain('TP1: 215');
     expect(text).not.toContain('TP1: 110');
   });
 
@@ -468,9 +470,9 @@ describe('formatSignalTelegramText — понятные сообщения по�
       }),
       'TP2'
     );
-    expect(text).toContain('✅ CRYPTORA — TP2');
+    expect(text).toContain('🏆 Вторая цель достигнута');
     expect(text).toContain('финальная цель');
-    expect(text).toContain('Цена: 120.00');
+    expect(text).toContain('Цена: 120');
     expect(text).toContain('+1.90 R');
     expect(text).toContain('net +1.84 R');
   });
@@ -480,12 +482,12 @@ describe('formatSignalTelegramText — понятные сообщения по�
       signalRow({ status: 'TARGET_REACHED', fillPrice: 101, closeReason: 'TP2', closePrice: 120 }),
       'TP1'
     );
-    expect(text).toContain('✅ CRYPTORA — TP1');
-    expect(text).toContain('110.00');
+    expect(text).toContain('🎯 Первая цель достигнута');
+    expect(text).toContain('110');
   });
 
   it('безубыток ОТКРЫТОЙ позиции (§6): стоп на входе, позиция жива, время — бар арминга', () => {
-    const text = notifications.formatSignalTelegramText(
+    const text = fmt(
       signalRow({
         status: 'FILLED',
         fillPrice: 101,
@@ -496,7 +498,7 @@ describe('formatSignalTelegramText — понятные сообщения по�
     );
     expect(text).toContain('Безубыток');
     expect(text).toContain('Стоп переведён в безубыток');
-    expect(text).toContain('101.00 (уровень входа)');
+    expect(text).toContain('101 (уровень входа)');
     expect(text).toContain('Позиция: остаётся открытой');
     // Открытая сделка не выдаётся за закрытую: строки исхода отсутствуют.
     expect(text).not.toContain('Сделка закрыта');
@@ -504,7 +506,7 @@ describe('formatSignalTelegramText — понятные сообщения по�
   });
 
   it('TP1 ОТКРЫТОЙ позиции (§6): цена первой цели, позиция жива, время — бар подтверждения', () => {
-    const text = notifications.formatSignalTelegramText(
+    const text = fmt(
       signalRow({
         status: 'FILLED',
         fillPrice: 101,
@@ -515,7 +517,7 @@ describe('formatSignalTelegramText — понятные сообщения по�
       'TP1'
     );
     expect(text).toContain('TP1');
-    expect(text).toContain('110.0');
+    expect(text).toContain('110');
     expect(text).toContain('Позиция: остаётся открытой');
     expect(text).not.toContain('финальная цель');
     expect(text).not.toContain('Сделка завершена');
@@ -528,9 +530,9 @@ describe('formatSignalTelegramText — понятные сообщения по�
       }),
       'BREAKEVEN'
     );
-    expect(text).toContain('🛡 CRYPTORA — Безубыток');
+    expect(text).toContain('🛡️ Безубыток');
     expect(text).toContain('Стоп переведён в безубыток');
-    expect(text).toContain('Новый SL: 101.00 (уровень входа)');
+    expect(text).toContain('Новый SL: 101 (уровень входа)');
     expect(text).toContain('+0.48 R');
   });
 
@@ -542,15 +544,15 @@ describe('formatSignalTelegramText — понятные сообщения по�
       }),
       'STOP_LOSS'
     );
-    expect(text).toContain('❌ CRYPTORA — Stop Loss');
-    expect(text).toContain('Цена выхода: 90.0000');
+    expect(text).toContain('🔴 Stop Loss');
+    expect(text).toContain('Цена выхода: 90');
     expect(text).toContain('-1.00 R');
     expect(text).toContain('net -1.05 R');
   });
 
   it('отмена до входа: причина и статус безсделкового терминала', () => {
     const text = fmt(signalRow({ status: 'CANCELLED', closeReason: 'CANCELLED' }), 'CANCELLED');
-    expect(text).toContain('🚫 CRYPTORA — Сигнал отменён');
+    expect(text).toContain('⚪ Сигнал отменён');
     expect(text).toContain('отменён до входа');
     expect(text).toContain('CANCELLED');
     expect(text).not.toContain('Stop Loss');
@@ -584,9 +586,9 @@ describe('formatSignalTelegramText — понятные сообщения по�
       signalRow({ status: 'CLOSED', fillPrice: 101, closeReason: 'TIMEOUT', closePrice: 105, resultR: 0.24 }),
       'CLOSED'
     );
-    expect(text).toContain('🏁 CRYPTORA — Сигнал закрыт');
+    expect(text).toContain('🏁 Сделка закрыта');
     expect(text).toContain('таймаут стратегии');
-    expect(text).toContain('Цена закрытия: 105.00');
+    expect(text).toContain('Цена закрытия: 105');
 
     const trail = fmt(
       signalRow({ status: 'CLOSED', closeReason: 'TRAIL', closePrice: 115, resultR: 1.4 }),
@@ -617,8 +619,8 @@ describe('formatSignalTelegramText — понятные сообщения по�
       signalRow({ entryMin: 0.00000446, entryMax: 0.00000446, stopLoss: 0.0000041, targets: [0.0000051, 0.0000059] }),
       'NEW_SIGNAL'
     );
-    expect(text).toContain('0.000004460');
-    expect(text).toContain('0.000005100');
+    expect(text).toContain('0.00000446');
+    expect(text).toContain('0.0000051');
   });
 });
 

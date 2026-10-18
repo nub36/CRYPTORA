@@ -91,6 +91,14 @@ describe('Telegram Bot API semantics', () => {
     expect(result).toMatchObject({ ok: true, status: 200 });
   });
 
+  it('sends parse_mode only when HTML is explicitly requested', async () => {
+    const fetchFn = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ ok: true }));
+    await notifications.sendTelegram(TOKEN, '42', 'plain text', fetchFn);
+    expect(JSON.parse(String(fetchFn.mock.calls[0][1]?.body))).not.toHaveProperty('parse_mode');
+    await notifications.sendTelegram(TOKEN, '42', '<b>signal</b>', fetchFn, undefined, 'HTML');
+    expect(JSON.parse(String(fetchFn.mock.calls[1][1]?.body))).toHaveProperty('parse_mode', 'HTML');
+  });
+
   it('classifies network errors and timeouts without exposing the token', async () => {
     const network = await notifications.sendTelegram(TOKEN, '42', 'test', vi.fn(async () => { throw new TypeError('offline'); }));
     expect(network.code).toBe('NETWORK_ERROR');
@@ -125,7 +133,7 @@ describe('saved config → server signal event → Telegram', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(fetchFn.mock.calls[0][0]).toBe(`https://api.telegram.org/bot${TOKEN}/sendMessage`);
     const payload = JSON.parse(String(fetchFn.mock.calls[0][1]?.body));
-    expect(payload).toMatchObject({ chat_id: '-1001', disable_web_page_preview: true });
+    expect(payload).toMatchObject({ chat_id: '-1001', disable_web_page_preview: true, parse_mode: 'HTML' });
     expect(payload.text).toContain('Новый сигнал');
     expect(payload.text).toContain('BTC/USDT');
     expect(logParams[0]).toEqual(['user-1', 'NEW_SIGNAL', 'signal-1', 'SUCCESS', 200, null, null]);
