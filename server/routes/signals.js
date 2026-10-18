@@ -20,13 +20,18 @@
  *    `stopLoss`, `targets` (вся лестница TP1..TPn), а после исполнения —
  *    `fillPrice`/`fillStop`/`fillTargets`. Никаких «приблизительных» уровней
  *    эндпоинт не возвращает и не досчитывает.
+ *  • lifecycle-прогресс — аддитивно и обратно совместимо: `lifecycleEvents`
+ *    (подтверждённые события журнала ЭТОГО сигнала) и `progress` (их
+ *    интерпретация: tp1Hit/tp2Hit/stopHit/breakevenArmed/currentStop).
+ *    Читается одним batch-запросом на страницу (N+1 нет); старые клиенты
+ *    поля игнорируют. Действующий стоп отдаётся, только когда доказуем.
  */
 
 import { Router } from 'express';
 import {
   listSignals,
   countSignals,
-  getSignalById,
+  getSignalWithProgressById,
   isSignalIdShape,
   SIGNAL_STATUSES,
   OPEN_SIGNAL_STATUSES,
@@ -334,7 +339,7 @@ router.get('/:id', async (req, res, next) => {
         message: "id must be a signal UUID (as returned in the 'signals' feed)",
       });
     }
-    const signal = await getSignalById(id);
+    const signal = await getSignalWithProgressById(id);
     if (!signal) {
       return res.status(404).json({ error: 'SIGNAL_NOT_FOUND', message: 'Signal not found' });
     }

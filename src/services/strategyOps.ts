@@ -71,6 +71,40 @@ export const TRADE_CLOSED_SIGNAL_STATUSES: readonly SignalStatus[] = [
 /** Способ входа, который использует ядро (ReplayEntryType). */
 export type SignalEntryType = 'LIMIT_CORRIDOR' | 'MARKET_NEXT_OPEN';
 
+/**
+ * Подтверждённое событие журнала `signal_lifecycle_events` — сырой
+ * lifecycle-факт ЭТОГО сигнала. Время — момент ФАКТА, не отправки.
+ */
+export interface SignalLifecycleEventDto {
+  eventType: string;
+  occurredAt: string | null;
+}
+
+/** Основание действующего стопа: armed-стоп V3.x стоит на цене входа. */
+export type SignalCurrentStopBasis = 'BE_AT_ENTRY';
+
+/**
+ * READ-ONLY проекция lifecycle-прогресса (считает сервер по строке +
+ * журналу; фронтенд НЕ перевыводит факты — только отображает).
+ *
+ * currentStop — действующий стоп, ТОЛЬКО когда доказуем (V3.x + взведённый
+ * BE + вход). null = значение неизвестно: рисовать уровень запрещено,
+ * показывается лишь статус. V2.8-трейлинг и закрытые позиции currentStop
+ * не получают никогда.
+ */
+export interface SignalLifecycleProgressDto {
+  tp1Hit: boolean;
+  tp1HitAt: string | null;
+  tp2Hit: boolean;
+  tp2HitAt: string | null;
+  breakevenArmed: boolean;
+  breakevenArmedAt: string | null;
+  stopHit: boolean;
+  stopHitAt: string | null;
+  currentStop: number | null;
+  currentStopBasis: SignalCurrentStopBasis | null;
+}
+
 export interface SignalDto {
   id: string;
   strategyId: string;
@@ -150,6 +184,18 @@ export interface SignalDto {
    * (вся история до появления периодов). Фронтенд никогда его не назначает.
    */
   testRunId: string | null;
+  /**
+   * Подтверждённые события журнала ЭТОГО сигнала (batch-attach сервера).
+   * Опционально для обратной совместимости: отсутствие = «прогресс
+   * неизвестен», и UI рисует уровни как раньше (без отметок TP1/BE).
+   */
+  lifecycleEvents?: SignalLifecycleEventDto[];
+  /**
+   * Проекция прогресса для отображения (считает сервер). Отсутствие —
+   * то же «неизвестно»: флаги считаются ложными, currentStop — null.
+   * Фронтенд факты НЕ перевыводит (ни по свечам, ни по цене).
+   */
+  progress?: SignalLifecycleProgressDto;
 }
 
 /** Домен `signals.provenance_status` — тот же, что в CHECK-ограничении миграции 011. */

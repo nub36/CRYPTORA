@@ -66,7 +66,7 @@
  */
 
 import { query } from '../db/pool.js';
-import { CLOSED_SIGNAL_STATUSES, NO_TRADE_STATUSES } from './signalRepository.js';
+import { CLOSED_SIGNAL_STATUSES, NO_TRADE_STATUSES, TRADE_CLOSED_STATUSES } from './signalRepository.js';
 import { emitSignalNotification } from './notificationEvents.js';
 
 /** Фиксированные типы событий (без лестницы TPn — она распознаётся отдельно). */
@@ -106,6 +106,138 @@ const TP1_PROVEN_EXIT_REASONS = Object.freeze([
 
 /** Сделка реально закрыта по безубытку (стоп стоял на уровне входа). */
 const BREAKEVEN_EXIT_REASONS = Object.freeze(['TP1_THEN_BE', 'BE']);
+
+/**
+ * Причины выхода, ДОКАЗЫВАЮЩИЕ достижение TP1 — экспорт для READ-ONLY
+ * проекции прогресса (`projectSignalLifecycleProgress`, ниже): UI обязан
+ * выводить TP1-факт из тех же frozen-правил, а не из собственной копии.
+ */
+export { TP1_PROVEN_EXIT_REASONS, BREAKEVEN_EXIT_REASONS };
+
+/**
+ * Стратегии V3.x с коридорным входом: armed-стоп после TP1 стоит РОВНО на
+ * цене входа (frozen-правило R3/R4: `stopNow = beArmed ? entry : stop` —
+ * `v30Core.ts` / `v33Core.ts`; V3.4 ведётся степпером V3.3, `lifecycle.ts`).
+ *
+ * Список закрытый сознательно (fail-closed): V2.8 ведёт трейлинг-стоп,
+ * значение которого API неизвестно (не равно цене входа), а неизвестная
+ * стратегия не имеет доказанного правила — для них действующий стоп НЕ
+ * выводится никогда (см. `projectSignalLifecycleProgress`).
+ */
+export const V3_CORRIDOR_STRATEGY_IDS = Object.freeze([
+  'V3_0_HTF_LIQUIDATION_TRAP',
+  'V3_3_HTF_ZONE_MITIGATION',
+  'V3_4_HTF_ZONE_MITIGATION_QUALITY',
+]);
+
+/**
+ * Время факта → ISO-строка или честный null.
+ *
+ * Принимает Date (форма pg-драйвера) и ISO-строку (форма после JSON).
+ * Невалидное время — null, а не «сейчас»: выдуманное время здесь запрещено
+ * той же политикой, что у `occurred_at` в миграции 018.
+ */
+function occurredAtIso(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return null;
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+  return null;
+}
+
+/**
+ * READ-ONLY проекция lifecycle-прогресса для отображения (Signals UI V1).
+ *
+ * Чистая функция от двух persisted-источников — строки `signals` в форме
+ * mapRow и событий её журнала `signal_lifecycle_events`. Ничего не читает из
+ * БД, ничего не пишет, стратегию не replay'ит, цену не смотрит: только
+ * интерпретирует УЖЕ зафиксированные факты.
+ *
+ * Правила (каждое — из persisted-данных, выдуманного нет):
+ *
+ *   • tp1Hit — событие TP1 в журнале ЛИБО терминальный исход с TP1-доказанной
+ *     причиной (`TP1_PROVEN_EXIT_REASONS` — строки, закрытые до журнала 018).
+ *     Время — только из события; доказанному без времени факту — null.
+ *   • tp2Hit — событие TP2 ЛИБО статус TARGET_REACHED (ядро ставит его только
+ *     на TP2-выходе, `managedStatus`). Время — из события, иначе `closedAt`
+ *     TARGET_REACHED-строки (момент TP2-выхода по построению ядра).
+ *   • breakevenArmed — событие BREAKEVEN у ОТКРЫТОЙ (FILLED) строки. У
+ *     терминальной строки armed-стоп — прошлое: исход читается из
+ *     `closeReason`, а не из флага (событие и исход не смешиваются).
+ *   • stopHit — событие STOP_LOSS ЛИБО статус INVALIDATED. Время — из
+ *     события, иначе `closedAt` INVALIDATED-строки.
+ *   • currentStop — действующий стоп, ТОЛЬКО когда доказуем: armed-стоп
+ *     открытой V3.x-коридорной позиции стоит на цене входа (R3/R4), а вход —
+ *     это persisted `fill_price`. Во всех остальных случаях (V2.8 трейлинг,
+ *     неизвестная стратегия, нет входа, позиция закрыта) — null: выдуманный
+ *     уровень хуже его отсутствия. `currentStopBasis` фиксирует основание.
+ *
+ * @param {object} row строка signals в форме mapRow (достаточно status,
+ *   strategyId, closeReason, fillPrice, closedAt)
+ * @param {Array<{eventType: string, occurredAt: Date|string|null}>} events
+ *   события журнала ЭТОГО сигнала (порядок не важен — PK гарантирует
+ *   единственность типа; посторонние записи игнорируются)
+ * @returns {{tp1Hit: boolean, tp1HitAt: string|null, tp2Hit: boolean,
+ *   tp2HitAt: string|null, breakevenArmed: boolean, breakevenArmedAt: string|null,
+ *   stopHit: boolean, stopHitAt: string|null, currentStop: number|null,
+ *   currentStopBasis: 'BE_AT_ENTRY'|null}}
+ */
+export function projectSignalLifecycleProgress(row, events) {
+  const r = row && typeof row === 'object' ? row : {};
+  const byType = new Map();
+  for (const e of Array.isArray(events) ? events : []) {
+    if (!e || typeof e !== 'object') continue;
+    const t = e.eventType;
+    if (typeof t !== 'string' || t.length === 0 || byType.has(t)) continue;
+    byType.set(t, e);
+  }
+  const at = (eventType) => {
+    const e = byType.get(eventType);
+    return e ? occurredAtIso(e.occurredAt) : null;
+  };
+
+  const status = r.status;
+  const closeReason = r.closeReason ?? null;
+  const tradeClosed = TRADE_CLOSED_STATUSES.includes(status);
+
+  const tp1Hit = byType.has('TP1')
+    || (tradeClosed && TP1_PROVEN_EXIT_REASONS.includes(closeReason));
+  const tp2Hit = byType.has('TP2') || status === 'TARGET_REACHED';
+  const breakevenArmed = byType.has('BREAKEVEN') && status === 'FILLED';
+  const stopHit = byType.has('STOP_LOSS') || status === 'INVALIDATED';
+
+  let currentStop = null;
+  let currentStopBasis = null;
+  const fillPrice = r.fillPrice;
+  if (
+    breakevenArmed
+    && V3_CORRIDOR_STRATEGY_IDS.includes(r.strategyId)
+    && typeof fillPrice === 'number'
+    && Number.isFinite(fillPrice)
+  ) {
+    currentStop = fillPrice;
+    currentStopBasis = 'BE_AT_ENTRY';
+  }
+
+  return {
+    tp1Hit,
+    tp1HitAt: at('TP1'),
+    tp2Hit,
+    tp2HitAt: at('TP2') ?? (status === 'TARGET_REACHED' ? occurredAtIso(r.closedAt) : null),
+    breakevenArmed,
+    breakevenArmedAt: breakevenArmed ? at('BREAKEVEN') : null,
+    stopHit,
+    stopHitAt: at('STOP_LOSS') ?? (status === 'INVALIDATED' ? occurredAtIso(r.closedAt) : null),
+    currentStop,
+    currentStopBasis,
+  };
+}
 
 /**
  * Какие события несёт переход «было → стало».

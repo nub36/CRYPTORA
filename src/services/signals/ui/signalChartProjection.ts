@@ -15,6 +15,10 @@
  *     наборов линий на мобильном экране нечитаемы, §8 задачи);
  *   • сторона читается БЕЗ цвета: форма (arrowUp/arrowDown), позиция
  *     (belowBar/aboveBar) и текст «LONG · V3.0» / «SHORT · V2.8».
+ *   • прогресс lifecycle (Signals UI V1): достигнутая цель/стоп (`reached`)
+ *     рисуется отлично от ожидающей (сплошная линия + отметка ✓ в подписи),
+ *     действующий стоп после BE — отдельной сплошной линией «SL (BE)».
+ *     Исторические линии не убираются: достигнутое остаётся на графике.
  */
 
 import type { ChartLevelLine, ChartMarker } from '@/types/chart';
@@ -253,6 +257,8 @@ export interface BuildLevelLinesOptions {
  * Полные названия остаются в карточке / попапе выбранного сигнала.
  */
 export function compactLevelLabel(row: SignalLevelRow): string {
+  // Действующий стоп после BE — единственный «текущий» стоп на графике.
+  if (row.progressLevel) return 'SL (BE)';
   if (row.effective) {
     if (row.kind === 'entry') return 'Факт';
     if (row.kind === 'stop') return 'SL эфф';
@@ -264,10 +270,10 @@ export function compactLevelLabel(row: SignalLevelRow): string {
     return 'Вход';
   }
   if (row.kind === 'stop') {
-    return 'Стоп';
+    return row.reached ? 'Стоп ✓' : 'Стоп';
   }
   if (row.kind === 'target') {
-    return `TP${(row.targetIndex ?? 0) + 1}`;
+    return `TP${(row.targetIndex ?? 0) + 1}${row.reached ? ' ✓' : ''}`;
   }
   return row.label;
 }
@@ -275,11 +281,18 @@ export function compactLevelLabel(row: SignalLevelRow): string {
 function lineTitle(row: SignalLevelRow, compact = false, showLabels = true): string {
   if (!showLabels) return '';
   const label = compact ? compactLevelLabel(row) : row.label;
+  // Полные подписи (`row.label`) отметки не несут — достигнутое помечаем здесь.
+  // Компактные уже содержат ✓ из `compactLevelLabel`.
+  const mark = !compact && row.reached ? ' ✓' : '';
   const comparator = row.comparator ? `${row.comparator} ` : '';
-  return `${label} ${comparator}${formatSignalPrice(row.price)}`;
+  return `${label}${mark} ${comparator}${formatSignalPrice(row.price)}`;
 }
 
 function levelStyle(row: SignalLevelRow): ChartLevelLine['style'] {
+  // Достигнутое — сплошная: визуально отлично от ожидающего (цели — dotted,
+  // стопы — dashed), но в своей семантической цветовой семье.
+  if (row.progressLevel) return 'solid';
+  if (row.reached) return 'solid';
   if (row.effective) return 'largeDashed';
   if (row.kind === 'stop') return 'dashed';
   if (row.kind === 'target') return 'dotted';
@@ -304,6 +317,11 @@ function rowToLine(row: SignalLevelRow, compact = false, showLabels = true): Cha
  * `showEffective` включает второй набор (факт входа / эффективные стоп и цели
  * после исполнения) — он существует только если сервер его отдал. Публикационные
  * уровни при этом остаются на графике: подменять один набор другим нельзя.
+ *
+ * Уровни прогресса (`progressLevels` — действующий стоп после BE) включаются
+ * всегда, когда сервер их доказал: это первичное торговое состояние, а не
+ * вспомогательный набор. Достигнутые уровни (`reached`) рисуются сплошными
+ * с отметкой ✓, ожидающие — как раньше.
  */
 export function buildSignalLevelLines(
   model: SignalUiModel | null,
@@ -314,7 +332,11 @@ export function buildSignalLevelLines(
   const showLabels = opts.showLabels ?? true;
   const compact = opts.compact ?? false;
 
-  const rows = showEffective ? [...model.levels, ...model.effectiveLevels] : model.levels;
+  const rows = [
+    ...model.levels,
+    ...model.progressLevels,
+    ...(showEffective ? model.effectiveLevels : []),
+  ];
   const lines = rows.map((r) => rowToLine(r, compact, showLabels));
   if (lines.length <= LEVEL_LINES_MAX) return { lines, skippedLevels: 0 };
   return { lines: lines.slice(0, LEVEL_LINES_MAX), skippedLevels: lines.length - LEVEL_LINES_MAX };

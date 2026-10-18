@@ -9,6 +9,11 @@
  *
  * Детали (исход, R, аналитика, целостность) — в коллапсах, второстепенно (§12, §7).
  * Никаких уровней и статусов здесь не досчитывается: всё из серверного DTO.
+ *
+ * Прогресс (Signals UI V1): бейджи TP1/BE/TP2/стопа из `model.progress` и блок
+ * «Действующий стоп» из `model.progressLevels` — только подтверждённые
+ * сервером факты. Показываются в обоих режимах (`levelsOnly` тоже): это
+ * состояние уровней, а не дублирование исхода.
  */
 
 import React from 'react';
@@ -22,6 +27,7 @@ import {
 import { Collapsible } from '@/components/common/Collapsible';
 import { Badge } from '@/components/common/Badge';
 import { SignalStatusChip } from './SignalStatusChip';
+import { SignalProgressBadges } from './SignalProgressBadges';
 
 interface SignalDetailsPanelProps {
   model: SignalUiModel | null;
@@ -65,6 +71,10 @@ export const SignalDetailsPanel: React.FC<SignalDetailsPanelProps> = ({ model, l
         <SignalStatusChip status={model.status} size="xs" />
       </div>
 
+      {/* Подтверждённый прогресс (TP1/BE/TP2/стоп) — только факты сервера.
+          Пусто = «подтверждённого факта для показа нет», а не «событий не было». */}
+      <SignalProgressBadges progress={model.progress} />
+
       {/* Публикационные уровни — ровно то, что сохранил сервер. */}
       <ul className="space-y-1.5" data-qa="signals-level-list">
         {model.levels.map((row) => (
@@ -105,6 +115,35 @@ export const SignalDetailsPanel: React.FC<SignalDetailsPanelProps> = ({ model, l
                 className="flex items-center justify-between gap-3 rounded border border-dashed border-surface-border/60 bg-surface-elevated/30 px-2.5 py-1.5"
               >
                 <span className="ui-label">{row.label}</span>
+                <span className={`ui-num text-sm font-semibold ${ROW_TONE[row.tone] ?? 'text-white'}`}>
+                  {formatSignalPrice(row.price)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Действующий стоп после BE — только с доказанным сервером значением.
+          Публикационный «Стоп» выше остаётся исторической линией. */}
+      {model.progressLevels.length > 0 && (
+        <div>
+          <div className="ui-label mb-1.5">Действующий стоп (подтверждён сервером)</div>
+          <ul className="space-y-1.5" data-qa="signals-progress-level-list">
+            {model.progressLevels.map((row) => (
+              <li
+                key={row.id}
+                data-qa={`signals-level-${row.id}`}
+                data-kind={row.kind}
+                className="flex items-center justify-between gap-3 rounded border border-surface-border/60 bg-surface-elevated/40 px-2.5 py-1.5"
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-2 w-2 shrink-0 rounded-full bg-rose-400"
+                  />
+                  <span className="ui-label">{row.label}{row.comparator ? ` (${row.comparator})` : ''}</span>
+                </span>
                 <span className={`ui-num text-sm font-semibold ${ROW_TONE[row.tone] ?? 'text-white'}`}>
                   {formatSignalPrice(row.price)}
                 </span>

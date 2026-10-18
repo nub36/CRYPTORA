@@ -13,6 +13,48 @@ export const SIGNAL_LIFECYCLE_EVENT_TYPES: readonly string[];
 export function isSignalTargetEventType(eventType: unknown): boolean;
 export function isSignalLifecycleEventType(eventType: unknown): boolean;
 
+/** Причины frozen-выхода, ДОКАЗЫВАЮЩИЕ достижение TP1 (правила V3.x). */
+export const TP1_PROVEN_EXIT_REASONS: readonly string[];
+/** Сделка реально закрыта по безубытку (стоп стоял на уровне входа). */
+export const BREAKEVEN_EXIT_REASONS: readonly string[];
+/**
+ * V3.x с коридорным входом: armed-стоп после TP1 стоит ровно на цене входа
+ * (R3/R4). Закрытый список (fail-closed): V2.8 и неизвестные стратегии
+ * действующего стопа не получают никогда.
+ */
+export const V3_CORRIDOR_STRATEGY_IDS: readonly string[];
+
+/**
+ * READ-ONLY проекция lifecycle-прогресса для UI. Чистая функция от строки
+ * (форма mapRow) и событий журнала ЭТОГО сигнала. См. реализацию —
+ * `projectSignalLifecycleProgress` в signalLifecycleEvents.js.
+ */
+export interface SignalLifecycleProgressInput {
+  status?: string;
+  strategyId?: string;
+  closeReason?: string | null;
+  fillPrice?: number | null;
+  closedAt?: Date | string | null;
+}
+
+export interface SignalLifecycleProgress {
+  tp1Hit: boolean;
+  tp1HitAt: string | null;
+  tp2Hit: boolean;
+  tp2HitAt: string | null;
+  breakevenArmed: boolean;
+  breakevenArmedAt: string | null;
+  stopHit: boolean;
+  stopHitAt: string | null;
+  currentStop: number | null;
+  currentStopBasis: 'BE_AT_ENTRY' | null;
+}
+
+export function projectSignalLifecycleProgress(
+  row: SignalLifecycleProgressInput | null | undefined,
+  events: Array<{ eventType?: unknown; occurredAt?: unknown }> | null | undefined
+): SignalLifecycleProgress;
+
 export interface SignalLifecycleSnapshot {
   status?: string;
   fillPrice?: number | null;

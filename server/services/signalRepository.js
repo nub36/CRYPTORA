@@ -53,6 +53,7 @@ import crypto from 'node:crypto';
 import { query, getClient } from '../db/pool.js';
 import { PROVENANCE_VERIFIED, PROVENANCE_UNKNOWN } from './signalProvenance.js';
 import { validateNewSignal, validateLifecycleTimestamps, HARD_INVARIANTS } from './signalInvariants.js';
+import { projectSignalLifecycleProgress } from './signalLifecycleEvents.js';
 
 /** Фиксированный ключ advisory lock для сериализации дописи в цепочку. */
 export const SIGNAL_CHAIN_LOCK_KEY = 730117;
@@ -586,9 +587,77 @@ export const MAX_SIGNALS_OFFSET = 5000;
 export const MAX_OPEN_SIGNALS_FOR_SYNC = 500;
 
 /**
+ * События журнала жизненного цикла для набора сигналов — ОДНИМ запросом.
+ *
+ * READ-ONLY проекция для отображения (Signals UI V1): факты TP1/BREAKEVEN/…
+ * открытой позиции живут только в `signal_lifecycle_events` (миграция 018),
+ * а строка `signals` их не содержит by design. Отдельный SELECT на сигнал
+ * (N+1) запрещён: страница ленты ограничена (`MAX_SIGNALS_LIMIT`), и весь её
+ * журнал читается одним `WHERE signal_id = ANY($1)` по первичному ключу.
+ *
+ * Только чтение: INSERT/UPDATE/DELETE здесь нет и быть не должно — журнал
+ * дописывают только `recordSignalLifecycleEvent` и монитор/скан.
+ *
+ * @param {Array<string>} signalIds идентификаторы `signals.id` (пустой набор —
+ *   пустой результат БЕЗ запроса)
+ * @returns {Promise<Map<string, Array<{eventType: string, occurredAt: Date|null}>>>}
+ *   события КАЖДОГО запрошенного сигнала (порядок — хронология журнала);
+ *   сигналы без событий в карте отсутствуют (не пустые массивы)
+ */
+export async function listSignalLifecycleEvents(signalIds) {
+  const ids = [...new Set(
+    (Array.isArray(signalIds) ? signalIds : [])
+      .filter((id) => typeof id === 'string' && id.length > 0)
+  )];
+  const bySignal = new Map();
+  if (ids.length === 0) return bySignal;
+  const { rows } = await query(
+    `SELECT signal_id, event_type, occurred_at
+       FROM signal_lifecycle_events
+      WHERE signal_id = ANY($1)
+      ORDER BY signal_id ASC, created_at ASC, event_type ASC`,
+    [ids]
+  );
+  for (const r of rows) {
+    const key = String(r.signal_id);
+    let list = bySignal.get(key);
+    if (!list) {
+      list = [];
+      bySignal.set(key, list);
+    }
+    list.push({ eventType: r.event_type, occurredAt: r.occurred_at ?? null });
+  }
+  return bySignal;
+}
+
+/**
+ * Присоединяет к отображённым строкам lifecycle-факты для UI.
+ *
+ * Аддитивно и обратно совместимо: существующие поля `mapRow` не меняются,
+ * добавляются только `lifecycleEvents` (сырые подтверждённые факты журнала)
+ * и `progress` (их интерпретация по frozen-правилам —
+ * `projectSignalLifecycleProgress`). Внутренние пути (монитор, скан,
+ * `writeLifecycle`) эту функцию не вызывают: им прогресс не нужен, а лишний
+ * запрос в горячем цикле вреден.
+ */
+function attachLifecycleProgress(mapped, eventsBySignal) {
+  return mapped.map((m) => {
+    const events = eventsBySignal.get(m.id) ?? [];
+    return {
+      ...m,
+      lifecycleEvents: events.map((e) => ({ eventType: e.eventType, occurredAt: e.occurredAt })),
+      progress: projectSignalLifecycleProgress(m, events),
+    };
+  });
+}
+
+/**
  * Выборка для `GET /api/signals`.
  * Все фильтры необязательны и комбинируются; значения всегда параметризованы.
  * Порядок детерминирован: новые сверху, внутри одной `created_at` — по id.
+ *
+ * Ровно ДВА запроса независимо от размера страницы: SELECT строк + один
+ * batch-SELECT их lifecycle-событий (`listSignalLifecycleEvents`, N+1 нет).
  */
 export async function listSignals({
   strategyId, status, statuses, symbol, direction,
@@ -607,7 +676,9 @@ export async function listSignals({
                LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
 
   const { rows } = await query(sql, params);
-  return rows.map(mapRow);
+  const mapped = rows.map(mapRow);
+  const eventsBySignal = await listSignalLifecycleEvents(mapped.map((m) => m.id));
+  return attachLifecycleProgress(mapped, eventsBySignal);
 }
 
 /** Сколько всего строк под фильтром — нужно для честной пагинации ленты. */
@@ -629,6 +700,14 @@ export async function countSignals(filters = {}) {
  * Карантинные строки НЕ скрываются: `provenance_status` отдаётся как есть
  * (fail-closed решает потребитель, а не чтение). Ничего не вычисляется.
  *
+ * РОВНО ОДИН запрос и НИКАКОГО чтения журнала: эту функцию использует
+ * Telegram Redelivery (`loadSignal` по умолчанию), и загрузка UI-прогресса
+ * не имеет права блокировать доставку. Причина строгая, а не вкусовная:
+ * `NotificationRedeliveryWorker.sweepOnce` вызывает `loadSignalFn` ВНЕ
+ * per-item try/catch, поэтому отказ журнального SELECT ронял бы весь sweep
+ * (все недоставленные кандидаты — до следующего тика). Кому нужен прогресс
+ * выбранного сигнала — `getSignalWithProgressById` (только HTTP-read).
+ *
  * @param {string} id UUID строки `signals`
  * @returns {Promise<object|null>} форма `mapRow` или null, если строки нет
  */
@@ -637,6 +716,26 @@ export async function getSignalById(id) {
   if (value.length === 0) return null;
   const { rows } = await query('SELECT * FROM signals WHERE id = $1', [value]);
   return rows[0] ? mapRow(rows[0]) : null;
+}
+
+/**
+ * Один сигнал + lifecycle-факты для UI (`lifecycleEvents` + `progress`).
+ *
+ * Только для HTTP-чтения выбранного сигнала (`GET /api/signals/:id`):
+ * deep-link обязан показать тот же прогресс, что и лента, — иначе выбранный
+ * сигнал вне первой страницы рисовался бы без отметок TP1/BE. Два запроса
+ * (строка + её журнал). НЕ использовать в доставке уведомлений: redelivery
+ * читает сигнал через `getSignalById` и от журнала не зависит.
+ *
+ * @param {string} id UUID строки `signals`
+ * @returns {Promise<object|null>} форма `mapRow` + lifecycle-факты, или null,
+ *   если строки нет
+ */
+export async function getSignalWithProgressById(id) {
+  const mapped = await getSignalById(id);
+  if (!mapped) return null;
+  const eventsBySignal = await listSignalLifecycleEvents([mapped.id]);
+  return attachLifecycleProgress([mapped], eventsBySignal)[0] ?? null;
 }
 
 /** Форма UUID (версии 1–5, любой регистр) — до обращения к БД. */
