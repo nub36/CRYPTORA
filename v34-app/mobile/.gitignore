@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+dist/
+build/
+*.log
+# Firebase-конфигурация и ключи НИКОГДА не попадают в репозиторий.
+google-services.json
+google-service-account.json
+*.jks
+*.keystore
+.env
+.env.*

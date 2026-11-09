@@ -1,0 +1,47 @@
+# systemd unit для backend продукта V3.4.
+# Ставится в /etc/systemd/system/v34-app.service.
+# Секреты и настройки — только в /etc/v34-app/v34.env (chmod 600, вне Git).
+[Unit]
+Description=CRYPTORA V3.4 signals backend
+Documentation=file:/opt/v34app/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=v34app
+Group=v34app
+WorkingDirectory=/opt/v34app/current
+EnvironmentFile=/etc/v34-app/v34.env
+# node:sqlite требует Node >= 22.5; на Node 24 флаг остаётся безвредным.
+Environment=NODE_OPTIONS=--experimental-sqlite
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/v34app/current/dist/server.mjs
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Минимальные привилегии: серверу нужен только свой каталог данных.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/v34app/data /opt/v34app/apk
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallArchitectures=native
+
+# Логи — в journald; отдельной ротации не требуется.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=v34-app
+
+[Install]
+WantedBy=multi-user.target

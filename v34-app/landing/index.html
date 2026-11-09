@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CRYPTORA V3.4 — Android-приложение сигналов</title>
+  <meta name="description" content="Android-приложение с серверными сигналами стратегии V3.4: митигация зоны старшего таймфрейма с фильтром качества целей. Аналитика, не инвестиционная рекомендация." />
+  <meta name="color-scheme" content="dark" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#top" aria-label="CRYPTORA V3.4 — к началу">
+        <span class="brand-mark" aria-hidden="true">◆</span>
+        <span class="brand-text">CRYPTORA <span class="brand-version">V3.4</span></span>
+      </a>
+      <nav class="site-nav" aria-label="Разделы">
+        <a href="#strategy">Стратегия</a>
+        <a href="#app">Приложение</a>
+        <a href="#download">Скачать</a>
+        <a href="#risks">Риски</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Android · серверные сигналы · без автоторговли</p>
+          <h1>Сигналы стратегии V3.4 — в приложении на телефоне</h1>
+          <p class="lead">
+            Сигналы считает сервер по публичным свечам Binance и отдаёт приложению готовые уровни:
+            коридор входа, первоначальный стоп, TP1 и TP2. TP1, безубыток и действующий стоп
+            появляются только после того, как сервер подтвердил событие закрытым баром.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" id="download-btn" href="#download" aria-disabled="true">
+              <span class="btn-title">Скачать APK</span>
+              <span class="btn-sub" id="download-btn-sub">проверяем наличие файла…</span>
+            </a>
+            <a class="btn btn-ghost" href="#strategy">Что считает стратегия</a>
+          </div>
+          <dl class="fact-grid">
+            <div><dt>Версия APK</dt><dd id="apk-version">—</dd></div>
+            <div><dt>Размер</dt><dd id="apk-size">—</dd></div>
+            <div><dt>SHA-256</dt><dd class="mono" id="apk-sha">—</dd></div>
+            <div><dt>Подпись</dt><dd id="apk-signature">—</dd></div>
+          </dl>
+          <p class="status-line" id="apk-status" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="hero-panel" aria-hidden="true">
+          <div class="panel-head">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="panel-title">сигнал · V3.4</span>
+          </div>
+          <div class="panel-body">
+            <div class="signal-row"><span>ASSETA/USDT · LONG</span><span class="pill">SAMPLE</span></div>
+            <div class="levels">
+              <div><span>Коридор входа</span><b>100.00 – 100.50</b></div>
+              <div><span>Первоначальный SL</span><b>98.00</b></div>
+              <div><span>TP1</span><b>101.00</b></div>
+              <div><span>TP2</span><b>103.00</b></div>
+            </div>
+            <div class="progress">
+              <span class="chip off">TP1</span>
+              <span class="chip off">TP2</span>
+              <span class="chip off">Безубыток</span>
+              <span class="chip off">Действующий SL</span>
+            </div>
+            <p class="panel-note">Макет интерфейса. Показаны placeholder-значения, а не рыночные данные.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="strategy">
+      <div class="wrap">
+        <h2>Что такое V3.4</h2>
+        <p class="section-lead" id="strategy-lead">
+          V3.4 — производная стратегия: обнаружение сетапа, стоп и цели взяты у V3.3 без изменений,
+          добавлены расширение коридора входа и фильтр качества целей.
+        </p>
+        <div class="cards">
+          <article class="card">
+            <h3>Сетап</h3>
+            <p>
+              Зона старшего таймфрейма (order block или FVG) на 4H, её митигация на закрытом 1H-баре,
+              абсорбция и RVOL ≥ 1.25. Зона известна только с того 4H-бара, на котором стала
+              подтверждённой, — подглядывания в будущее нет.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Вход</h3>
+            <p>
+              Лимитный коридор вокруг закрытия триггерного 1H-бара. У V3.3 это ±0.10 ATR, у V3.4
+              каждая граница дополнительно расширена на 0.25 ATR. Коридор действует 3 бара,
+              исполнение считается по худшей границе.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Стоп и цели</h3>
+            <p>
+              Стоп структурный: <span class="mono">min(климакс, грань зоны) ∓ 0.15 ATR</span>.
+              TP1 — середина displacement-ноги 4H, TP2 — противоположный подтверждённый 4H-свинг.
+              После TP1 стоп переводится в безубыток со следующего бара.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Фильтр качества целей</h3>
+            <p>
+              Сетап принимается, только если TP1 ≥ 0.50 R и TP2 ≥ 1.00 R первоначального риска,
+              считая от худшей границы уже расширенного коридора. Иначе сетап отклоняется целиком;
+              цели и стоп при этом не сдвигаются.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Статус исследования</h3>
+            <p id="research-status">
+              Производная без бэктеста (DERIVED_NO_BACKTEST). У V3.3 статус — TRAIN only по
+              предзарегистрированным критериям, отложенная выборка не пройдена. Это не
+              «проверенная» и не «прибыльная» стратегия.
+            </p>
+          </article>
+          <article class="card">
+            <h3>Источник данных</h3>
+            <p>
+              Только публичные свечи Binance Spot (<span class="mono">/api/v3/klines</span>),
+              таймфреймы 1h (исполнение) и 4h (контекст), пары USDT из фиксированной вселенной.
+              Торговые ключи не запрашиваются, ордера не выставляются.
+            </p>
+          </article>
+        </div>
+        <dl class="meta-grid" id="live-meta">
+          <div><dt>Вселенная</dt><dd id="meta-symbols">—</dd></div>
+          <div><dt>Таймфреймы</dt><dd id="meta-timeframes">—</dd></div>
+          <div><dt>Порог RVOL</dt><dd>1.25</dd></div>
+          <div><dt>Таймаут сделки</dt><dd>48 баров 1H</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="app">
+      <div class="wrap">
+        <h2>Что умеет приложение</h2>
+        <div class="cards cards-3">
+          <article class="card">
+            <h3>Лента сигналов</h3>
+            <p>Список сигналов с направлением, статусом и временем события. Данные приходят только
+              с backend этого продукта — приложение не считает стратегию на телефоне.</p>
+          </article>
+          <article class="card">
+            <h3>Детали сигнала</h3>
+            <p>Коридор входа, первоначальный стоп, TP1/TP2, факт исполнения, исход в R и журнал
+              подтверждённых событий. Если сервер не прислал уровень — показывается «нет данных»,
+              а не подстановка цены входа.</p>
+          </article>
+          <article class="card">
+            <h3>Честные состояния</h3>
+            <p>Загрузка, пустой список, сетевая ошибка и устаревшие данные — разные экраны. Устаревшие
+              сигналы помечаются предупреждением с причиной, а не выдаются за свежие.</p>
+          </article>
+          <article class="card">
+            <h3>push-уведомления</h3>
+            <p>Интеграция с Firebase Cloud Messaging подготовлена: регистрация FCM-токена и отправка
+              событий на сервере. Пока Firebase-проект не подключён, уведомления не работают — это
+              видно в приложении и в API.</p>
+          </article>
+          <article class="card">
+            <h3>Без торговли</h3>
+            <p>Нет ввода API-ключей, нет кнопок «купить/продать», нет автоторговли. Приложение
+              показывает наблюдения стратегии и передаёт решение пользователю.</p>
+          </article>
+          <article class="card">
+            <h3>Серверный источник истины</h3>
+            <p>Сигналы и события хранятся в собственной базе продукта и переживают перезапуск сервера.
+              Повторный скан того же закрытого бара не создаёт дубликат сигнала.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="download">
+      <div class="wrap">
+        <h2>Скачать и установить</h2>
+        <div class="download-grid">
+          <div>
+            <p class="section-lead">
+              Android 8.0 и новее. Установка вручную: APK не публикуется в Google Play.
+            </p>
+            <a class="btn btn-primary" id="download-btn-2" href="#download" aria-disabled="true">
+              <span class="btn-title">Скачать APK</span>
+              <span class="btn-sub" id="download-btn-2-sub">проверяем наличие файла…</span>
+            </a>
+            <p class="status-line" id="apk-status-2" role="status" aria-live="polite"></p>
+          </div>
+          <ol class="steps">
+            <li>Скачайте APK по кнопке. Разрешите установку из этого источника, если Android
+              попросит (Настройки → Приложения → Специальный доступ → Установка неизвестных приложений).</li>
+            <li>Откройте файл в загрузках и подтвердите установку.</li>
+            <li>Проверьте SHA-256 файла (см. выше) любым файловым менеджером или командой
+              <span class="mono">sha256sum</span> — значение должно совпасть.</li>
+            <li>Запустите приложение. Список сигналов загрузится с сервера этого продукта.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="risks">
+      <div class="wrap">
+        <h2>Риски и ограничения</h2>
+        <div class="warning">
+          <p>
+            <strong>Это не инвестиционная рекомендация.</strong> Приложение показывает аналитические
+            наблюдения алгоритма. Торговые решения и их последствия полностью на пользователе.
+          </p>
+          <ul>
+            <li>Криптовалюты высоковолатильны; возможна полная потеря средств, если вы торгуете по этим уровням.</li>
+            <li>Стратегия V3.4 не прошла независимую проверку: статус — производная без бэктеста.</li>
+            <li>Модель издержек — только комиссии 2/5 bps. Funding, проскальзывание и спред не моделируются.</li>
+            <li>Сигналы формируются только по закрытым 1H-барам: внутри бара новых событий не бывает.</li>
+            <li>Публичные данные биржи могут быть недоступны или задержаны — сервер явно помечает такие состояния.</li>
+            <li>Приложение не хранит торговые ключи. Не вводите их в сторонние приложения «для сигналов».</li>
+            <li>Результаты в прошлом не означают результатов в будущем.</li>
+          </ul>
+        </div>
+        <p class="footer-note" id="server-status">Состояние сервера: проверяем…</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p>CRYPTORA V3.4 · отдельный продукт. Аналитические сигналы, не инвестиционная рекомендация.</p>
+      <p class="mono" id="footer-version">—</p>
+    </div>
+  </footer>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

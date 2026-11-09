@@ -1,0 +1,22 @@
+{
+  "name": "@v34/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend продукта V3.4: публичные данные Binance → frozen-логика V3.4 → собственные сигналы и события → API для Android",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "start": "node --experimental-sqlite dist/server.mjs",
+    "dev": "node --experimental-sqlite --watch dist/server.mjs",
+    "scan:once": "node --experimental-sqlite dist/scan-once.mjs"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "jose": "^5.10.0"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "cryptora-v34-product",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CRYPTORA V3.4 — отдельный продукт: серверный детектор сигналов V3.4 + Android-клиент + лендинг",
+  "workspaces": [
+    "packages/*",
+    "server"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "NODE_OPTIONS=--experimental-sqlite npm run test --workspaces --if-present",
+    "test:core": "npm run test -w @v34/core",
+    "test:server": "NODE_OPTIONS=--experimental-sqlite npm run test -w @v34/server",
+    "build": "npm run build -w @v34/server",
+    "dev": "npm run dev -w @v34/server",
+    "start": "npm run start -w @v34/server",
+    "lint": "eslint .",
+    "test:mobile": "cd mobile && npx jest --ci"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.5",
+    "esbuild": "^0.24.2",
+    "eslint": "^9.39.5",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^2.1.8",
+    "zod": "^3.25.76"
+  }
+}
