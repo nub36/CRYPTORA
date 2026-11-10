@@ -51,8 +51,22 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Вывод jest дублируется в summary check-run: логи job'а в этом окружении
+      # иногда недоступны, а причина падения должна быть видна без них.
       - name: Unit tests
-        run: npx jest --ci
+        shell: bash
+        run: |
+          set -o pipefail
+          if npx jest --ci 2>&1 | tee /tmp/jest.log; then
+            exit 0
+          fi
+          {
+            echo "### Мобильные тесты упали"
+            echo '```'
+            grep -aE "●|✕|FAIL|Tests:|Suites:|Expected|Received|at .*\.(ts|tsx):[0-9]+" /tmp/jest.log | head -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Prebuild native Android project
         env:
