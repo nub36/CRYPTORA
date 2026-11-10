@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@v34/core": ["../packages/v34-core/src/index.ts"]
+    }
+  },
+  "include": ["src", "test", "build.mjs"]
+}

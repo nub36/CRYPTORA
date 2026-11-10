@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.expo/
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.log
+.DS_Store
+# Артефакты сборки Android и подписи не попадают в Git.
+android/
+*.apk
+*.aab
+*.jks
+*.keystore
+# Локальные релизные архивы (собираются deploy/make-release.sh).
+release/

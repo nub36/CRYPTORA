@@ -1,0 +1,105 @@
+name: V3.4 Android APK (check build)
+
+# ВАЖНО: этот workflow собирает ПРОВЕРОЧНЫЙ (debug) APK, подписанный debug-ключом.
+# Он не является релизной сборкой и не публикуется на лендинге как релиз.
+# Релизная подпись требует keystore владельца в секретах репозитория
+# (ANDROID_KEYSTORE_BASE64 и пароли) — до этого релизный APK собрать нельзя.
+#
+# Секретов в файле нет и быть не может.
+
+# Минимальные права: сборка читает код и загружает артефакт, больше ничего.
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'v34-app/mobile/**'
+      - '.github/workflows/v34-android-apk.yml'
+
+concurrency:
+  group: v34-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug-apk:
+    name: debug APK (unsigned release / debug key)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: v34-app/mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: v34-app/mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Вывод jest дублируется в summary check-run: логи job'а в этом окружении
+      # иногда недоступны, а причина падения должна быть видна без них.
+      - name: Unit tests
+        shell: bash
+        run: |
+          set +e
+          npx jest --ci > /tmp/jest.log 2>&1
+          status=$?
+          tail -n 40 /tmp/jest.log
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### Мобильные тесты упали"
+              echo '```'
+              tail -n 200 /tmp/jest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+      - name: Prebuild native Android project
+        env:
+          # Адрес сервера подставляется на этапе сборки. Для проверочной сборки
+          # допустимо оставить пустым: приложение покажет «Сервер не настроен».
+          EXPO_PUBLIC_API_BASE_URL: ${{ vars.V34_API_BASE_URL }}
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: v34-app-debug-apk
+          path: v34-app/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summary
+        run: |
+          {
+            echo "## CRYPTORA V3.4 — проверочная сборка"
+            echo ""
+            echo "- Это **debug** APK: подписан debug-ключом, не релиз."
+            echo "- Релизная подпись требует keystore владельца (секреты CI) или EAS-профиля."
+            echo "- SHA-256 артефакта:"
+            echo '```'
+            sha256sum android/app/build/outputs/apk/debug/app-debug.apk || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

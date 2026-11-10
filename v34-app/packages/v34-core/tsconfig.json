@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../../../src/*"],
+      "zod": ["../../node_modules/zod"]
+    }
+  },
+  "include": ["src", "test"]
+}
