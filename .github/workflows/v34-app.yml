@@ -112,9 +112,9 @@ jobs:
               tail -n 200 /tmp/jest.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            grep -aE "●|✕|FAIL|Expected|Received|Tests:" /tmp/jest.log > /tmp/jest.err.txt
+            # Последние строки лога содержат точную причину (таймаут/ассерт).
             while IFS= read -r line; do
-              echo "::error::${line:0:600}"
-            done < <(head -n 25 /tmp/jest.err.txt)
+              [ -n "$line" ] && echo "::error::${line:0:600}"
+            done < <(tail -n 30 /tmp/jest.log)
           fi
           exit "$status"

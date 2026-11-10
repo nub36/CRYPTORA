@@ -15,3 +15,13 @@ jest.mock('expo-constants', () => {
   const expoConfig = { version: '0.1.0', extra: { apiBaseUrl: 'https://signals.test.local' } };
   return { __esModule: true, default: { expoConfig }, expoConfig };
 });
+
+/* RNTL 14 работает асинхронно, а findBy* и waitFor по умолчанию ждут 1000 мс.
+ * На загруженных CI-раннерах этого не хватает, и тесты падали «на времени», а
+ * не на логике. Увеличиваем окно ожидания: проверки остаются теми же. */
+try {
+  const { configure } = require('@testing-library/react-native');
+  configure({ asyncUtilTimeout: 5000 });
+} catch {
+  // Если библиотеки нет, тесты упадут явно — молча подменять нечего.
+}
