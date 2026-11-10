@@ -1,5 +1,6 @@
 /* Окружение тестов: нативные модули Expo заменяются детерминированными моками.
  * Секретов здесь нет и быть не может. */
+import { configure } from '@testing-library/react-native';
 
 // expo-notifications: тесты не должны требовать Firebase/нативного слоя.
 jest.mock('expo-notifications', () => ({
@@ -19,9 +20,4 @@ jest.mock('expo-constants', () => {
 /* RNTL 14 работает асинхронно, а findBy* и waitFor по умолчанию ждут 1000 мс.
  * На загруженных CI-раннерах этого не хватает, и тесты падали «на времени», а
  * не на логике. Увеличиваем окно ожидания: проверки остаются теми же. */
-try {
-  const { configure } = require('@testing-library/react-native');
-  configure({ asyncUtilTimeout: 5000 });
-} catch {
-  // Если библиотеки нет, тесты упадут явно — молча подменять нечего.
-}
+configure({ asyncUtilTimeout: 5000 });
