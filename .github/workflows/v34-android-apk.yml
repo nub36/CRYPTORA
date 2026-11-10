@@ -56,17 +56,19 @@ jobs:
       - name: Unit tests
         shell: bash
         run: |
-          set -o pipefail
-          if npx jest --ci 2>&1 | tee /tmp/jest.log; then
-            exit 0
+          set +e
+          npx jest --ci > /tmp/jest.log 2>&1
+          status=$?
+          tail -n 40 /tmp/jest.log
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### Мобильные тесты упали"
+              echo '```'
+              tail -n 200 /tmp/jest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
-          {
-            echo "### Мобильные тесты упали"
-            echo '```'
-            grep -aE "●|✕|FAIL|Tests:|Suites:|Expected|Received|at .*\.(ts|tsx):[0-9]+" /tmp/jest.log | head -60
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 1
+          exit "$status"
 
       - name: Prebuild native Android project
         env:
