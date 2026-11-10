@@ -91,15 +91,71 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Факты об APK печатаются и в summary, и в АННОТАЦИИ check-run: скачивание
+      # артефактов и логи job'ов доступны не из любого окружения, а пакет, версия,
+      # тип подписи, размер и SHA-256 должны быть проверяемыми через API.
       - name: Summary
+        shell: bash
         run: |
+          # Шаг не должен валить сборку из-за метаданных: любая ошибка чтения —
+          # это предупреждение и «unknown», а не красный job.
+          set +e
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          SIZE="$(stat -c %s "$APK")"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT="$(ls "$SDK"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)"
+          APKSIGNER="$(ls "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+          BADGING=""
+          if [ -n "$AAPT" ]; then BADGING="$("$AAPT" dump badging "$APK" 2>/dev/null | grep -m1 "^package:")"; fi
+          PKG="$(printf '%s' "$BADGING" | sed -nE "s/.*package: name='([^']+)'.*/\1/p")"
+          VNAME="$(printf '%s' "$BADGING" | sed -nE "s/.*versionName='([^']+)'.*/\1/p")"
+          VCODE="$(printf '%s' "$BADGING" | sed -nE "s/.*versionCode='([^']+)'.*/\1/p")"
+          # apksigner берём из PATH или из build-tools; stderr сохраняем, чтобы
+          # причина отсутствия подписи была видна в аннотации (пути/версии SDK
+          # на раннерах различаются).
+          if [ -z "$APKSIGNER" ]; then APKSIGNER="$(command -v apksigner)"; fi
+          CERTS=""
+          SIGN_RC=127
+          if [ -n "$APKSIGNER" ]; then
+            CERTS="$("$APKSIGNER" verify --print-certs "$APK" 2>&1)"
+            SIGN_RC=$?
+          fi
+          # Формат вывода apksigner меняется между версиями build-tools:
+          # поддержаны и «Signer #1 certificate DN: …», и «  certificate DN: …».
+          DN_LINE="$(printf '%s\n' "$CERTS" | grep -m1 -i 'certificate DN:')"
+          DN="${DN_LINE##*certificate DN:}"
+          DN="$(printf '%s' "$DN" | sed 's/^[[:space:]]*//')"
+          SCHEMES="$(printf '%s\n' "$CERTS" | sed 's/^[[:space:]]*//' \
+            | sed -n 's/^Verified using \(.*\): *true$/\1/p' | paste -sd, -)"
+          [ -n "$PKG" ] || PKG=unknown
+          [ -n "$VNAME" ] || VNAME=unknown
+          [ -n "$VCODE" ] || VCODE=unknown
+          [ -n "$DN" ] || DN=unknown
+          [ -n "$SCHEMES" ] || SCHEMES=unknown
+          echo "APK sha256=$SHA size=${SIZE}B package=$PKG versionName=$VNAME versionCode=$VCODE signerDN=$DN schemes=$SCHEMES"
+          echo "::notice title=APK::sha256=$SHA size=${SIZE}B"
+          echo "::notice title=APK package::id=$PKG versionName=$VNAME versionCode=$VCODE"
+          echo "::notice title=APK signature::signerDN=$DN schemes=$SCHEMES apksigner=${APKSIGNER:-none} rc=$SIGN_RC"
+          if [ -z "$DN" ]; then
+            # Формат неизвестен — показываем начало вывода, чтобы это было видно.
+            echo "::notice title=apksigner output::$(printf '%s' "$CERTS" | head -c 500 | tr '\n' ' ')"
+          fi
           {
             echo "## CRYPTORA V3.4 — проверочная сборка"
             echo ""
-            echo "- Это **debug** APK: подписан debug-ключом, не релиз."
+            echo "- Это **debug** APK: подписан debug-ключом, **не релиз**."
             echo "- Релизная подпись требует keystore владельца (секреты CI) или EAS-профиля."
-            echo "- SHA-256 артефакта:"
-            echo '```'
-            sha256sum android/app/build/outputs/apk/debug/app-debug.apk || true
-            echo '```'
+            echo ""
+            echo "| Свойство | Значение |"
+            echo "|---|---|"
+            echo "| Package id | \`$PKG\` |"
+            echo "| versionName | \`$VNAME\` |"
+            echo "| versionCode | \`$VCODE\` |"
+            echo "| Размер APK | \`$SIZE\` байт |"
+            echo "| SHA-256 APK | \`$SHA\` |"
+            echo "| Подпись | \`$DN\` |"
+            echo "| Схемы подписи | \`$SCHEMES\` |"
+            echo "| Коммит сборки | \`$GITHUB_SHA\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
