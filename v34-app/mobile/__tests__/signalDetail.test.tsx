@@ -69,6 +69,44 @@ describe('экран детали сигнала', () => {
     expect(screen.getAllByText('не подтверждено').length).toBeGreaterThanOrEqual(3);
   });
 
+  it('закрытая TP1_THEN_BE: безубыток — история, а не действующий стоп', async () => {
+    const closed = makeSignal({
+      status: 'CLOSED',
+      closedAt: '2026-10-05T18:00:00.000Z',
+      outcome: {
+        status: 'CLOSED',
+        exitReason: 'TP1_THEN_BE',
+        exitPrice: 61300.17,
+        resultR: 0,
+        netResultR: -0.02,
+        pnlResultPct: -0.02,
+        barsHeld: 7,
+      },
+      progress: {
+        ...makeSignal().progress,
+        tp1Hit: true,
+        tp1HitAt: '2026-10-05T12:30:00.000Z',
+        // Сервер прислал только факт «безубыток был»: действующего стопа нет.
+        breakevenArmed: false,
+        breakevenArmedAt: null,
+        breakevenOccurred: true,
+        breakevenOccurredAt: '2026-10-05T13:00:00.000Z',
+        currentStop: null,
+        currentStopBasis: null,
+      },
+    });
+    const { api } = makeFakeApi({ detail: closed });
+    await render(<SignalDetailScreen api={api} signalId={closed.id} onBack={jest.fn()} />);
+    await screen.findByTestId('detail-ready');
+
+    // Событие безубытка видно как история.
+    expect(screen.getByText(`✓ ${formatUtc('2026-10-05T13:00:00.000Z')}`)).toBeTruthy();
+    expect(screen.getByText(/это история события, а не текущий уровень стопа/)).toBeTruthy();
+    // Придуманного уровня нет: цена входа не выдаётся за действующий стоп.
+    expect(screen.queryByText(`${formatPrice(61300.17)} (безубыток)`)).toBeNull();
+    expect(screen.getByText('не действует — сделка закрыта')).toBeTruthy();
+  });
+
   it('исход сделки показывается только когда сервер его прислал', async () => {
     const closed = makeSignal({
       status: 'TARGET_REACHED',

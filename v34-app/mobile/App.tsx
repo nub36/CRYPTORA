@@ -22,7 +22,7 @@ import { ScreenState } from './src/components/ScreenState';
 import { AboutScreen } from './src/screens/AboutScreen';
 import { SignalDetailScreen } from './src/screens/SignalDetailScreen';
 import { SignalsListScreen } from './src/screens/SignalsListScreen';
-import { resolveApiBaseUrl, resolveAppVersion } from './src/config';
+import { apiBaseUrlError, resolveApiBaseUrl, resolveAppVersion } from './src/config';
 import { setupPushNotifications, type PushStatus } from './src/notifications';
 import { colors, spacing } from './src/theme';
 
@@ -32,14 +32,17 @@ const APP_VERSION = resolveAppVersion(Constants.expoConfig);
 
 export default function App() {
   const apiBaseUrl = resolveApiBaseUrl(Constants.expoConfig);
+  // Причина, если адрес не задан или является заглушкой (см. checkApiBaseUrl).
+  const configError = apiBaseUrlError(Constants.expoConfig);
 
   const client = React.useMemo<{ api: ApiClient } | { error: string }>(() => {
+    if (configError) return { error: configError };
     try {
       return { api: createApiClient({ baseUrl: apiBaseUrl }) };
     } catch (e) {
       return { error: e instanceof ApiError || e instanceof Error ? e.message : String(e) };
     }
-  }, [apiBaseUrl]);
+  }, [apiBaseUrl, configError]);
 
   const [tab, setTab] = React.useState<Tab>('signals');
   const [openSignalId, setOpenSignalId] = React.useState<string | null>(null);
@@ -73,7 +76,7 @@ export default function App() {
         <ScreenState
           mode="error"
           title="Сервер не настроен"
-          message={`${client.error}. Укажите адрес backend при сборке: EXPO_PUBLIC_API_BASE_URL или extra.apiBaseUrl в app.config.js. Без него приложение не показывает сигналы.`}
+          message={`${client.error}. Укажите реальный HTTPS-адрес backend при сборке: EXPO_PUBLIC_API_BASE_URL или extra.apiBaseUrl в app.config.js. Без него приложение не показывает сигналы.`}
           testID="app-config-error"
         />
       </View>

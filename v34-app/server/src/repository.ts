@@ -246,6 +246,23 @@ export class SignalRepository {
     `).run(token, platform, nowIso, nowIso);
   }
 
+  hasDevice(token: string): boolean {
+    const row = this.db.prepare('SELECT 1 AS x FROM devices WHERE token = ?').get(token);
+    return row !== undefined;
+  }
+
+  /**
+   * Удаление устаревших/отключённых регистраций.
+   *
+   * Нужно, чтобы публичная регистрация не превращалась в бесконечный рост БД:
+   * токены, которые давно не обновлялись (приложение удалено/переустановлено),
+   * удаляются. Возвращает число удалённых строк.
+   */
+  pruneDevices(olderThanIso: string): number {
+    const res = this.db.prepare('DELETE FROM devices WHERE last_seen_at < ?').run(olderThanIso);
+    return Number(res.changes);
+  }
+
   disableDevice(token: string): void {
     this.db.prepare('UPDATE devices SET enabled = 0 WHERE token = ?').run(token);
   }

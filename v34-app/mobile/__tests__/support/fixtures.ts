@@ -38,6 +38,8 @@ export function makeSignal(overrides: Partial<SignalView> = {}): SignalView {
       tp2HitAt: null,
       breakevenArmed: false,
       breakevenArmedAt: null,
+      breakevenOccurred: false,
+      breakevenOccurredAt: null,
       stopHit: false,
       stopHitAt: null,
       currentStop: null,

@@ -8,7 +8,7 @@ import { StaleBanner } from '../components/StaleBanner';
 import { colors, radius, spacing } from '../theme';
 import {
   activeStopLabel, EVENT_LABELS, exitReasonLabel, formatPct, formatPrice,
-  formatSignedR, formatUtc, statusLabel,
+  formatSignedR, formatUtc, signalState, statusLabel,
 } from '../format';
 
 export interface SignalDetailScreenProps {
@@ -132,11 +132,24 @@ export function SignalDetailScreen({ api, signalId, onBack, initialSignal = null
         <Section title="Подтверждённые события">
           <ProgressRow label="TP1" hit={s.progress.tp1Hit} at={s.progress.tp1HitAt} />
           <ProgressRow label="TP2" hit={s.progress.tp2Hit} at={s.progress.tp2HitAt} />
-          <ProgressRow label="Безубыток" hit={s.progress.breakevenArmed} at={s.progress.breakevenArmedAt} />
+          <ProgressRow
+            label="Безубыток"
+            hit={s.progress.breakevenArmed || s.progress.breakevenOccurred}
+            at={s.progress.breakevenArmed ? s.progress.breakevenArmedAt : s.progress.breakevenOccurredAt}
+          />
           <ProgressRow label="Стоп" hit={s.progress.stopHit} at={s.progress.stopHitAt} danger />
-          <Row label="Действующий стоп" value={activeStopLabel(s)} />
+          {signalState(s) === 'inPosition' ? (
+            <Row label="Действующий стоп" value={activeStopLabel(s)} />
+          ) : (
+            <Row label="Действующий стоп" value="не действует — сделка закрыта" />
+          )}
           {s.progress.currentStopBasis === 'BE_AT_ENTRY' ? (
             <Text style={styles.hint}>Стоп переведён на цену входа после TP1 — это правило стратегии, подтверждённое сервером.</Text>
+          ) : null}
+          {s.progress.breakevenOccurred && !s.progress.breakevenArmed ? (
+            <Text style={styles.hint}>
+              Безубыток был достигнут в ходе сделки — это история события, а не текущий уровень стопа.
+            </Text>
           ) : null}
         </Section>
 

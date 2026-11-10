@@ -42,7 +42,7 @@ npm test              # jest (jest-expo), 7 файлов / 41 тест
 Задаётся при сборке, не зашит в код:
 
 ```bash
-EXPO_PUBLIC_API_BASE_URL=https://signals.example.com npx expo start
+EXPO_PUBLIC_API_BASE_URL=https://signals.<ваш-домен>.fi npx expo start
 # или через extra.apiBaseUrl в app.config.js (переменная окружения подставляется туда же)
 ```
 
@@ -58,7 +58,7 @@ cd v34-app/mobile
 npm install -g eas-cli
 eas login
 eas init                              # создаёт projectId в extra.eas
-EXPO_PUBLIC_API_BASE_URL=https://signals.example.com \
+EXPO_PUBLIC_API_BASE_URL=https://signals.<ваш-домен>.fi \
   eas build -p android --profile preview
 # профиль preview собирает APK (buildType: apk), ссылка на артефакт — в выводе
 ```

@@ -120,7 +120,41 @@ describe('projectSignalProgress', () => {
     );
     expect(be.tp1Hit).toBe(true);
     expect(be.stopHit).toBe(false);
+    // Безубыток у закрытой сделки — ИСТОРИЯ, а не действующий стоп.
+    expect(be.breakevenOccurred).toBe(true);
+    expect(be.breakevenOccurredAt).toBe('2024-06-01T15:00:00.000Z');
+    expect(be.breakevenArmed).toBe(false);
     expect(be.currentStop).toBeNull();
+    expect(be.currentStopBasis).toBeNull();
+
+    // TP2 закрыт — безубытка в истории нет (его и не было доказано).
+    expect(tp2.breakevenOccurred).toBe(false);
+    expect(tp2.breakevenOccurredAt).toBeNull();
+  });
+
+  it('закрытая TP1_THEN_BE с журналом событий не изобретает currentStop', () => {
+    const closed = projectSignalProgress(
+      { status: 'CLOSED', fillPrice: 100.4, closeReason: 'TP1_THEN_BE', closedAt: '2024-06-01T15:00:00.000Z' },
+      [
+        { eventType: 'TP1', occurredAt: '2024-06-01T12:00:00.000Z' },
+        { eventType: 'BREAKEVEN', occurredAt: '2024-06-01T13:00:00.000Z' },
+      ],
+    );
+    expect(closed.breakevenOccurred).toBe(true);
+    expect(closed.breakevenOccurredAt).toBe('2024-06-01T13:00:00.000Z');
+    expect(closed.breakevenArmed).toBe(false);
+    expect(closed.currentStop).toBeNull();
+    expect(closed.currentStopBasis).toBeNull();
+
+    // Открытая позиция с тем же событием: стоп действует.
+    const open = projectSignalProgress(
+      { status: 'FILLED', fillPrice: 100.4 },
+      [{ eventType: 'TP1', occurredAt: '2024-06-01T12:00:00.000Z' },
+        { eventType: 'BREAKEVEN', occurredAt: '2024-06-01T13:00:00.000Z' }],
+    );
+    expect(open.breakevenArmed).toBe(true);
+    expect(open.breakevenOccurred).toBe(true);
+    expect(open.currentStop).toBe(100.4);
   });
 
   it('без событий и без статуса ничего не выдумывается', () => {
@@ -128,6 +162,7 @@ describe('projectSignalProgress', () => {
     expect(p).toEqual({
       tp1Hit: false, tp1HitAt: null, tp2Hit: false, tp2HitAt: null,
       breakevenArmed: false, breakevenArmedAt: null,
+      breakevenOccurred: false, breakevenOccurredAt: null,
       stopHit: false, stopHitAt: null, currentStop: null, currentStopBasis: null,
     });
   });

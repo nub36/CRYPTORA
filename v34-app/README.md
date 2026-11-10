@@ -57,7 +57,7 @@ cd v34-app/mobile
 npm install
 npm run typecheck
 npm test
-EXPO_PUBLIC_API_BASE_URL=https://signals.example.com npx expo start
+EXPO_PUBLIC_API_BASE_URL=https://signals.<ваш-домен>.fi npx expo start
 ```
 
 ## Проверки
@@ -80,7 +80,7 @@ EXPO_PUBLIC_API_BASE_URL=https://signals.example.com npx expo start
 | GET | `/api/v1/meta` | стратегия, источник данных, свежесть, состояние символов, push |
 | GET | `/api/v1/signals` | лента: `status`, `direction`, `symbol`, `limit` ≤ 100, `cursor` |
 | GET | `/api/v1/signals/:id` | уровни, события, прогресс TP1/TP2, действующий стоп |
-| POST | `/api/v1/devices` | регистрация FCM-токена (rate-limited) |
+| POST | `/api/v1/devices` | регистрация FCM-токена: rate-limit по IP, потолок `V34_MAX_DEVICES`, очистка по `V34_DEVICE_TTL_DAYS` |
 | GET | `/api/v1/apk` | манифест APK: версия, размер, SHA-256 или честное «нет» |
 
 Принципы, которые зафиксированы тестами:
@@ -88,6 +88,13 @@ EXPO_PUBLIC_API_BASE_URL=https://signals.example.com npx expo start
 - клиент ничего не считает: нет SL на сервере — в ответе `initialStopLoss: null`, и UI
   показывает «нет данных», **никогда** цену входа;
 - `currentStop` появляется только когда безубыток подтверждён событием и позиция открыта;
+  у закрытой сделки `TP1_THEN_BE` безубыток — это `breakevenOccurred` (история), стоп не
+  «действует», и уровень не выдумывается;
+- разрыв истории свечей — диагностика (`gaps1h` в `/api/v1/meta` и `notes`), а не повод
+  останавливать скан: оригинальный CRYPTORA ведёт себя так же (`countGaps`);
+- битый JSON в запросе → `400 bad_json` без текста парсера, внутренние ошибки → 500 без деталей;
+- публичной отвязки устройства нет: `DELETE /api/v1/devices/:token` не существует, потому что
+  одного токена для такого действия недостаточно (нужен отдельный этап с аутентификацией);
 - устаревшие данные помечаются `stale: true` + причина; свежими не выдаются;
 - ошибки различаются: `network` / `timeout` / `http` / `parse` / `config`.
 

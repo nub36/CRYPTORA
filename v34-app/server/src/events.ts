@@ -121,8 +121,15 @@ export interface LifecycleProjection {
   tp1HitAt: string | null;
   tp2Hit: boolean;
   tp2HitAt: string | null;
+  /** Стоп реально переведён в безубыток и ДЕЙСТВУЕТ (позиция открыта). */
   breakevenArmed: boolean;
   breakevenArmedAt: string | null;
+  /**
+   * Факт «безубыток был» — в том числе у ЗАКРЫТОЙ сделки (`TP1_THEN_BE`).
+   * Это история, а не действующий уровень: `currentStop` при этом остаётся null.
+   */
+  breakevenOccurred: boolean;
+  breakevenOccurredAt: string | null;
   stopHit: boolean;
   stopHitAt: string | null;
   /** Действующий стоп — только когда доказуем (BE на цене входа). */
@@ -151,6 +158,10 @@ export function projectSignalProgress(row: SignalSnapshot, events: readonly Life
 
   const tp1Hit = byType.has('TP1') || (tradeClosed && TP1_PROVEN_EXIT_REASONS.includes(closeReason ?? ''));
   const tp2Hit = byType.has('TP2') || status === 'TARGET_REACHED';
+  // BE-событие может существовать у уже закрытой сделки: это ИСТОРИЯ, а не
+  // действующий стоп. Armed-стоп — только у открытой позиции.
+  const breakevenEventExisted = byType.has('BREAKEVEN')
+    || (tradeClosed && BREAKEVEN_EXIT_REASONS.includes(closeReason ?? ''));
   const breakevenArmed = byType.has('BREAKEVEN') && status === 'FILLED';
   const stopHit = byType.has('STOP_LOSS') || status === 'INVALIDATED';
 
@@ -169,6 +180,10 @@ export function projectSignalProgress(row: SignalSnapshot, events: readonly Life
     tp2HitAt: at('TP2') ?? (status === 'TARGET_REACHED' ? isoOrNull(row.closedAt) : null),
     breakevenArmed,
     breakevenArmedAt: breakevenArmed ? at('BREAKEVEN') : null,
+    breakevenOccurred: breakevenEventExisted,
+    breakevenOccurredAt: breakevenEventExisted
+      ? (at('BREAKEVEN') ?? (tradeClosed ? isoOrNull(row.closedAt) : null))
+      : null,
     stopHit,
     stopHitAt: at('STOP_LOSS') ?? (status === 'INVALIDATED' ? isoOrNull(row.closedAt) : null),
     currentStop,

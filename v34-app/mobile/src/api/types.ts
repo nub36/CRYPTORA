@@ -16,8 +16,12 @@ export interface SignalProgress {
   tp1HitAt: string | null;
   tp2Hit: boolean;
   tp2HitAt: string | null;
+  /** Стоп переведён в безубыток и ДЕЙСТВУЕТ (позиция открыта). */
   breakevenArmed: boolean;
   breakevenArmedAt: string | null;
+  /** Безубыток БЫЛ — в том числе у закрытой сделки (это история, не уровень). */
+  breakevenOccurred: boolean;
+  breakevenOccurredAt: string | null;
   stopHit: boolean;
   stopHitAt: string | null;
   /** Действующий стоп: null, если сервер не может его доказать. */

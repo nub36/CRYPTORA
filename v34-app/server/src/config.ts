@@ -13,6 +13,8 @@ import { V34_SYMBOLS, V34_DEFAULT_SCAN_INTERVAL_SECONDS, MARKET_DATA_SOURCE } fr
 
 export interface AppConfig {
   host: string;
+  /** true — сервер явно разрешён слушать не-loopback интерфейс. */
+  publicBind: boolean;
   port: number;
   /** Путь к файлу SQLite (собственная БД продукта). */
   dbPath: string;
@@ -39,6 +41,10 @@ export interface AppConfig {
     /** Путь к JSON сервисного аккаунта ВНЕ репозитория. */
     serviceAccountFile: string | null;
   };
+  /** Максимум записей устройств: защита от роста БД публичной регистрацией. */
+  maxDevices: number;
+  /** Срок жизни регистрации без обновления, дни (потом токен вычищается). */
+  deviceTtlDays: number;
   /** Версия приложения, с которой совместим API (информативно). */
   minAppVersion: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
@@ -55,9 +61,37 @@ function bool(raw: string | undefined, fallback: boolean): boolean {
   return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase());
 }
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost', 'localhost.localdomain']);
+
+/** Хост считается «наружу», если это не loopback. */
+export function isLoopbackHost(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host.trim().toLowerCase());
+}
+
 function list(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Хост прослушивания.
+ *
+ * По умолчанию — только loopback: наружу backend обязан выходить через
+ * HTTPS-reverse-proxy (nginx), а не открытым портом. Не-loopback адрес
+ * принимается только при явном `V34_ALLOW_PUBLIC_BIND=true` — чтобы внешний
+ * bind не включался «случайно» и не оказывался API без TLS.
+ */
+function resolveHost(env: NodeJS.ProcessEnv): { host: string; publicBind: boolean } {
+  const raw = env.V34_HOST?.trim() || '127.0.0.1';
+  const explicitPublic = bool(env.V34_ALLOW_PUBLIC_BIND, false);
+  if (isLoopbackHost(raw)) return { host: raw, publicBind: false };
+  if (!explicitPublic) {
+    throw new Error(
+      `V34_HOST=${raw}: внешний bind запрещён. Backend должен слушать 127.0.0.1 за HTTPS-прокси; `
+      + 'если это осознанное решение, задайте V34_ALLOW_PUBLIC_BIND=true.',
+    );
+  }
+  return { host: raw, publicBind: true };
 }
 
 /**
@@ -76,12 +110,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (!/^[A-Z0-9]{4,20}$/.test(s)) throw new Error(`V34_SYMBOLS: недопустимый символ ${JSON.stringify(s)} (ожидается формат BTCUSDT)`);
   }
 
+  const maxDevices = Math.trunc(num(env.V34_MAX_DEVICES, 5000));
+  if (!Number.isInteger(maxDevices) || maxDevices < 1 || maxDevices > 1_000_000) {
+    throw new Error(`V34_MAX_DEVICES вне диапазона 1..1000000: ${env.V34_MAX_DEVICES}`);
+  }
+  const deviceTtlDays = Math.trunc(num(env.V34_DEVICE_TTL_DAYS, 90));
+  if (!Number.isInteger(deviceTtlDays) || deviceTtlDays < 1 || deviceTtlDays > 3650) {
+    throw new Error(`V34_DEVICE_TTL_DAYS вне диапазона 1..3650: ${env.V34_DEVICE_TTL_DAYS}`);
+  }
+
   const pushEnabled = bool(env.V34_PUSH_ENABLED, false);
   const fcmProjectId = env.V34_FCM_PROJECT_ID?.trim() || null;
   const fcmServiceAccountFile = env.V34_FCM_SERVICE_ACCOUNT_FILE?.trim() || null;
 
   return {
-    host: env.V34_HOST?.trim() || '0.0.0.0',
+    ...resolveHost(env),
     port,
     dbPath: env.V34_DB_PATH?.trim() || path.resolve(process.cwd(), 'data/v34.sqlite'),
     scanIntervalMs: Math.round(scanIntervalSeconds * 1000),
@@ -94,6 +137,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     allowedOrigins: list(env.V34_ALLOWED_ORIGINS),
     pushEnabled,
     fcm: { projectId: fcmProjectId, serviceAccountFile: fcmServiceAccountFile },
+    maxDevices,
+    deviceTtlDays,
     minAppVersion: env.V34_MIN_APP_VERSION?.trim() || '0.1.0',
     logLevel: (['debug', 'info', 'warn', 'error'] as const).find((l) => l === env.V34_LOG_LEVEL) ?? 'info',
   };

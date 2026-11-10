@@ -37,6 +37,7 @@ async function harness(opts: {
   now?: () => number;
   apkDir?: string | null;
   push?: DisabledPushSender;
+  env?: Record<string, string>;
 } = {}): Promise<Harness> {
   const t = tempDb();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v34-api-'));
@@ -46,6 +47,7 @@ async function harness(opts: {
     V34_SCAN_INTERVAL_SECONDS: '60',
     V34_STATIC_DIR: path.join(dir, 'landing'),
     V34_APK_DIR: opts.apkDir ?? undefined,
+    ...(opts.env ?? {}),
   });
   const push = opts.push ?? new DisabledPushSender(['V34_PUSH_ENABLED=true'], 'push не настроен');
   const app = createApp({
@@ -276,6 +278,17 @@ describe('GET /api/v1/signals', () => {
   });
 });
 
+describe('DTO ленты', () => {
+  it('не содержит функций и служебных полей', async () => {
+    const h = await harness();
+    const res = await fetch(`${h.base}/api/v1/signals?limit=5`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, any>;
+    expect(body).not.toHaveProperty('statusLabel');
+    expect(JSON.stringify(body)).not.toContain('function');
+  });
+});
+
 describe('POST /api/v1/devices', () => {
   it('регистрирует токен и честно сообщает, что push не настроен', async () => {
     const h = await harness();
@@ -298,6 +311,60 @@ describe('POST /api/v1/devices', () => {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token: 'fcm-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbb', platform: 'windows' }),
     })).status).toBe(400);
+  });
+
+  it('не возвращает токен в ответе и не даёт отвязать устройство публично', async () => {
+    const h = await harness();
+    const token = 'fcm-token-cccccccccccccccccccccccccccc';
+    const res = await fetch(`${h.base}/api/v1/devices`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, platform: 'android' }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, any>;
+    expect(JSON.stringify(body)).not.toContain(token);
+    expect(body.unregister).toBe('disabled');
+
+    // Публичного DELETE больше нет: знать чужой токен недостаточно, чтобы
+    // отключить устройство.
+    const del = await fetch(`${h.base}/api/v1/devices/${encodeURIComponent(token)}`, { method: 'DELETE' });
+    expect([404, 405]).toContain(del.status);
+    expect(h.repo.countDevices()).toEqual({ enabled: 1, total: 1 });
+  });
+
+  it('держит потолок числа устройств и обновляет уже известный токен', async () => {
+    const h = await harness({ env: { V34_MAX_DEVICES: '2' } });
+    const reg = (token: string) => fetch(`${h.base}/api/v1/devices`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, platform: 'android' }),
+    });
+
+    expect((await reg('fcm-token-111111111111111111111111')).status).toBe(201);
+    expect((await reg('fcm-token-222222222222222222222222')).status).toBe(201);
+    // Известный токен обновляется даже при заполненном лимите.
+    expect((await reg('fcm-token-111111111111111111111111')).status).toBe(201);
+    // Новый — нет, и ответ объясняет причину.
+    const overflow = await reg('fcm-token-333333333333333333333333');
+    expect(overflow.status).toBe(503);
+    expect(((await overflow.json()) as Record<string, any>).error).toBe('device_capacity');
+    expect(h.repo.countDevices().total).toBe(2);
+  });
+
+  it('битый JSON — 400 без внутренних деталей парсера', async () => {
+    const h = await harness();
+    const res = await fetch(`${h.base}/api/v1/devices`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{не json',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.error).toBe('bad_json');
+    // Никаких «Unexpected token / at position N» наружу.
+    const text = JSON.stringify(body);
+    expect(text).not.toMatch(/position|Unexpected|SyntaxError|at line/i);
   });
 
   it('ограничивает частоту регистраций', async () => {

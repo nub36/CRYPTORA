@@ -119,6 +119,19 @@ describe('SignalRepository', () => {
     expect(t.repo.countDevices()).toEqual({ enabled: 2, total: 2 });
   });
 
+  it('устройства: устаревшие регистрации вычищаются, свежие остаются', () => {
+    const t = tempDb(); created.push(t);
+    t.repo.upsertDevice('test-token-old-aaaaaaaaaaaaaaaaa', 'android', '2024-01-01T00:00:00.000Z');
+    t.repo.upsertDevice('test-token-new-bbbbbbbbbbbbbbbbbb', 'android', '2024-06-10T00:00:00.000Z');
+    expect(t.repo.hasDevice('test-token-old-aaaaaaaaaaaaaaaaa')).toBe(true);
+
+    const removed = t.repo.pruneDevices('2024-06-01T00:00:00.000Z');
+    expect(removed).toBe(1);
+    expect(t.repo.hasDevice('test-token-old-aaaaaaaaaaaaaaaaa')).toBe(false);
+    expect(t.repo.hasDevice('test-token-new-bbbbbbbbbbbbbbbbbb')).toBe(true);
+    expect(t.repo.countDevices()).toEqual({ enabled: 1, total: 1 });
+  });
+
   it('скан-раны: последний успешный и статус', () => {
     const t = tempDb(); created.push(t);
     const id1 = t.repo.startScan('2024-06-01T00:00:00.000Z', 2);

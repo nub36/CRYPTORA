@@ -64,10 +64,6 @@ const STRATEGY_INFO = Object.freeze({
   description: V34_DESCRIPTION,
 });
 
-function statusLabel(status: string): string {
-  return status;
-}
-
 /** Простой ограничитель запросов на IP (регистрация устройств). */
 class RateLimiter {
   private hits = new Map<string, number[]>();
@@ -317,7 +313,7 @@ export function createApp(deps: ApiDeps): Express {
       asOf: ctx.now,
       stale: ctx.stale,
       staleReason: ctx.staleReason,
-      statusLabel: statusLabel,
+      // Человекочитаемые подписи — забота клиента; функции в JSON не место.
     });
   });
 
@@ -344,6 +340,19 @@ export function createApp(deps: ApiDeps): Express {
 
   /* ── Устройства (push) ───────────────────────────────────────────────── */
 
+  /**
+   * Регистрация FCM-токена.
+   *
+   * Публичный изменяющий эндпоинт без аккаунтов, поэтому он ограничен:
+   *   • rate limit по IP (см. middleware выше);
+   *   • потолок общего числа устройств (`V34_MAX_DEVICES`);
+   *   • очистка регистраций, не обновлявшихся `V34_DEVICE_TTL_DAYS` дней;
+   *   • токен НЕ возвращается в ответе и НЕ попадает в URL/логи.
+   *
+   * Отвязки через публичный API нет: DELETE по одному лишь токену позволял бы
+   * любому, кто узнал чужой токен, отключить устройство. Отвязка — задача
+   * отдельного этапа с аутентификацией (аккаунт/attestation).
+   */
   app.post('/api/v1/devices', (req: Request, res: Response) => {
     const body = req.body as { token?: unknown; platform?: unknown } | undefined;
     const token = typeof body?.token === 'string' ? body.token.trim() : '';
@@ -356,7 +365,23 @@ export function createApp(deps: ApiDeps): Express {
       res.status(400).json({ error: 'bad_platform', message: 'platform: android или ios' });
       return;
     }
-    repo.upsertDevice(token, platform, new Date(now()).toISOString());
+
+    const nowIso = new Date(now()).toISOString();
+    // Чистим просроченные регистрации, чтобы таблица не росла бесконечно.
+    const cutoff = new Date(now() - config.deviceTtlDays * 24 * 60 * 60 * 1000).toISOString();
+    repo.pruneDevices(cutoff);
+
+    const known = repo.hasDevice(token);
+    if (!known && repo.countDevices().total >= config.maxDevices) {
+      res.status(503).json({
+        error: 'device_capacity',
+        message: 'Сервер достиг лимита зарегистрированных устройств. Попробуйте позже.',
+        limit: config.maxDevices,
+      });
+      return;
+    }
+
+    repo.upsertDevice(token, platform, nowIso);
     res.status(201).json({
       ok: true,
       registered: true,
@@ -364,17 +389,8 @@ export function createApp(deps: ApiDeps): Express {
       note: push.state.configured
         ? null
         : 'Токен сохранён, но серверный push не настроен — уведомления не отправляются.',
+      unregister: 'disabled',
     });
-  });
-
-  app.delete('/api/v1/devices/:token', (req: Request, res: Response) => {
-    const token = String(req.params.token ?? '');
-    if (token.length < 20) {
-      res.status(400).json({ error: 'bad_token', message: 'некорректный токен' });
-      return;
-    }
-    repo.disableDevice(token);
-    res.json({ ok: true });
   });
 
   /* ── APK-манифест ────────────────────────────────────────────────────── */
@@ -405,9 +421,16 @@ export function createApp(deps: ApiDeps): Express {
   });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    const message = err instanceof Error ? err.message : 'внутренняя ошибка';
-    // Не раскрываем стек и детали окружения наружу.
-    res.status(500).json({ error: 'internal_error', message });
+    // Битый JSON от клиента — его ошибка, а не наша: 400 и без текста парсера
+    // (внутренние детали наружу не уходят).
+    const parseFailed = typeof err === 'object' && err !== null && 'type' in err
+      && (err as { type?: unknown }).type === 'entity.parse.failed';
+    if (parseFailed) {
+      res.status(400).json({ error: 'bad_json', message: 'тело запроса не является корректным JSON' });
+      return;
+    }
+    // Остальное — 500 без стека, путей и текста драйвера.
+    res.status(500).json({ error: 'internal_error', message: 'внутренняя ошибка сервера' });
   });
 
   return app;

@@ -48,6 +48,12 @@ export function startServer(env: NodeJS.ProcessEnv = process.env): StartedServer
   const db = openDatabase(config.dbPath);
   if (!databaseReady(db)) throw new Error('база продукта не инициализирована');
   const repo = new SignalRepository(db);
+  // Чистим просроченные регистрации устройств на старте: публичная регистрация
+  // не должна превращаться в бесконечный рост БД.
+  const prunedDevices = repo.pruneDevices(
+    new Date(Date.now() - config.deviceTtlDays * 24 * 60 * 60 * 1000).toISOString(),
+  );
+  if (prunedDevices > 0) log.info('удалены устаревшие регистрации устройств', { removed: prunedDevices });
   const provider = new BinancePublicProvider({ timeoutMs: config.marketTimeoutMs });
   const push = createPushSender({
     projectId: config.fcm.projectId,

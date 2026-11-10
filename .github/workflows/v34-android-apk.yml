@@ -7,6 +7,10 @@ name: V3.4 Android APK (check build)
 #
 # Секретов в файле нет и быть не может.
 
+# Минимальные права: сборка читает код и загружает артефакт, больше ничего.
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   push:

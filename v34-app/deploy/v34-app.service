@@ -3,7 +3,6 @@
 # Секреты и настройки — только в /etc/v34-app/v34.env (chmod 600, вне Git).
 [Unit]
 Description=CRYPTORA V3.4 signals backend
-Documentation=file:/opt/v34app/README.md
 After=network-online.target
 Wants=network-online.target
 
@@ -16,6 +15,8 @@ EnvironmentFile=/etc/v34-app/v34.env
 # node:sqlite требует Node >= 22.5; на Node 24 флаг остаётся безвредным.
 Environment=NODE_OPTIONS=--experimental-sqlite
 Environment=NODE_ENV=production
+# Путь к Node фиксирован: install.sh проверяет ИМЕННО этот бинарник (>= 22.5),
+# иначе systemd молча падал бы на «node not found».
 ExecStart=/usr/bin/node /opt/v34app/current/dist/server.mjs
 Restart=always
 RestartSec=5

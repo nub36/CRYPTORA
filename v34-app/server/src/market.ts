@@ -19,7 +19,7 @@ import { MARKET_DATA_SOURCE } from '@v34/core';
 export type MarketInterval = '1h' | '4h';
 
 export interface MarketDataErrorShape {
-  code: 'HTTP' | 'TIMEOUT' | 'NETWORK' | 'BAD_JSON' | 'BAD_ROW' | 'EMPTY' | 'ORDER' | 'INTERVAL';
+  code: 'HTTP' | 'TIMEOUT' | 'NETWORK' | 'BAD_JSON' | 'BAD_ROW' | 'EMPTY' | 'ORDER';
   message: string;
   status?: number;
 }
@@ -68,10 +68,10 @@ export class BinancePublicProvider implements CandleProvider {
   }
 
   async getKlines(symbol: string, interval: MarketInterval, limit: number): Promise<OHLCV[]> {
-    if (!/^[A-Z0-9]{4,20}$/.test(symbol)) throw new MarketDataError({ code: 'HTTP', message: `недопустимый символ ${symbol}` });
+    if (!/^[A-Z0-9]{4,20}$/.test(symbol)) throw new MarketDataError({ code: 'BAD_ROW', message: `недопустимый символ ${symbol}` });
     const max = MARKET_DATA_SOURCE.maxKlinesPerRequest;
     if (!Number.isInteger(limit) || limit < 1 || limit > max) {
-      throw new MarketDataError({ code: 'HTTP', message: `limit ${limit} вне диапазона 1..${max}` });
+      throw new MarketDataError({ code: 'BAD_ROW', message: `limit ${limit} вне диапазона 1..${max}` });
     }
     const url = `${this.baseUrl}${MARKET_DATA_SOURCE.klinesPath}?symbol=${encodeURIComponent(symbol)}`
       + `&interval=${interval}&limit=${limit}`;
@@ -101,18 +101,19 @@ export class BinancePublicProvider implements CandleProvider {
       });
     }
 
-    // Монотонность и шаг: серия должна быть непрерывной по времени.
-    const step = INTERVAL_MS[interval];
+    // Монотонность обязательна: дубликат или обратный ход времени — это уже не
+    // «дырка в истории», а невалидный ответ биржи.
+    //
+    // ПРОПУСКИ СВЕЧЕЙ — НЕ ОШИБКА. Исходная логика CRYPTORA относится к разрывам
+    // как к диагностике (`countGaps` → статус символа) и продолжает обработку на
+    // том, что есть (см. `LiveSignalEngine.ts`, `countGaps`). Здесь должно быть
+    // так же: одна отсутствующая свеча не имеет права обнулять весь скан и
+    // останавливать ведение уже открытых сделок. Пропуски считает ядро
+    // (`runV34Scan` → `gaps1h`) и показывает в `/api/v1/meta`.
     for (let i = 1; i < out.length; i++) {
       const dt = (out[i]!.time - out[i - 1]!.time) * 1000;
       if (dt <= 0) {
         throw new MarketDataError({ code: 'ORDER', message: `время свечей не возрастает (${symbol} ${interval}, индекс ${i})` });
-      }
-      if (dt !== step) {
-        throw new MarketDataError({
-          code: 'INTERVAL',
-          message: `шаг ${dt} мс вместо ${step} мс (${symbol} ${interval}, индекс ${i})`,
-        });
       }
     }
     const lastOpenMs = out[out.length - 1]!.time * 1000;

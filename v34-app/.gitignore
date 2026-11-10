@@ -13,3 +13,5 @@ android/
 *.aab
 *.jks
 *.keystore
+# Локальные релизные архивы (собираются deploy/make-release.sh).
+release/

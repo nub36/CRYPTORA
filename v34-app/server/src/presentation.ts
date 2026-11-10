@@ -11,7 +11,7 @@
  *     свежие.
  */
 import type { SignalRow, EventRow } from './repository';
-import { projectSignalProgress } from './events';
+import { projectSignalProgress, type LifecycleProjection } from './events';
 import type { SignalEventType } from './db';
 
 export interface SignalPresentationContext {
@@ -54,18 +54,8 @@ export interface SignalView {
     pnlResultPct: number | null;
     barsHeld: number | null;
   } | null;
-  progress: {
-    tp1Hit: boolean;
-    tp1HitAt: string | null;
-    tp2Hit: boolean;
-    tp2HitAt: string | null;
-    breakevenArmed: boolean;
-    breakevenArmedAt: string | null;
-    stopHit: boolean;
-    stopHitAt: string | null;
-    currentStop: number | null;
-    currentStopBasis: 'BE_AT_ENTRY' | null;
-  };
+  /** Прогресс сделки — ровно проекция событий (без вычислений по рынку). */
+  progress: LifecycleProjection;
   events: { type: SignalEventType; occurredAt: string | null }[];
   dataSource: { exchange: string; isFallback: boolean } | null;
   /** Данные устарели — UI обязан показать предупреждение, а не «свежий сигнал». */

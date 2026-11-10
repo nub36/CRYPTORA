@@ -75,7 +75,7 @@ describe('BinancePublicProvider', () => {
     await expect(provider.getKlines('ASSETAUSDT', '1h', 70)).rejects.toMatchObject({ code: 'TIMEOUT' });
   });
 
-  it('битая строка, пустая серия и нарушенный шаг — отдельные коды', async () => {
+  it('битая строка, пустая серия и обратный ход времени — отдельные коды', async () => {
     const f = makeFixtures({ bars1h: 70 });
     const now = () => f.nowMs;
 
@@ -88,17 +88,29 @@ describe('BinancePublicProvider', () => {
       new BinancePublicProvider({ fetchImpl: mockFetch(async () => jsonRes([])).impl, now }).getKlines('ASSETAUSDT', '1h', 70),
     ).rejects.toMatchObject({ code: 'EMPTY' });
 
-    const gapped = f.rows1h.filter((_r, i) => i !== 20);
-    await expect(
-      new BinancePublicProvider({ fetchImpl: mockFetch(async () => jsonRes(gapped)).impl, now }).getKlines('ASSETAUSDT', '1h', 69),
-    ).rejects.toMatchObject({ code: 'INTERVAL' });
-
     const unsorted = [...f.rows1h];
     [unsorted[10], unsorted[11]] = [unsorted[11]!, unsorted[10]!];
-    // Перестановка ломает и шаг, и монотонность — принимаем любой из кодов.
+    // Обратный ход времени — невалидный ответ, а не «дырка».
     await expect(
       new BinancePublicProvider({ fetchImpl: mockFetch(async () => jsonRes(unsorted)).impl, now }).getKlines('ASSETAUSDT', '1h', 70),
-    ).rejects.toSatisfy((e: unknown) => e instanceof MarketDataError && ['ORDER', 'INTERVAL'].includes(e.code));
+    ).rejects.toMatchObject({ code: 'ORDER' });
+  });
+
+  it('пропуск свечи — диагностика, а не блокировка всего символа', async () => {
+    const f = makeFixtures({ bars1h: 70 });
+    const now = () => f.nowMs;
+    // Одна отсутствующая 1H-свеча: оригинальная логика CRYPTORA продолжает работу
+    // и считает разрыв диагностикой (`countGaps`), значит адаптер обязан отдать
+    // серию, а не выбросить весь символ.
+    const gapped = f.rows1h.filter((_r, i) => i !== 20);
+    const rows = await new BinancePublicProvider({
+      fetchImpl: mockFetch(async () => jsonRes(gapped)).impl, now,
+    }).getKlines('ASSETAUSDT', '1h', 69);
+
+    expect(rows).toHaveLength(gapped.length);
+    // Пропуск виден по времени: ровно один шаг вместо 3600000 мс.
+    const deltas = rows.slice(1).map((r, i) => (r.time - rows[i]!.time) * 1000);
+    expect(deltas.filter((d) => d !== 3_600_000)).toEqual([7_200_000]);
   });
 
   it('невалидные входные параметры отклоняются до сети', async () => {
