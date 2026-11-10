@@ -111,8 +111,16 @@ jobs:
           PKG="$(printf '%s' "$BADGING" | sed -nE "s/.*package: name='([^']+)'.*/\1/p")"
           VNAME="$(printf '%s' "$BADGING" | sed -nE "s/.*versionName='([^']+)'.*/\1/p")"
           VCODE="$(printf '%s' "$BADGING" | sed -nE "s/.*versionCode='([^']+)'.*/\1/p")"
+          # apksigner берём из PATH или из build-tools; stderr сохраняем, чтобы
+          # причина отсутствия подписи была видна в аннотации (пути/версии SDK
+          # на раннерах различаются).
+          if [ -z "$APKSIGNER" ]; then APKSIGNER="$(command -v apksigner)"; fi
           CERTS=""
-          if [ -n "$APKSIGNER" ]; then CERTS="$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null)"; fi
+          SIGN_RC=127
+          if [ -n "$APKSIGNER" ]; then
+            CERTS="$("$APKSIGNER" verify --print-certs "$APK" 2>&1)"
+            SIGN_RC=$?
+          fi
           DN_LINE="$(printf '%s\n' "$CERTS" | grep -m1 '^Signer #1 certificate DN: ')"
           DN="${DN_LINE#Signer #1 certificate DN: }"
           SCHEMES="$(printf '%s\n' "$CERTS" | sed -n 's/^Verified using \(.*\): true$/\1/p' | paste -sd, -)"
@@ -124,7 +132,10 @@ jobs:
           echo "APK sha256=$SHA size=${SIZE}B package=$PKG versionName=$VNAME versionCode=$VCODE signerDN=$DN schemes=$SCHEMES"
           echo "::notice title=APK::sha256=$SHA size=${SIZE}B"
           echo "::notice title=APK package::id=$PKG versionName=$VNAME versionCode=$VCODE"
-          echo "::notice title=APK signature::signerDN=$DN schemes=$SCHEMES"
+          echo "::notice title=APK signature::signerDN=$DN schemes=$SCHEMES apksigner=${APKSIGNER:-none} rc=$SIGN_RC"
+          if [ "$SIGN_RC" -ne 0 ]; then
+            printf '%s\n' "$CERTS" | tail -n 5
+          fi
           {
             echo "## CRYPTORA V3.4 — проверочная сборка"
             echo ""
