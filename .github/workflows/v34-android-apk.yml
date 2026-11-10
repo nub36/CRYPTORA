@@ -91,15 +91,49 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Факты об APK печатаются и в summary, и в АННОТАЦИИ check-run: скачивание
+      # артефактов и логи job'ов доступны не из любого окружения, а пакет, версия,
+      # тип подписи, размер и SHA-256 должны быть проверяемыми через API.
       - name: Summary
+        shell: bash
         run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          SIZE="$(stat -c %s "$APK")"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT="$(ls "$SDK"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1 || true)"
+          APKSIGNER="$(ls "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+          BADGING=""
+          if [ -n "$AAPT" ]; then BADGING="$("$AAPT" dump badging "$APK" 2>/dev/null | head -1 || true)"; fi
+          PKG="$(printf '%s' "$BADGING" | sed -nE "s/.*package: name='([^']+)'.*/\1/p")"
+          VNAME="$(printf '%s' "$BADGING" | sed -nE "s/.*versionName='([^']+)'.*/\1/p")"
+          VCODE="$(printf '%s' "$BADGING" | sed -nE "s/.*versionCode='([^']+)'.*/\1/p")"
+          CERTS=""
+          if [ -n "$APKSIGNER" ]; then CERTS="$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null | head -8 || true)"; fi
+          DN="$(printf '%s' "$CERTS" | sed -n 's/^Signer #1 certificate DN: //p' | head -1)"
+          SCHEMES="$(printf '%s' "$CERTS" | sed -n 's/^Verified using \(.*\): true/\1/p' | tr '\n' ',' | sed 's/,$//')"
+          if [ -z "$DN" ] && [ -z "$BADGING" ]; then
+            echo "ВНИМАНИЕ: Android SDK build-tools не найден — метаданные APK не прочитаны" >&2
+          fi
+          : "${PKG:=unknown}"; : "${VNAME:=unknown}"; : "${VCODE:=unknown}"; : "${DN:=unknown}"
+          : "${SCHEMES:=unknown}"
+          echo "::notice title=APK::sha256=$SHA size=${SIZE}B"
+          echo "::notice title=APK package::id=$PKG versionName=$VNAME versionCode=$VCODE"
+          echo "::notice title=APK signature::signerDN=$DN schemes=$SCHEMES"
           {
             echo "## CRYPTORA V3.4 — проверочная сборка"
             echo ""
-            echo "- Это **debug** APK: подписан debug-ключом, не релиз."
+            echo "- Это **debug** APK: подписан debug-ключом, **не релиз**."
             echo "- Релизная подпись требует keystore владельца (секреты CI) или EAS-профиля."
-            echo "- SHA-256 артефакта:"
-            echo '```'
-            sha256sum android/app/build/outputs/apk/debug/app-debug.apk || true
-            echo '```'
+            echo ""
+            echo "| Свойство | Значение |"
+            echo "|---|---|"
+            echo "| Package id | \`$PKG\` |"
+            echo "| versionName | \`$VNAME\` |"
+            echo "| versionCode | \`$VCODE\` |"
+            echo "| Размер APK | \`$SIZE\` байт |"
+            echo "| SHA-256 APK | \`$SHA\` |"
+            echo "| Подпись | \`$DN\` |"
+            echo "| Схемы подписи | \`$SCHEMES\` |"
+            echo "| Коммит сборки | \`$GITHUB_SHA\` |"
           } >> "$GITHUB_STEP_SUMMARY"
