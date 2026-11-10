@@ -121,9 +121,13 @@ jobs:
             CERTS="$("$APKSIGNER" verify --print-certs "$APK" 2>&1)"
             SIGN_RC=$?
           fi
-          DN_LINE="$(printf '%s\n' "$CERTS" | grep -m1 '^Signer #1 certificate DN: ')"
-          DN="${DN_LINE#Signer #1 certificate DN: }"
-          SCHEMES="$(printf '%s\n' "$CERTS" | sed -n 's/^Verified using \(.*\): true$/\1/p' | paste -sd, -)"
+          # Формат вывода apksigner меняется между версиями build-tools:
+          # поддержаны и «Signer #1 certificate DN: …», и «  certificate DN: …».
+          DN_LINE="$(printf '%s\n' "$CERTS" | grep -m1 -i 'certificate DN:')"
+          DN="${DN_LINE##*certificate DN:}"
+          DN="$(printf '%s' "$DN" | sed 's/^[[:space:]]*//')"
+          SCHEMES="$(printf '%s\n' "$CERTS" | sed 's/^[[:space:]]*//' \
+            | sed -n 's/^Verified using \(.*\): *true$/\1/p' | paste -sd, -)"
           [ -n "$PKG" ] || PKG=unknown
           [ -n "$VNAME" ] || VNAME=unknown
           [ -n "$VCODE" ] || VCODE=unknown
@@ -133,8 +137,9 @@ jobs:
           echo "::notice title=APK::sha256=$SHA size=${SIZE}B"
           echo "::notice title=APK package::id=$PKG versionName=$VNAME versionCode=$VCODE"
           echo "::notice title=APK signature::signerDN=$DN schemes=$SCHEMES apksigner=${APKSIGNER:-none} rc=$SIGN_RC"
-          if [ "$SIGN_RC" -ne 0 ]; then
-            printf '%s\n' "$CERTS" | tail -n 5
+          if [ -z "$DN" ]; then
+            # Формат неизвестен — показываем начало вывода, чтобы это было видно.
+            echo "::notice title=apksigner output::$(printf '%s' "$CERTS" | head -c 500 | tr '\n' ' ')"
           fi
           {
             echo "## CRYPTORA V3.4 — проверочная сборка"
