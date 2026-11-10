@@ -96,5 +96,21 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Хвост вывода дублируется в summary check-run: без этого причина
+      # падения jest в CI не видна (логи job'а недоступны из рабочего окружения).
       - name: Unit tests
-        run: npx jest --ci
+        shell: bash
+        run: |
+          set +e
+          npx jest --ci > /tmp/jest.log 2>&1
+          status=$?
+          tail -n 40 /tmp/jest.log
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### Мобильные тесты упали"
+              echo '```'
+              tail -n 200 /tmp/jest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
