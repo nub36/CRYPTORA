@@ -10,6 +10,7 @@
  *   GET  /api/v1/meta        — описание V3.4, источник данных, свежесть, статус символов
  *   GET  /api/v1/signals     — лента (limit ≤ 100, курсорная пагинация)
  *   GET  /api/v1/signals/:id — детально (уровни, события, прогресс)
+ *   GET  /api/v1/candles     — свечи для графика (символ из вселенной, 1h/4h, ≤ 300)
  *   POST /api/v1/devices     — зарегистрировать FCM-токен
  *   GET  /api/v1/apk         — манифест APK (версия, размер, sha256) или честный «нет»
  *   GET  /                   — статический лендинг (если настроен каталог)
@@ -21,6 +22,12 @@ import type { AppConfig } from './config';
 import { pushConfigState } from './config';
 import type { SignalRepository, EventRow } from './repository';
 import { DEFAULT_LIMIT } from './repository';
+import {
+  CANDLE_INTERVALS, CANDLE_LIMIT_DEFAULT, CANDLE_LIMIT_MAX, CANDLE_LIMIT_MIN,
+  CandleSourceError, type CandleService,
+} from './candles';
+import { pairOf } from './scanner';
+import type { MarketInterval } from './market';
 import { CLOSED_SIGNAL_STATUSES, OPEN_SIGNAL_STATUSES, SIGNAL_STATUSES } from './db';
 import { computeDataStatus, toSignalView, type SignalPresentationContext } from './presentation';
 import type { PushSender } from './push/fcm';
@@ -39,6 +46,8 @@ export interface ApiDeps {
   repo: SignalRepository;
   config: AppConfig;
   push: PushSender;
+  /** Свечи для графика: только публичные данные, полученные сервером. */
+  candles: CandleService;
   /** Версия сборки сервера. */
   version: string;
   startedAtMs: number;
@@ -81,7 +90,7 @@ class RateLimiter {
 }
 
 export function createApp(deps: ApiDeps): Express {
-  const { repo, config, push } = deps;
+  const { repo, config, push, candles } = deps;
   const now = deps.now ?? Date.now;
   const app = express();
   app.disable('x-powered-by');
@@ -175,6 +184,18 @@ export function createApp(deps: ApiDeps): Express {
         symbols: config.symbols,
         defaultSymbols: V34_SYMBOLS,
         quote: MARKET_DATA_SOURCE.quote,
+        // Витринные пары задаёт сервер: приложение не склеивает 'BTC/USDT' само
+        // и не может показать пару, которой нет в конфигурации V3.4.
+        pairs: config.symbols.map((s) => ({ symbol: pairOf(s), exchangeSymbol: s })),
+      },
+      candles: {
+        endpoint: '/api/v1/candles',
+        intervals: CANDLE_INTERVALS,
+        defaultLimit: CANDLE_LIMIT_DEFAULT,
+        minLimit: CANDLE_LIMIT_MIN,
+        maxLimit: CANDLE_LIMIT_MAX,
+        source: MARKET_DATA_SOURCE.id,
+        note: 'Свечи отдаёт backend после проверки ответа биржи; приложение не запрашивает биржу напрямую.',
       },
       marketData: {
         id: MARKET_DATA_SOURCE.id,
@@ -336,6 +357,95 @@ export function createApp(deps: ApiDeps): Express {
       }),
       asOf: ctx.now,
     });
+  });
+
+  /* ── Свечи для графика ───────────────────────────────────────────────── */
+
+  /**
+   * Ограниченный эндпоинт свечей.
+   *
+   * Ограничения намеренные и проверяются здесь, а не «где-то в клиенте»:
+   *   • символ — только из вселенной V3.4 (env `V34_SYMBOLS` или канонический список);
+   *   • интервал — только 1h/4h (таймфреймы стратегии);
+   *   • limit — 20..300, значение вне диапазона ограничивается и возвращается
+   *     в ответе как `limit`, чтобы клиент видел фактический объём;
+   *   • таймаут/кэш/повторы — в CandleService; один IP не может устроить
+   *     лавину запросов к бирже (общий rate limit на /api).
+   *
+   * Ошибка источника — 502 с кодом и коротким текстом. Пустой массив свечей
+   * при сбое не отдаётся: это выглядело бы как «на рынке ничего нет».
+   */
+  app.get('/api/v1/candles', async (req: Request, res: Response) => {
+    const symbolRaw = typeof req.query.symbol === 'string' ? req.query.symbol.trim().toUpperCase() : '';
+    if (!symbolRaw) {
+      res.status(400).json({ error: 'bad_symbol', message: 'symbol обязателен, например BTCUSDT', allowed: config.symbols });
+      return;
+    }
+    if (!/^[A-Z0-9]{4,20}$/.test(symbolRaw)) {
+      res.status(400).json({ error: 'bad_symbol', message: 'symbol: например BTCUSDT', allowed: config.symbols });
+      return;
+    }
+    if (!config.symbols.includes(symbolRaw)) {
+      res.status(400).json({
+        error: 'bad_symbol',
+        message: `символ ${symbolRaw} отсутствует в конфигурации V3.4`,
+        allowed: config.symbols,
+      });
+      return;
+    }
+
+    const intervalRaw = (typeof req.query.interval === 'string' ? req.query.interval.trim().toLowerCase() : '1h');
+    if (!(CANDLE_INTERVALS as readonly string[]).includes(intervalRaw)) {
+      res.status(400).json({
+        error: 'bad_interval',
+        message: `interval: ${CANDLE_INTERVALS.join(' или ')}`,
+        allowed: CANDLE_INTERVALS,
+      });
+      return;
+    }
+    const interval = intervalRaw as MarketInterval;
+
+    const limitRaw = req.query.limit === undefined ? String(CANDLE_LIMIT_DEFAULT) : String(req.query.limit);
+    const limitNum = Number(limitRaw);
+    if (!Number.isFinite(limitNum) || !Number.isInteger(limitNum) || limitNum < 1) {
+      res.status(400).json({
+        error: 'bad_limit',
+        message: `limit: целое число ${CANDLE_LIMIT_MIN}..${CANDLE_LIMIT_MAX}`,
+      });
+      return;
+    }
+    const limit = Math.min(CANDLE_LIMIT_MAX, Math.max(CANDLE_LIMIT_MIN, limitNum));
+
+    try {
+      const series = await candles.get(symbolRaw, interval, limit);
+      const ctx = presentationCtx();
+      res.json({
+        symbol: pairOf(symbolRaw),
+        exchangeSymbol: series.exchangeSymbol,
+        interval: series.interval,
+        limit: series.limit,
+        count: series.candles.length,
+        candles: series.candles,
+        source: series.source,
+        asOf: ctx.now,
+        stale: ctx.stale,
+        staleReason: ctx.staleReason,
+      });
+    } catch (e) {
+      if (e instanceof CandleSourceError) {
+        res.status(502).json({
+          error: 'market_unavailable',
+          code: e.code,
+          message: `биржа не отдала свечи: ${e.message}`,
+        });
+        return;
+      }
+      res.status(502).json({
+        error: 'market_unavailable',
+        code: 'UNAVAILABLE',
+        message: 'источник свечей недоступен',
+      });
+    }
   });
 
   /* ── Устройства (push) ───────────────────────────────────────────────── */

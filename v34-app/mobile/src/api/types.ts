@@ -79,6 +79,38 @@ export interface SignalView {
   asOf: string;
 }
 
+/** Свеча с сервера. Время — секунды Unix (начало бара). */
+export interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  /** Бар закрыт на момент ответа сервера. */
+  closed: boolean;
+}
+
+/** Ответ GET /api/v1/candles. */
+export interface CandlesResponse {
+  symbol: string;
+  exchangeSymbol: string;
+  interval: '1h' | '4h';
+  limit: number;
+  count: number;
+  candles: Candle[];
+  source: { id: string; exchange: string; isFallback: boolean } | null;
+  asOf: string;
+  stale: boolean;
+  staleReason: string | null;
+}
+
+/** Витринная пара из канонической конфигурации V3.4 (её задаёт сервер). */
+export interface PairInfo {
+  symbol: string;
+  exchangeSymbol: string;
+}
+
 export interface SignalsListResponse {
   items: SignalView[];
   count: number;
@@ -135,7 +167,23 @@ export interface MetaResponse {
   minAppVersion: string;
   serverTime: string;
   strategy: MetaStrategyInfo;
-  universe: { symbols: string[]; defaultSymbols: string[]; quote: string };
+  universe: {
+    symbols: string[];
+    defaultSymbols: string[];
+    quote: string;
+    /** Пары для витрины: имя и биржевой символ — из конфигурации сервера. */
+    pairs?: PairInfo[];
+  };
+  /** Ограничения эндпоинта свечей — тоже сообщает сервер. */
+  candles?: {
+    endpoint: string;
+    intervals: string[];
+    defaultLimit: number;
+    minLimit: number;
+    maxLimit: number;
+    source: string;
+    note: string;
+  };
   marketData: {
     id: string;
     exchange: string;

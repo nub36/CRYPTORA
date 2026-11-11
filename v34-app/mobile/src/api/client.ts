@@ -11,7 +11,7 @@
  *     есть.
  */
 import type {
-  DeviceRegistrationResponse, MetaResponse, SignalView, SignalsListResponse,
+  Candle, CandlesResponse, DeviceRegistrationResponse, MetaResponse, SignalView, SignalsListResponse,
 } from './types';
 
 export type ApiErrorKind = 'network' | 'timeout' | 'http' | 'parse' | 'config';
@@ -42,11 +42,18 @@ export interface ListParams {
   cursor?: string | null;
 }
 
+export interface CandleParams {
+  symbol: string;
+  interval?: '1h' | '4h';
+  limit?: number;
+}
+
 export interface ApiClient {
   readonly baseUrl: string;
   getSignals(params?: ListParams): Promise<SignalsListResponse>;
   getSignal(id: string): Promise<SignalView>;
   getMeta(): Promise<MetaResponse>;
+  getCandles(params: CandleParams): Promise<CandlesResponse>;
   registerDevice(token: string, platform?: 'android' | 'ios'): Promise<DeviceRegistrationResponse>;
 }
 
@@ -64,6 +71,29 @@ function assertSignalsList(value: unknown): SignalsListResponse {
     throw new ApiError('parse', 'ответ сервера не похож на список сигналов');
   }
   return value as unknown as SignalsListResponse;
+}
+
+/**
+ * Свечи проверяются по форме, но НЕ пересчитываются: график рисует то, что
+ * прислал сервер. Нечисловой/перевёрнутый бар — это ошибка ответа, а не повод
+ * «поправить» его на телефоне.
+ */
+function assertCandles(value: unknown): CandlesResponse {
+  if (!isRecord(value) || !Array.isArray(value.candles)) {
+    throw new ApiError('parse', 'ответ сервера не содержит свечи');
+  }
+  const candles = value.candles as unknown[];
+  for (const raw of candles) {
+    if (!isRecord(raw)) throw new ApiError('parse', 'свеча в ответе сервера имеет неверную форму');
+    const { time, open, high, low, close, volume } = raw as Record<string, unknown>;
+    if (![time, open, high, low, close, volume].every((n) => typeof n === 'number' && Number.isFinite(n))) {
+      throw new ApiError('parse', 'свеча в ответе сервера содержит нечисловые значения');
+    }
+    if ((high as number) < (low as number)) {
+      throw new ApiError('parse', 'свеча в ответе сервера имеет high < low');
+    }
+  }
+  return { ...(value as unknown as CandlesResponse), candles: candles as Candle[] };
 }
 
 function assertSignal(value: unknown): SignalView {
@@ -143,6 +173,13 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         if (!isRecord(v) || !isRecord(v.strategy)) throw new ApiError('parse', 'ответ сервера не содержит описание стратегии');
         return v as unknown as MetaResponse;
       });
+    },
+    async getCandles(params: CandleParams): Promise<CandlesResponse> {
+      const qs = new URLSearchParams();
+      qs.set('symbol', params.symbol);
+      qs.set('interval', params.interval ?? '1h');
+      if (params.limit !== undefined) qs.set('limit', String(params.limit));
+      return request(`/api/v1/candles?${qs.toString()}`, undefined, assertCandles);
     },
     async registerDevice(token: string, platform: 'android' | 'ios' = 'android'): Promise<DeviceRegistrationResponse> {
       return request<DeviceRegistrationResponse>('/api/v1/devices', {

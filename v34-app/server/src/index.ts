@@ -13,6 +13,7 @@ import { loadConfig } from './config';
 import { openDatabase, databaseReady } from './db';
 import { SignalRepository } from './repository';
 import { BinancePublicProvider } from './market';
+import { CandleService } from './candles';
 import { createPushSender } from './push/fcm';
 import { Scanner, pairOf, type Logger } from './scanner';
 import { createApp } from './api';
@@ -80,6 +81,7 @@ export function startServer(env: NodeJS.ProcessEnv = process.env): StartedServer
     repo,
     config,
     push,
+    candles: new CandleService(provider, { now: Date.now }),
     version: SERVER_VERSION,
     startedAtMs: Date.now(),
   });

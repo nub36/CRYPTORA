@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import App from '../App';
-import { makeList, makeMeta, makeSignal } from './support/fixtures';
+import { makeCandles, makeList, makeMeta, makeSignal } from './support/fixtures';
 
 /**
  * Интеграционный тест корневого компонента: приложение берёт адрес сервера из
@@ -18,6 +18,9 @@ function installFetchMock() {
     }
     if (u.includes('/api/v1/signals')) {
       return { ok: true, status: 200, json: async () => makeList([signal]) } as unknown as Response;
+    }
+    if (u.includes('/api/v1/candles')) {
+      return { ok: true, status: 200, json: async () => makeCandles() } as unknown as Response;
     }
     if (u.includes('/api/v1/meta')) {
       return { ok: true, status: 200, json: async () => makeMeta() } as unknown as Response;
@@ -38,8 +41,14 @@ describe('корневое приложение', () => {
   beforeEach(() => { restore = installFetchMock().restore; });
   afterEach(() => { restore(); jest.clearAllMocks(); });
 
-  it('открывает ленту, деталь и вкладку «О приложении»', async () => {
+  it('открывает пары, ленту, деталь и вкладку «О приложении»', async () => {
     await render(<App />);
+    // Приложение открывается на парах V3.4 — с графиком выбранной пары.
+    await screen.findByTestId('market-flatlist');
+    expect(screen.getByText('Пары V3.4')).toBeTruthy();
+    expect(await screen.findByTestId('market-candles')).toBeTruthy();
+
+    await fireEvent.press(screen.getByTestId('tab-signals'));
     await screen.findByTestId('list-ready');
 
     await fireEvent.press(screen.getByTestId(`signal-card-${makeSignal().id}`));
@@ -57,7 +66,7 @@ describe('корневое приложение', () => {
 
   it('push-регистрация не ломает приложение и отражается на вкладке «О приложении»', async () => {
     await render(<App />);
-    await screen.findByTestId('list-ready');
+    await screen.findByTestId('market-flatlist');
     await fireEvent.press(screen.getByTestId('tab-about'));
     await screen.findByTestId('about-ready');
 

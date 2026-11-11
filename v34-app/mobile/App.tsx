@@ -4,8 +4,8 @@
  * Задачи:
  *   • собрать API-клиент из конфигурации сборки и честно показать ошибку,
  *     если адрес сервера не задан;
- *   • переключать «Сигналы» / «О приложении» без навигационной библиотеки
- *     (меньше зависимостей — меньше поверхность отказа);
+ *   • переключать «Пары» / «Сигналы» / «О приложении» без навигационной
+ *     библиотеки (меньше зависимостей — меньше поверхность отказа);
  *   • открывать детальный экран и закрывать его аппаратной кнопкой «назад»;
  *   • один раз при старте попытаться настроить push и показать фактический
  *     результат, а не «всё хорошо».
@@ -20,13 +20,14 @@ import Constants from 'expo-constants';
 import { ApiError, createApiClient, type ApiClient } from './src/api/client';
 import { ScreenState } from './src/components/ScreenState';
 import { AboutScreen } from './src/screens/AboutScreen';
+import { MarketScreen } from './src/screens/MarketScreen';
 import { SignalDetailScreen } from './src/screens/SignalDetailScreen';
 import { SignalsListScreen } from './src/screens/SignalsListScreen';
 import { apiBaseUrlError, resolveApiBaseUrl, resolveAppVersion } from './src/config';
 import { setupPushNotifications, type PushStatus } from './src/notifications';
 import { colors, spacing } from './src/theme';
 
-type Tab = 'signals' | 'about';
+type Tab = 'market' | 'signals' | 'about';
 
 const APP_VERSION = resolveAppVersion(Constants.expoConfig);
 
@@ -44,7 +45,10 @@ export default function App() {
     }
   }, [apiBaseUrl, configError]);
 
-  const [tab, setTab] = React.useState<Tab>('signals');
+  // Открываемся на парах: первое, что видит пользователь, — конфигурация V3.4,
+  // график и сигналы выбранной пары. Всё это требует ответа backend'а, и при его
+  // отсутствии экран честно сообщает о недоступности сервера.
+  const [tab, setTab] = React.useState<Tab>('market');
   const [openSignalId, setOpenSignalId] = React.useState<string | null>(null);
   const [pushStatus, setPushStatus] = React.useState<PushStatus | null>(null);
 
@@ -92,6 +96,8 @@ export default function App() {
           signalId={openSignalId}
           onBack={() => setOpenSignalId(null)}
         />
+      ) : tab === 'market' ? (
+        <MarketScreen api={api as ApiClient} onOpenSignal={(id) => setOpenSignalId(id)} />
       ) : tab === 'signals' ? (
         <SignalsListScreen api={api as ApiClient} onOpenSignal={(id) => setOpenSignalId(id)} />
       ) : (
@@ -105,6 +111,7 @@ export default function App() {
 
       {openSignalId ? null : (
         <View style={styles.tabBar}>
+          <TabButton label="Пары" active={tab === 'market'} onPress={() => setTab('market')} testID="tab-market" />
           <TabButton label="Сигналы" active={tab === 'signals'} onPress={() => setTab('signals')} testID="tab-signals" />
           <TabButton label="О приложении" active={tab === 'about'} onPress={() => setTab('about')} testID="tab-about" />
         </View>

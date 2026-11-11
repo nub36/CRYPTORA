@@ -41,6 +41,18 @@ export default tseslint.config(
     languageOptions: { globals: { jest: 'readonly' } },
   },
   {
+    // Node-скрипты проверки APK: CommonJS и встроенные модули Node, не браузер.
+    files: ['**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly', module: 'readonly', process: 'readonly', console: 'readonly',
+        Buffer: 'readonly', __dirname: 'readonly',
+      },
+    },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     files: ['mobile/**/*.ts', 'mobile/**/*.tsx'],
     languageOptions: {
       globals: {

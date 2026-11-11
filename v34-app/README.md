@@ -65,11 +65,11 @@ EXPO_PUBLIC_API_BASE_URL=https://signals.<ваш-домен>.fi npx expo start
 | Что | Команда | Результат |
 |---|---|---|
 | Парити с оригиналом | `cd packages/v34-core && npx vitest run` | 9 файлов, 67 тестов |
-| Backend/API | `cd server && NODE_OPTIONS=--experimental-sqlite npx vitest run` | 8 файлов, 70 тестов |
+| Backend/API | `cd server && NODE_OPTIONS=--experimental-sqlite npx vitest run` | 9 файлов, 90 тестов |
 | Типы (ядро+сервер) | `npx tsc --noEmit -p packages/v34-core/tsconfig.json` и `-p server/tsconfig.json` | без ошибок |
 | Сборка | `npm run build` | `server/dist/*.mjs` |
 | Линт | `npm run lint` | без ошибок |
-| Android-экраны | `cd mobile && npx jest` | 7 файлов, 41 тест |
+| Android-экраны | `cd mobile && npx jest` | 11 файлов, 83 теста (включая standalone APK) |
 | Типы приложения | `cd mobile && npx tsc --noEmit -p tsconfig.json` | без ошибок |
 
 ## API
@@ -80,6 +80,7 @@ EXPO_PUBLIC_API_BASE_URL=https://signals.<ваш-домен>.fi npx expo start
 | GET | `/api/v1/meta` | стратегия, источник данных, свежесть, состояние символов, push |
 | GET | `/api/v1/signals` | лента: `status`, `direction`, `symbol`, `limit` ≤ 100, `cursor` |
 | GET | `/api/v1/signals/:id` | уровни, события, прогресс TP1/TP2, действующий стоп |
+| GET | `/api/v1/candles` | свечи для графика: `symbol` из вселенной V3.4, `interval` 1h/4h, `limit` 20..300 (кэш 15 с; сбой биржи — 502, а не пустой массив) |
 | POST | `/api/v1/devices` | регистрация FCM-токена: rate-limit по IP, потолок `V34_MAX_DEVICES`, очистка по `V34_DEVICE_TTL_DAYS` |
 | GET | `/api/v1/apk` | манифест APK: версия, размер, SHA-256 или честное «нет» |
 
@@ -106,10 +107,32 @@ EXPO_PUBLIC_API_BASE_URL=https://signals.<ваш-домен>.fi npx expo start
 честно показывает «push не настроен». Доставка на реальное устройство **не проверялась** —
 в окружении разработки нет ни Firebase, ни собранного APK.
 
+## Standalone APK (без Metro)
+
+Приложение должно запускаться на телефоне **само**: без Metro, компьютера, USB и
+локальной сети. Поэтому CI собирает **release**-вариант (JS bundle создаётся на
+раннере и встраивается в APK как `assets/index.android.bundle`), а не debug —
+именно debug-вариант показывал `Unable to load script` и просил Metro.
+
+```
+.github/workflows/v34-android-apk.yml
+  ├── typecheck + jest (включая тесты standalone-контракта)
+  ├── expo prebuild → ./gradlew assembleRelease
+  ├── scripts/verify-standalone-apk.cjs  ← bundle реально внутри APK
+  ├── aapt2/apksigner: package, версия, подпись, SHA-256 (расхождение = красный job)
+  └── эмулятор: adb install + запуск без Metro + проверка logcat/uiautomator
+```
+
+Артефакт: `v34-app-standalone-apk` (файл `app-release.apk` + `apk-facts.txt`).
+Подпись — стандартный debug-keystore из Android SDK: это проверочная подпись, **не
+ключ владельца**, и она не публикуется как релиз. Проверка bundle встроена в CI
+(`node v34-app/mobile/scripts/verify-standalone-apk.cjs app-release.apk`), поэтому
+«сборка прошла, а APK просит Metro» больше не повторится незаметно.
+
 ## Статус сборки APK
 
 APK в репозитории нет и в окружении разработки быть не может: нет JDK/Android SDK.
-См. `mobile/README.md` — там точный порядок сборки, подписи и что нужно от владельца.
+Собранный CI артефакт — release-вариант без Metro (см. выше и `mobile/README.md`).
 
 ## Развёртывание
 
