@@ -186,15 +186,33 @@ jobs:
             echo "| Коммит сборки | \`$GITHUB_SHA\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Файлы складываются в один каталог с плоскими именами: иначе
+      # upload-artifact сохраняет общий префикс путей и эмулятор ищет APK не там.
+      - name: Stage APK artifact
+        shell: bash
+        run: |
+          mkdir -p dist-apk
+          cp android/app/build/outputs/apk/release/app-release.apk dist-apk/
+          cp apk-facts.txt dist-apk/
+
       - name: Upload standalone APK
         uses: actions/upload-artifact@v4
         with:
           name: v34-app-standalone-apk
-          path: |
-            v34-app/mobile/android/app/build/outputs/apk/release/app-release.apk
-            v34-app/mobile/apk-facts.txt
+          path: v34-app/mobile/dist-apk/
           if-no-files-found: error
           retention-days: 14
+
+      # Проверяем ровно то, что увидит пользователь артефакта: APK и его факты.
+      - name: Check artifact contents (flat, installable APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist-apk/app-release.apk
+          test -f dist-apk/apk-facts.txt
+          node scripts/verify-standalone-apk.cjs dist-apk/app-release.apk --min-bundle-bytes 200000 >/dev/null
+          echo "артефакт: dist-apk/app-release.apk + dist-apk/apk-facts.txt"
+          cat dist-apk/apk-facts.txt
 
   # Установка и запуск APK на эмуляторе. Это финальное доказательство, что
   # приложение работает без Metro, компьютера, USB и локальной сети: внутри
