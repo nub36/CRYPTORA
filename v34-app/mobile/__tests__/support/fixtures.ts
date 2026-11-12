@@ -2,11 +2,16 @@
  * Фабрики тестовых данных. Значения нарочно «неудобные» (не круглые), чтобы
  * тесты ловили подстановку/округление на клиенте.
  */
-import type { ApiClient, ListParams } from '../../src/api/client';
+import type { ApiClient, CandleParams, ListParams } from '../../src/api/client';
 import { ApiError } from '../../src/api/client';
-import type { MetaResponse, SignalView, SignalsListResponse } from '../../src/api/types';
+import type {
+  Candle, CandlesResponse, MetaResponse, SignalProgress, SignalView, SignalsListResponse,
+} from '../../src/api/types';
 
-export function makeSignal(overrides: Partial<SignalView> = {}): SignalView {
+/** Переопределения сигнала: прогресс можно задать частично. */
+export type SignalOverrides = Omit<Partial<SignalView>, 'progress'> & { progress?: Partial<SignalProgress> };
+
+export function makeSignal(overrides: SignalOverrides = {}): SignalView {
   const base: SignalView = {
     id: 'V3_4_HTF_ZONE_MITIGATION_QUALITY-BTCUSDT-1760000000000',
     strategy: {
@@ -61,6 +66,36 @@ export function makeSignal(overrides: Partial<SignalView> = {}): SignalView {
   };
 }
 
+/** Ряд свечей «лесенкой»: значения не круглые — подстановка была бы заметна. */
+export function makeCandles(overrides: Partial<CandlesResponse> = {}): CandlesResponse {
+  const start = 1_760_000_000;
+  const candles: Candle[] = Array.from({ length: 30 }, (_, i) => {
+    const open = 61_000 + i * 7.3;
+    return {
+      time: start + i * 3_600,
+      open,
+      high: open + 55.17,
+      low: open - 41.09,
+      close: open + (i % 2 === 0 ? 12.5 : -9.25),
+      volume: 100 + i,
+      closed: i < 29,
+    };
+  });
+  return {
+    symbol: 'BTC/USDT',
+    exchangeSymbol: 'BTCUSDT',
+    interval: '1h',
+    limit: 120,
+    count: candles.length,
+    candles,
+    source: { id: 'binance-spot-public-klines', exchange: 'Binance', isFallback: false },
+    asOf: '2026-10-05T12:00:00.000Z',
+    stale: false,
+    staleReason: null,
+    ...overrides,
+  };
+}
+
 export function makeList(items: SignalView[], overrides: Partial<SignalsListResponse> = {}): SignalsListResponse {
   return {
     items,
@@ -106,7 +141,21 @@ export function makeMeta(overrides: Partial<MetaResponse> = {}): MetaResponse {
         limitations: ['Производная без бэктеста.'],
       },
     },
-    universe: { symbols: ['BTCUSDT'], defaultSymbols: ['BTCUSDT'], quote: 'USDT' },
+    universe: {
+      symbols: ['BTCUSDT'],
+      defaultSymbols: ['BTCUSDT'],
+      quote: 'USDT',
+      pairs: [{ symbol: 'BTC/USDT', exchangeSymbol: 'BTCUSDT' }],
+    },
+    candles: {
+      endpoint: '/api/v1/candles',
+      intervals: ['1h', '4h'],
+      defaultLimit: 120,
+      minLimit: 20,
+      maxLimit: 300,
+      source: 'binance-spot-public-klines',
+      note: 'Свечи отдаёт backend после проверки ответа биржи.',
+    },
     marketData: {
       id: 'binance-spot-public-klines',
       exchange: 'Binance',
@@ -159,13 +208,14 @@ export function makeMeta(overrides: Partial<MetaResponse> = {}): MetaResponse {
 export interface FakeApiOptions {
   signals?: SignalView[] | SignalsListResponse | (() => Promise<SignalsListResponse>);
   detail?: SignalView | (() => Promise<SignalView>);
-  meta?: MetaResponse;
+  meta?: MetaResponse | (() => Promise<MetaResponse>);
+  candles?: CandlesResponse | (() => Promise<CandlesResponse>);
   registerDevice?: ApiClient['registerDevice'];
 }
 
 /** Клиент с записываемыми вызовами — чтобы проверять, что UI просит именно то, что нужно. */
 export function makeFakeApi(options: FakeApiOptions = {}) {
-  const calls = { list: [] as ListParams[], detail: [] as string[], meta: 0 };
+  const calls = { list: [] as ListParams[], detail: [] as string[], meta: 0, candles: [] as CandleParams[] };
   const api: ApiClient = {
     baseUrl: 'https://signals.test.local',
     async getSignals(params: ListParams = {}) {
@@ -184,7 +234,15 @@ export function makeFakeApi(options: FakeApiOptions = {}) {
     },
     async getMeta() {
       calls.meta += 1;
-      return options.meta ?? makeMeta();
+      const m = options.meta;
+      if (typeof m === 'function') return m();
+      return m ?? makeMeta();
+    },
+    async getCandles(params: CandleParams) {
+      calls.candles.push(params);
+      const c = options.candles;
+      if (typeof c === 'function') return c();
+      return c ?? makeCandles({ exchangeSymbol: params.symbol });
     },
     registerDevice: options.registerDevice ?? (async () => ({
       ok: true,
@@ -204,6 +262,7 @@ export function failingApi(kind: 'network' | 'timeout' | 'http' = 'network') {
     async getSignals() { throw new ApiError(kind, message, kind === 'http' ? 503 : null); },
     async getSignal() { throw new ApiError(kind, message, kind === 'http' ? 503 : null); },
     async getMeta() { throw new ApiError(kind, message, kind === 'http' ? 503 : null); },
+    async getCandles() { throw new ApiError(kind, message, kind === 'http' ? 503 : null); },
     async registerDevice() { throw new ApiError(kind, message, kind === 'http' ? 503 : null); },
   };
   return { api, message };

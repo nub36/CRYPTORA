@@ -1,13 +1,26 @@
-name: V3.4 Android APK (check build)
+name: V3.4 Android APK (standalone release)
 
-# ВАЖНО: этот workflow собирает ПРОВЕРОЧНЫЙ (debug) APK, подписанный debug-ключом.
-# Он не является релизной сборкой и не публикуется на лендинге как релиз.
-# Релизная подпись требует keystore владельца в секретах репозитория
-# (ANDROID_KEYSTORE_BASE64 и пароли) — до этого релизный APK собрать нельзя.
+# САМОСТОЯТЕЛЬНЫЙ APK: JS bundle встроен в APK, Metro не требуется.
 #
-# Секретов в файле нет и быть не может.
+# История дефекта: раньше этот workflow собирал debug-вариант. Debug-сборка
+# React Native не содержит bundle и ищет Metro по adb/сети, поэтому установленный
+# на телефон APK показывал «Unable to load script» и просил компьютер. Теперь
+# собирается release-вариант: Metro-бандлер запускается НА CI, результат
+# (Hermes-байткод) кладётся в assets/index.android.bundle внутри APK.
+#
+# Подпись: Expo-шаблон подписывает release стандартным debug-keystore из Android
+# SDK. Это проверочная подпись, НЕ ключ владельца, и она не даёт права публиковать
+# APK как релиз. Для релизной подписи нужен keystore владельца в секретах
+# (ANDROID_KEYSTORE_BASE64 и пароли) — в этом файле секретов нет и быть не может.
+# Артефакт GitHub Actions — средство доставки на телефон, а не публикация.
+#
+# Проверки:
+#   1. typecheck + unit-тесты мобильного клиента (включая тесты standalone-сборки);
+#   2. сборка release APK;
+#   3. проверка, что JS bundle ВНУТРИ APK (scripts/verify-standalone-apk.cjs);
+#   4. package id / versionName / versionCode / подпись / SHA-256 из самого APK;
+#   5. запуск APK на эмуляторе без Metro, с проверкой logcat и отрисованного экрана.
 
-# Минимальные права: сборка читает код и загружает артефакт, больше ничего.
 permissions:
   contents: read
 
@@ -16,6 +29,14 @@ on:
   push:
     paths:
       - 'v34-app/mobile/**'
+      - 'v34-app/server/**'
+      - 'v34-app/packages/**'
+      - '.github/workflows/v34-android-apk.yml'
+  pull_request:
+    paths:
+      - 'v34-app/mobile/**'
+      - 'v34-app/server/**'
+      - 'v34-app/packages/**'
       - '.github/workflows/v34-android-apk.yml'
 
 concurrency:
@@ -23,10 +44,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  debug-apk:
-    name: debug APK (unsigned release / debug key)
+  standalone-apk:
+    name: standalone release APK (embedded JS bundle)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: v34-app/mobile
@@ -51,9 +72,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Вывод jest дублируется в summary check-run: логи job'а в этом окружении
-      # иногда недоступны, а причина падения должна быть видна без них.
-      - name: Unit tests
+      # Вывод jest дублируется в summary и в аннотации: логи job'а доступны не из
+      # любого окружения, а причина падения должна быть видна через API.
+      - name: Unit tests (incl. standalone APK contract)
         shell: bash
         run: |
           set +e
@@ -67,85 +88,91 @@ jobs:
               tail -n 200 /tmp/jest.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::${line:0:600}"
+            done < <(tail -n 30 /tmp/jest.log)
           fi
           exit "$status"
 
       - name: Prebuild native Android project
         env:
-          # Адрес сервера подставляется на этапе сборки. Для проверочной сборки
-          # допустимо оставить пустым: приложение покажет «Сервер не настроен».
+          # Адрес backend подставляется на этапе сборки. Пусто — приложение
+          # честно покажет «Сервер не настроен» (проверяется эмулятором).
           EXPO_PUBLIC_API_BASE_URL: ${{ vars.V34_API_BASE_URL }}
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Build debug APK
+      # Release-вариант — единственный, который создаёт и встраивает JS bundle
+      # (createBundleReleaseJsAndAssets + hermesc). Именно его и ставим на телефон.
+      - name: Build release APK (JS bundle is embedded here)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: v34-app-debug-apk
-          path: v34-app/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+      # Главная проверка дефекта: bundle должен быть внутри APK. Без него
+      # приложение снова попросит Metro.
+      - name: Verify JS bundle is embedded (Metro not required)
+        run: |
+          node scripts/verify-standalone-apk.cjs \
+            android/app/build/outputs/apk/release/app-release.apk \
+            --min-bundle-bytes 200000
 
-      # Факты об APK печатаются и в summary, и в АННОТАЦИИ check-run: скачивание
-      # артефактов и логи job'ов доступны не из любого окружения, а пакет, версия,
-      # тип подписи, размер и SHA-256 должны быть проверяемыми через API.
-      - name: Summary
+      # Метаданные читаются из самого APK, а не из исходников: package id,
+      # версия и подпись — факты артефакта. Любое расхождение — красный job.
+      - name: Read APK facts (package, version, signature, sha256)
         shell: bash
         run: |
-          # Шаг не должен валить сборку из-за метаданных: любая ошибка чтения —
-          # это предупреждение и «unknown», а не красный job.
-          set +e
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          AAPT2="$(ls "$SDK"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)"
+          APKSIGNER="$(ls "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+          [ -n "$AAPT2" ] || { echo "::error title=APK facts:: aapt2 не найден в $SDK"; exit 1; }
+          [ -n "$APKSIGNER" ] || { echo "::error title=APK facts:: apksigner не найден"; exit 1; }
+
+          BADGING="$("$AAPT2" dump badging "$APK")"
+          PKG="$(printf '%s\n' "$BADGING" | sed -nE "s/^package: name='([^']+)'.*/\1/p" | head -1)"
+          VNAME="$(printf '%s\n' "$BADGING" | sed -nE "s/.*versionName='([^']+)'.*/\1/p" | head -1)"
+          VCODE="$(printf '%s\n' "$BADGING" | sed -nE "s/.*versionCode='([^']+)'.*/\1/p" | head -1)"
+          EXPECTED_PKG=com.nub36.cryptora.v34
+          if [ "$PKG" != "$EXPECTED_PKG" ]; then
+            echo "::error title=APK package:: ожидался $EXPECTED_PKG, получен ${PKG:-unknown}"
+            exit 1
+          fi
+          # Release-сборка НЕ должна быть debuggable: иначе это не standalone-релиз.
+          if printf '%s\n' "$BADGING" | grep -q 'application-debuggable'; then
+            echo "::error title=APK debuggable:: APK собран с android:debuggable — это не release"
+            exit 1
+          fi
+
           SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
           SIZE="$(stat -c %s "$APK")"
-          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          AAPT="$(ls "$SDK"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)"
-          APKSIGNER="$(ls "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
-          BADGING=""
-          if [ -n "$AAPT" ]; then BADGING="$("$AAPT" dump badging "$APK" 2>/dev/null | grep -m1 "^package:")"; fi
-          PKG="$(printf '%s' "$BADGING" | sed -nE "s/.*package: name='([^']+)'.*/\1/p")"
-          VNAME="$(printf '%s' "$BADGING" | sed -nE "s/.*versionName='([^']+)'.*/\1/p")"
-          VCODE="$(printf '%s' "$BADGING" | sed -nE "s/.*versionCode='([^']+)'.*/\1/p")"
-          # apksigner берём из PATH или из build-tools; stderr сохраняем, чтобы
-          # причина отсутствия подписи была видна в аннотации (пути/версии SDK
-          # на раннерах различаются).
-          if [ -z "$APKSIGNER" ]; then APKSIGNER="$(command -v apksigner)"; fi
-          CERTS=""
-          SIGN_RC=127
-          if [ -n "$APKSIGNER" ]; then
-            CERTS="$("$APKSIGNER" verify --print-certs "$APK" 2>&1)"
-            SIGN_RC=$?
-          fi
-          # Формат вывода apksigner меняется между версиями build-tools:
-          # поддержаны и «Signer #1 certificate DN: …», и «  certificate DN: …».
+          CERTS="$("$APKSIGNER" verify --print-certs "$APK" 2>&1)"
           DN_LINE="$(printf '%s\n' "$CERTS" | grep -m1 -i 'certificate DN:')"
-          DN="${DN_LINE##*certificate DN:}"
-          DN="$(printf '%s' "$DN" | sed 's/^[[:space:]]*//')"
+          DN="$(printf '%s' "${DN_LINE##*certificate DN:}" | sed 's/^[[:space:]]*//')"
           SCHEMES="$(printf '%s\n' "$CERTS" | sed 's/^[[:space:]]*//' \
             | sed -n 's/^Verified using \(.*\): *true$/\1/p' | paste -sd, -)"
-          [ -n "$PKG" ] || PKG=unknown
-          [ -n "$VNAME" ] || VNAME=unknown
-          [ -n "$VCODE" ] || VCODE=unknown
           [ -n "$DN" ] || DN=unknown
           [ -n "$SCHEMES" ] || SCHEMES=unknown
-          echo "APK sha256=$SHA size=${SIZE}B package=$PKG versionName=$VNAME versionCode=$VCODE signerDN=$DN schemes=$SCHEMES"
-          echo "::notice title=APK::sha256=$SHA size=${SIZE}B"
-          echo "::notice title=APK package::id=$PKG versionName=$VNAME versionCode=$VCODE"
-          echo "::notice title=APK signature::signerDN=$DN schemes=$SCHEMES apksigner=${APKSIGNER:-none} rc=$SIGN_RC"
-          if [ -z "$DN" ]; then
-            # Формат неизвестен — показываем начало вывода, чтобы это было видно.
-            echo "::notice title=apksigner output::$(printf '%s' "$CERTS" | head -c 500 | tr '\n' ' ')"
-          fi
+
           {
-            echo "## CRYPTORA V3.4 — проверочная сборка"
+            echo "sha256=$SHA"
+            echo "size=$SIZE"
+            echo "package=$PKG"
+            echo "versionName=$VNAME"
+            echo "versionCode=$VCODE"
+            echo "signerDN=$DN"
+            echo "schemes=$SCHEMES"
+          } | tee apk-facts.txt
+
+          echo "::notice title=APK sha256::sha256=$SHA size=${SIZE}B"
+          echo "::notice title=APK package::id=$PKG versionName=$VNAME versionCode=$VCODE"
+          echo "::notice title=APK signature::signerDN=$DN schemes=$SCHEMES"
+          {
+            echo "## CRYPTORA V3.4 — standalone APK"
             echo ""
-            echo "- Это **debug** APK: подписан debug-ключом, **не релиз**."
-            echo "- Релизная подпись требует keystore владельца (секреты CI) или EAS-профиля."
+            echo "- Release-вариант, JS bundle внутри: **Metro не требуется**."
+            echo "- Подпись: стандартный debug-keystore (проверочная, **не релизный ключ владельца**)."
             echo ""
             echo "| Свойство | Значение |"
             echo "|---|---|"
@@ -158,4 +185,87 @@ jobs:
             echo "| Схемы подписи | \`$SCHEMES\` |"
             echo "| Коммит сборки | \`$GITHUB_SHA\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-          exit 0
+
+      # Файлы складываются в один каталог с плоскими именами: иначе
+      # upload-artifact сохраняет общий префикс путей и эмулятор ищет APK не там.
+      - name: Stage APK artifact
+        shell: bash
+        run: |
+          mkdir -p dist-apk
+          cp android/app/build/outputs/apk/release/app-release.apk dist-apk/
+          cp apk-facts.txt dist-apk/
+
+      - name: Upload standalone APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: v34-app-standalone-apk
+          path: v34-app/mobile/dist-apk/
+          if-no-files-found: error
+          retention-days: 14
+
+      # Проверяем ровно то, что увидит пользователь артефакта: APK и его факты.
+      - name: Check artifact contents (flat, installable APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist-apk/app-release.apk
+          test -f dist-apk/apk-facts.txt
+          node scripts/verify-standalone-apk.cjs dist-apk/app-release.apk --min-bundle-bytes 200000 >/dev/null
+          echo "артефакт: dist-apk/app-release.apk + dist-apk/apk-facts.txt"
+          cat dist-apk/apk-facts.txt
+
+  # Установка и запуск APK на эмуляторе. Это финальное доказательство, что
+  # приложение работает без Metro, компьютера, USB и локальной сети: внутри
+  # эмулятора нет ни adb-reverse к бандлеру, ни dev-сервера.
+  emulator-smoke:
+    name: emulator launch (no Metro)
+    needs: standalone-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download standalone APK
+        uses: actions/download-artifact@v4
+        with:
+          name: v34-app-standalone-apk
+          path: apk
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install and launch APK without Metro
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          APK_PATH: apk/app-release.apk
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
+            -no-boot-anim -camera-back none -camera-front none
+          script: bash "$GITHUB_WORKSPACE/v34-app/mobile/scripts/emulator-smoke.sh"
+
+      - name: Emulator smoke summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Запуск APK на эмуляторе (без Metro)"
+            echo ""
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "- APK установлен, приложение запущено, экран отрисован."
+              echo "- В logcat нет \`Unable to load script\` и подключений к dev-серверу."
+            else
+              echo "- Проверка не пройдена. Причина — в логе шага «Install and launch APK without Metro»."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

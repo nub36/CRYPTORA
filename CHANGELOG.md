@@ -4,6 +4,55 @@
 
 ---
 
+## [Unreleased] — 2026-11-11 — V3.4 Android: standalone APK без Metro (пары, график, свечи с нового backend)
+
+Установленный APK продукта V3.4 показывал «Unable to load script» и требовал Metro:
+CI собирал `assembleDebug`, а debug-вариант React Native не содержит JS bundle и
+ищет бандлер по adb/сети. Исправлено на уровне сборки и проверок; торговое ядро,
+стратегия и frozen-файлы не тронуты.
+
+### Fixed
+- `.github/workflows/v34-android-apk.yml`: сборка **release**-варианта
+  (`./gradlew assembleRelease`) вместо debug. Metro-бандлер работает на CI, результат
+  (Hermes-байткод) встраивается в APK как `assets/index.android.bundle` — телефону
+  больше не нужны Metro, компьютер, USB и локальная сеть.
+- CI проверяет сам APK, а не только «сборка прошла»: `aapt2 dump badging` сверяет
+  `package id` (`com.nub36.cryptora.v34`), `versionName`/`versionCode` и отсутствие
+  `application-debuggable`; `apksigner verify` — подпись; `sha256sum` — хеш. Артефакт
+  `v34-app-standalone-apk` содержит `app-release.apk` и `apk-facts.txt`.
+
+### Added
+- `v34-app/mobile/scripts/verify-standalone-apk.cjs` — независимая проверка zip-структуры
+  APK: `AndroidManifest.xml`, `classes.dex`, `assets/index.android.bundle`, размер
+  bundle и его тип (Hermes/JS). На debug-APK без bundle падает с объяснением про Metro.
+  Подключён в CI с `--min-bundle-bytes 200000`.
+- CI-job `emulator-smoke` (`reactivecircus/android-emulator-runner`): установка APK на
+  эмулятор и запуск **без Metro**; `v34-app/mobile/scripts/emulator-smoke.sh` проверяет
+  живой процесс, отрисованный экран (uiautomator), отсутствие `Unable to load script`,
+  подключений к dev-серверу и `FATAL EXCEPTION`.
+- Backend V3.4: `GET /api/v1/candles` — ограниченный эндпоинт свечей для графика
+  (`symbol` только из вселенной V3.4, `interval` 1h/4h, `limit` 20..300), TTL-кэш 15 с,
+  дедупликация одновременных запросов, проверка порядка баров. Сбой биржи — `502
+  market_unavailable` с кодом, а не пустой массив: «нет данных» ≠ «рынок пуст».
+- `/api/v1/meta`: `universe.pairs` (витринные пары из конфигурации сервера) и блок
+  `candles` с ограничениями эндпоинта — приложение не хранит локальный список пар.
+- Android: вкладка «Пары» — пары канонической конфигурации V3.4, график выбранной пары
+  (свечи с backend) и сигналы этой пары; уровни на графике (коридор, SL, TP1/TP2, BE)
+  строятся только из серверного сигнала. Нет SL/BE на сервере — нет линий. Нет сигналов —
+  явная подпись «серверных уровней по паре нет».
+- Тесты: backend 90 (в т.ч. 12 новых на свечи: лимиты, allow-list символов, 502, кэш,
+  дедупликация); мобильные 83 (пары из meta, смена пары, график, уровни SL/BE, ошибки
+  API, standalone APK/CI-контракт).
+- Версия приложения: `0.2.0`, `versionCode 2`.
+
+### Not changed
+- Торговая математика V3.4, frozen-ядро, TP/SL/BE и lifecycle: на телефоне ничего не
+  вычисляется, уровни и события приходят только с сервера.
+- Старый backend CRYPTORA не используется; VPS не затрагивался, deployment не выполнялся.
+- APK не публикуется как релиз: подпись — стандартный debug-keystore CI, не ключ владельца.
+
+---
+
 ## [Unreleased] — 2026-10-05 — HOTFIX: missing import в production-entry (redelivery worker не стартовал)
 
 Производственный инцидент на 5726732: `server/index.js` вызывал

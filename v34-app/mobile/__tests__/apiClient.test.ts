@@ -1,5 +1,5 @@
 import { ApiError, createApiClient } from '../src/api/client';
-import { makeList, makeMeta, makeSignal } from './support/fixtures';
+import { makeCandles, makeList, makeMeta, makeSignal } from './support/fixtures';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -111,6 +111,76 @@ describe('api client', () => {
       fetchImpl: (async () => jsonResponse({ apiVersion: 'v1' })) as unknown as typeof fetch,
     });
     await expect(badClient.getMeta()).rejects.toMatchObject({ kind: 'parse' });
+  });
+
+  it('свечи запрашиваются у backend с символом, интервалом и лимитом', async () => {
+    const calls: string[] = [];
+    const client = createApiClient({
+      baseUrl: 'https://signals.test.local',
+      fetchImpl: (async (url: string) => {
+        calls.push(url);
+        return jsonResponse(makeCandles());
+      }) as unknown as typeof fetch,
+    });
+
+    const data = await client.getCandles({ symbol: 'BTCUSDT', interval: '4h', limit: 60 });
+    expect(data.candles).toHaveLength(30);
+    expect(calls[0]).toContain('https://signals.test.local/api/v1/candles?');
+    expect(calls[0]).toContain('symbol=BTCUSDT');
+    expect(calls[0]).toContain('interval=4h');
+    expect(calls[0]).toContain('limit=60');
+  });
+
+  it('по умолчанию график просит 1h и не навязывает limit', async () => {
+    let seen = '';
+    const client = createApiClient({
+      baseUrl: 'https://signals.test.local',
+      fetchImpl: (async (url: string) => {
+        seen = url;
+        return jsonResponse(makeCandles());
+      }) as unknown as typeof fetch,
+    });
+    await client.getCandles({ symbol: 'ETHUSDT' });
+    expect(seen).toContain('interval=1h');
+    expect(seen).not.toContain('limit=');
+  });
+
+  it('сбой источника свечей — HTTP-ошибка с кодом, а не пустой график', async () => {
+    const client = createApiClient({
+      baseUrl: 'https://signals.test.local',
+      fetchImpl: (async () => jsonResponse({
+        error: 'market_unavailable', code: 'TIMEOUT', message: 'биржа не отдала свечи: таймаут',
+      }, 502)) as unknown as typeof fetch,
+    });
+    await expect(client.getCandles({ symbol: 'BTCUSDT' })).rejects.toMatchObject({
+      kind: 'http', status: 502, message: 'биржа не отдала свечи: таймаут',
+    });
+  });
+
+  it('мусор вместо свечей — ошибка parse', async () => {
+    const client = createApiClient({
+      baseUrl: 'https://signals.test.local',
+      fetchImpl: (async () => jsonResponse({ candles: [{ time: 1, open: 'x', high: 2, low: 1, close: 1, volume: 0 }] })) as unknown as typeof fetch,
+    });
+    await expect(client.getCandles({ symbol: 'BTCUSDT' })).rejects.toMatchObject({ kind: 'parse' });
+  });
+
+  it('свеча с high < low не принимается', async () => {
+    const client = createApiClient({
+      baseUrl: 'https://signals.test.local',
+      fetchImpl: (async () => jsonResponse({
+        candles: [{ time: 1, open: 5, high: 4, low: 6, close: 5, volume: 1, closed: true }],
+      })) as unknown as typeof fetch,
+    });
+    await expect(client.getCandles({ symbol: 'BTCUSDT' })).rejects.toMatchObject({ kind: 'parse' });
+  });
+
+  it('сетевой сбой графика отличается от ответа сервера', async () => {
+    const client = createApiClient({
+      baseUrl: 'https://signals.test.local',
+      fetchImpl: (async () => { throw new TypeError('Network request failed'); }) as unknown as typeof fetch,
+    });
+    await expect(client.getCandles({ symbol: 'BTCUSDT' })).rejects.toMatchObject({ kind: 'network' });
   });
 
   it('регистрация устройства отправляет токен и платформу POST-ом', async () => {

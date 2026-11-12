@@ -14,6 +14,8 @@ import { createApp, readApkManifest } from '../src/api';
 import { loadConfig } from '../src/config';
 import { SignalRepository, type NewSignalInput } from '../src/repository';
 import { DisabledPushSender } from '../src/push/fcm';
+import { CandleService } from '../src/candles';
+import { MarketDataError } from '../src/market';
 import { tempDb, type TempDb } from './helpers';
 
 const NOW = Date.UTC(2024, 5, 1, 12, 0, 0);
@@ -33,10 +35,19 @@ afterEach(async () => {
   open = [];
 });
 
+/** Провайдер свечей по умолчанию: эндпоинт /candles в этих тестах не вызывается. */
+const noMarketProvider = {
+  id: 'test-no-market',
+  async getKlines(): Promise<never> {
+    throw new MarketDataError({ code: 'EMPTY', message: 'нет рыночных данных в тесте' });
+  },
+};
+
 async function harness(opts: {
   now?: () => number;
   apkDir?: string | null;
   push?: DisabledPushSender;
+  candles?: CandleService;
   env?: Record<string, string>;
 } = {}): Promise<Harness> {
   const t = tempDb();
@@ -54,6 +65,7 @@ async function harness(opts: {
     repo: t.repo,
     config,
     push,
+    candles: opts.candles ?? new CandleService(noMarketProvider, { ttlMs: 0, now: opts.now ?? (() => NOW) }),
     version: '0.1.0-test',
     startedAtMs: NOW,
     now: opts.now ?? (() => NOW),

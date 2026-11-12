@@ -10,3 +10,5 @@ google-service-account.json
 *.keystore
 .env
 .env.*
+# Каталог staging для CI-артефакта (не коммитится).
+dist-apk/

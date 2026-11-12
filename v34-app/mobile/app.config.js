@@ -20,7 +20,9 @@ module.exports = ({ config }) => ({
   assetBundlePatterns: ['**/*'],
   android: {
     package: 'com.nub36.cryptora.v34',
-    versionCode: 1,
+    // versionCode увеличивается при каждом релизе: Android не даёт поставить
+    // APK с тем же или меньшим кодом поверх предыдущего.
+    versionCode: 2,
     // POST_NOTIFICATIONS обязателен для Android 13+.
     permissions: ['POST_NOTIFICATIONS'],
     blockedPermissions: [
